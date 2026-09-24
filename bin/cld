@@ -179,7 +179,8 @@ new)
     fi
     claude=(claude --name "$name")
     if $worktree; then
-        # claude would report a missing repository in its pane, which closes as claude exits.
+        # cld reports a missing repository in the terminal; claude would report it in a session
+        # left to kill or, with tmux 3.3 and 3.4, in a pane that closes as claude exits.
         [[ $(git rev-parse --is-inside-work-tree 2>/dev/null) == true ]] ||
             die 1 "--worktree needs a git repository, and $PWD is not in one"
         # claude branches a new worktree from the remote's default branch unless worktree.baseRef
