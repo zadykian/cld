@@ -10,7 +10,7 @@ IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))$(if $(TMUX_VERSION),-tmux-$(T
 # The version make dist stamps into the script.
 VERSION ?= dev
 
-.PHONY: check lint test docker-image docker-check dist install uninstall
+.PHONY: check lint test docker-image docker-test docker-check dist install uninstall
 
 check: lint test
 
@@ -27,10 +27,14 @@ docker-image:
 	docker build --build-arg BASE=$(BASE) --build-arg TMUX_VERSION=$(TMUX_VERSION) \
 		-t $(IMAGE) -f tests/Dockerfile .
 
-docker-check: docker-image
+# Runs the checks in an image that is already built: by docker-image, or by CI from its layer cache.
+docker-test:
 	docker run --rm --init --user "$$(id -u):$$(id -g)" -e HOME=/tmp \
 		-v "$(CURDIR):/src:ro" -w /src $(IMAGE) \
 		make check TERMINALS=$(DOCKER_TERMINALS)
+
+docker-check: docker-image
+	@$(MAKE) --no-print-directory docker-test
 
 dist:
 	mkdir -p dist
