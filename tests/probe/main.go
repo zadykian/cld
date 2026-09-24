@@ -18,7 +18,8 @@
 //	            exit              exit at once, leaving the terminal modes on
 //
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
-// $CLD_FAKE_TMUX_VERSION, and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json.
+// $CLD_FAKE_TMUX_VERSION, has-session finds no session, and any other invocation is recorded in
+// $CLD_PROBE_DIR/tmux.json.
 package main
 
 import (
@@ -29,6 +30,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,6 +69,10 @@ func fakeTmux() error {
 	if len(os.Args) == 2 && os.Args[1] == "-V" {
 		fmt.Println(os.Getenv("CLD_FAKE_TMUX_VERSION"))
 		return nil
+	}
+	if slices.Contains(os.Args[1:], "has-session") {
+		fmt.Fprintln(os.Stderr, "can't find session: fake")
+		os.Exit(1)
 	}
 	return writeRecord(filepath.Join(os.Getenv("CLD_PROBE_DIR"), "tmux.json"))
 }
