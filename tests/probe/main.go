@@ -16,6 +16,8 @@
 //	            inline            leave the alternate screen and turn mouse reporting off, as
 //	                              claude outside fullscreen draws
 //	            cd DIR            change to DIR, as claude does entering a worktree
+//	            tmux ARGS         run tmux with ARGS, split at spaces, as anything claude runs
+//	                              may: TMUX takes it to the server of claude's pane
 //	            exit [N]          exit at once with status N (default 0), leaving the terminal
 //	                              modes on
 //
@@ -23,7 +25,7 @@
 // it cannot start.
 //
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
-// $CLD_FAKE_TMUX_VERSION, has-session finds no session, and any other invocation is recorded in
+// $CLD_FAKE_TMUX_VERSION, list-sessions lists no session, and any other invocation is recorded in
 // $CLD_PROBE_DIR/tmux.json.
 package main
 
@@ -75,9 +77,8 @@ func fakeTmux() error {
 		fmt.Println(os.Getenv("CLD_FAKE_TMUX_VERSION"))
 		return nil
 	}
-	if slices.Contains(os.Args[1:], "has-session") {
-		fmt.Fprintln(os.Stderr, "can't find session: fake")
-		os.Exit(1)
+	if slices.Contains(os.Args[1:], "list-sessions") {
+		return nil
 	}
 	return writeRecord(filepath.Join(os.Getenv("CLD_PROBE_DIR"), "tmux.json"))
 }
@@ -156,6 +157,10 @@ func obey(control *os.File, write func(string)) {
 		case "cd":
 			if err := os.Chdir(argument); err != nil {
 				fmt.Fprintln(os.Stderr, "probe:", err)
+			}
+		case "tmux":
+			if out, err := exec.Command("tmux", strings.Fields(argument)...).CombinedOutput(); err != nil {
+				fmt.Fprintf(os.Stderr, "probe: tmux: %v: %s", err, out)
 			}
 		case "exit":
 			status, _ := strconv.Atoi(argument)

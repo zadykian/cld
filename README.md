@@ -58,8 +58,15 @@ Joining from a second terminal detaches the first one; claude keeps running in i
 wherever you join from. A killed session's conversation stays in Claude Code's history, named
 `cld-NAME` in the `claude --resume` picker.
 
+`cld` sees only the sessions it started: `cld new` marks each one with the tmux option `@cld`.
+Whatever claude runs - its Bash tool, a hook - reaches cld's tmux server with a plain `tmux`, as
+`tmux -L cld` does by hand, and a session made that way is not cld's, whatever its name: `cld list`
+leaves it out, `join` and `kill` do not find it, and `new` refuses its name, saying why.
+
 Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
-the two commands.
+the two commands. cld 0.2.0 and earlier did not mark their sessions, so later versions do not see
+the sessions they started: end them before upgrading, or afterwards with
+`tmux -L cld kill-session -t =cld-NAME`.
 
 ### Worktrees
 
