@@ -47,17 +47,19 @@ func TestSessionNames(t *testing.T) {
 	}
 }
 
-// new -w hands the worktree to claude: claude gets --worktree NAME and starts where cld runs, then
-// makes or reopens the worktree itself and moves into it.
+// new -w hands the worktree to claude: claude gets --worktree NAME, with settings that make it
+// branch a new worktree from HEAD, and starts where cld runs; it then makes or reopens the
+// worktree itself and moves into it.
 func TestNewWorktree(t *testing.T) {
 	t.Parallel()
+	const fromHead = `{"worktree":{"baseRef":"head"}}`
 	for _, test := range []struct {
 		args []string
 		want []string
 	}{
-		{[]string{"new", "-w"}, []string{"--name", "cld-main", "--worktree", "main"}},
-		{[]string{"new", "-n", "feat", "--worktree"}, []string{"--name", "cld-feat", "--worktree", "feat"}},
-		{[]string{"new", "-w", "--name=feat"}, []string{"--name", "cld-feat", "--worktree", "feat"}},
+		{[]string{"new", "-w"}, []string{"--name", "cld-main", "--settings", fromHead, "--worktree", "main"}},
+		{[]string{"new", "-n", "feat", "--worktree"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
+		{[]string{"new", "-w", "--name=feat"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()

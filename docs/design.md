@@ -40,6 +40,7 @@ cld() {
 | `cld foo.bar` | tmux renames the session to `cld-foo_bar` (`.` and `:` are target separators), while claude's `--name` and the tab title keep `cld-foo.bar` |
 | argv form (`new-session ... claude --name "$name"`) | documented in tmux(1): a command given as several arguments is executed directly, without `sh -c`; `cld-a b` arrives as one argument |
 | `tmux kill-session -t cld-rev` beside `cld-review` (tmux 3.3a, 3.7c) | kills `cld-review`: a session target is matched exactly, then as a prefix, then as a pattern; `=cld-rev` matches exactly and finds nothing |
+| `claude --worktree NAME` (2.1.281) on the branch `feature`, one commit ahead of `origin/master`, the remote's default | branches `worktree-NAME` from `origin/master`; with `--settings '{"worktree":{"baseRef":"head"}}'` from `feature`'s commit, also when the project's `.claude/settings.local.json` sets `baseRef` to `"fresh"` |
 | `cld new -n wt -w` with the real `claude` 2.1.281, in a repository without a remote | claude makes `.claude/worktrees/wt` on the branch `worktree-wt` from `HEAD` and moves there; `pane_current_path` follows it, so `cld list` shows the worktree. After `cld kill` the worktree stays, with its uncommitted files and claude's lock, and `cld new -n wt -w` reopens it |
 | the same in a directory whose workspace trust was never accepted | claude prints `Error creating worktree: Workspace trust not yet accepted. Run claude once in this directory and accept the trust dialog, then retry with --worktree.` and exits 1; the pane, and the message with it, closes at once |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, so tmux does not refuse |
@@ -142,7 +143,10 @@ Every Linux job runs the same Docker image a developer runs locally.
 4. Worktrees: `new -w` passes `--worktree NAME` to claude instead of running `git worktree add`.
    claude then applies what it applies to every worktree it makes - `.worktreeinclude`,
    `worktree.baseRef`, `WorktreeCreate` hooks - reopens an existing one, and one repository keeps
-   one worktree layout (`.claude/worktrees/NAME`, branch `worktree-NAME`). An error claude prints
+   one worktree layout (`.claude/worktrees/NAME`, branch `worktree-NAME`). A new worktree
+   branches from `HEAD`: `cld` passes `--settings '{"worktree":{"baseRef":"head"}}'`, which
+   outranks the user's and the project's settings, so the worktree carries the work it was started
+   from rather than the remote's default branch. An error claude prints
    at startup vanishes with its pane, so `cld` checks for a git work tree first; workspace trust,
    which claude also requires, lives in claude's own state and is left to the README. `kill` leaves
    the worktree: claude offers to remove it only when it exits on its own. The worktree is named
