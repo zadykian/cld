@@ -23,9 +23,10 @@ func TestSessionNames(t *testing.T) {
 		args    []string
 		session string
 	}{
-		{nil, "cld-main"},
-		{[]string{"review"}, "cld-review"},
-		{[]string{"Fix_42-b"}, "cld-Fix_42-b"},
+		{[]string{"new"}, "cld-main"},
+		{[]string{"new", "-n", "review"}, "cld-review"},
+		{[]string{"new", "--name", "Fix_42-b"}, "cld-Fix_42-b"},
+		{[]string{"new", "--name=x"}, "cld-x"},
 	} {
 		t.Run(test.session, func(t *testing.T) {
 			t.Parallel()
@@ -45,14 +46,57 @@ func TestSessionNames(t *testing.T) {
 	}
 }
 
-func TestReattachDetachesOtherClient(t *testing.T) {
+// new refuses a session that exists, before touching it: the attached client and its claude
+// carry on.
+func TestNewRefusesExistingSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "shared")
+	first := startCld(t, s, "tmux", nil, "new", "-n", "dup")
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
 
-	second := startCld(t, s, "tmux", nil, "shared")
+	result := s.RunCld(nil, "new", "-n", "dup")
+	if want := "cld: session 'dup' exists; attach to it with cld join -n dup\n"; result.Code != 1 || result.Stderr != want {
+		t.Errorf("exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+	}
+	if result.Stdout != "" {
+		t.Errorf("printed %q before failing", result.Stdout)
+	}
+	if probes := s.Probes(); len(probes) != 1 || !first.Running() {
+		t.Errorf("%d claude processes, first client running: %v; want the original one, attached", len(probes), first.Running())
+	}
+}
+
+// join finds only the session it names: no server, another session, or one whose name starts
+// with NAME is no session.
+func TestJoinRequiresSession(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	want := "cld: no session 'rev'; create it with cld new -n rev\n"
+	if result := s.RunCld(nil, "join", "-n", "rev"); result.Code != 1 || result.Stderr != want {
+		t.Errorf("without a server: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+	}
+	if sessions := s.Sessions(); len(sessions) != 0 {
+		t.Errorf("sessions %q, want none", sessions)
+	}
+
+	startCld(t, s, "tmux", nil, "new", "-n", "review")
+	s.WaitProbes(1)
+	waitClients(t, s, 1)
+	if result := s.RunCld(nil, "join", "-n", "rev"); result.Code != 1 || result.Stderr != want {
+		t.Errorf("beside cld-review: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+	}
+	waitClients(t, s, 1)
+}
+
+func TestJoinDetachesOtherClient(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	first := startCld(t, s, "tmux", nil, "new", "-n", "shared")
+	s.WaitProbes(1)
+	waitClients(t, s, 1)
+
+	second := startCld(t, s, "tmux", nil, "join", "-n", "shared")
 	sandbox.WaitFor(t, 10*time.Second, "the first client to be detached", func() bool { return !first.Running() })
 	waitScreen(t, second, "probe --name cld-shared")
 	if !second.Running() {
@@ -63,13 +107,11 @@ func TestReattachDetachesOtherClient(t *testing.T) {
 	}
 }
 
-// Reattaching from another directory leaves claude where it runs. tmux 3.7 moves the session's
-// directory for new windows to the reattaching client's (new-session -A now honours -c); a cld
-// session is one window, so only claude's directory is part of the promise.
-func TestReattachFromElsewhereKeepsClaude(t *testing.T) {
+// Joining from another directory leaves claude, and the session, where they are.
+func TestJoinFromElsewhereKeepsClaude(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "task")
+	first := startCld(t, s, "tmux", nil, "new", "-n", "task")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	first.Keys("C-q", "d")
@@ -79,10 +121,13 @@ func TestReattachFromElsewhereKeepsClaude(t *testing.T) {
 	if err := os.Mkdir(elsewhere, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	second := startCldIn(t, s, "tmux", elsewhere, nil, "task")
+	second := startCldIn(t, s, "tmux", elsewhere, nil, "join", "-n", "task")
 	waitScreen(t, second, "probe --name cld-task")
 	if probes := s.Probes(); len(probes) != 1 || !probe.Alive() || probe.Cwd != s.Work {
-		t.Errorf("%d claude processes after reattaching, want the original one in %s", len(probes), s.Work)
+		t.Errorf("%d claude processes after joining, want the original one in %s", len(probes), s.Work)
+	}
+	if path := s.Format("cld-task", "#{session_path}"); path != s.Work {
+		t.Errorf("session directory %s after joining, want %s", path, s.Work)
 	}
 }
 
@@ -93,7 +138,7 @@ func TestReattachFromElsewhereKeepsClaude(t *testing.T) {
 func TestReattachRepaintsTheSameScreen(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "paint")
+	first := startCld(t, s, "tmux", nil, "new", "-n", "paint")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	probe.Send("rekey")
@@ -108,7 +153,7 @@ func TestReattachRepaintsTheSameScreen(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {100, 30}} {
 		term := terminal.New(t, "tmux", s)
 		term.Resize(size[0], size[1])
-		term.Start(s.CldArgv("paint"), s.Env, s.Work)
+		term.Start(s.CldArgv("join", "-n", "paint"), s.Env, s.Work)
 		waitScreen(t, term, "repainted")
 		if repainted := cells(term.Styled()); !slices.Equal(repainted, painted) {
 			t.Errorf("reattached at %dx%d:\n%s\nwant\n%s", size[0], size[1], strings.Join(repainted, "\n"), strings.Join(painted, "\n"))
@@ -129,9 +174,9 @@ func TestReattachRepaintsTheSameScreen(t *testing.T) {
 func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	a := startCld(t, s, "tmux", nil, "a")
+	a := startCld(t, s, "tmux", nil, "new", "-n", "a")
 	s.WaitProbes(1)
-	b := startCld(t, s, "tmux", nil, "b")
+	b := startCld(t, s, "tmux", nil, "new", "-n", "b")
 	probes := map[string]*sandbox.Probe{}
 	for _, probe := range s.WaitProbes(2) {
 		probes[probe.Argv[1]] = probe
@@ -150,8 +195,8 @@ func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 func TestSessionsShareOneServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "a")
-	startCld(t, s, "tmux", nil, "b")
+	startCld(t, s, "tmux", nil, "new", "-n", "a")
+	startCld(t, s, "tmux", nil, "new", "-n", "b")
 	s.WaitProbes(2)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
 		t.Errorf("sessions %q, want [cld-a cld-b]", sessions)
@@ -161,7 +206,7 @@ func TestSessionsShareOneServer(t *testing.T) {
 func TestIgnoresUserTmuxConfig(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil)
+	startCld(t, s, "tmux", nil, "new")
 	s.WaitProbes(1)
 	if left := s.MustTmux("show", "-gv", "status-left"); left == "POISONED" {
 		t.Error("~/.tmux.conf was loaded")
@@ -175,7 +220,7 @@ func TestIgnoresUserTmuxConfig(t *testing.T) {
 func TestServerOptions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil)
+	startCld(t, s, "tmux", nil, "new")
 	s.WaitProbes(1)
 	for _, option := range []struct{ scope, name, value string }{
 		{"-sv", "extended-keys", "on"},
@@ -201,19 +246,19 @@ func TestServerOptions(t *testing.T) {
 	}
 }
 
-// cld sets its options on every run; none of them may pile up on a long-lived server.
+// cld sets its options every time it creates a session; none of them may pile up on a
+// long-lived server.
 func TestRepeatedRunsDoNotStackOptions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "a")
-	s.WaitProbes(1)
-	startCld(t, s, "tmux", nil, "b")
-	startCld(t, s, "tmux", nil, "a")
-	s.WaitProbes(2)
-	waitClients(t, s, 2)
+	for i, name := range []string{"a", "b", "c"} {
+		startCld(t, s, "tmux", nil, "new", "-n", name)
+		s.WaitProbes(i + 1)
+	}
+	waitClients(t, s, 3)
 	features := strings.Split(s.MustTmux("show", "-sv", "terminal-features"), "\n")
 	if count := len(slices.DeleteFunc(features, func(f string) bool { return f != "xterm*:extkeys" })); count != 1 {
-		t.Errorf("%d xterm*:extkeys entries after three runs, want 1", count)
+		t.Errorf("%d xterm*:extkeys entries after three sessions, want 1", count)
 	}
 }
 
@@ -223,9 +268,9 @@ func TestRepeatedRunsDoNotStackOptions(t *testing.T) {
 func TestClaudeNeverSeesTerminalEmulator(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", map[string]string{"TERMINAL_EMULATOR": "JetBrains-JediTerm"}, "ide")
+	startCld(t, s, "tmux", map[string]string{"TERMINAL_EMULATOR": "JetBrains-JediTerm"}, "new", "-n", "ide")
 	s.WaitProbes(1)
-	startCld(t, s, "tmux", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "iterm")
+	startCld(t, s, "tmux", map[string]string{"TERM_PROGRAM": "iTerm.app"}, "new", "-n", "iterm")
 	for _, probe := range s.WaitProbes(2) {
 		if value, found := probe.Env["TERMINAL_EMULATOR"]; found {
 			t.Errorf("claude %q sees TERMINAL_EMULATOR=%s", probe.Argv, value)
@@ -237,7 +282,7 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	elsewhere := filepath.Join(s.Root, "elsewhere", "default") + ",1,0"
-	startCld(t, s, "tmux", map[string]string{"TMUX": elsewhere})
+	startCld(t, s, "tmux", map[string]string{"TMUX": elsewhere}, "new")
 	s.WaitProbes(1)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-main"}) {
 		t.Errorf("sessions %q, want [cld-main]", sessions)

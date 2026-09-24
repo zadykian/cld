@@ -39,6 +39,7 @@ cld() {
 | `cld "a b"` | the command string goes through `sh -c`, so claude receives `--name cld-a b`: `b` becomes an initial prompt |
 | `cld foo.bar` | tmux renames the session to `cld-foo_bar` (`.` and `:` are target separators), while claude's `--name` and the tab title keep `cld-foo.bar` |
 | argv form (`new-session ... claude --name "$name"`) | documented in tmux(1): a command given as several arguments is executed directly, without `sh -c`; `cld-a b` arrives as one argument |
+| `tmux kill-session -t cld-rev` beside `cld-review` (tmux 3.3a, 3.7c) | kills `cld-review`: a session target is matched exactly, then as a prefix, then as a pattern; `=cld-rev` matches exactly and finds nothing |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, so tmux does not refuse |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
@@ -65,7 +66,7 @@ cld() {
 
 Isolation needs no seams in the script: `TMUX_TMPDIR` moves the `-L cld` socket into a sandbox,
 `HOME` points at a temporary directory, `TMUX` is unset, and the probe is first on `PATH`.
-`new-session -AD` attaches, so it needs a pty; a terminal driver provides one.
+`cld new` and `cld join` attach, so they need a pty; a terminal driver provides one.
 
 ### Terminal contract
 
@@ -129,9 +130,13 @@ Every Linux job runs the same Docker image a developer runs locally.
 1. Naming: names are validated (`[A-Za-z0-9][A-Za-z0-9_-]*`), not sanitised - a silent rename
    would make `cld foo.bar` and the session it attaches to disagree.
 2. Inside another tmux: `cld` nests; the private socket already allows it.
-3. tmux 3.3 is the minimum, checked at startup with a clear message.
-4. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
-5. iTerm2: not automated yet (see Status).
+3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
+   fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
+   `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME`. Commands address sessions as
+   `=cld-NAME`, since tmux would otherwise take `cld-rev` for `cld-review`.
+4. tmux 3.3 is the minimum, checked at startup with a clear message.
+5. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
+6. iTerm2: not automated yet (see Status).
 
 ## Implementation notes
 
@@ -147,8 +152,8 @@ Where the implementation departs from the plan above:
 - tmux 3.3a expands `display -p -t =SESSION` to nothing when no client is attached; the tests read
   formats through `list-panes`.
 - tmux 3.7 prints nothing for `list-keys -T prefix KEY`, and its `new-session -A` honours `-c`: a
-  reattach from another directory moves the session's directory for new windows there. claude keeps
-  running where it started, which is what the tests pin.
+  reattach from another directory moved the session's directory for new windows there. Since 0.2.0
+  `join` attaches with `attach-session`, which moves neither claude nor the session.
 - `TMUX_VERSION` builds a tmux release from source into the test image, so the newest tmux
   reproduces in Docker, not only on the macOS runner.
 - tmux 3.7's `paste-buffer` writes control characters as `^X` unless given `-S`; the baseline
