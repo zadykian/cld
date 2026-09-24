@@ -7,6 +7,10 @@
 # ~/.tmux.conf) keeps these options away from any other tmux use:
 # - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 #   modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
+# - the extkeys terminal feature for xterm*: tmux asks the terminal for modified keys only when
+#   it knows the terminal supports them, and it does not recognise every terminal that does;
+#   Claude Code's docs recommend this for tmux. It goes to a fixed index past tmux's defaults:
+#   set -a would add another copy every time cld runs
 # - mouse on, focus-events on: claude probes both and hints when they are off; with the
 #   mouse off the wheel cannot scroll claude's fullscreen transcript
 # - allow-passthrough on: claude wraps its notifications and OSC 52 copies in tmux passthrough
@@ -78,7 +82,8 @@ printf '\033]0;✳ %s\007' "$name"
 # claude and its arguments go to tmux as separate words: tmux then executes them directly
 # instead of through sh -c.
 exec env -u TERMINAL_EMULATOR tmux -L cld -f /dev/null \
-    set -s extended-keys on \; set -s focus-events on \; \
+    set -s extended-keys on \; set -s 'terminal-features[100]' 'xterm*:extkeys' \; \
+    set -s focus-events on \; \
     set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
     set -g prefix C-q \; bind C-q send-prefix \; \
     new-session -AD -s "$name" -c "$PWD" claude --name "$name"

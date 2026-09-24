@@ -41,6 +41,10 @@ session was created in.
 your `~/.tmux.conf` never touches claude:
 
 - `extended-keys on` lets modified keys such as Shift+Enter reach claude when it asks for them;
+- the `extkeys` terminal feature for `xterm*` terminals, as
+  [Claude Code's docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) recommend:
+  tmux asks the terminal for modified keys only when it knows the terminal supports them, and it
+  does not recognise every terminal that does;
 - `mouse on` and `focus-events on`: claude scrolls its fullscreen transcript with the wheel and
   hints when either is off;
 - `allow-passthrough on`: claude wraps its notifications and clipboard copies (OSC 52) in tmux

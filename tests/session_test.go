@@ -127,12 +127,31 @@ func TestServerOptions(t *testing.T) {
 			t.Errorf("%s is %q, want %q", option.name, value, option.value)
 		}
 	}
+	if features := s.MustTmux("show", "-sv", "terminal-features"); !slices.Contains(strings.Split(features, "\n"), "xterm*:extkeys") {
+		t.Errorf("terminal-features lacks xterm*:extkeys:\n%s", features)
+	}
 	// "list-keys -T prefix C-q" would be shorter, but tmux 3.7 prints nothing for it.
 	bindings := strings.Split(s.MustTmux("list-keys", "-T", "prefix"), "\n")
 	if !slices.ContainsFunc(bindings, func(binding string) bool {
 		return slices.Equal(strings.Fields(binding), []string{"bind-key", "-T", "prefix", "C-q", "send-prefix"})
 	}) {
 		t.Errorf("C-q C-q is not bound to send-prefix:\n%s", strings.Join(bindings, "\n"))
+	}
+}
+
+// cld sets its options on every run; none of them may pile up on a long-lived server.
+func TestRepeatedRunsDoNotStackOptions(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	startCld(t, s, "tmux", nil, "a")
+	s.WaitProbes(1)
+	startCld(t, s, "tmux", nil, "b")
+	startCld(t, s, "tmux", nil, "a")
+	s.WaitProbes(2)
+	waitClients(t, s, 2)
+	features := strings.Split(s.MustTmux("show", "-sv", "terminal-features"), "\n")
+	if count := len(slices.DeleteFunc(features, func(f string) bool { return f != "xterm*:extkeys" })); count != 1 {
+		t.Errorf("%d xterm*:extkeys entries after three runs, want 1", count)
 	}
 }
 

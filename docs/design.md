@@ -156,7 +156,9 @@ JediTerm 3.76 (read from its source, confirmed by the contract):
 
 - it answers no XTVERSION, so tmux records no terminal type and falls back to its defaults for
   `xterm*`: `bpaste`, `clipboard`, `focus`, `title` - but the emulator ignores focus reporting
-  (DECSET 1004 is a stub) and does not handle OSC 52;
+  (DECSET 1004 is a stub) and does not handle OSC 52. Since cld adds the `extkeys` feature for
+  `xterm*` (as Claude Code's tmux docs recommend), tmux also asks it for modifyOtherKeys, which it
+  ignores;
 - it ignores modifyOtherKeys (`CSI > 4 ; n m`). Shift+Enter becomes ESC CR only with its
   `shiftEnterSendsEscCR` setting, which tmux passes on as Meta+Enter; without it Shift+Enter is CR;
 - its wheel constants are named the other way round (`SCROLLDOWN` is xterm's button 64, wheel up),
