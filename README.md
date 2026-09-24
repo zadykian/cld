@@ -70,6 +70,7 @@ The checks run in Docker, the same way as in CI:
 ```sh
 make docker-check                      # tmux 3.3a (debian:bookworm): baseline and JediTerm
 make docker-check BASE=ubuntu:24.04    # tmux 3.4; debian:trixie has 3.5a
+make docker-check BASE=debian:trixie TMUX_VERSION=3.7c   # a tmux release built from source
 ```
 
 Natively, `make check` needs Go, tmux, ShellCheck and shfmt, and runs the baseline terminal only.
