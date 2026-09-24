@@ -133,6 +133,16 @@ no_server() {
     [[ $1 == "no server running on "* || $1 == "error connecting to "* ]]
 }
 
+# own_pane: whether this terminal is a live pane of cld's server - claude's external editor, say -
+# where a session attached would show inside itself. tmux refuses that too, advising to unset
+# $TMUX; cld says how to get out instead. As tmux does, it looks only when $TMUX is set.
+own_pane() {
+    local terminal panes
+    [[ -n ${TMUX-} ]] && terminal=$(tty) &&
+        panes=$(tmux -L cld list-panes -a -F '#{?pane_dead,,#{pane_tty}}' 2>/dev/null) &&
+        [[ $'\n'$panes$'\n' == *$'\n'"$terminal"$'\n'* ]]
+}
+
 command=${1-}
 (($# == 0)) || shift
 case $command in
@@ -176,6 +186,10 @@ fi
 # above): the pane-died hook shows it to a terminal attached then, join to one attaching later.
 how='#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}'
 hint="display-message -d 0 'claude exited with $how: C-q d detaches, cld kill -n #{window_name} ends the session'"
+
+if [[ $command == new || $command == join ]]; then
+    ! own_pane || die 1 "this terminal is inside a cld session; detach with C-q d first"
+fi
 
 case $command in
 new)
