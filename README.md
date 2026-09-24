@@ -45,8 +45,9 @@ your `~/.tmux.conf` never touches claude:
   [Claude Code's docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) recommend:
   tmux asks the terminal for modified keys only when it knows the terminal supports them, and it
   does not recognise every terminal that does;
-- `mouse on` and `focus-events on`: claude scrolls its fullscreen transcript with the wheel and
-  hints when either is off;
+- `mouse on` and `focus-events on`: claude hints when either is off. With the mouse on, the wheel
+  over a program that draws in the main screen without the mouse - claude outside fullscreen, a
+  shell - scrolls the pane's history; claude's fullscreen transcript gets the wheel either way;
 - `allow-passthrough on`: claude wraps its notifications and clipboard copies (OSC 52) in tmux
   passthrough;
 - `status off`: claude keeps the whole tab;

@@ -162,6 +162,24 @@ func TestContractMouseWheel(t *testing.T) {
 	})
 }
 
+// C4: over a program that draws in the main screen without the mouse - claude outside fullscreen,
+// a shell - the wheel scrolls the pane's history in tmux's copy mode. This is what mouse on is
+// for: claude's fullscreen transcript gets the wheel either way, as tmux passes its mouse
+// reporting on. (Since tmux 3.7 a program in the alternate screen gets the wheel, mouse or not.)
+func TestContractWheelScrollsHistory(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		s, term, probe := startContract(t, name)
+		probe.Send("inline")
+		sandbox.WaitFor(t, 10*time.Second, "claude to draw inline", func() bool {
+			return s.Format("cld-contract", "#{mouse_any_flag} #{alternate_on}") == "0 0"
+		})
+		term.WheelUp()
+		sandbox.WaitFor(t, 10*time.Second, "the pane to enter copy mode", func() bool {
+			return s.Format("cld-contract", "#{pane_in_mode}") == "1"
+		})
+	})
+}
+
 // C4: focus changes reach claude.
 func TestContractFocus(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {

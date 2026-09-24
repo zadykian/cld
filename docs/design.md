@@ -74,7 +74,7 @@ Isolation needs no seams in the script: `TMUX_TMPDIR` moves the `-L cld` socket 
 | C1 | tab title is `✳ cld-NAME` and survives claude's own title changes | terminal |
 | C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, ...) | tmux |
 | C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
-| C4 | mouse wheel and focus in/out reach claude | probe input log |
+| C4 | mouse wheel and focus in/out reach claude; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
 | C5 | OSC 52 / OSC 9 wrapped in tmux passthrough, and copies through `tmux load-buffer -w`, reach the outer terminal | terminal |
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created from another terminal on a server started from the JetBrains terminal | probe env dump |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
@@ -175,7 +175,13 @@ JediTerm 3.76 (read from its source, confirmed by the contract):
 tmux 3.3a to 3.7c:
 
 - a control character inside a bracketed paste reaches claude as it is, and the prefix among
-  them is not taken for a binding.
+  them is not taken for a binding;
+- tmux passes a pane's own mouse modes on to the terminal when `mouse` is off, and forwards the
+  wheel to a program that asked for mouse reporting: the real claude 2.1.281 scrolled its
+  fullscreen transcript under `mouse off` too. What `mouse on` adds is the wheel over a program
+  that draws in the main screen without the mouse, which scrolls the pane's history (C4);
+- since 3.7 the default wheel binding hands the wheel to a program in the alternate screen whether
+  or not it asked for the mouse, where earlier versions entered copy mode.
 
 The `VT10x` in Findings came from the probing shell, which carried
 `TERMINAL_EMULATOR=JetBrains-JediTerm`: claude's `--debug` log read `extendedKeys=no (env:

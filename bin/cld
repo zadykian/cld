@@ -11,8 +11,10 @@
 #   it knows the terminal supports them, and it does not recognise every terminal that does;
 #   Claude Code's docs recommend this for tmux. It goes to a fixed index past tmux's defaults:
 #   set -a would add another copy every time cld runs
-# - mouse on, focus-events on: claude probes both and hints when they are off; with the
-#   mouse off the wheel cannot scroll claude's fullscreen transcript
+# - mouse on, focus-events on: claude probes both and hints when they are off. With the mouse
+#   on, the wheel over a program that draws in the main screen without the mouse - claude
+#   outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
+#   gets the wheel either way, as tmux passes claude's own mouse reporting on to the terminal
 # - allow-passthrough on: claude wraps its notifications and OSC 52 copies in tmux passthrough
 # - status off: claude keeps the whole tab
 # - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not

@@ -13,6 +13,8 @@
 //	            rekey             leave and re-enter the alternate screen, push the keyboard
 //	                              modes again and repaint, as claude does after an external
 //	                              editor; the repaint ends in a line "repainted"
+//	            inline            leave the alternate screen and turn mouse reporting off, as
+//	                              claude outside fullscreen draws
 //	            exit              exit at once, leaving the terminal modes on
 //
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
@@ -134,6 +136,8 @@ func obey(control *os.File, write func(string)) {
 			// A screen model that took CSI > 4 ; 2 m for SGR 4;2 would draw the repaint underlined
 			// and faint, and replay it that way on every reattach.
 			write("\x1b[?1049l\x1b[?1049h\x1b[<u\x1b[>1u\x1b[>4;2m\x1b[H\x1b[2J" + screen() + "repainted\r\n")
+		case "inline":
+			write("\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?1006l\x1b[?1049l")
 		case "exit":
 			os.Exit(0)
 		}
