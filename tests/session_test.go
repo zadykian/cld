@@ -560,15 +560,70 @@ func TestClaudeNeverSeesTerminalEmulator(t *testing.T) {
 	}
 }
 
+// Inside another tmux ($TMUX set) cld nests: its server is another one. Its client gets an empty
+// TMUX (see TestNestsOnADeadPanesPty), with which tmux still takes the terminal, a pane of the
+// other tmux, for UTF-8 whatever the locale says.
 func TestNestsInsideAnotherTmux(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	elsewhere := filepath.Join(s.Root, "elsewhere", "default") + ",1,0"
-	startCld(t, s, "tmux", map[string]string{"TMUX": elsewhere}, "new")
+	startCld(t, s, "tmux", map[string]string{"TMUX": elsewhere, "LANG": "C"}, "new")
 	s.WaitProbes(1)
+	waitClients(t, s, 1)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-main"}) {
 		t.Errorf("sessions %q, want [cld-main]", sessions)
 	}
+	if utf8 := s.MustTmux("list-clients", "-F", "#{client_utf8}"); utf8 != "1" {
+		t.Errorf("client_utf8 %q under LANG=C, want 1", utf8)
+	}
+}
+
+// A dead pane - one cld keeps for a failed claude, say - keeps the name of its closed pty, and the
+// system hands the name to the next terminal opened. tmux takes a client with $TMUX set on a pty
+// of that name for one inside its own pane; cld's client, with an empty TMUX, attaches: new, and
+// join once detached. Not parallel: a terminal another test opens could take the name first.
+func TestNestsOnADeadPanesPty(t *testing.T) {
+	s := sandbox.New(t)
+	// remain-on-exit on keeps the pane with every tmux version.
+	s.MustTmux("set", "-g", "remain-on-exit", "on", ";", "new-session", "-d", "-s", "dead", "false")
+	sandbox.WaitFor(t, 10*time.Second, "the pane to die", func() bool {
+		return s.Format("dead", "#{pane_dead}") == "1"
+	})
+	dead := s.Format("dead", "#{pane_tty}")
+
+	// A pane of another tmux: the terminal writes down its pty, runs new and, once detached, join.
+	env := map[string]string{"TMUX": filepath.Join(s.Root, "elsewhere", "default") + ",1,0"}
+	for name, value := range s.Env {
+		env[name] = value
+	}
+	ttyFile := filepath.Join(s.Root, "tty")
+	term := terminal.New(t, "tmux", s)
+	term.Start(append([]string{"sh", "-c", `tty >"$0" && "$@" new && exec "$@" join`, ttyFile}, s.CldArgv()...), env, s.Work)
+	var tty []byte
+	sandbox.WaitFor(t, 10*time.Second, "the terminal's pty", func() bool {
+		tty, _ = os.ReadFile(ttyFile)
+		return strings.HasSuffix(string(tty), "\n")
+	})
+	if got := strings.TrimSuffix(string(tty), "\n"); got != dead {
+		t.Skipf("the terminal got %s rather than the dead pane's %s", got, dead)
+	}
+
+	// attached waits for a client other than before and returns it.
+	attached := func(command, before string) string {
+		t.Helper()
+		var client string
+		sandbox.WaitFor(t, 10*time.Second, "cld "+command+" to attach", func() bool {
+			client, _ = s.Tmux("list-clients", "-F", "#{client_pid}")
+			return client != "" && client != before || !term.Running()
+		})
+		if !term.Running() {
+			t.Fatalf("cld %s on %s failed: %q", command, dead, term.Output())
+		}
+		return client
+	}
+	first := attached("new", "")
+	term.Keys("C-q", "d")
+	attached("join", first)
 }
 
 // In a live pane of cld's server - claude's external editor, say - a session attached would show

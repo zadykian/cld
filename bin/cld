@@ -135,7 +135,8 @@ no_server() {
 
 # own_pane: whether this terminal is a live pane of cld's server - claude's external editor, say -
 # where a session attached would show inside itself. tmux refuses that too, advising to unset
-# $TMUX; cld says how to get out instead. As tmux does, it looks only when $TMUX is set.
+# $TMUX, but goes by name, dead panes included (see below); cld says how to get out instead, and
+# like tmux looks only when $TMUX is set.
 own_pane() {
     local terminal panes
     [[ -n ${TMUX-} ]] && terminal=$(tty) &&
@@ -187,8 +188,14 @@ fi
 how='#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}'
 hint="display-message -d 0 'claude exited with $how: C-q d detaches, cld kill -n #{window_name} ends the session'"
 
+# tmux refuses to attach a client with $TMUX set whose tty has the name of any pane on the server.
+# A dead pane - a failed claude's - keeps the name of its closed pty, and the system hands the name
+# to the next terminal opened: inside another tmux, tmux would refuse that terminal as nested. So
+# cld makes the check itself, on the live panes, and gives its client an empty TMUX, which tmux's
+# check skips; set, even empty, TMUX still tells the client that the terminal takes UTF-8.
 if [[ $command == new || $command == join ]]; then
     ! own_pane || die 1 "this terminal is inside a cld session; detach with C-q d first"
+    [[ -z ${TMUX-} ]] || TMUX=
 fi
 
 case $command in
