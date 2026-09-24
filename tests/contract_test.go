@@ -197,6 +197,20 @@ func TestContractClipboardThroughTmux(t *testing.T) {
 	})
 }
 
+// C8: a paste reaches claude whole and bracketed, so claude inserts it instead of submitting it
+// line by line, and a prefix key inside it is text rather than a tmux binding.
+func TestContractPaste(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		s, term, probe := startContract(t, name)
+		mark := probe.Mark()
+		term.Paste("first line\nsecond line \x11d")
+		probe.WaitInput(mark, "\x1b[200~first line\rsecond line \x11d\x1b[201~")
+		if !term.Running() || !slices.Equal(s.Sessions(), []string{"cld-contract"}) {
+			t.Error("cld did not stay attached through the paste")
+		}
+	})
+}
+
 // modifiedKeysOn reports whether the last modifyOtherKeys sequence in a terminal's output turns
 // modified keys on (CSI > 4 ; 1 m or CSI > 4 ; 2 m) rather than off (CSI > 4 m).
 func modifiedKeysOn(output []byte) bool {
