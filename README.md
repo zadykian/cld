@@ -78,7 +78,7 @@ To get both, create the worktree yourself (`git worktree add`), then run `cld NA
 ## Terminals
 
 The tests check one contract - title, Shift+Enter, Ctrl keys, detach, mouse wheel, focus,
-clipboard, paste - against each terminal:
+clipboard, paste, claude exiting - against each terminal:
 
 | Terminal | How it is tested | Differences |
 |---|---|---|

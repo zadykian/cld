@@ -211,6 +211,26 @@ func TestContractPaste(t *testing.T) {
 	})
 }
 
+// C9: claude exiting - /exit - ends its session, and with the last session the server; cld
+// returns, and the terminal is left clean although claude restored none of its modes.
+func TestContractClaudeExit(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		s, term, probe := startContract(t, name)
+		probe.Send("exit")
+		sandbox.WaitFor(t, 10*time.Second, "cld to exit", func() bool { return !term.Running() })
+		if modes := term.Modes(); modes.AltScreen || modes.Mouse {
+			t.Errorf("modes after claude exited %+v, want everything off", modes)
+		}
+		sandbox.WaitFor(t, 10*time.Second, "tmux to turn modified keys off", func() bool {
+			return !modifiedKeysOn(term.Output())
+		})
+		sandbox.WaitFor(t, 10*time.Second, "the tmux server to exit", func() bool {
+			_, err := s.Tmux("list-sessions")
+			return err != nil
+		})
+	})
+}
+
 // modifiedKeysOn reports whether the last modifyOtherKeys sequence in a terminal's output turns
 // modified keys on (CSI > 4 ; 1 m or CSI > 4 ; 2 m) rather than off (CSI > 4 m).
 func modifiedKeysOn(output []byte) bool {

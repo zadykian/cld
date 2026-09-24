@@ -79,6 +79,7 @@ Isolation needs no seams in the script: `TMUX_TMPDIR` moves the `-L cld` socket 
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created from another terminal on a server started from the JetBrains terminal | probe env dump |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
+| C9 | claude exiting ends its session, and with the last session the server; the terminal is left clean | terminal, tmux |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
