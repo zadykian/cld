@@ -122,10 +122,51 @@ Every Linux job runs the same Docker image a developer runs locally.
 2. Does the Python API connect with "allow all apps" set through `defaults`?
 3. Can a single Shift+Enter key event be posted?
 
-## Open decisions
+## Decisions
 
-1. Naming contract: reject or sanitise names with whitespace, `.` or `:`.
-2. Running `cld` inside another tmux: refuse, nest or switch.
-3. Minimum tmux version (3.3 is the floor implied by `allow-passthrough`; `extended-keys` needs 3.2).
-4. JediTerm version: match the IDE's bundled one or track the latest.
-5. iTerm2 keyboard tests if hosted runners cannot post key events.
+1. Naming: names are validated (`[A-Za-z0-9][A-Za-z0-9_-]*`), not sanitised - a silent rename
+   would make `cld foo.bar` and the session it attaches to disagree.
+2. Inside another tmux: `cld` nests; the private socket already allows it.
+3. tmux 3.3 is the minimum, checked at startup with a clear message.
+4. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
+5. iTerm2: not automated yet (see Status).
+
+## Implementation notes
+
+Where the implementation departs from the plan above:
+
+- The test harness is Go instead of bats: `go test` with a sandbox package, a terminal package
+  (one driver per terminal) and a probe binary that stands in for claude - and, invoked as
+  `tmux`, fakes `tmux -V` for the version checks. The JediTerm driver stays Java, because JediTerm
+  is a JVM library; the Go side talks to it one line per command.
+- The baseline terminal types raw xterm input (`CSI 13;2u`, `CSI I`/`CSI O`, SGR wheel) through
+  `send-keys -H`: tmux 3.3a does not know the key name `S-Enter` and types it literally, and an
+  outer tmux reports focus changes only to panes of an attached client.
+- tmux 3.3a expands `display -p -t =SESSION` to nothing when no client is attached; the tests read
+  formats through `list-panes`.
+
+## What the tests found
+
+JediTerm 3.76 (read from its source, confirmed by the contract):
+
+- it answers no XTVERSION, so tmux records no terminal type and falls back to its defaults for
+  `xterm*`: `bpaste`, `clipboard`, `focus`, `title` - but the emulator ignores focus reporting
+  (DECSET 1004 is a stub) and does not handle OSC 52;
+- it ignores modifyOtherKeys (`CSI > 4 ; n m`). Shift+Enter becomes ESC CR only with its
+  `shiftEnterSendsEscCR` setting, which tmux passes on as Meta+Enter; without it Shift+Enter is CR;
+- its wheel constants are named the other way round (`SCROLLDOWN` is xterm's button 64, wheel up),
+  but its UI maps an upward turn to it, so the wheel works;
+- tmux sends claude a focus-in (`CSI I`) when a client attaches, whatever the terminal supports.
+
+Real claude under tmux 3.6 left the pane in key mode `VT10x` during its first 12 seconds (see
+Findings), so whether Shift+Enter reaches the real claude distinctly - as opposed to the probe,
+which asks for modifyOtherKeys - is still to be checked by hand.
+
+## Status
+
+- Baseline and JediTerm contracts run on tmux 3.3a, 3.4 and 3.5a (Linux, Docker) and the baseline
+  on the latest tmux under macOS's bash 3.2.
+- iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
+  controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
+  posting synthetic key events (Accessibility). That is a decision for the maintainer, not
+  something the test setup should grant itself.
