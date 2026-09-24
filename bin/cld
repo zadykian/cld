@@ -28,7 +28,10 @@
 #   remain-on-exit-format keeps tmux from scrolling the pane for its own line, which would push a
 #   short error at the top out of sight; the pane-died hook shows how to end the session on the
 #   message line instead, until a key is pressed. It names the session through its one window,
-#   named NAME: the hook's formats know the pane and its window, not the session. tmux 3.3 and
+#   named NAME: the hook's formats know the pane and its window, not the session. The hook
+#   shows it only to a terminal on that window: tmux would show it on another session's
+#   terminal, or with none attached keep it and show it in view-mode over the next session a
+#   terminal attaches to, which then takes no keys until q; join shows it instead. tmux 3.3 and
 #   3.4 keep writing focus reports to a dead pane that had them on, as claude's has, and crash -
 #   with every session on the server - when the terminal's focus changes or it detaches, so
 #   there remain-on-exit stays off
@@ -169,6 +172,10 @@ if [[ $version =~ ^([0-9]+)\.([0-9]+) ]]; then
     ((major > 3 || (major == 3 && minor >= 3))) || die 1 "tmux 3.3 or newer is required, found '$tmux_version'"
     ((major > 3 || (major == 3 && minor >= 5))) || remain=off
 fi
+# How to end a session whose claude failed, on the message line until a key is pressed (see
+# above): the pane-died hook shows it to a terminal attached then, join to one attaching later.
+how='#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}'
+hint="display-message -d 0 'claude exited with $how: C-q d detaches, cld kill -n #{window_name} ends the session'"
 
 case $command in
 new)
@@ -188,8 +195,6 @@ new)
         claude+=(--settings '{"worktree":{"baseRef":"head"}}' --worktree "$suffix")
     fi
     printf '\033]0;✳ %s\007' "$name"
-    how='#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}'
-    exited="claude exited with $how: C-q d detaches, cld kill -n #{window_name} ends the session"
     # claude and its arguments go to tmux as separate words: tmux then executes them directly
     # instead of through sh -c.
     exec env -u TERMINAL_EMULATOR tmux -L cld -f /dev/null \
@@ -198,13 +203,14 @@ new)
         set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
         set -g prefix C-q \; bind C-q send-prefix \; \
         set -g remain-on-exit "$remain" \; set -g remain-on-exit-format '' \; \
-        set-hook -g pane-died "display-message -d 0 '$exited'" \; \
+        set-hook -g pane-died "if -F '#{window_active_clients}' \"$hint\"" \; \
         new-session -s "$name" -n "$suffix" -c "$PWD" "${claude[@]}"
     ;;
 join)
     has_session || die 1 "no session '$suffix'; create it with cld new -n $suffix"
     printf '\033]0;✳ %s\007' "$name"
-    exec tmux -L cld attach-session -d -t "=$name"
+    # After attach-session in one command list, the hint goes to this terminal, attached by then.
+    exec tmux -L cld attach-session -d -t "=$name" \; if -F '#{pane_dead}' "$hint"
     ;;
 kill)
     # claude gets SIGHUP, as when its terminal closes; an attached terminal is detached.

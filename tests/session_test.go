@@ -422,6 +422,49 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 	}
 }
 
+// From tmux 3.5, a claude that fails with no terminal attached leaves the hint to join, which
+// shows it on the message line: from the hook, tmux would keep it and show it in view-mode over
+// the next session any terminal attaches to. Joining a live session shows no hint. With tmux 3.3
+// and 3.4 the session closes.
+func TestClaudeFailingDetached(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	first := startCld(t, s, "tmux", nil, "new", "-n", "bad")
+	probe := s.WaitProbes(1)[0]
+	waitClients(t, s, 1)
+	first.Keys("C-q", "d")
+	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !first.Running() })
+	probe.Send("exit 1")
+	if !keepsFailedSessions(t) {
+		sandbox.WaitFor(t, 10*time.Second, "the session to close", func() bool { return len(s.Sessions()) == 0 })
+		return
+	}
+	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return s.Format("cld-bad", "#{pane_dead}") == "1" })
+
+	other := startCld(t, s, "tmux", nil, "new", "-n", "other")
+	s.WaitProbes(2)
+	waitClients(t, s, 1)
+	if mode := s.Format("cld-other", "#{pane_mode}"); mode != "" {
+		t.Errorf("a new session opens in %s:\n%s", mode, other.Screen())
+	}
+
+	hint := "claude exited with status 1: C-q d detaches, cld kill -n bad ends the session"
+	joined := startCld(t, s, "tmux", nil, "join", "-n", "bad")
+	waitScreen(t, joined, hint)
+	if screen := joined.Screen(); !strings.HasSuffix(strings.TrimRight(screen, " \n"), "\n"+hint) {
+		t.Errorf("the hint is not on the message line:\n%s", screen)
+	}
+	if mode := s.Format("cld-bad", "#{pane_mode}"); mode != "" {
+		t.Errorf("the joined session is in %s", mode)
+	}
+
+	live := startCld(t, s, "tmux", nil, "join", "-n", "other")
+	waitScreen(t, live, "probe --name cld-other")
+	if screen := live.Screen(); strings.Contains(screen, "claude exited") {
+		t.Errorf("joining a live session shows the hint:\n%s", screen)
+	}
+}
+
 func TestSessionsShareOneServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
