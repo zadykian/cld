@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# cld - run Claude Code in named sessions on a private tmux server.
+# https://github.com/zadykian/cld
+#
+# `cld NAME` attaches to the tmux session "cld-NAME" (default "cld-main"), creating it with
+# `claude --name cld-NAME` in the current directory first. A private server (-L cld, no
+# ~/.tmux.conf) keeps these options away from any other tmux use:
+# - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
+#   modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
+# - mouse on, focus-events on: claude probes both and hints when they are off; with the
+#   mouse off the wheel cannot scroll claude's fullscreen transcript
+# - allow-passthrough on: claude wraps its notifications and OSC 52 copies in tmux passthrough
+# - status off: claude keeps the whole tab
+# - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
+#   C-q; detach is C-q d, and C-q C-q sends a C-q through
+# -AD attaches detaching other clients. tmux keeps claude's title changes to the pane
+# (set-titles is off), so the tab keeps the session name. The server keeps the environment of
+# the client that started it, and claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux: a
+# server started from the JetBrains terminal would make every claude on it act as if in
+# JediTerm (extended keys off, so Shift+Enter submits) even when attached from iTerm2 - hence
+# the env -u.
+set -euo pipefail
+
+CLD_VERSION=dev
+
+usage() {
+    cat <<'EOF'
+usage: cld [NAME]
+
+Attach to the tmux session "cld-NAME" (default "cld-main"), creating it with
+"claude --name cld-NAME" in the current directory if it does not exist yet.
+Sessions live on a private tmux server that ignores ~/.tmux.conf.
+Detach with C-q d; C-q C-q sends C-q to claude.
+
+NAME consists of letters, digits, "_" and "-", and starts with a letter or digit.
+
+options:
+  -h, --help     show this help and exit
+  -V, --version  show the version and exit
+EOF
+}
+
+die() {
+    printf 'cld: %s\n' "$2" >&2
+    exit "$1"
+}
+
+case ${1-} in
+-h | --help)
+    usage
+    exit 0
+    ;;
+-V | --version)
+    printf 'cld %s\n' "$CLD_VERSION"
+    exit 0
+    ;;
+esac
+
+(($# <= 1)) || die 2 "too many arguments (see cld --help)"
+suffix=${1:-main}
+# tmux turns "." and ":" into "_" in session names and claude's --name would keep them, so
+# the name is validated instead of silently diverging.
+[[ $suffix =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die 2 "invalid session name '$suffix' (see cld --help)"
+name=cld-$suffix
+
+command -v tmux >/dev/null || die 1 "tmux is not installed"
+command -v claude >/dev/null || die 1 "claude is not installed"
+# allow-passthrough needs tmux 3.3; "tmux next-3.6" and "tmux master" are development builds.
+tmux_version=$(tmux -V)
+version=${tmux_version##* }
+version=${version#next-}
+if [[ $version =~ ^([0-9]+)\.([0-9]+) ]] &&
+    ((BASH_REMATCH[1] < 3 || (BASH_REMATCH[1] == 3 && BASH_REMATCH[2] < 3))); then
+    die 1 "tmux 3.3 or newer is required, found '$tmux_version'"
+fi
+
+printf '\033]0;✳ %s\007' "$name"
+# claude and its arguments go to tmux as separate words: tmux then executes them directly
+# instead of through sh -c.
+exec env -u TERMINAL_EMULATOR tmux -L cld -f /dev/null \
+    set -s extended-keys on \; set -s focus-events on \; \
+    set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
+    set -g prefix C-q \; bind C-q send-prefix \; \
+    new-session -AD -s "$name" -c "$PWD" claude --name "$name"
