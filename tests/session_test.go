@@ -243,6 +243,47 @@ func TestKillRequiresSession(t *testing.T) {
 	}
 }
 
+// cld sees only the sessions it started. A bare tmux that claude runs reaches cld's server through
+// TMUX, as tmux -L cld does by hand, and the sessions made that way are not cld's, even named like
+// its own: list leaves them out, join and kill do not find them, and new refuses their names,
+// saying why.
+func TestSeesOnlyItsOwnSessions(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	startCld(t, s, "tmux", nil, "new", "-n", "a")
+	probe := s.WaitProbes(1)[0]
+	waitClients(t, s, 1)
+	probe.Send("tmux new-session -d -s cld-inside sleep 60")
+	sandbox.WaitFor(t, 10*time.Second, "claude's tmux to make a session", func() bool {
+		return slices.Contains(s.Sessions(), "cld-inside")
+	})
+	s.MustTmux("new-session", "-d", "-s", "cld-by-hand", "sleep", "60")
+
+	want := "NAME  STATE     DIRECTORY\n" + "a     attached  " + s.Work + "\n"
+	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
+	}
+	for _, name := range []string{"inside", "by-hand"} {
+		for _, test := range []struct {
+			command, want string
+		}{
+			{"join", "cld: no session '" + name + "'; create it with cld new -n " + name + "\n"},
+			{"kill", "cld: no session '" + name + "' (see cld list)\n"},
+			{"new", "cld: a tmux session cld-" + name + " that cld did not start is on cld's server (tmux -L cld)\n"},
+		} {
+			if result := s.RunCld(nil, test.command, "-n", name); result.Code != 1 || result.Stderr != test.want {
+				t.Errorf("%s -n %s: exit %d, stderr %q, want exit 1, stderr %q", test.command, name, result.Code, result.Stderr, test.want)
+			}
+		}
+	}
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-by-hand", "cld-inside"}) {
+		t.Errorf("sessions %q, want [cld-a cld-by-hand cld-inside]", sessions)
+	}
+	if probes := s.Probes(); len(probes) != 1 {
+		t.Errorf("%d claude processes, want 1", len(probes))
+	}
+}
+
 func TestJoinDetachesOtherClient(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
