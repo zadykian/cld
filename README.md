@@ -37,7 +37,7 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 | `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session; claude exits as when its terminal closes |
-| `cld list` | list the sessions: name, whether a terminal is attached, and the directory claude is in |
+| `cld list` | list the sessions: name, whether a terminal is attached (or claude exited), and the directory claude is in |
 | `cld help` | show the usage |
 | `cld version` | show the version |
 
@@ -45,6 +45,13 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 |---|---|
 | `C-q d` | detach; claude keeps running |
 | `C-q C-q` | send `C-q` to claude |
+
+With tmux 3.5 or newer, if claude exits with an error - it could not start, say - its session
+stays open with claude's message on screen and a line on how to end it: `C-q d` detaches,
+`cld kill -n NAME` ends the session. `cld list` shows such a session as `exited`. Leaving claude
+the usual ways (`/exit`, `Ctrl+C` twice, `Ctrl+D` twice) closes the session. With tmux 3.3 and
+3.4 the session closes either way: they crash, taking every session with them, when a dead pane
+that had focus reporting on - as claude's does - sees the terminal's focus change or detach.
 
 Joining from a second terminal detaches the first one; claude keeps running in the directory the
 session was created in. A killed session's conversation stays in Claude Code's history, named
@@ -70,8 +77,9 @@ A new worktree branches from your current `HEAD`, not from the remote's default 
 `cld kill` leaves the worktree where it is, and `cld new -n NAME -w` reopens it.
 
 claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
-(or `cld new`) there once first. Otherwise claude exits at once, and the session closes with it.
-`cld` itself checks that the current directory is in a git repository.
+(or `cld new`) there once first; otherwise claude says so and exits, and with tmux 3.5 or newer
+the session stays open with the message (see Usage). `cld` itself checks that the current directory is in a git
+repository.
 
 ### Why a private tmux server
 
@@ -90,6 +98,8 @@ your `~/.tmux.conf` never touches claude:
   passthrough;
 - `status off`: claude keeps the whole tab;
 - prefix `C-q`: claude binds `C-b` and nearly every other Ctrl key, but not `C-q`;
+- `remain-on-exit failed` (tmux 3.5 or newer): a claude that exits with an error keeps its pane,
+  so its message stays readable;
 - the tab title is set to `✳ cld-NAME`, and tmux keeps claude's own title changes to its pane;
 - `TERMINAL_EMULATOR` is removed from the server's environment: claude trusts it over
   `TERM_PROGRAM=tmux`, and a server started from a JetBrains terminal would otherwise make every

@@ -16,7 +16,11 @@
 //	            inline            leave the alternate screen and turn mouse reporting off, as
 //	                              claude outside fullscreen draws
 //	            cd DIR            change to DIR, as claude does entering a worktree
-//	            exit              exit at once, leaving the terminal modes on
+//	            exit [N]          exit at once with status N (default 0), leaving the terminal
+//	                              modes on
+//
+// With $CLD_PROBE_FAIL set, it prints that and exits with status 1 at once, as claude does when
+// it cannot start.
 //
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
 // $CLD_FAKE_TMUX_VERSION, has-session finds no session, and any other invocation is recorded in
@@ -79,6 +83,10 @@ func fakeTmux() error {
 }
 
 func claude() error {
+	if message := os.Getenv("CLD_PROBE_FAIL"); message != "" {
+		fmt.Println(message)
+		os.Exit(1)
+	}
 	base := filepath.Join(os.Getenv("CLD_PROBE_DIR"), strconv.Itoa(os.Getpid()))
 	if err := syscall.Mkfifo(base+".ctl", 0o600); err != nil {
 		return err
@@ -150,7 +158,8 @@ func obey(control *os.File, write func(string)) {
 				fmt.Fprintln(os.Stderr, "probe:", err)
 			}
 		case "exit":
-			os.Exit(0)
+			status, _ := strconv.Atoi(argument)
+			os.Exit(status)
 		}
 	}
 }
