@@ -10,6 +10,7 @@ the conversation.
 cld new             # create the session "cld-main" in the current directory
 cld new -n review   # create the session "cld-review"
 cld join -n review  # attach to it again, from this terminal or another one
+cld list            # list the sessions
 ```
 
 ## Install
@@ -32,6 +33,7 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 |---|---|
 | `cld new [-n NAME]` | create the session in the current directory and attach to it; fails if it exists |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
+| `cld list` | list the sessions: name, whether a terminal is attached, and the directory claude is in |
 | `cld help` | show the usage |
 | `cld version` | show the version |
 

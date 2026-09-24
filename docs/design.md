@@ -133,7 +133,9 @@ Every Linux job runs the same Docker image a developer runs locally.
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
    fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
    `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME`. Commands address sessions as
-   `=cld-NAME`, since tmux would otherwise take `cld-rev` for `cld-review`.
+   `=cld-NAME`, since tmux would otherwise take `cld-rev` for `cld-review`. `list` shows the
+   directory claude is in now (`pane_current_path`), not the one its session started in, and
+   nothing at all when no server runs.
 4. tmux 3.3 is the minimum, checked at startup with a clear message.
 5. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
 6. iTerm2: not automated yet (see Status).
