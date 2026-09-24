@@ -60,10 +60,12 @@ the two commands.
 repository on the branch `worktree-NAME`, or reopens it if it exists, and works there; `cld list`
 shows its directory. As with `claude --worktree`:
 
-- the worktree branches from the remote's default branch, or from your current `HEAD` when the
-  Claude Code setting `worktree.baseRef` is `"head"`;
 - gitignored files listed in `.worktreeinclude` are copied into it;
 - when claude exits it asks whether to keep the worktree.
+
+A new worktree branches from your current `HEAD`, not from the remote's default branch as
+`claude --worktree` does by default: `cld` also passes claude
+`--settings '{"worktree":{"baseRef":"head"}}'`, which overrides the `worktree.baseRef` setting.
 
 `cld kill` leaves the worktree where it is, and `cld new -n NAME -w` reopens it.
 
