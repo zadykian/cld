@@ -24,12 +24,21 @@ type Terminal interface {
 	Start(argv []string, env map[string]string, dir string)
 	// Keys types the keys one after another, as a user would.
 	Keys(keys ...string)
+	// Paste pastes text the way the terminal's own paste command does.
+	Paste(text string)
 	WheelUp()
 	Focus(focused bool)
+	// Resize sets the size in cells; called before Start, the size the terminal starts with.
+	Resize(columns, rows int)
 	// Title is the window or tab title the terminal shows.
 	Title() string
 	// Screen is the visible text.
 	Screen() string
+	// Styled is the visible text with SGR sequences for its attributes, as tmux capture-pane -e
+	// writes it: equal screens give equal strings.
+	Styled() string
+	// Output is everything the program has written to the terminal so far.
+	Output() []byte
 	Modes() Modes
 	// Clipboard is the text last copied to the clipboard through OSC 52.
 	Clipboard() string
@@ -70,6 +79,17 @@ func (u unsupported) WheelUp() {
 func (u unsupported) Focus(bool) {
 	u.t.Helper()
 	u.t.Skipf("%s: cannot inject focus changes", u.name)
+}
+
+func (u unsupported) Resize(int, int) {
+	u.t.Helper()
+	u.t.Skipf("%s: cannot resize", u.name)
+}
+
+func (u unsupported) Styled() string {
+	u.t.Helper()
+	u.t.Skipf("%s: cannot read attributes", u.name)
+	return ""
 }
 
 func (u unsupported) Clipboard() string {

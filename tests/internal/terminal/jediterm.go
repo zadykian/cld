@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"os"
@@ -106,6 +107,11 @@ func (j *jediTerm) Keys(keys ...string) {
 	}
 }
 
+func (j *jediTerm) Paste(text string) {
+	j.t.Helper()
+	j.call("paste", base64.StdEncoding.EncodeToString([]byte(text)))
+}
+
 func (j *jediTerm) WheelUp() {
 	j.t.Helper()
 	j.call("wheel-up")
@@ -124,6 +130,11 @@ func (j *jediTerm) Title() string {
 func (j *jediTerm) Screen() string {
 	j.t.Helper()
 	return j.text(j.call("screen"))
+}
+
+func (j *jediTerm) Output() []byte {
+	j.t.Helper()
+	return []byte(j.text(j.call("output")))
 }
 
 func (j *jediTerm) Modes() Modes {

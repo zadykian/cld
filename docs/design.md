@@ -149,6 +149,8 @@ Where the implementation departs from the plan above:
   running where it started, which is what the tests pin.
 - `TMUX_VERSION` builds a tmux release from source into the test image, so the newest tmux
   reproduces in Docker, not only on the macOS runner.
+- tmux 3.7's `paste-buffer` writes control characters as `^X` unless given `-S`; the baseline
+  terminal passes `-S` where `paste-buffer` knows it, since a terminal pastes them as they are.
 
 ## What the tests found
 
