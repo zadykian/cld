@@ -1,7 +1,8 @@
 // Package tests holds cld's tests. They run cld against real tmux servers, one private world per
 // test (see internal/sandbox), with a probe in claude's place (see probe).
 //
-// CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux").
+// CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"):
+// tmux, jediterm (needs a JDK and CLD_JEDITERM_LIB, see jediterm/fetch-deps).
 // CLD_BASH runs cld under a specific bash.
 package tests
 
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -42,7 +44,18 @@ func setup(dir string) error {
 	if err := os.Mkdir(filepath.Dir(sandbox.FakeTmux), 0o755); err != nil {
 		return err
 	}
-	return os.Symlink(filepath.Join(sandbox.ProbeBin, "claude"), sandbox.FakeTmux)
+	if err := os.Symlink(filepath.Join(sandbox.ProbeBin, "claude"), sandbox.FakeTmux); err != nil {
+		return err
+	}
+	if slices.Contains(terminals, "jediterm") {
+		libraries := filepath.Join(envOr("CLD_JEDITERM_LIB", filepath.Join("jediterm", "lib")), "*")
+		classes := filepath.Join(dir, "jediterm")
+		if err := run("javac", "-cp", libraries, "-d", classes, filepath.Join("jediterm", "JediTermDriver.java")); err != nil {
+			return err
+		}
+		terminal.JediTermClasspath = classes + string(os.PathListSeparator) + libraries
+	}
+	return nil
 }
 
 func run(name string, args ...string) error {
