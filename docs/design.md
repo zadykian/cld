@@ -137,7 +137,10 @@ Every Linux job runs the same Docker image a developer runs locally.
 
 1. Naming: names are validated (`[A-Za-z0-9][A-Za-z0-9_-]*`), not sanitised - a silent rename
    would make `cld foo.bar` and the session it attaches to disagree.
-2. Inside another tmux: `cld` nests; the private socket already allows it.
+2. Inside another tmux: `cld` nests; the private socket already allows it. Inside a live pane of
+   its own server - claude's external editor, say - a session attached would show inside itself,
+   and `new` and `join` refuse, pointing at `C-q d`; tmux refuses there too, but advises to unset
+   `$TMUX`.
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
    fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
    `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME`. Commands address sessions as
