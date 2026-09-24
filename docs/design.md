@@ -78,6 +78,7 @@ Isolation needs no seams in the script: `TMUX_TMPDIR` moves the `-L cld` socket 
 | C5 | OSC 52 / OSC 9 wrapped in tmux passthrough, and copies through `tmux load-buffer -w`, reach the outer terminal | terminal |
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created from another terminal on a server started from the JetBrains terminal | probe env dump |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
+| C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
@@ -166,6 +167,11 @@ JediTerm 3.76 (read from its source, confirmed by the contract):
 - its wheel constants are named the other way round (`SCROLLDOWN` is xterm's button 64, wheel up),
   but its UI maps an upward turn to it, so the wheel works;
 - tmux sends claude a focus-in (`CSI I`) when a client attaches, whatever the terminal supports.
+
+tmux 3.3a to 3.7c:
+
+- a control character inside a bracketed paste reaches claude as it is, and the prefix among
+  them is not taken for a binding.
 
 The `VT10x` in Findings came from the probing shell, which carried
 `TERMINAL_EMULATOR=JetBrains-JediTerm`: claude's `--debug` log read `extendedKeys=no (env:
