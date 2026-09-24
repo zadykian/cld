@@ -1,8 +1,9 @@
 PREFIX ?= $(HOME)/.local
-# Terminals the terminal contract runs against (see tests/main_test.go).
+# Terminals the terminal contract runs against: tmux, jediterm (see tests/main_test.go).
 TERMINALS ?= tmux
 # Docker checks: the base image picks the tmux version (see tests/Dockerfile).
 BASE ?= debian:bookworm
+DOCKER_TERMINALS ?= tmux,jediterm
 IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))
 
 .PHONY: check lint test docker-image docker-check install uninstall
@@ -10,8 +11,8 @@ IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))
 check: lint test
 
 lint:
-	shellcheck bin/cld
-	shfmt -d -i 4 bin/cld
+	shellcheck bin/cld tests/jediterm/fetch-deps
+	shfmt -d -i 4 bin/cld tests/jediterm/fetch-deps
 	@test -z "$$(gofmt -l tests)" || { gofmt -d tests; exit 1; }
 	go vet ./...
 
@@ -23,7 +24,8 @@ docker-image:
 
 docker-check: docker-image
 	docker run --rm --init --user "$$(id -u):$$(id -g)" -e HOME=/tmp \
-		-v "$(CURDIR):/src:ro" -w /src $(IMAGE) make check
+		-v "$(CURDIR):/src:ro" -w /src $(IMAGE) \
+		make check TERMINALS=$(DOCKER_TERMINALS)
 
 install:
 	install -d "$(PREFIX)/bin"

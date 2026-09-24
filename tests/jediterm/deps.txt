@@ -1,0 +1,9 @@
+# JediTerm driver dependencies: SHA-256 and URL of each jar, fetched by ./fetch-deps.
+# jediterm-core is published only to the JetBrains repository; pty4j and the rest to Maven Central.
+3808fff4fcaf53cb57c411726f52605ef8e3fcf26b40b2902752a722ee178a0b  https://packages.jetbrains.team/maven/p/ij/intellij-dependencies/org/jetbrains/jediterm/jediterm-core/3.76/jediterm-core-3.76.jar
+e9bf5de4703d14e175d846f267e41291896caa9d4cecc365a17178e4612b2fd7  https://repo1.maven.org/maven2/org/jetbrains/pty4j/pty4j/0.13.13/pty4j-0.13.13.jar
+ccb14ff83fabcb11458b798dbc9824748ccdffeec79c9aba789e6ed1cda86b1c  https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.0/kotlin-stdlib-2.4.0.jar
+e7c2a48e8515ba1f49fa637d57b4e2f590b3f5bd97407ac699c3aa5efb1204a9  https://repo1.maven.org/maven2/org/slf4j/slf4j-api/2.0.13/slf4j-api-2.0.13.jar
+61666dbce7e42e6c85b43c04fcfb8293a21dcb55b3c80e869270ce42c01a6b35  https://repo1.maven.org/maven2/org/jetbrains/annotations/24.0.1/annotations-24.0.1.jar
+34ed1e1f27fa896bca50dbc4e99cf3732967cec387a7a0d5e3486c09673fe8c6  https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar
+ae4caceb3840730c2537f9b7fb55a01baba580286b4122951488bcee558c2449  https://repo1.maven.org/maven2/net/java/dev/jna/jna-platform/5.14.0/jna-platform-5.14.0.jar

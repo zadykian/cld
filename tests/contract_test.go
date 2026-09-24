@@ -29,6 +29,14 @@ var expectations = map[string]expectation{
 		features:   []string{"clipboard", "focus", "mouse", "title"},
 		shiftEnter: []string{"\x1b[13;2u", "\x1b[27;2;13~"},
 	},
+	// JediTerm answers no XTVERSION, so tmux falls back to its defaults for xterm*: they claim
+	// clipboard and focus, which the emulator ignores (see the skipped tests). It ignores
+	// modifyOtherKeys too; Shift+Enter becomes ESC CR through its own setting, which tmux passes
+	// on as Meta+Enter.
+	"jediterm": {
+		features:   []string{"bpaste", "clipboard", "focus", "title"},
+		shiftEnter: []string{"\x1b\r"},
+	},
 }
 
 // startContract starts cld in the named terminal and waits for claude and the attached client.

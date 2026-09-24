@@ -45,6 +45,8 @@ func New(t testing.TB, name string, s *sandbox.Sandbox) Terminal {
 	switch name {
 	case "tmux":
 		created = newTmux(t, s)
+	case "jediterm":
+		created = newJediTerm(t, s)
 	default:
 		t.Fatalf("unknown terminal %q", name)
 	}

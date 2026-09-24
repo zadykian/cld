@@ -9,7 +9,7 @@ FROM ${GO_IMAGE} AS go
 FROM ${BASE}
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        bash ca-certificates git make shellcheck shfmt tmux \
+        bash ca-certificates curl default-jdk-headless git make shellcheck shfmt tmux \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=go /usr/local/go /usr/local/go
@@ -19,7 +19,11 @@ ENV PATH=/usr/local/go/bin:$PATH \
     GOPATH=/go \
     GOCACHE=/tmp/go-cache \
     GOFLAGS=-mod=readonly \
-    GOTOOLCHAIN=local
+    GOTOOLCHAIN=local \
+    CLD_JEDITERM_LIB=/opt/jediterm/lib
+
+COPY tests/jediterm/deps.txt tests/jediterm/fetch-deps /opt/jediterm/
+RUN /opt/jediterm/fetch-deps /opt/jediterm/lib
 
 COPY go.mod go.sum /tmp/module/
 RUN cd /tmp/module && go mod download && chmod -R a+rX /go && rm -rf /tmp/module
