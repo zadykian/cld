@@ -2,15 +2,16 @@
 # cld - run Claude Code in named sessions on a private tmux server.
 # https://github.com/zadykian/cld
 #
-# `cld NAME` attaches to the tmux session "cld-NAME" (default "cld-main"), creating it with
-# `claude --name cld-NAME` in the current directory first. A private server (-L cld, no
-# ~/.tmux.conf) keeps these options away from any other tmux use:
+# `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") running
+# `claude --name cld-NAME` in the current directory and attaches to it; `cld join -n NAME`
+# attaches to it again. A private server (-L cld, no ~/.tmux.conf) keeps these options away
+# from any other tmux use:
 # - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 #   modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
 # - the extkeys terminal feature for xterm*: tmux asks the terminal for modified keys only when
 #   it knows the terminal supports them, and it does not recognise every terminal that does;
 #   Claude Code's docs recommend this for tmux. It goes to a fixed index past tmux's defaults:
-#   set -a would add another copy every time cld runs
+#   set -a would add another copy every time cld creates a session
 # - mouse on, focus-events on: claude probes both and hints when they are off. With the mouse
 #   on, the wheel over a program that draws in the main screen without the mouse - claude
 #   outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
@@ -19,7 +20,7 @@
 # - status off: claude keeps the whole tab
 # - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
 #   C-q; detach is C-q d, and C-q C-q sends a C-q through
-# -AD attaches detaching other clients. tmux keeps claude's title changes to the pane
+# join attaches with -d, detaching other clients. tmux keeps claude's title changes to the pane
 # (set-titles is off), so the tab keeps the session name. The server keeps the environment of
 # the client that started it, and claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux: a
 # server started from the JetBrains terminal would make every claude on it act as if in
@@ -31,18 +32,22 @@ CLD_VERSION=dev
 
 usage() {
     cat <<'EOF'
-usage: cld [NAME]
+usage: cld COMMAND [OPTIONS]
 
-Attach to the tmux session "cld-NAME" (default "cld-main"), creating it with
-"claude --name cld-NAME" in the current directory if it does not exist yet.
-Sessions live on a private tmux server that ignores ~/.tmux.conf.
-Detach with C-q d; C-q C-q sends C-q to claude.
+Run Claude Code in named sessions on a private tmux server that ignores ~/.tmux.conf.
+Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME".
 
-NAME consists of letters, digits, "_" and "-", and starts with a letter or digit.
+commands:
+  new [-n NAME]   create session NAME in the current directory and attach to it
+  join [-n NAME]  attach to session NAME, detaching any other terminal from it
+  help            show this help
+  version         show the version
 
 options:
-  -h, --help     show this help and exit
-  -V, --version  show the version and exit
+  -n, --name NAME  the session: letters, digits, "_" and "-", starting with a letter
+                   or digit; "main" when not given
+
+Detach with C-q d; C-q C-q sends C-q to claude.
 EOF
 }
 
@@ -51,26 +56,72 @@ die() {
     exit "$1"
 }
 
-case ${1-} in
--h | --help)
+# read_options ARGS: a command's options; sets suffix (the session NAME) and name.
+read_options() {
+    suffix=main
+    while (($#)); do
+        case $1 in
+        -n | --name)
+            (($# > 1)) || die 2 "option '$1' needs a value (see cld help)"
+            suffix=$2
+            shift
+            ;;
+        --name=*) suffix=${1#--name=} ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *) die 2 "$command: unexpected argument '$1' (see cld help)" ;;
+        esac
+        shift
+    done
+    # tmux turns "." and ":" into "_" in session names and claude's --name would keep them, so
+    # the name is validated instead of silently diverging.
+    [[ $suffix =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die 2 "invalid session name '$suffix' (see cld help)"
+    name=cld-$suffix
+}
+
+no_arguments() {
+    (($# == 0)) || die 2 "$command: unexpected argument '$1' (see cld help)"
+}
+
+# has_session: whether session $name exists. The target starts with "=" because tmux otherwise
+# takes it as a prefix or a pattern: "cld-rev" alone finds cld-review. No server, no session.
+has_session() {
+    local error
+    error=$(tmux -L cld has-session -t "=$name" 2>&1) && return 0
+    case $error in
+    "can't find session"* | "no server running on "* | "error connecting to "*) return 1 ;;
+    esac
+    die 1 "$error"
+}
+
+command=${1-}
+(($# == 0)) || shift
+case $command in
+new | join) read_options "$@" ;;
+help | -h | --help)
+    no_arguments "$@"
     usage
     exit 0
     ;;
--V | --version)
+version | -V | --version)
+    no_arguments "$@"
     printf 'cld %s\n' "$CLD_VERSION"
     exit 0
     ;;
+'') die 2 "missing command: cld new creates a session, cld join attaches to one (see cld help)" ;;
+*)
+    # Before cld had commands, "cld NAME" attached to session NAME, creating it first.
+    if [[ $command =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+        die 2 "unknown command '$command'; for session $command: cld new -n $command, cld join -n $command"
+    fi
+    die 2 "unknown command '$command' (see cld help)"
+    ;;
 esac
 
-(($# <= 1)) || die 2 "too many arguments (see cld --help)"
-suffix=${1:-main}
-# tmux turns "." and ":" into "_" in session names and claude's --name would keep them, so
-# the name is validated instead of silently diverging.
-[[ $suffix =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die 2 "invalid session name '$suffix' (see cld --help)"
-name=cld-$suffix
-
 command -v tmux >/dev/null || die 1 "tmux is not installed"
-command -v claude >/dev/null || die 1 "claude is not installed"
+[[ $command != new ]] || command -v claude >/dev/null || die 1 "claude is not installed"
 # allow-passthrough needs tmux 3.3; "tmux next-3.6" and "tmux master" are development builds.
 tmux_version=$(tmux -V)
 version=${tmux_version##* }
@@ -80,12 +131,22 @@ if [[ $version =~ ^([0-9]+)\.([0-9]+) ]] &&
     die 1 "tmux 3.3 or newer is required, found '$tmux_version'"
 fi
 
-printf '\033]0;✳ %s\007' "$name"
-# claude and its arguments go to tmux as separate words: tmux then executes them directly
-# instead of through sh -c.
-exec env -u TERMINAL_EMULATOR tmux -L cld -f /dev/null \
-    set -s extended-keys on \; set -s 'terminal-features[100]' 'xterm*:extkeys' \; \
-    set -s focus-events on \; \
-    set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
-    set -g prefix C-q \; bind C-q send-prefix \; \
-    new-session -AD -s "$name" -c "$PWD" claude --name "$name"
+case $command in
+new)
+    ! has_session || die 1 "session '$suffix' exists; attach to it with cld join -n $suffix"
+    printf '\033]0;✳ %s\007' "$name"
+    # claude and its arguments go to tmux as separate words: tmux then executes them directly
+    # instead of through sh -c.
+    exec env -u TERMINAL_EMULATOR tmux -L cld -f /dev/null \
+        set -s extended-keys on \; set -s 'terminal-features[100]' 'xterm*:extkeys' \; \
+        set -s focus-events on \; \
+        set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
+        set -g prefix C-q \; bind C-q send-prefix \; \
+        new-session -s "$name" -c "$PWD" claude --name "$name"
+    ;;
+join)
+    has_session || die 1 "no session '$suffix'; create it with cld new -n $suffix"
+    printf '\033]0;✳ %s\007' "$name"
+    exec tmux -L cld attach-session -d -t "=$name"
+    ;;
+esac

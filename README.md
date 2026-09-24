@@ -7,8 +7,9 @@ close the terminal, and reattach later - from the same terminal or another one -
 the conversation.
 
 ```
-cld          # attach to (or create) the session "cld-main"
-cld review   # attach to (or create) the session "cld-review"
+cld new             # create the session "cld-main" in the current directory
+cld new -n review   # create the session "cld-review"
+cld join -n review  # attach to it again, from this terminal or another one
 ```
 
 ## Install
@@ -24,16 +25,26 @@ Requirements: bash (3.2 or newer), tmux 3.3 or newer, and `claude` on the `PATH`
 
 ## Usage
 
-`cld [NAME]` attaches to the tmux session `cld-NAME`, or creates it running `claude --name cld-NAME`
-in the current directory. A name consists of letters, digits, `_` and `-`.
+Session `NAME` is the tmux session `cld-NAME`, running `claude --name cld-NAME`. A name consists
+of letters, digits, `_` and `-`; without `-n` it is `main`.
+
+| Command | Action |
+|---|---|
+| `cld new [-n NAME]` | create the session in the current directory and attach to it; fails if it exists |
+| `cld join [-n NAME]` | attach to the session; fails if it does not exist |
+| `cld help` | show the usage |
+| `cld version` | show the version |
 
 | Keys | Action |
 |---|---|
 | `C-q d` | detach; claude keeps running |
 | `C-q C-q` | send `C-q` to claude |
 
-Attaching from a second terminal detaches the first one; claude keeps running in the directory the
+Joining from a second terminal detaches the first one; claude keeps running in the directory the
 session was created in.
+
+Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
+the two commands.
 
 ### Why a private tmux server
 
@@ -67,14 +78,15 @@ problem:
 | Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
 | Working copy | the directory you run it in | a new git worktree per session (`--tmux` requires `--worktree`) |
 | Needs | bash and tmux 3.3 or newer | a git repository |
-| Coming back | `cld NAME` attaches to the session if it exists | not documented |
+| Coming back | `cld join -n NAME` attaches to the session | not documented |
 | tmux server and options | a private server that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
 
 The `claude --tmux` column is based on `claude --help` in Claude Code 2.1.281: the Claude Code docs
 do not describe the option yet.
 
-To get both, create the worktree yourself (`git worktree add`), then run `cld NAME` inside it.
+To get both, create the worktree yourself (`git worktree add`), then run `cld new -n NAME` inside
+it.
 
 ## Terminals
 

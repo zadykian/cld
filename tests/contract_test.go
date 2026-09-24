@@ -44,7 +44,7 @@ var expectations = map[string]expectation{
 func startContract(t *testing.T, name string) (*sandbox.Sandbox, terminal.Terminal, *sandbox.Probe) {
 	t.Helper()
 	s := sandbox.New(t)
-	term := startCld(t, s, name, nil, "contract")
+	term := startCld(t, s, name, nil, "new", "-n", "contract")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	waitScreen(t, term, "probe --name cld-contract")
