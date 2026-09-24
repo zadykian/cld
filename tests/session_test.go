@@ -141,7 +141,8 @@ func TestJoinRequiresSession(t *testing.T) {
 }
 
 // list shows cld's sessions: the name, whether a terminal is attached, and the directory claude
-// is in now. Without a server there is nothing to show, and it shows nothing.
+// is in now, also under a locale that is not UTF-8. Without a server there is nothing to show,
+// and it shows nothing.
 func TestList(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -149,7 +150,7 @@ func TestList(t *testing.T) {
 		t.Errorf("without a server: exit %d, stdout %q, stderr %q, want exit 0 and no output", result.Code, result.Stdout, result.Stderr)
 	}
 
-	elsewhere, moved := filepath.Join(s.Root, "elsewhere"), filepath.Join(s.Work, "moved")
+	elsewhere, moved := filepath.Join(s.Root, "elsewhere"), filepath.Join(s.Work, "café")
 	for _, dir := range []string{elsewhere, moved} {
 		if err := os.Mkdir(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -174,6 +175,12 @@ func TestList(t *testing.T) {
 		"long_name-1  detached  " + elsewhere + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
+	}
+	// tmux writes to a client whose locale is not UTF-8 with "_" for what it cannot print: the
+	// tabs, and the "é".
+	notUTF8 := map[string]string{"LC_ALL": "", "LC_CTYPE": "", "LANG": "C"}
+	if result := s.RunCld(notUTF8, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+		t.Errorf("LANG=C: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
 }
 
