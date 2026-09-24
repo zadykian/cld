@@ -3,7 +3,10 @@ package terminal
 import (
 	"bytes"
 	"encoding/hex"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -17,12 +20,14 @@ var outerSockets atomic.Int64
 
 // tmuxTerminal is the baseline terminal: a pane of an outer tmux server on its own socket, typing
 // what an xterm-compatible terminal with CSI u keys would send. The outer server keeps OSC 52
-// copies in its paste buffers, and keeps the pane after the program exits so that the state it
-// left behind can still be inspected.
+// copies in its paste buffers, pipes the program's output to a file, and keeps the pane after the
+// program exits so that the state it left behind can still be inspected.
 type tmuxTerminal struct {
 	unsupported
-	sandbox *sandbox.Sandbox
-	socket  string
+	sandbox       *sandbox.Sandbox
+	socket        string
+	columns, rows int
+	started       bool
 }
 
 const outerPane = "outer:0.0"
@@ -41,6 +46,8 @@ func newTmux(t testing.TB, s *sandbox.Sandbox) *tmuxTerminal {
 		unsupported: unsupported{t: t, name: "tmux"},
 		sandbox:     s,
 		socket:      "outer" + strconv.FormatInt(outerSockets.Add(1), 10),
+		columns:     120,
+		rows:        40,
 	}
 }
 
@@ -72,12 +79,21 @@ func (o *tmuxTerminal) Start(argv []string, env map[string]string, dir string) {
 		"set", "-g", "status", "off", ";",
 		// A real terminal does not set TMUX, the outer server does: it is unset first and set
 		// again only when env asks for it.
-		"new-session", "-d", "-x", "120", "-y", "40", "-s", "outer", "-c", dir, "env", "-u", "TMUX",
+		"new-session", "-d", "-x", strconv.Itoa(o.columns), "-y", strconv.Itoa(o.rows), "-s", "outer",
+		"-c", dir, "env", "-u", "TMUX",
 	}
 	for name, value := range env {
 		args = append(args, name+"="+value)
 	}
-	o.tmux(append(args, argv...)...)
+	args = append(args, argv...)
+	// In the same command list as new-session, so the pipe is in place before the first output.
+	args = append(args, ";", "pipe-pane", "-O", "-t", outerPane, "cat >> '"+o.outputFile()+"'")
+	o.tmux(args...)
+	o.started = true
+}
+
+func (o *tmuxTerminal) outputFile() string {
+	return filepath.Join(o.sandbox.Root, o.socket+".out")
 }
 
 func (o *tmuxTerminal) Keys(keys ...string) {
@@ -91,6 +107,22 @@ func (o *tmuxTerminal) Keys(keys ...string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// Paste goes through a paste buffer: paste-buffer -p brackets the text only if the program asked
+// for bracketed paste, and turns line feeds into carriage returns, as terminals do. Since tmux 3.7
+// it also writes control characters as ^X unless given -S, which a terminal does not do.
+func (o *tmuxTerminal) Paste(text string) {
+	o.t.Helper()
+	o.tmux("set-buffer", "-b", "paste", "--", text)
+	args := []string{"paste-buffer", "-p", "-d", "-b", "paste", "-t", outerPane}
+	if pasteRaw.MatchString(o.tmux("list-commands", "paste-buffer")) {
+		args = append(args, "-S")
+	}
+	o.tmux(args...)
+}
+
+// pasteRaw matches the usage of a paste-buffer that knows -S.
+var pasteRaw = regexp.MustCompile(`\[-[a-zA-Z]*S[a-zA-Z]*\]`)
 
 func (o *tmuxTerminal) send(input string) {
 	o.t.Helper()
@@ -115,6 +147,15 @@ func (o *tmuxTerminal) Focus(focused bool) {
 	}
 }
 
+func (o *tmuxTerminal) Resize(columns, rows int) {
+	o.t.Helper()
+	if !o.started {
+		o.columns, o.rows = columns, rows
+		return
+	}
+	o.tmux("resize-window", "-t", "outer", "-x", strconv.Itoa(columns), "-y", strconv.Itoa(rows))
+}
+
 func (o *tmuxTerminal) Title() string {
 	o.t.Helper()
 	return o.format("#{pane_title}")
@@ -123,6 +164,20 @@ func (o *tmuxTerminal) Title() string {
 func (o *tmuxTerminal) Screen() string {
 	o.t.Helper()
 	return o.tmux("capture-pane", "-p", "-t", outerPane)
+}
+
+func (o *tmuxTerminal) Styled() string {
+	o.t.Helper()
+	return o.tmux("capture-pane", "-p", "-e", "-t", outerPane)
+}
+
+func (o *tmuxTerminal) Output() []byte {
+	o.t.Helper()
+	data, err := os.ReadFile(o.outputFile())
+	if err != nil && !os.IsNotExist(err) {
+		o.t.Fatal(err)
+	}
+	return data
 }
 
 func (o *tmuxTerminal) Modes() Modes {

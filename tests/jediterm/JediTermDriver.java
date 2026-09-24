@@ -33,6 +33,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.Reader;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -47,10 +48,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * <pre>
  * start DIR ESC_CR ARGV...  run ARGV in DIR; ESC_CR=1 makes Shift+Enter send ESC CR
  * keys KEY                  type a key named the tmux way: Enter, S-Enter, C-q, or one character
+ * paste BASE64              paste the text, the way JediTerm's UI does
  * wheel-up                  scroll the mouse wheel up over the screen
  * focus                     unsupported: the emulator ignores focus reporting
  * clipboard                 unsupported: the emulator does not handle OSC 52
  * title | screen | modes | running
+ * output                    everything the program has written to the terminal
  * </pre>
  * End of input kills the pty and exits.
  */
@@ -62,6 +65,7 @@ public final class JediTermDriver {
   private final StyleState style = new StyleState();
   private final TerminalTextBuffer buffer = new TerminalTextBuffer(COLUMNS, ROWS, style);
   private final JediTerminal terminal = new JediTerminal(display, buffer, style);
+  private final StringBuilder output = new StringBuilder();
   private KeyEventProcessingSettings keySettings;
   private PtyProcess process;
   private Connector connector;
@@ -100,6 +104,9 @@ public final class JediTermDriver {
       case "keys":
         connector.write(encode(command[1]));
         return "null";
+      case "paste":
+        paste(new String(Base64.getDecoder().decode(command[1]), UTF_8));
+        return "null";
       case "wheel-up":
         MouseEventProcessingSettings settings =
           new MouseEventProcessingSettings(true, buffer.isUsingAlternateBuffer(), false);
@@ -123,6 +130,10 @@ public final class JediTermDriver {
                ",\"mouse\":" + (display.mouseMode != MouseMode.MOUSE_REPORTING_NONE) + "}";
       case "running":
         return String.valueOf(process != null && process.isAlive());
+      case "output":
+        synchronized (output) {
+          return quote(output.toString());
+        }
       default:
         throw new IllegalArgumentException("unknown command " + command[0]);
     }
@@ -136,7 +147,7 @@ public final class JediTermDriver {
       .setInitialColumns(COLUMNS)
       .setInitialRows(ROWS)
       .start();
-    connector = new Connector(process);
+    connector = new Connector(process, output);
     terminal.setTerminalOutput(new TerminalOutputStream() {
       @Override
       public void sendBytes(byte[] response, boolean userInput) {
@@ -163,6 +174,18 @@ public final class JediTermDriver {
     }, "emulator");
     thread.setDaemon(true);
     thread.start();
+  }
+
+  /**
+   * Pastes the way JediTerm's UI does (TerminalPanel.pasteFromClipboard outside Windows): line
+   * breaks become carriage returns, and the text is bracketed if the program asked for it.
+   */
+  private void paste(String text) throws IOException {
+    text = text.replace("\r\n", "\n").replace('\n', '\r');
+    if (display.bracketedPaste) {
+      text = "\u001b[200~" + text + "\u001b[201~";
+    }
+    connector.write(text);
   }
 
   /** Types a key the way JediTerm's UI does: a key-pressed event, or key-typed for a character. */
@@ -212,6 +235,7 @@ public final class JediTermDriver {
   private static final class Display implements TerminalDisplay {
     volatile String title = "";
     volatile MouseMode mouseMode = MouseMode.MOUSE_REPORTING_NONE;
+    volatile boolean bracketedPaste;
 
     @Override public void setCursor(int x, int y) { }
     @Override public void setCursorShape(CursorShape cursorShape) { }
@@ -223,24 +247,34 @@ public final class JediTermDriver {
     @Override public void setWindowTitle(String windowTitle) { title = windowTitle; }
     @Override public TerminalSelection getSelection() { return null; }
     @Override public void terminalMouseModeSet(MouseMode mode) { mouseMode = mode; }
+    @Override public void setBracketedPasteMode(boolean enabled) { bracketedPaste = enabled; }
     @Override public void setMouseFormat(MouseFormat mouseFormat) { }
     @Override public boolean ambiguousCharsAreDoubleWidth() { return false; }
   }
 
+  /** The pty, recording everything the program writes to it into a log. */
   private static final class Connector implements TtyConnector {
     private final PtyProcess process;
     private final Reader reader;
     private final OutputStream output;
+    private final StringBuilder log;
 
-    Connector(PtyProcess process) {
+    Connector(PtyProcess process, StringBuilder log) {
       this.process = process;
       this.reader = new InputStreamReader(process.getInputStream(), UTF_8);
       this.output = process.getOutputStream();
+      this.log = log;
     }
 
     @Override
     public int read(char[] buf, int offset, int length) throws IOException {
-      return reader.read(buf, offset, length);
+      int count = reader.read(buf, offset, length);
+      if (count > 0) {
+        synchronized (log) {
+          log.append(buf, offset, count);
+        }
+      }
+      return count;
     }
 
     @Override
