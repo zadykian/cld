@@ -48,7 +48,8 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 
 With tmux 3.5 or newer, if claude exits with an error - it could not start, say - its session
 stays open with claude's message on screen and a line on how to end it: `C-q d` detaches,
-`cld kill -n NAME` ends the session. `cld list` shows such a session as `exited`. Leaving claude
+`cld kill -n NAME` ends the session. `cld join -n NAME` shows the line again, also when claude
+exited with no terminal attached. `cld list` shows such a session as `exited`. Leaving claude
 the usual ways (`/exit`, `Ctrl+C` twice, `Ctrl+D` twice) closes the session. With tmux 3.3 and
 3.4 the session closes either way: they crash, taking every session with them, when a dead pane
 that had focus reporting on - as claude's does - sees the terminal's focus change or detach.

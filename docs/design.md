@@ -45,6 +45,7 @@ cld() {
 | the same in a directory whose workspace trust was never accepted | claude prints `Error creating worktree: Workspace trust not yet accepted. Run claude once in this directory and accept the trust dialog, then retry with --worktree.` and exits 1; the pane, and the message with it, closed at once until `remain-on-exit failed` (tmux 3.5 or newer); since then it stays on screen with the hint below it |
 | how the real `claude` 2.1.281 exits | status 0 for `/exit`, `Ctrl+C` twice and `Ctrl+D` twice; so `remain-on-exit failed` keeps only the sessions of a claude that failed |
 | `remain-on-exit-format` (tmux 3.3a, 3.7c) | a non-empty format scrolls the dead pane up a line to write itself at the bottom, so a short error on the top line goes out of sight; `#{session_name}` is empty in it, `#{window_name}` is not. An empty format writes nothing and scrolls nothing. `#{pane_dead_signal}` is a number on Linux and a name (`term`) where the C library has `sys_signame`, as on macOS (tmux 3.7c) |
+| `display-message` from the `pane-died` hook (tmux 3.5a, 3.7c) | with no terminal on the dead pane's window it goes to another session's terminal, the one used last; with no terminal attached at all tmux keeps it, as it keeps errors in its configuration, and shows it as `(null):0: claude exited with ...` in view-mode over the next session a terminal attaches to - any session, a new one too - whose claude then gets no keys until `q`. Under `if -F '#{window_active_clients}'` it reaches only a terminal on that window. After `attach-session` in the same command list, `display-message` reaches the attaching terminal, on its message line |
 | a dead pane that had focus reporting (`?1004h`) on, client attached | tmux 3.3a crashes on `kill-session` and on detach; 3.4 on detach and on a focus change of the terminal - both with every session on the server. 3.5a and 3.7c survive keys, wheel, clicks, paste, focus changes, resize, detach, reattach, the terminal closing and `kill-session`; `kill-pane` is safe in all four |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, so tmux does not refuse |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
@@ -158,10 +159,14 @@ Every Linux job runs the same Docker image a developer runs locally.
    with an error or a signal keeps its pane, so what it printed - a startup error above all, which
    would otherwise vanish with the session - stays readable. The format is empty, so tmux does not
    scroll that out of sight; a `pane-died` hook shows how to end the session on the message line
-   instead, naming it through the session's one window, named `NAME`. `list` shows such a session
-   as `exited`, where it started, and `new` refuses the name, pointing at `kill`, rather than
-   replacing the session unseen. tmux 3.3 and 3.4 crash over a dead pane that had focus reporting
-   on (see Findings), so there the option stays off and a failed session closes as before.
+   instead, naming it through the session's one window, named `NAME`. The hook shows it only to a
+   terminal on that window (`if -F '#{window_active_clients}'`), since tmux would otherwise show it
+   on another session's terminal or over the next session attached (see Findings); `join` shows it
+   on attaching to such a session, with a `display-message` in the same command list as
+   `attach-session`. `list` shows such a session as `exited`, where it started, and `new` refuses
+   the name, pointing at `kill`, rather than replacing the session unseen. tmux 3.3 and 3.4 crash
+   over a dead pane that had focus reporting on (see Findings), so there the option stays off and a
+   failed session closes as before.
 6. tmux 3.3 is the minimum, checked at startup with a clear message.
 7. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
 8. iTerm2: not automated yet (see Status).
