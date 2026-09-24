@@ -52,6 +52,25 @@ your `~/.tmux.conf` never touches claude:
   `TERM_PROGRAM=tmux`, and a server started from a JetBrains terminal would otherwise make every
   session on it behave as if it ran in JediTerm, even when attached from iTerm2.
 
+## cld and `claude --tmux`
+
+Claude Code has its own tmux option, `claude --worktree [name] --tmux`. It solves a different
+problem:
+
+| | `cld` | `claude --worktree --tmux` |
+|---|---|---|
+| Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
+| Working copy | the directory you run it in | a new git worktree per session (`--tmux` requires `--worktree`) |
+| Needs | bash and tmux 3.3 or newer | a git repository |
+| Coming back | `cld NAME` attaches to the session if it exists | not documented |
+| tmux server and options | a private server that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
+| iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
+
+The `claude --tmux` column is based on `claude --help` in Claude Code 2.1.281: the Claude Code docs
+do not describe the option yet.
+
+To get both, create the worktree yourself (`git worktree add`), then run `cld NAME` inside it.
+
 ## Terminals
 
 The tests check one contract - title, Shift+Enter, Ctrl keys, detach, mouse wheel, focus,
