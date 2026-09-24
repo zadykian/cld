@@ -9,6 +9,7 @@ the conversation.
 ```
 cld new             # create the session "cld-main" in the current directory
 cld new -n review   # create the session "cld-review"
+cld new -n fix -w   # create "cld-fix", with claude in the git worktree "fix"
 cld join -n review  # attach to it again, from this terminal or another one
 cld list            # list the sessions
 cld kill -n review  # end the session and its claude
@@ -23,7 +24,8 @@ mkdir -p ~/.local/bin && curl -fsSL https://github.com/zadykian/cld/releases/lat
 `~/.local/bin` has to be on your `PATH`. Each release also publishes `cld.sha256`. From a clone,
 `make install` does the same (`make install PREFIX=/usr/local` for another prefix).
 
-Requirements: bash (3.2 or newer), tmux 3.3 or newer, and `claude` on the `PATH`.
+Requirements: bash (3.2 or newer), tmux 3.3 or newer, and `claude` on the `PATH`; git for
+`cld new --worktree`.
 
 ## Usage
 
@@ -32,7 +34,7 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 
 | Command | Action |
 |---|---|
-| `cld new [-n NAME]` | create the session in the current directory and attach to it; fails if it exists |
+| `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session; claude exits as when its terminal closes |
 | `cld list` | list the sessions: name, whether a terminal is attached, and the directory claude is in |
@@ -50,6 +52,24 @@ session was created in. A killed session's conversation stays in Claude Code's h
 
 Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
 the two commands.
+
+### Worktrees
+
+`cld new -n NAME -w` passes `--worktree NAME` to claude, which
+[creates the worktree](https://code.claude.com/docs/en/worktrees) `.claude/worktrees/NAME` of the
+repository on the branch `worktree-NAME`, or reopens it if it exists, and works there; `cld list`
+shows its directory. As with `claude --worktree`:
+
+- the worktree branches from the remote's default branch, or from your current `HEAD` when the
+  Claude Code setting `worktree.baseRef` is `"head"`;
+- gitignored files listed in `.worktreeinclude` are copied into it;
+- when claude exits it asks whether to keep the worktree.
+
+`cld kill` leaves the worktree where it is, and `cld new -n NAME -w` reopens it.
+
+claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
+(or `cld new`) there once first. Otherwise claude exits at once, and the session closes with it.
+`cld` itself checks that the current directory is in a git repository.
 
 ### Why a private tmux server
 
@@ -81,8 +101,8 @@ problem:
 | | `cld` | `claude --worktree --tmux` |
 |---|---|---|
 | Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
-| Working copy | the directory you run it in | a new git worktree per session (`--tmux` requires `--worktree`) |
-| Needs | bash and tmux 3.3 or newer | a git repository |
+| Working copy | the directory you run it in, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
+| Needs | bash and tmux 3.3 or newer; a git repository for `-w` | a git repository |
 | Coming back | `cld join -n NAME` attaches to the session | not documented |
 | tmux server and options | a private server that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
@@ -90,8 +110,7 @@ problem:
 The `claude --tmux` column is based on `claude --help` in Claude Code 2.1.281: the Claude Code docs
 do not describe the option yet.
 
-To get both, create the worktree yourself (`git worktree add`), then run `cld new -n NAME` inside
-it.
+`cld new -n NAME -w` combines them: claude's own worktree, in a session of cld's.
 
 ## Terminals
 

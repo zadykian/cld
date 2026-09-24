@@ -3,6 +3,7 @@ package tests
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -43,6 +44,52 @@ func TestSessionNames(t *testing.T) {
 				t.Errorf("claude runs in %s, want %s", probe.Cwd, s.Work)
 			}
 		})
+	}
+}
+
+// new -w hands the worktree to claude: claude gets --worktree NAME and starts where cld runs, then
+// makes or reopens the worktree itself and moves into it.
+func TestNewWorktree(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"new", "-w"}, []string{"--name", "cld-main", "--worktree", "main"}},
+		{[]string{"new", "-n", "feat", "--worktree"}, []string{"--name", "cld-feat", "--worktree", "feat"}},
+		{[]string{"new", "-w", "--name=feat"}, []string{"--name", "cld-feat", "--worktree", "feat"}},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			gitInit(t, s.Work)
+			sub := filepath.Join(s.Work, "sub")
+			if err := os.Mkdir(sub, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			startCldIn(t, s, "tmux", sub, nil, test.args...)
+			probe := s.WaitProbes(1)[0]
+			if !slices.Equal(probe.Argv, test.want) {
+				t.Errorf("claude arguments %q, want %q", probe.Argv, test.want)
+			}
+			if probe.Cwd != sub {
+				t.Errorf("claude starts in %s, want %s", probe.Cwd, sub)
+			}
+		})
+	}
+}
+
+// Outside a git work tree new -w fails before starting anything: claude would say so in its
+// pane, which closes as claude exits.
+func TestNewWorktreeRequiresRepository(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	want := "cld: --worktree needs a git repository, and " + s.Work + " is not in one\n"
+	if result := s.RunCld(nil, "new", "-n", "feat", "-w"); result.Code != 1 || result.Stderr != want || result.Stdout != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+	}
+	if sessions := s.Sessions(); len(sessions) != 0 {
+		t.Errorf("sessions %q, want none", sessions)
 	}
 }
 
@@ -382,6 +429,14 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 	s.WaitProbes(1)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-main"}) {
 		t.Errorf("sessions %q, want [cld-main]", sessions)
+	}
+}
+
+// gitInit makes dir a git repository.
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
 	}
 }
 

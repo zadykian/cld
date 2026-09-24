@@ -3,9 +3,10 @@
 # https://github.com/zadykian/cld
 #
 # `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") running
-# `claude --name cld-NAME` in the current directory and attaches to it; `cld join -n NAME`
-# attaches to it again, `cld kill -n NAME` ends it, and `cld list` shows the sessions. A
-# private server (-L cld, no ~/.tmux.conf) keeps these options away from any other tmux use:
+# `claude --name cld-NAME` in the current directory and attaches to it; with -w claude also gets
+# --worktree NAME, making or reopening git worktree NAME and working there. `cld join -n NAME`
+# attaches to the session again, `cld kill -n NAME` ends it, and `cld list` shows the sessions.
+# A private server (-L cld, no ~/.tmux.conf) keeps these options away from any other tmux use:
 # - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 #   modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
 # - the extkeys terminal feature for xterm*: tmux asks the terminal for modified keys only when
@@ -38,17 +39,19 @@ Run Claude Code in named sessions on a private tmux server that ignores ~/.tmux.
 Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME".
 
 commands:
-  new [-n NAME]   create session NAME in the current directory and attach to it
-  join [-n NAME]  attach to session NAME, detaching any other terminal from it
-  kill [-n NAME]  end session NAME and the claude running in it
-  list            list the sessions: name, whether a terminal is attached, and the
-                  directory claude is in
-  help            show this help
-  version         show the version
+  new [-n NAME] [-w]  create session NAME in the current directory and attach to it
+  join [-n NAME]      attach to session NAME, detaching any other terminal from it
+  kill [-n NAME]      end session NAME and the claude running in it
+  list                list the sessions: name, whether a terminal is attached, and the
+                      directory claude is in
+  help                show this help
+  version             show the version
 
 options:
   -n, --name NAME  the session: letters, digits, "_" and "-", starting with a letter
                    or digit; "main" when not given
+  -w, --worktree   new: run claude in git worktree NAME, which claude creates or
+                   reopens (claude --worktree NAME)
 
 Detach with C-q d; C-q C-q sends C-q to claude.
 EOF
@@ -59,9 +62,10 @@ die() {
     exit "$1"
 }
 
-# read_options ARGS: a command's options; sets suffix (the session NAME) and name.
+# read_options ARGS: a command's options; sets suffix (the session NAME), name and worktree.
 read_options() {
     suffix=main
+    worktree=false
     while (($#)); do
         case $1 in
         -n | --name)
@@ -70,6 +74,10 @@ read_options() {
             shift
             ;;
         --name=*) suffix=${1#--name=} ;;
+        -w | --worktree)
+            [[ $command == new ]] || die 2 "$command: unexpected argument '$1' (see cld help)"
+            worktree=true
+            ;;
         -h | --help)
             usage
             exit 0
@@ -137,6 +145,7 @@ esac
 
 command -v tmux >/dev/null || die 1 "tmux is not installed"
 [[ $command != new ]] || command -v claude >/dev/null || die 1 "claude is not installed"
+[[ $command != new ]] || ! $worktree || command -v git >/dev/null || die 1 "git is not installed"
 # allow-passthrough needs tmux 3.3; "tmux next-3.6" and "tmux master" are development builds.
 tmux_version=$(tmux -V)
 version=${tmux_version##* }
@@ -149,6 +158,13 @@ fi
 case $command in
 new)
     ! has_session || die 1 "session '$suffix' exists; attach to it with cld join -n $suffix"
+    claude=(claude --name "$name")
+    if $worktree; then
+        # claude would report a missing repository in its pane, which closes as claude exits.
+        [[ $(git rev-parse --is-inside-work-tree 2>/dev/null) == true ]] ||
+            die 1 "--worktree needs a git repository, and $PWD is not in one"
+        claude+=(--worktree "$suffix")
+    fi
     printf '\033]0;✳ %s\007' "$name"
     # claude and its arguments go to tmux as separate words: tmux then executes them directly
     # instead of through sh -c.
@@ -157,7 +173,7 @@ new)
         set -s focus-events on \; \
         set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
         set -g prefix C-q \; bind C-q send-prefix \; \
-        new-session -s "$name" -c "$PWD" claude --name "$name"
+        new-session -s "$name" -c "$PWD" "${claude[@]}"
     ;;
 join)
     has_session || die 1 "no session '$suffix'; create it with cld new -n $suffix"

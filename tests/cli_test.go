@@ -97,6 +97,8 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"new", "-n"}, "cld: option '-n' needs a value (see cld help)\n"},
 		{[]string{"join", "--name"}, "cld: option '--name' needs a value (see cld help)\n"},
 		{[]string{"kill", "a"}, "cld: kill: unexpected argument 'a' (see cld help)\n"},
+		{[]string{"join", "-w"}, "cld: join: unexpected argument '-w' (see cld help)\n"},
+		{[]string{"kill", "-n", "a", "--worktree"}, "cld: kill: unexpected argument '--worktree' (see cld help)\n"},
 		{[]string{"list", "-n", "a"}, "cld: list: unexpected argument '-n' (see cld help)\n"},
 		{[]string{"help", "new"}, "cld: help: unexpected argument 'new' (see cld help)\n"},
 		{[]string{"version", "-n", "a"}, "cld: version: unexpected argument '-n' (see cld help)\n"},
@@ -111,27 +113,28 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
-// new needs tmux and claude, the other commands only tmux: the fake tmux finds no session, so
-// join and kill get as far as saying so.
-func TestRequiresTmuxAndClaude(t *testing.T) {
+// new needs tmux and claude, and git for -w; the other commands only tmux: the fake tmux finds no
+// session, so join and kill get as far as saying so.
+func TestRequiresTools(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		command string
+		args    []string
 		present []string
 		want    string
 	}{
-		{"new", []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
-		{"new", []string{"bash", "env", "tmux"}, "cld: claude is not installed\n"},
-		{"join", []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
-		{"join", []string{"bash", "env", "tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
-		{"kill", []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
-		{"kill", []string{"bash", "env", "tmux"}, "cld: no session 'main' (see cld list)\n"},
-		{"list", []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
+		{[]string{"new"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
+		{[]string{"new"}, []string{"bash", "env", "tmux"}, "cld: claude is not installed\n"},
+		{[]string{"new", "-w"}, []string{"bash", "env", "tmux", "claude"}, "cld: git is not installed\n"},
+		{[]string{"join"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
+		{[]string{"join"}, []string{"bash", "env", "tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
+		{[]string{"kill"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
+		{[]string{"kill"}, []string{"bash", "env", "tmux"}, "cld: no session 'main' (see cld list)\n"},
+		{[]string{"list"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
 	} {
-		t.Run(test.command+" "+strings.Join(test.present, ","), func(t *testing.T) {
+		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			result := s.RunCld(map[string]string{"PATH": s.Tools(test.present...)}, test.command)
+			result := s.RunCld(map[string]string{"PATH": s.Tools(test.present...)}, test.args...)
 			if result.Code != 1 || result.Stderr != test.want {
 				t.Errorf("exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, test.want)
 			}
