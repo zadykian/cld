@@ -4,8 +4,8 @@
 #
 # `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") running
 # `claude --name cld-NAME` in the current directory and attaches to it; `cld join -n NAME`
-# attaches to it again. A private server (-L cld, no ~/.tmux.conf) keeps these options away
-# from any other tmux use:
+# attaches to it again, and `cld list` shows the sessions. A private server (-L cld, no
+# ~/.tmux.conf) keeps these options away from any other tmux use:
 # - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 #   modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
 # - the extkeys terminal feature for xterm*: tmux asks the terminal for modified keys only when
@@ -40,6 +40,8 @@ Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME".
 commands:
   new [-n NAME]   create session NAME in the current directory and attach to it
   join [-n NAME]  attach to session NAME, detaching any other terminal from it
+  list            list the sessions: name, whether a terminal is attached, and the
+                  directory claude is in
   help            show this help
   version         show the version
 
@@ -81,8 +83,16 @@ read_options() {
     name=cld-$suffix
 }
 
+# no_arguments ARGS: for the commands that take none; -h and --help still show the help.
 no_arguments() {
-    (($# == 0)) || die 2 "$command: unexpected argument '$1' (see cld help)"
+    case ${1-} in
+    '') ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) die 2 "$command: unexpected argument '$1' (see cld help)" ;;
+    esac
 }
 
 # has_session: whether session $name exists. The target starts with "=" because tmux otherwise
@@ -90,16 +100,20 @@ no_arguments() {
 has_session() {
     local error
     error=$(tmux -L cld has-session -t "=$name" 2>&1) && return 0
-    case $error in
-    "can't find session"* | "no server running on "* | "error connecting to "*) return 1 ;;
-    esac
-    die 1 "$error"
+    [[ $error == "can't find session"* ]] || no_server "$error" || die 1 "$error"
+    return 1
+}
+
+# no_server ERROR: whether tmux failed because cld's server is not running.
+no_server() {
+    [[ $1 == "no server running on "* || $1 == "error connecting to "* ]]
 }
 
 command=${1-}
 (($# == 0)) || shift
 case $command in
 new | join) read_options "$@" ;;
+list) no_arguments "$@" ;;
 help | -h | --help)
     no_arguments "$@"
     usage
@@ -148,5 +162,26 @@ join)
     has_session || die 1 "no session '$suffix'; create it with cld new -n $suffix"
     printf '\033]0;✳ %s\007' "$name"
     exec tmux -L cld attach-session -d -t "=$name"
+    ;;
+list)
+    # pane_current_path is the directory claude is in now, not the one its session started in.
+    format=$'#{session_name}\t#{?session_attached,attached,detached}\t#{pane_current_path}'
+    if ! sessions=$(tmux -L cld list-sessions -F "$format" 2>&1); then
+        no_server "$sessions" || die 1 "$sessions"
+        exit 0
+    fi
+    rows=()
+    width=4
+    while IFS=$'\t' read -r session state path; do
+        [[ $session == cld-* ]] || continue
+        session=${session#cld-}
+        ((${#session} <= width)) || width=${#session}
+        rows+=("$session" "$state" "$path")
+    done <<<"$sessions"
+    ((${#rows[@]})) || exit 0
+    printf '%-*s  %-8s  %s\n' "$width" NAME STATE DIRECTORY
+    for ((i = 0; i < ${#rows[@]}; i += 3)); do
+        printf '%-*s  %-8s  %s\n' "$width" "${rows[i]}" "${rows[i + 1]}" "${rows[i + 2]}"
+    done
     ;;
 esac

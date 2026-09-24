@@ -14,7 +14,7 @@ import (
 func TestHelp(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"new", "--help"}, {"join", "-n", "x", "-h"}} {
+	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"new", "--help"}, {"join", "-n", "x", "-h"}, {"list", "-h"}} {
 		result := s.RunCld(nil, args...)
 		if result.Code != 0 || !strings.HasPrefix(result.Stdout, "usage: cld COMMAND [OPTIONS]\n") {
 			t.Errorf("cld %q: exit %d, stdout %q", args, result.Code, result.Stdout)
@@ -96,6 +96,7 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"join", "-x"}, "cld: join: unexpected argument '-x' (see cld help)\n"},
 		{[]string{"new", "-n"}, "cld: option '-n' needs a value (see cld help)\n"},
 		{[]string{"join", "--name"}, "cld: option '--name' needs a value (see cld help)\n"},
+		{[]string{"list", "-n", "a"}, "cld: list: unexpected argument '-n' (see cld help)\n"},
 		{[]string{"help", "new"}, "cld: help: unexpected argument 'new' (see cld help)\n"},
 		{[]string{"version", "-n", "a"}, "cld: version: unexpected argument '-n' (see cld help)\n"},
 	} {
@@ -109,8 +110,8 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
-// new needs tmux and claude, join only tmux: the fake tmux finds no session, so join gets as
-// far as saying so.
+// new needs tmux and claude, join and list only tmux: the fake tmux finds no session, so join
+// gets as far as saying so.
 func TestRequiresTmuxAndClaude(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -122,6 +123,7 @@ func TestRequiresTmuxAndClaude(t *testing.T) {
 		{"new", []string{"bash", "env", "tmux"}, "cld: claude is not installed\n"},
 		{"join", []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
 		{"join", []string{"bash", "env", "tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
+		{"list", []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
 	} {
 		t.Run(test.command+" "+strings.Join(test.present, ","), func(t *testing.T) {
 			t.Parallel()

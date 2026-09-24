@@ -89,6 +89,43 @@ func TestJoinRequiresSession(t *testing.T) {
 	waitClients(t, s, 1)
 }
 
+// list shows cld's sessions: the name, whether a terminal is attached, and the directory claude
+// is in now. Without a server there is nothing to show, and it shows nothing.
+func TestList(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
+		t.Errorf("without a server: exit %d, stdout %q, stderr %q, want exit 0 and no output", result.Code, result.Stdout, result.Stderr)
+	}
+
+	elsewhere, moved := filepath.Join(s.Root, "elsewhere"), filepath.Join(s.Work, "moved")
+	for _, dir := range []string{elsewhere, moved} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	startCld(t, s, "tmux", nil, "new", "-n", "b")
+	b := s.WaitProbes(1)[0]
+	detached := startCldIn(t, s, "tmux", elsewhere, nil, "new", "-n", "long_name-1")
+	s.WaitProbes(2)
+	waitClients(t, s, 2)
+	detached.Keys("C-q", "d")
+	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !detached.Running() })
+	// A session on cld's server that cld did not create is not cld's to show.
+	s.MustTmux("new-session", "-d", "-s", "other", "sleep", "60")
+	b.Send("cd " + moved)
+	sandbox.WaitFor(t, 10*time.Second, "claude to move", func() bool {
+		return s.Format("cld-b", "#{pane_current_path}") == moved
+	})
+
+	want := "NAME         STATE     DIRECTORY\n" +
+		"b            attached  " + moved + "\n" +
+		"long_name-1  detached  " + elsewhere + "\n"
+	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+		t.Errorf("exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
+	}
+}
+
 func TestJoinDetachesOtherClient(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
