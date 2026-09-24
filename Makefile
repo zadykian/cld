@@ -5,8 +5,10 @@ TERMINALS ?= tmux
 BASE ?= debian:bookworm
 DOCKER_TERMINALS ?= tmux,jediterm
 IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))
+# The version make dist stamps into the script.
+VERSION ?= dev
 
-.PHONY: check lint test docker-image docker-check install uninstall
+.PHONY: check lint test docker-image docker-check dist install uninstall
 
 check: lint test
 
@@ -26,6 +28,12 @@ docker-check: docker-image
 	docker run --rm --init --user "$$(id -u):$$(id -g)" -e HOME=/tmp \
 		-v "$(CURDIR):/src:ro" -w /src $(IMAGE) \
 		make check TERMINALS=$(DOCKER_TERMINALS)
+
+dist:
+	mkdir -p dist
+	sed 's/^CLD_VERSION=dev$$/CLD_VERSION=$(VERSION)/' bin/cld > dist/cld
+	chmod 755 dist/cld
+	cd dist && { sha256sum cld 2>/dev/null || shasum -a 256 cld; } > cld.sha256
 
 install:
 	install -d "$(PREFIX)/bin"
