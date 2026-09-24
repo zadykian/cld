@@ -24,17 +24,18 @@ type expectation struct {
 }
 
 var expectations = map[string]expectation{
-	// The outer tmux announces itself through XTVERSION, and the inner tmux knows its features.
+	// The outer tmux announces itself through XTVERSION, and the inner tmux knows its features;
+	// extkeys comes from cld's terminal-features entry for xterm*.
 	"tmux": {
-		features:   []string{"clipboard", "focus", "mouse", "title"},
+		features:   []string{"clipboard", "extkeys", "focus", "mouse", "title"},
 		shiftEnter: []string{"\x1b[13;2u", "\x1b[27;2;13~"},
 	},
 	// JediTerm answers no XTVERSION, so tmux falls back to its defaults for xterm*: they claim
-	// clipboard and focus, which the emulator ignores (see the skipped tests). It ignores
-	// modifyOtherKeys too; Shift+Enter becomes ESC CR through its own setting, which tmux passes
-	// on as Meta+Enter.
+	// clipboard and focus, which the emulator ignores (see the skipped tests), and cld adds
+	// extkeys. The emulator ignores the modifyOtherKeys request that follows; Shift+Enter becomes
+	// ESC CR through its own setting, which tmux passes on as Meta+Enter.
 	"jediterm": {
-		features:   []string{"bpaste", "clipboard", "focus", "title"},
+		features:   []string{"bpaste", "clipboard", "extkeys", "focus", "title"},
 		shiftEnter: []string{"\x1b\r"},
 	},
 }
