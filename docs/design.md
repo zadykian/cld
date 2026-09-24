@@ -73,7 +73,7 @@ Isolation needs no seams in the script: `TMUX_TMPDIR` moves the `-L cld` socket 
 |---|---|---|
 | C1 | tab title is `✳ cld-NAME` and survives claude's own title changes | terminal |
 | C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, ...) | tmux |
-| C3 | Shift+Enter reaches claude distinct from Enter; other Ctrl keys pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log |
+| C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
 | C4 | mouse wheel and focus in/out reach claude | probe input log |
 | C5 | OSC 52 / OSC 9 wrapped in tmux passthrough reach the outer terminal | terminal |
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created from another terminal on a server started from the JetBrains terminal | probe env dump |

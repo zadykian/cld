@@ -107,12 +107,29 @@ func TestContractShiftEnter(t *testing.T) {
 	})
 }
 
-// C3: Ctrl keys claude binds pass through; the prefix pressed twice sends itself.
+// C3: tmux asks the terminal for modified keys - what makes Shift+Enter distinct in terminals
+// that send it only on request - and takes the request back when the client detaches.
+func TestContractModifiedKeys(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		_, term, _ := startContract(t, name)
+		sandbox.WaitFor(t, 10*time.Second, "tmux to ask the terminal for modified keys", func() bool {
+			return modifiedKeysOn(term.Output())
+		})
+		term.Keys("C-q", "d")
+		sandbox.WaitFor(t, 10*time.Second, "cld to exit", func() bool { return !term.Running() })
+		sandbox.WaitFor(t, 10*time.Second, "tmux to turn modified keys off", func() bool {
+			return !modifiedKeysOn(term.Output())
+		})
+	})
+}
+
+// C3: Ctrl keys claude binds pass through - C-b backgrounds a task, C-_ undoes an edit (what a
+// Cmd+Z mapping sends) - and the prefix pressed twice sends itself.
 func TestContractControlKeys(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		_, term, probe := startContract(t, name)
-		if got := between(t, term, probe, "C-b", "C-q", "C-q"); got != "\x02\x11" {
-			t.Errorf("C-b C-q C-q arrives as %s, want \"\\x02\\x11\"", strconv.Quote(got))
+		if got := between(t, term, probe, "C-b", "C-_", "C-q", "C-q"); got != "\x02\x1f\x11" {
+			t.Errorf("C-b C-_ C-q C-q arrives as %s, want \"\\x02\\x1f\\x11\"", strconv.Quote(got))
 		}
 	})
 }
@@ -167,4 +184,11 @@ func TestContractClipboard(t *testing.T) {
 			t.Errorf("clipboard %q, want %q", clipboard, "copied by claude")
 		}
 	})
+}
+
+// modifiedKeysOn reports whether the last modifyOtherKeys sequence in a terminal's output turns
+// modified keys on (CSI > 4 ; 1 m or CSI > 4 ; 2 m) rather than off (CSI > 4 m).
+func modifiedKeysOn(output []byte) bool {
+	on := max(bytes.LastIndex(output, []byte("\x1b[>4;1m")), bytes.LastIndex(output, []byte("\x1b[>4;2m")))
+	return on > bytes.LastIndex(output, []byte("\x1b[>4m"))
 }
