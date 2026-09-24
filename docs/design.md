@@ -42,7 +42,10 @@ cld() {
 | `tmux kill-session -t cld-rev` beside `cld-review` (tmux 3.3a, 3.7c) | kills `cld-review`: a session target is matched exactly, then as a prefix, then as a pattern; `=cld-rev` matches exactly and finds nothing |
 | `claude --worktree NAME` (2.1.281) on the branch `feature`, one commit ahead of `origin/master`, the remote's default | branches `worktree-NAME` from `origin/master`; with `--settings '{"worktree":{"baseRef":"head"}}'` from `feature`'s commit, also when the project's `.claude/settings.local.json` sets `baseRef` to `"fresh"` |
 | `cld new -n wt -w` with the real `claude` 2.1.281, in a repository without a remote | claude makes `.claude/worktrees/wt` on the branch `worktree-wt` from `HEAD` and moves there; `pane_current_path` follows it, so `cld list` shows the worktree. After `cld kill` the worktree stays, with its uncommitted files and claude's lock, and `cld new -n wt -w` reopens it |
-| the same in a directory whose workspace trust was never accepted | claude prints `Error creating worktree: Workspace trust not yet accepted. Run claude once in this directory and accept the trust dialog, then retry with --worktree.` and exits 1; the pane, and the message with it, closes at once |
+| the same in a directory whose workspace trust was never accepted | claude prints `Error creating worktree: Workspace trust not yet accepted. Run claude once in this directory and accept the trust dialog, then retry with --worktree.` and exits 1; the pane, and the message with it, closed at once until `remain-on-exit failed` (tmux 3.5 or newer); since then it stays on screen with the hint below it |
+| how the real `claude` 2.1.281 exits | status 0 for `/exit`, `Ctrl+C` twice and `Ctrl+D` twice; so `remain-on-exit failed` keeps only the sessions of a claude that failed |
+| `remain-on-exit-format` (tmux 3.3a, 3.7c) | a non-empty format scrolls the dead pane up a line to write itself at the bottom, so a short error on the top line goes out of sight; `#{session_name}` is empty in it, `#{window_name}` is not. An empty format writes nothing and scrolls nothing. `#{pane_dead_signal}` is a number on Linux and a name (`term`) where the C library has `sys_signame`, as on macOS (tmux 3.7c) |
+| a dead pane that had focus reporting (`?1004h`) on, client attached | tmux 3.3a crashes on `kill-session` and on detach; 3.4 on detach and on a focus change of the terminal - both with every session on the server. 3.5a and 3.7c survive keys, wheel, clicks, paste, focus changes, resize, detach, reattach, the terminal closing and `kill-session`; `kill-pane` is safe in all four |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, so tmux does not refuse |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
@@ -83,7 +86,7 @@ Isolation needs no seams in the script: `TMUX_TMPDIR` moves the `-L cld` socket 
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created from another terminal on a server started from the JetBrains terminal | probe env dump |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
-| C9 | claude exiting ends its session, and with the last session the server; the terminal is left clean | terminal, tmux |
+| C9 | claude exiting ends its session, and with the last session the server; the terminal is left clean. From tmux 3.5, a claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
@@ -146,14 +149,22 @@ Every Linux job runs the same Docker image a developer runs locally.
    one worktree layout (`.claude/worktrees/NAME`, branch `worktree-NAME`). A new worktree
    branches from `HEAD`: `cld` passes `--settings '{"worktree":{"baseRef":"head"}}'`, which
    outranks the user's and the project's settings, so the worktree carries the work it was started
-   from rather than the remote's default branch. An error claude prints
-   at startup vanishes with its pane, so `cld` checks for a git work tree first; workspace trust,
-   which claude also requires, lives in claude's own state and is left to the README. `kill` leaves
+   from rather than the remote's default branch. `cld` checks for a git work tree first, which
+   saves a round trip through claude; workspace trust, which claude also requires, lives in
+   claude's own state, so claude reports it (see 5). `kill` leaves
    the worktree: claude offers to remove it only when it exits on its own. The worktree is named
    after the session, also when that is the default `main`.
-5. tmux 3.3 is the minimum, checked at startup with a clear message.
-6. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
-7. iTerm2: not automated yet (see Status).
+5. Failures stay on screen, from tmux 3.5: with `remain-on-exit failed`, a claude that exits
+   with an error or a signal keeps its pane, so what it printed - a startup error above all, which
+   would otherwise vanish with the session - stays readable. The format is empty, so tmux does not
+   scroll that out of sight; a `pane-died` hook shows how to end the session on the message line
+   instead, naming it through the session's one window, named `NAME`. `list` shows such a session
+   as `exited`, where it started, and `new` refuses the name, pointing at `kill`, rather than
+   replacing the session unseen. tmux 3.3 and 3.4 crash over a dead pane that had focus reporting
+   on (see Findings), so there the option stays off and a failed session closes as before.
+6. tmux 3.3 is the minimum, checked at startup with a clear message.
+7. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
+8. iTerm2: not automated yet (see Status).
 
 ## Implementation notes
 

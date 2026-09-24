@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -337,6 +339,80 @@ func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 	}
 }
 
+// From tmux 3.5 a claude that fails keeps its session: the terminal stays attached and shows
+// claude's last words and how to end the session, list says claude exited, and new refuses the
+// name until kill ends the session. With tmux 3.3 and 3.4 the session closes, as it does when
+// claude exits with status 0 (see above).
+func TestFailedClaudeKeepsSession(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		// how the hint says claude exited: tmux names a signal where the C library has
+		// sys_signame (macOS), and numbers it elsewhere
+		how  []string
+		fail func(t *testing.T, s *sandbox.Sandbox)
+	}{
+		{"start", []string{"status 1"}, nil},
+		{"status", []string{"status 3"}, func(t *testing.T, s *sandbox.Sandbox) {
+			s.WaitProbes(1)[0].Send("exit 3")
+		}},
+		{"signal", []string{"signal 15", "signal term"}, func(t *testing.T, s *sandbox.Sandbox) {
+			if err := syscall.Kill(s.WaitProbes(1)[0].PID, syscall.SIGTERM); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			extra := map[string]string{}
+			if test.fail == nil {
+				extra["CLD_PROBE_FAIL"] = "Error: cannot start"
+			}
+			term := startCld(t, s, "tmux", extra, "new", "-n", "bad")
+			if test.fail != nil {
+				waitClients(t, s, 1)
+				test.fail(t, s)
+			}
+			if !keepsFailedSessions(t) {
+				sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
+				if sessions := s.Sessions(); len(sessions) != 0 {
+					t.Errorf("sessions %q, want none", sessions)
+				}
+				return
+			}
+			if test.fail == nil {
+				waitScreen(t, term, "Error: cannot start")
+			}
+			hint := ": C-q d detaches, cld kill -n bad ends the session"
+			waitScreen(t, term, hint)
+			if !slices.ContainsFunc(test.how, func(how string) bool {
+				return strings.Contains(term.Screen(), "claude exited with "+how+hint)
+			}) {
+				t.Errorf("the hint does not say claude exited with %s:\n%s", strings.Join(test.how, " or "), term.Screen())
+			}
+			if !term.Running() {
+				t.Error("the terminal was detached")
+			}
+
+			if list := s.RunCld(nil, "list").Stdout; strings.Split(list, "\n")[1] != "bad   exited    "+s.Work {
+				t.Errorf("list:\n%s", list)
+			}
+			want := "cld: session 'bad' exists, but its claude exited; end it with cld kill -n bad\n"
+			if result := s.RunCld(nil, "new", "-n", "bad"); result.Code != 1 || result.Stderr != want {
+				t.Errorf("new: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+			}
+			if result := s.RunCld(nil, "kill", "-n", "bad"); result.Code != 0 {
+				t.Errorf("kill: exit %d, stderr %q", result.Code, result.Stderr)
+			}
+			sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
+			if sessions := s.Sessions(); len(sessions) != 0 {
+				t.Errorf("sessions %q after kill, want none", sessions)
+			}
+		})
+	}
+}
+
 func TestSessionsShareOneServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -367,6 +443,10 @@ func TestServerOptions(t *testing.T) {
 	s := sandbox.New(t)
 	startCld(t, s, "tmux", nil, "new")
 	s.WaitProbes(1)
+	remain := "off"
+	if keepsFailedSessions(t) {
+		remain = "failed"
+	}
 	for _, option := range []struct{ scope, name, value string }{
 		{"-sv", "extended-keys", "on"},
 		{"-sv", "focus-events", "on"},
@@ -374,6 +454,8 @@ func TestServerOptions(t *testing.T) {
 		{"-gv", "allow-passthrough", "on"},
 		{"-gv", "status", "off"},
 		{"-gv", "prefix", "C-q"},
+		{"-gwv", "remain-on-exit", remain},
+		{"-gwv", "remain-on-exit-format", ""},
 	} {
 		if value := s.MustTmux("show", option.scope, option.name); value != option.value {
 			t.Errorf("%s is %q, want %q", option.name, value, option.value)
@@ -405,6 +487,9 @@ func TestRepeatedRunsDoNotStackOptions(t *testing.T) {
 	if count := len(slices.DeleteFunc(features, func(f string) bool { return f != "xterm*:extkeys" })); count != 1 {
 		t.Errorf("%d xterm*:extkeys entries after three sessions, want 1", count)
 	}
+	if hooks := strings.Split(s.MustTmux("show-hooks", "-g", "pane-died"), "\n"); len(hooks) != 1 {
+		t.Errorf("%d pane-died hooks after three sessions, want 1:\n%s", len(hooks), strings.Join(hooks, "\n"))
+	}
 }
 
 // claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux, and the server keeps the environment of
@@ -432,6 +517,23 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-main"}) {
 		t.Errorf("sessions %q, want [cld-main]", sessions)
 	}
+}
+
+// keepsFailedSessions reports whether cld keeps a failed claude's session with the tmux under
+// test: from 3.5 on, and in development builds (see bin/cld).
+func keepsFailedSessions(t *testing.T) bool {
+	t.Helper()
+	out, err := exec.Command("tmux", "-V").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := regexp.MustCompile(`(\d+)\.(\d+)`).FindStringSubmatch(string(out))
+	if version == nil {
+		return true
+	}
+	major, _ := strconv.Atoi(version[1])
+	minor, _ := strconv.Atoi(version[2])
+	return major > 3 || major == 3 && minor >= 5
 }
 
 // gitInit makes dir a git repository.
