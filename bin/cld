@@ -4,8 +4,8 @@
 #
 # `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") running
 # `claude --name cld-NAME` in the current directory and attaches to it; `cld join -n NAME`
-# attaches to it again, and `cld list` shows the sessions. A private server (-L cld, no
-# ~/.tmux.conf) keeps these options away from any other tmux use:
+# attaches to it again, `cld kill -n NAME` ends it, and `cld list` shows the sessions. A
+# private server (-L cld, no ~/.tmux.conf) keeps these options away from any other tmux use:
 # - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 #   modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
 # - the extkeys terminal feature for xterm*: tmux asks the terminal for modified keys only when
@@ -40,6 +40,7 @@ Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME".
 commands:
   new [-n NAME]   create session NAME in the current directory and attach to it
   join [-n NAME]  attach to session NAME, detaching any other terminal from it
+  kill [-n NAME]  end session NAME and the claude running in it
   list            list the sessions: name, whether a terminal is attached, and the
                   directory claude is in
   help            show this help
@@ -112,7 +113,7 @@ no_server() {
 command=${1-}
 (($# == 0)) || shift
 case $command in
-new | join) read_options "$@" ;;
+new | join | kill) read_options "$@" ;;
 list) no_arguments "$@" ;;
 help | -h | --help)
     no_arguments "$@"
@@ -162,6 +163,11 @@ join)
     has_session || die 1 "no session '$suffix'; create it with cld new -n $suffix"
     printf '\033]0;✳ %s\007' "$name"
     exec tmux -L cld attach-session -d -t "=$name"
+    ;;
+kill)
+    # claude gets SIGHUP, as when its terminal closes; an attached terminal is detached.
+    has_session || die 1 "no session '$suffix' (see cld list)"
+    tmux -L cld kill-session -t "=$name"
     ;;
 list)
     # pane_current_path is the directory claude is in now, not the one its session started in.
