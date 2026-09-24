@@ -144,6 +144,11 @@ Where the implementation departs from the plan above:
   outer tmux reports focus changes only to panes of an attached client.
 - tmux 3.3a expands `display -p -t =SESSION` to nothing when no client is attached; the tests read
   formats through `list-panes`.
+- tmux 3.7 prints nothing for `list-keys -T prefix KEY`, and its `new-session -A` honours `-c`: a
+  reattach from another directory moves the session's directory for new windows there. claude keeps
+  running where it started, which is what the tests pin.
+- `TMUX_VERSION` builds a tmux release from source into the test image, so the newest tmux
+  reproduces in Docker, not only on the macOS runner.
 
 ## What the tests found
 
@@ -164,8 +169,8 @@ which asks for modifyOtherKeys - is still to be checked by hand.
 
 ## Status
 
-- Baseline and JediTerm contracts run on tmux 3.3a, 3.4 and 3.5a (Linux, Docker) and the baseline
-  on the latest tmux under macOS's bash 3.2.
+- Baseline and JediTerm contracts run on tmux 3.3a, 3.4, 3.5a and 3.7c (Linux, Docker; 3.7c built
+  from source), and the baseline on Homebrew's tmux under macOS's bash 3.2.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not
