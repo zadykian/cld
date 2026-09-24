@@ -32,8 +32,8 @@ in the current directory. A name consists of letters, digits, `_` and `-`.
 | `C-q d` | detach; claude keeps running |
 | `C-q C-q` | send `C-q` to claude |
 
-Attaching from a second terminal detaches the first one. A session keeps the directory it was
-created in.
+Attaching from a second terminal detaches the first one; claude keeps running in the directory the
+session was created in.
 
 ### Why a private tmux server
 

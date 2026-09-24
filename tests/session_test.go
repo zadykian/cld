@@ -62,7 +62,10 @@ func TestReattachDetachesOtherClient(t *testing.T) {
 	}
 }
 
-func TestReattachKeepsDirectory(t *testing.T) {
+// Reattaching from another directory leaves claude where it runs. tmux 3.7 moves the session's
+// directory for new windows to the reattaching client's (new-session -A now honours -c); a cld
+// session is one window, so only claude's directory is part of the promise.
+func TestReattachFromElsewhereKeepsClaude(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	first := startCld(t, s, "tmux", nil, "task")
@@ -77,11 +80,8 @@ func TestReattachKeepsDirectory(t *testing.T) {
 	}
 	second := startCldIn(t, s, "tmux", elsewhere, nil, "task")
 	waitScreen(t, second, "probe --name cld-task")
-	if probes := s.Probes(); len(probes) != 1 || !probe.Alive() {
-		t.Errorf("%d claude processes after reattaching, want the original one", len(probes))
-	}
-	if path := s.Format("cld-task", "#{session_path}"); path != s.Work {
-		t.Errorf("session directory %s, want %s", path, s.Work)
+	if probes := s.Probes(); len(probes) != 1 || !probe.Alive() || probe.Cwd != s.Work {
+		t.Errorf("%d claude processes after reattaching, want the original one in %s", len(probes), s.Work)
 	}
 }
 
@@ -127,8 +127,12 @@ func TestServerOptions(t *testing.T) {
 			t.Errorf("%s is %q, want %q", option.name, value, option.value)
 		}
 	}
-	if binding := s.MustTmux("list-keys", "-T", "prefix", "C-q"); !strings.Contains(binding, "send-prefix") {
-		t.Errorf("C-q C-q is bound to %q, want send-prefix", binding)
+	// "list-keys -T prefix C-q" would be shorter, but tmux 3.7 prints nothing for it.
+	bindings := strings.Split(s.MustTmux("list-keys", "-T", "prefix"), "\n")
+	if !slices.ContainsFunc(bindings, func(binding string) bool {
+		return slices.Equal(strings.Fields(binding), []string{"bind-key", "-T", "prefix", "C-q", "send-prefix"})
+	}) {
+		t.Errorf("C-q C-q is not bound to send-prefix:\n%s", strings.Join(bindings, "\n"))
 	}
 }
 
