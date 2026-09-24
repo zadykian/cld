@@ -11,6 +11,7 @@ cld new             # create the session "cld-main" in the current directory
 cld new -n review   # create the session "cld-review"
 cld join -n review  # attach to it again, from this terminal or another one
 cld list            # list the sessions
+cld kill -n review  # end the session and its claude
 ```
 
 ## Install
@@ -33,6 +34,7 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 |---|---|
 | `cld new [-n NAME]` | create the session in the current directory and attach to it; fails if it exists |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
+| `cld kill [-n NAME]` | end the session; claude exits as when its terminal closes |
 | `cld list` | list the sessions: name, whether a terminal is attached, and the directory claude is in |
 | `cld help` | show the usage |
 | `cld version` | show the version |
@@ -43,7 +45,8 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 | `C-q C-q` | send `C-q` to claude |
 
 Joining from a second terminal detaches the first one; claude keeps running in the directory the
-session was created in.
+session was created in. A killed session's conversation stays in Claude Code's history, named
+`cld-NAME` in the `claude --resume` picker.
 
 Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
 the two commands.

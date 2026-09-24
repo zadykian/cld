@@ -126,6 +126,65 @@ func TestList(t *testing.T) {
 	}
 }
 
+// kill ends the session it names and the claude in it; the terminal attached to it is detached
+// and left clean, and the other sessions carry on. With the last session the server exits.
+func TestKill(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	a := startCld(t, s, "tmux", nil, "new", "-n", "a")
+	s.WaitProbes(1)
+	startCld(t, s, "tmux", nil, "new", "-n", "b")
+	probes := map[string]*sandbox.Probe{}
+	for _, probe := range s.WaitProbes(2) {
+		probes[probe.Argv[1]] = probe
+	}
+	waitClients(t, s, 2)
+
+	if result := s.RunCld(nil, "kill", "-n", "a"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q, want exit 0 and no output", result.Code, result.Stdout, result.Stderr)
+	}
+	sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["cld-a"].Alive() })
+	sandbox.WaitFor(t, 10*time.Second, "cld a to return", func() bool { return !a.Running() })
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b"}) {
+		t.Errorf("sessions %q, want [cld-b]", sessions)
+	}
+	if modes := a.Modes(); modes.AltScreen || modes.Mouse {
+		t.Errorf("terminal modes after the kill %+v, want none", modes)
+	}
+	if !probes["cld-b"].Alive() {
+		t.Error("claude b did not survive session a's kill")
+	}
+
+	if result := s.RunCld(nil, "kill", "-n", "b"); result.Code != 0 {
+		t.Errorf("exit %d, stderr %q", result.Code, result.Stderr)
+	}
+	sandbox.WaitFor(t, 10*time.Second, "the server to exit", func() bool {
+		_, err := s.Tmux("list-sessions")
+		return err != nil
+	})
+}
+
+// kill ends only the session it names: no server, another session, or one whose name starts
+// with NAME is no session.
+func TestKillRequiresSession(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	want := "cld: no session 'rev' (see cld list)\n"
+	if result := s.RunCld(nil, "kill", "-n", "rev"); result.Code != 1 || result.Stderr != want {
+		t.Errorf("without a server: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+	}
+
+	startCld(t, s, "tmux", nil, "new", "-n", "review")
+	probe := s.WaitProbes(1)[0]
+	waitClients(t, s, 1)
+	if result := s.RunCld(nil, "kill", "-n", "rev"); result.Code != 1 || result.Stderr != want {
+		t.Errorf("beside cld-review: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+	}
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-review"}) || !probe.Alive() {
+		t.Errorf("sessions %q, claude alive: %v; want cld-review running", sessions, probe.Alive())
+	}
+}
+
 func TestJoinDetachesOtherClient(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
