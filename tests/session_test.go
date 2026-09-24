@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -82,6 +83,44 @@ func TestReattachFromElsewhereKeepsClaude(t *testing.T) {
 	waitScreen(t, second, "probe --name cld-task")
 	if probes := s.Probes(); len(probes) != 1 || !probe.Alive() || probe.Cwd != s.Work {
 		t.Errorf("%d claude processes after reattaching, want the original one in %s", len(probes), s.Work)
+	}
+}
+
+// A reattach repaints claude's screen from tmux's own copy of it: the same text in the same
+// attributes - also after claude pushed its keyboard modes again, as it does after an external
+// editor, and in a terminal of another size - and claude has the alternate screen, mouse
+// reporting and the wheel back.
+func TestReattachRepaintsTheSameScreen(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	first := startCld(t, s, "tmux", nil, "paint")
+	probe := s.WaitProbes(1)[0]
+	waitClients(t, s, 1)
+	probe.Send("rekey")
+	waitScreen(t, first, "repainted")
+	painted := cells(first.Styled())
+	if underlined(painted) {
+		t.Errorf("claude's screen is underlined:\n%s", strings.Join(painted, "\n"))
+	}
+	first.Keys("C-q", "d")
+	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !first.Running() })
+
+	for _, size := range [][2]int{{120, 40}, {100, 30}} {
+		term := terminal.New(t, "tmux", s)
+		term.Resize(size[0], size[1])
+		term.Start(s.CldArgv("paint"), s.Env, s.Work)
+		waitScreen(t, term, "repainted")
+		if repainted := cells(term.Styled()); !slices.Equal(repainted, painted) {
+			t.Errorf("reattached at %dx%d:\n%s\nwant\n%s", size[0], size[1], strings.Join(repainted, "\n"), strings.Join(painted, "\n"))
+		}
+		if modes := term.Modes(); !modes.AltScreen || !modes.Mouse {
+			t.Errorf("modes after reattaching at %dx%d %+v, want the alternate screen and mouse reporting on", size[0], size[1], modes)
+		}
+		mark := probe.Mark()
+		term.WheelUp()
+		probe.WaitInput(mark, "\x1b[<64;")
+		term.Keys("C-q", "d")
+		sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !term.Running() })
 	}
 }
 
@@ -217,5 +256,111 @@ func waitScreen(t *testing.T, term terminal.Terminal, text string) {
 	t.Helper()
 	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("%q on the screen", text), func() bool {
 		return strings.Contains(term.Screen(), text)
+	})
+}
+
+var sgr = regexp.MustCompile(`\x1b\[([0-9;:]*)m`)
+
+// attribute names the attribute each SGR code sets or clears.
+var attribute = map[string]string{
+	"1": "intensity", "2": "intensity", "22": "intensity",
+	"3": "italic", "23": "italic",
+	"4": "underline", "21": "underline", "24": "underline",
+	"5": "blink", "6": "blink", "25": "blink",
+	"7": "inverse", "27": "inverse",
+	"8": "hidden", "28": "hidden",
+	"9": "strike", "29": "strike",
+	"53": "overline", "55": "overline",
+	"38": "fg", "39": "fg", "48": "bg", "49": "bg", "58": "underline-colour", "59": "underline-colour",
+}
+
+// clearing lists the SGR codes that turn their attribute off.
+var clearing = map[string]bool{
+	"22": true, "23": true, "24": true, "4:0": true, "25": true, "27": true, "28": true,
+	"29": true, "55": true, "39": true, "49": true, "59": true,
+}
+
+// cells turns a Styled screen into lines of runs, "[attribute=code ...]text", whatever the
+// SGR sequences that happened to draw them: equal cells give equal lines. Trailing blank cells
+// and lines are dropped, so that screens of different sizes compare by what is drawn on them.
+func cells(styled string) []string {
+	state := map[string]string{} // capture-pane -e carries attributes over line ends
+	var lines []string
+	for _, row := range strings.Split(styled, "\n") {
+		var attrs, texts []string // one per run
+		matches := sgr.FindAllStringSubmatch(row, -1)
+		for i, text := range sgr.Split(row, -1) {
+			if i > 0 {
+				apply(state, matches[i-1][1])
+			}
+			if text == "" {
+				continue
+			}
+			if n := len(attrs); n > 0 && attrs[n-1] == describe(state) {
+				texts[n-1] += text
+			} else {
+				attrs, texts = append(attrs, describe(state)), append(texts, text)
+			}
+		}
+		if n := len(attrs); n > 0 && attrs[n-1] == "" {
+			if texts[n-1] = strings.TrimRight(texts[n-1], " "); texts[n-1] == "" {
+				attrs, texts = attrs[:n-1], texts[:n-1]
+			}
+		}
+		var line strings.Builder
+		for i := range attrs {
+			line.WriteString("[" + attrs[i] + "]" + texts[i])
+		}
+		lines = append(lines, line.String())
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+// apply updates the attributes of the cells after an SGR sequence with parameters params.
+func apply(state map[string]string, params string) {
+	codes := strings.Split(params, ";")
+	for i := 0; i < len(codes); i++ {
+		code := codes[i]
+		if code == "" || code == "0" {
+			clear(state)
+			continue
+		}
+		base, _, _ := strings.Cut(code, ":")
+		// A colour in the ; form takes the codes after it: 5;N or 2;R;G;B.
+		if (base == "38" || base == "48" || base == "58") && base == code {
+			n := 4
+			if i+1 < len(codes) && codes[i+1] == "5" {
+				n = 2
+			}
+			code = strings.Join(codes[i:min(i+n+1, len(codes))], ";")
+			i += n
+		}
+		name, known := attribute[base]
+		switch {
+		case !known:
+		case clearing[code]:
+			delete(state, name)
+		default:
+			state[name] = code
+		}
+	}
+}
+
+func describe(state map[string]string) string {
+	var pairs []string
+	for name, code := range state {
+		pairs = append(pairs, name+"="+code)
+	}
+	slices.Sort(pairs)
+	return strings.Join(pairs, " ")
+}
+
+// underlined reports whether any cell of a screen from cells is underlined.
+func underlined(lines []string) bool {
+	return slices.ContainsFunc(lines, func(line string) bool {
+		return strings.Contains(line, "underline=")
 	})
 }

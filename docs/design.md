@@ -153,6 +153,9 @@ Where the implementation departs from the plan above:
   reproduces in Docker, not only on the macOS runner.
 - tmux 3.7's `paste-buffer` writes control characters as `^X` unless given `-S`; the baseline
   terminal passes `-S` where `paste-buffer` knows it, since a terminal pastes them as they are.
+- `capture-pane -e` emits an SGR change at the next cell that differs, which moves between
+  redraws and sizes (a colour reset can land before or after a line break); the reattach test
+  compares cells - characters and attributes - rather than the captured sequences.
 
 ## What the tests found
 
