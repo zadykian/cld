@@ -22,6 +22,16 @@
 # - status off: claude keeps the whole tab
 # - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
 #   C-q; detach is C-q d, and C-q C-q sends a C-q through
+# - remain-on-exit failed, from tmux 3.5: a claude that fails - at startup, say, for a worktree
+#   in a directory it does not trust - leaves its pane on screen with its message, instead of
+#   taking both away; /exit and claude's other ways out exit with status 0. An empty
+#   remain-on-exit-format keeps tmux from scrolling the pane for its own line, which would push a
+#   short error at the top out of sight; the pane-died hook shows how to end the session on the
+#   message line instead, until a key is pressed. It names the session through its one window,
+#   named NAME: the hook's formats know the pane and its window, not the session. tmux 3.3 and
+#   3.4 keep writing focus reports to a dead pane that had them on, as claude's has, and crash -
+#   with every session on the server - when the terminal's focus changes or it detaches, so
+#   there remain-on-exit stays off
 # join attaches with -d, detaching other clients. tmux keeps claude's title changes to the pane
 # (set-titles is off), so the tab keeps the session name. The server keeps the environment of
 # the client that started it, and claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux: a
@@ -43,8 +53,8 @@ commands:
   new [-n NAME] [-w]  create session NAME in the current directory and attach to it
   join [-n NAME]      attach to session NAME, detaching any other terminal from it
   kill [-n NAME]      end session NAME and the claude running in it
-  list                list the sessions: name, whether a terminal is attached, and the
-                      directory claude is in
+  list                list the sessions: name, whether a terminal is attached (or claude
+                      exited), and the directory claude is in
   help                show this help
   version             show the version
 
@@ -54,7 +64,8 @@ options:
   -w, --worktree   new: run claude in git worktree NAME, which claude creates from
                    HEAD or reopens (claude --worktree NAME)
 
-Detach with C-q d; C-q C-q sends C-q to claude.
+Detach with C-q d; C-q C-q sends C-q to claude. With tmux 3.5 or newer, a session whose
+claude fails stays, showing why, until cld kill ends it.
 EOF
 }
 
@@ -147,18 +158,25 @@ esac
 command -v tmux >/dev/null || die 1 "tmux is not installed"
 [[ $command != new ]] || command -v claude >/dev/null || die 1 "claude is not installed"
 [[ $command != new ]] || ! $worktree || command -v git >/dev/null || die 1 "git is not installed"
-# allow-passthrough needs tmux 3.3; "tmux next-3.6" and "tmux master" are development builds.
+# allow-passthrough needs tmux 3.3, keeping failed sessions 3.5 (see above); "tmux next-3.6" and
+# "tmux master" are development builds.
 tmux_version=$(tmux -V)
 version=${tmux_version##* }
 version=${version#next-}
-if [[ $version =~ ^([0-9]+)\.([0-9]+) ]] &&
-    ((BASH_REMATCH[1] < 3 || (BASH_REMATCH[1] == 3 && BASH_REMATCH[2] < 3))); then
-    die 1 "tmux 3.3 or newer is required, found '$tmux_version'"
+remain=failed
+if [[ $version =~ ^([0-9]+)\.([0-9]+) ]]; then
+    major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]}
+    ((major > 3 || (major == 3 && minor >= 3))) || die 1 "tmux 3.3 or newer is required, found '$tmux_version'"
+    ((major > 3 || (major == 3 && minor >= 5))) || remain=off
 fi
 
 case $command in
 new)
-    ! has_session || die 1 "session '$suffix' exists; attach to it with cld join -n $suffix"
+    if has_session; then
+        [[ $(tmux -L cld list-panes -t "=$name" -F '#{pane_dead}') != 1 ]] ||
+            die 1 "session '$suffix' exists, but its claude exited; end it with cld kill -n $suffix"
+        die 1 "session '$suffix' exists; attach to it with cld join -n $suffix"
+    fi
     claude=(claude --name "$name")
     if $worktree; then
         # claude would report a missing repository in its pane, which closes as claude exits.
@@ -169,6 +187,8 @@ new)
         claude+=(--settings '{"worktree":{"baseRef":"head"}}' --worktree "$suffix")
     fi
     printf '\033]0;✳ %s\007' "$name"
+    how='#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}'
+    exited="claude exited with $how: C-q d detaches, cld kill -n #{window_name} ends the session"
     # claude and its arguments go to tmux as separate words: tmux then executes them directly
     # instead of through sh -c.
     exec env -u TERMINAL_EMULATOR tmux -L cld -f /dev/null \
@@ -176,7 +196,9 @@ new)
         set -s focus-events on \; \
         set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
         set -g prefix C-q \; bind C-q send-prefix \; \
-        new-session -s "$name" -c "$PWD" "${claude[@]}"
+        set -g remain-on-exit "$remain" \; set -g remain-on-exit-format '' \; \
+        set-hook -g pane-died "display-message -d 0 '$exited'" \; \
+        new-session -s "$name" -n "$suffix" -c "$PWD" "${claude[@]}"
     ;;
 join)
     has_session || die 1 "no session '$suffix'; create it with cld new -n $suffix"
@@ -189,8 +211,11 @@ kill)
     tmux -L cld kill-session -t "=$name"
     ;;
 list)
-    # pane_current_path is the directory claude is in now, not the one its session started in.
-    format=$'#{session_name}\t#{?session_attached,attached,detached}\t#{pane_current_path}'
+    # pane_current_path is the directory claude is in now, not the one its session started in;
+    # once claude has exited there is none, and list shows where the session started.
+    state_format='#{?pane_dead,exited,#{?session_attached,attached,detached}}'
+    path_format='#{?pane_dead,#{session_path},#{pane_current_path}}'
+    format="#{session_name}"$'\t'"$state_format"$'\t'"$path_format"
     if ! sessions=$(tmux -L cld list-sessions -F "$format" 2>&1); then
         no_server "$sessions" || die 1 "$sessions"
         exit 0
