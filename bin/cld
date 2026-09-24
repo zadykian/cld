@@ -216,7 +216,11 @@ list)
     state_format='#{?pane_dead,exited,#{?session_attached,attached,detached}}'
     path_format='#{?pane_dead,#{session_path},#{pane_current_path}}'
     format="#{session_name}"$'\t'"$state_format"$'\t'"$path_format"
-    if ! sessions=$(tmux -L cld list-sessions -F "$format" 2>&1); then
+    # tmux writes to a client whose LC_ALL, LC_CTYPE or LANG does not name UTF-8 - unset or C, as
+    # over ssh, in containers and cron - with "_" for each character it cannot print: the tabs,
+    # and any non-ASCII letter in a directory. -u marks the client UTF-8, so the output arrives
+    # as it is.
+    if ! sessions=$(tmux -u -L cld list-sessions -F "$format" 2>&1); then
         no_server "$sessions" || die 1 "$sessions"
         exit 0
     fi
