@@ -571,6 +571,38 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 	}
 }
 
+// In a live pane of cld's server - claude's external editor, say - a session attached would show
+// inside itself: new and join refuse, saying how to get out, and the terminal attached before
+// stays.
+func TestRefusesToNestInItsOwnPane(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	startCld(t, s, "tmux", nil, "new", "-n", "a")
+	s.WaitProbes(1)
+	waitClients(t, s, 1)
+	want := "cld: this terminal is inside a cld session; detach with C-q d first\n"
+	for _, args := range [][]string{{"join", "-n", "a"}, {"new", "-n", "b"}} {
+		// The pane runs cld on its own pty, with the TMUX tmux sets for it.
+		out := filepath.Join(s.Root, args[0])
+		s.MustTmux(append([]string{"new-session", "-d", "-s", "in-" + args[0],
+			"sh", "-c", `"$@" 2>"$0.err"; echo $? >"$0.code"`, out}, s.CldArgv(args...)...)...)
+		var code []byte
+		sandbox.WaitFor(t, 10*time.Second, "cld "+args[0]+" to return", func() bool {
+			code, _ = os.ReadFile(out + ".code")
+			return strings.HasSuffix(string(code), "\n")
+		})
+		if stderr, _ := os.ReadFile(out + ".err"); string(code) != "1\n" || string(stderr) != want {
+			t.Errorf("cld %s: exit %s, stderr %q, want exit 1, stderr %q", args[0], strings.TrimSpace(string(code)), stderr, want)
+		}
+	}
+	if sessions := s.Sessions(); slices.Contains(sessions, "cld-b") {
+		t.Errorf("sessions %q, want no cld-b", sessions)
+	}
+	if clients := s.MustTmux("list-clients", "-F", "#{session_name}"); clients != "cld-a" {
+		t.Errorf("clients attached to %q, want the first one, to cld-a", clients)
+	}
+}
+
 // keepsFailedSessions reports whether cld keeps a failed claude's session with the tmux under
 // test: from 3.5 on, and in development builds (see bin/cld).
 func keepsFailedSessions(t *testing.T) bool {
