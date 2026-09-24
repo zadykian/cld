@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/zadykian/cld/tests/internal/sandbox"
+	"github.com/zadykian/cld/tests/internal/terminal"
 )
 
 func TestMain(m *testing.M) {
@@ -48,4 +49,25 @@ func run(name string, args ...string) error {
 		return fmt.Errorf("%s: %w", strings.Join(cmd.Args, " "), err)
 	}
 	return nil
+}
+
+// startCld runs cld with args in a new terminal of the given kind; extra variables are added to
+// the sandbox environment.
+func startCld(t *testing.T, s *sandbox.Sandbox, name string, extra map[string]string, args ...string) terminal.Terminal {
+	t.Helper()
+	return startCldIn(t, s, name, s.Work, extra, args...)
+}
+
+func startCldIn(t *testing.T, s *sandbox.Sandbox, name, dir string, extra map[string]string, args ...string) terminal.Terminal {
+	t.Helper()
+	term := terminal.New(t, name, s)
+	env := map[string]string{}
+	for key, value := range s.Env {
+		env[key] = value
+	}
+	for key, value := range extra {
+		env[key] = value
+	}
+	term.Start(s.CldArgv(args...), env, dir)
+	return term
 }
