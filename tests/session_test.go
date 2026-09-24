@@ -83,8 +83,8 @@ func TestNewWorktree(t *testing.T) {
 	}
 }
 
-// Outside a git work tree new -w fails before starting anything: claude would say so in its
-// pane, which closes as claude exits.
+// Outside a git work tree new -w fails before starting anything: claude would say so in a
+// session left to kill or, with tmux 3.3 and 3.4, in a pane that closes as claude exits.
 func TestNewWorktreeRequiresRepository(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

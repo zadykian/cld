@@ -53,8 +53,8 @@ the usual ways (`/exit`, `Ctrl+C` twice, `Ctrl+D` twice) closes the session. Wit
 3.4 the session closes either way: they crash, taking every session with them, when a dead pane
 that had focus reporting on - as claude's does - sees the terminal's focus change or detach.
 
-Joining from a second terminal detaches the first one; claude keeps running in the directory the
-session was created in. A killed session's conversation stays in Claude Code's history, named
+Joining from a second terminal detaches the first one; claude keeps running in its directory,
+wherever you join from. A killed session's conversation stays in Claude Code's history, named
 `cld-NAME` in the `claude --resume` picker.
 
 Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
