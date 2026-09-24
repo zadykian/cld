@@ -1,0 +1,148 @@
+// Command probe stands in for the programs cld starts, in cld's tests.
+//
+// Invoked as "claude", it treats the terminal the way claude does - alternate screen, SGR
+// all-motion mouse, bracketed paste, focus reports, modifyOtherKeys, its own window title - and
+// records what cld and the terminal hand it. Its files in $CLD_PROBE_DIR are named after its pid:
+//
+//	PID.json  argv, working directory and environment, written once at start
+//	PID.in    every input byte, appended as it arrives
+//	PID.ctl   FIFO of commands, one per line:
+//	            title TEXT   set the window title
+//	            osc52 TEXT   copy TEXT to the clipboard (OSC 52 in tmux passthrough)
+//
+// Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
+// $CLD_FAKE_TMUX_VERSION, and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json.
+package main
+
+import (
+	"bufio"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+
+	"golang.org/x/term"
+)
+
+// Record is what the probe writes to PID.json and tmux.json.
+type Record struct {
+	Argv []string          `json:"argv"`
+	Cwd  string            `json:"cwd"`
+	Env  map[string]string `json:"env"`
+}
+
+const modes = "\x1b[?1049h" + // alternate screen
+	"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h" + // SGR all-motion mouse
+	"\x1b[?2004h" + // bracketed paste
+	"\x1b[?1004h" + // focus reports
+	"\x1b[>4;1m" // modifyOtherKeys mode 1
+
+func main() {
+	var err error
+	if filepath.Base(os.Args[0]) == "tmux" {
+		err = fakeTmux()
+	} else {
+		err = claude()
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "probe:", err)
+		os.Exit(1)
+	}
+}
+
+func fakeTmux() error {
+	if len(os.Args) == 2 && os.Args[1] == "-V" {
+		fmt.Println(os.Getenv("CLD_FAKE_TMUX_VERSION"))
+		return nil
+	}
+	return writeRecord(filepath.Join(os.Getenv("CLD_PROBE_DIR"), "tmux.json"))
+}
+
+func claude() error {
+	base := filepath.Join(os.Getenv("CLD_PROBE_DIR"), strconv.Itoa(os.Getpid()))
+	if err := syscall.Mkfifo(base+".ctl", 0o600); err != nil {
+		return err
+	}
+	// Opened read-write so that the FIFO never reports end of file between two writers.
+	control, err := os.OpenFile(base+".ctl", os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	input, err := os.OpenFile(base+".in", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	// Written last: once PID.json exists, the other files do too.
+	if err := writeRecord(base + ".json"); err != nil {
+		return err
+	}
+	if _, err := term.MakeRaw(int(os.Stdin.Fd())); err != nil {
+		return err
+	}
+
+	var mu sync.Mutex
+	write := func(s string) {
+		mu.Lock()
+		defer mu.Unlock()
+		_, _ = os.Stdout.WriteString(s)
+	}
+	write(modes + "\x1b]0;probe\x07probe " + strings.Join(os.Args[1:], " ") + "\r\n")
+	go obey(control, write)
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := os.Stdin.Read(buffer)
+		if n > 0 {
+			if _, err := input.Write(buffer[:n]); err != nil {
+				return err
+			}
+		}
+		if err != nil {
+			return nil // the terminal went away
+		}
+	}
+}
+
+func obey(control *os.File, write func(string)) {
+	lines := bufio.NewScanner(control)
+	for lines.Scan() {
+		command, argument, _ := strings.Cut(lines.Text(), " ")
+		switch command {
+		case "title":
+			write("\x1b]0;" + argument + "\x07")
+		case "osc52":
+			write(passthrough("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(argument)) + "\x07"))
+		}
+	}
+}
+
+// passthrough wraps a sequence so that tmux hands it to the outer terminal unchanged.
+func passthrough(sequence string) string {
+	return "\x1bPtmux;" + strings.ReplaceAll(sequence, "\x1b", "\x1b\x1b") + "\x1b\\"
+}
+
+func writeRecord(path string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	record := Record{Argv: os.Args[1:], Cwd: cwd, Env: map[string]string{}}
+	for _, variable := range os.Environ() {
+		name, value, _ := strings.Cut(variable, "=")
+		record.Env[name] = value
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	// Renamed into place, so a reader never sees a partial file.
+	if err := os.WriteFile(path+".tmp", data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(path+".tmp", path)
+}
