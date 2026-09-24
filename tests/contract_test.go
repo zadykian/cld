@@ -186,6 +186,17 @@ func TestContractClipboard(t *testing.T) {
 	})
 }
 
+// C5: so does a copy claude makes with tmux load-buffer -w, its way of copying inside tmux.
+func TestContractClipboardThroughTmux(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		_, term, probe := startContract(t, name)
+		probe.Send("loadbuffer copied through tmux")
+		if clipboard := term.Clipboard(); clipboard != "copied through tmux" {
+			t.Errorf("clipboard %q, want %q", clipboard, "copied through tmux")
+		}
+	})
+}
+
 // modifiedKeysOn reports whether the last modifyOtherKeys sequence in a terminal's output turns
 // modified keys on (CSI > 4 ; 1 m or CSI > 4 ; 2 m) rather than off (CSI > 4 m).
 func modifiedKeysOn(output []byte) bool {
