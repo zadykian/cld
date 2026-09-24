@@ -395,8 +395,10 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 				t.Error("the terminal was detached")
 			}
 
-			if list := s.RunCld(nil, "list").Stdout; strings.Split(list, "\n")[1] != "bad   exited    "+s.Work {
-				t.Errorf("list:\n%s", list)
+			list := "NAME  STATE     DIRECTORY\n" +
+				"bad   exited    " + s.Work + "\n"
+			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
+				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 			}
 			want := "cld: session 'bad' exists, but its claude exited; end it with cld kill -n bad\n"
 			if result := s.RunCld(nil, "new", "-n", "bad"); result.Code != 1 || result.Stderr != want {
