@@ -41,7 +41,7 @@ cld() {
 | argv form (`new-session ... claude --name "$name"`) | documented in tmux(1): a command given as several arguments is executed directly, without `sh -c`; `cld-a b` arrives as one argument |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, so tmux does not refuse |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
-| real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window |
+| real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
 
@@ -167,9 +167,11 @@ JediTerm 3.76 (read from its source, confirmed by the contract):
   but its UI maps an upward turn to it, so the wheel works;
 - tmux sends claude a focus-in (`CSI I`) when a client attaches, whatever the terminal supports.
 
-Real claude under tmux 3.6 left the pane in key mode `VT10x` during its first 12 seconds (see
-Findings), so whether Shift+Enter reaches the real claude distinctly - as opposed to the probe,
-which asks for modifyOtherKeys - is still to be checked by hand.
+The `VT10x` in Findings came from the probing shell, which carried
+`TERMINAL_EMULATOR=JetBrains-JediTerm`: claude's `--debug` log read `extendedKeys=no (env:
+terminal=pycharm, no answer)` - the leak `env -u` guards against. From a clean environment the
+real claude 2.1.281 put the pane in key mode `Ext 2`, and Shift+Enter inserted a newline (checked
+by hand in a nested tmux).
 
 ## Status
 
