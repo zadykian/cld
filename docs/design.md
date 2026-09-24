@@ -51,7 +51,8 @@ cld() {
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, and tmux refuses a client with `$TMUX` set only when its tty has the name of one of the server's own panes - but see the next row |
 | a dead pane's pty (tmux 3.3a to 3.7c) | tmux closes it but keeps its name (`#{pane_tty}`), and the system hands the name to the next pty opened. A client with `$TMUX` set on that pty - a pane of another tmux - is refused with `sessions should be nested with care, unset $TMUX to force`: tmux compares the client's tty with every pane's, dead or alive. An empty `$TMUX` skips the check; set, even empty, it still makes the client take the terminal for UTF-8 whatever the locale says |
 | a bare `tmux new-session -d -s cld-x` run inside claude's pane (tmux 3.3a to 3.7c) | the pane's `TMUX` names cld's socket, so `cld-x` lands on cld's server, as with `tmux -L cld` by hand; until cld marked its sessions, `list`, `join`, `kill` and `new` took it for one of theirs |
-| `new-session ... \; set -t =NAME: @cld 1` (tmux 3.3a to 3.7c) | the mark is there as the session is, also when claude exits at once; when `new-session` fails (`duplicate session`) tmux skips the rest, so the other session stays unmarked. `set -t =NAME`, like any command that takes a pane, finds nothing: `=NAME:` names the session |
+| `new-session ... \; set -F -t =NAME: @cld '#{session_id}' \; set -w -t =NAME: remain-on-exit failed ...` (tmux 3.3a to 3.7c) | what follows `new-session` takes effect before tmux sees the new pane's program exit, however soon: the mark is there as the session is, and the window's `remain-on-exit` and `pane-died` hook keep and report a pane whose program exits at once. When `new-session` fails (`duplicate session`) tmux skips the rest, so the other session stays unmarked. `set -t =NAME`, like any command that takes a pane, finds nothing: `=NAME:` names the session |
+| `#{@cld}` in a format (tmux 3.3a, 3.7c) | tmux looks a user option up in the server's options, then the pane's, the window's and the global window options, and only then the session's and the global session options: a `@cld 1` set with `-s`, `-g` or `-w` counted for sessions that had none, and a window's `@cld 0` hid a session that had one. Compared with the session's id, a flag set anywhere makes no session cld's; one on the server or a window still hides one |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
@@ -175,18 +176,22 @@ Every Linux job runs the same Docker image a developer runs locally.
    `attach-session`. `list` shows such a session as `exited`, where it started, and `new` refuses
    the name, pointing at `kill`, rather than replacing the session unseen. tmux 3.3 and 3.4 crash
    over a dead pane that had focus reporting on (see Findings), so there the option stays off and a
-   failed session closes as before.
+   failed session closes as before. The option and the hook go to claude's window only (see 9).
 6. tmux 3.3 is the minimum, checked at startup with a clear message.
 7. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
 8. iTerm2: not automated yet (see Status).
 9. Only cld's own sessions: the private server keeps cld's options away from other tmux use, but
    not other tmux use away from cld's server - everything claude runs inherits `TMUX` (see
-   Findings). `new` marks each session it starts with the user option `@cld`, in the tmux command
-   that creates it; `list`, `join` and `kill` see marked sessions only, and `new` refuses a name
-   an unmarked session holds, saying so. Starting claude without `TMUX` would keep its tmux off
-   cld's server, and its passthrough and `load-buffer` copies with it; a server per session would
-   still need the mark for a session made on it by hand, and `list` would have to find the
-   servers. The mark guards against mistakes, not intent: whatever reaches the socket can set it.
+   Findings). `new` marks each session it starts, in the tmux command that creates it: the user
+   option `@cld` holds the session's id, so a `@cld` that a format finds elsewhere first makes no
+   other session cld's (see Findings). `list` shows marked sessions only, and `new`, `join` and
+   `kill` refuse a name an unmarked session holds, saying so and pointing at `tmux -L cld ls`.
+   What `cld` sets for a failed claude (see 5) goes to claude's window, not the server, so such a
+   session whose program fails closes as tmux would close it, rather than staying where `cld`
+   neither lists nor kills it. Starting claude without `TMUX` would keep its tmux off cld's
+   server, and its passthrough and `load-buffer` copies with it; a server per session would still
+   need the mark for a session made on it by hand, and `list` would have to find the servers. The
+   mark guards against mistakes, not intent: whatever reaches the socket can set it.
 
 ## Implementation notes
 

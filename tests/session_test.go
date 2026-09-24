@@ -245,34 +245,40 @@ func TestKillRequiresSession(t *testing.T) {
 
 // cld sees only the sessions it started. A bare tmux that claude runs reaches cld's server through
 // TMUX, as tmux -L cld does by hand, and the sessions made that way are not cld's, even named like
-// its own: list leaves them out, join and kill do not find them, and new refuses their names,
-// saying why.
+// its own and with a @cld on the server or their window: list leaves them out, and join, kill and
+// new refuse their names, saying why. What cld sets for a failed claude stays on claude's window:
+// such a session whose program fails closes, as tmux would close it.
 func TestSeesOnlyItsOwnSessions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	startCld(t, s, "tmux", nil, "new", "-n", "a")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
-	probe.Send("tmux new-session -d -s cld-inside sleep 60")
+	probe.Send("tmux new-session -d -s cld-inside sleep 600")
 	sandbox.WaitFor(t, 10*time.Second, "claude's tmux to make a session", func() bool {
 		return slices.Contains(s.Sessions(), "cld-inside")
 	})
-	s.MustTmux("new-session", "-d", "-s", "cld-by-hand", "sleep", "60")
+	s.MustTmux("new-session", "-d", "-s", "cld-by-hand", "sleep", "600")
+	// cld's mark is a session's own id: a flag on the server's sessions or on a window is none.
+	s.MustTmux("set", "-g", "@cld", "1")
+	s.MustTmux("set", "-w", "-t", "=cld-by-hand:", "@cld", "1")
+	s.MustTmux("new-session", "-d", "-s", "cld-failing", "false")
+	sandbox.WaitFor(t, 10*time.Second, "the failing session to close", func() bool {
+		return !slices.Contains(s.Sessions(), "cld-failing")
+	})
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-by-hand", "cld-inside"}) {
+		t.Fatalf("sessions %q, want [cld-a cld-by-hand cld-inside]", sessions)
+	}
 
 	want := "NAME  STATE     DIRECTORY\n" + "a     attached  " + s.Work + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
 	for _, name := range []string{"inside", "by-hand"} {
-		for _, test := range []struct {
-			command, want string
-		}{
-			{"join", "cld: no session '" + name + "'; create it with cld new -n " + name + "\n"},
-			{"kill", "cld: no session '" + name + "' (see cld list)\n"},
-			{"new", "cld: a tmux session cld-" + name + " that cld did not start is on cld's server (tmux -L cld)\n"},
-		} {
-			if result := s.RunCld(nil, test.command, "-n", name); result.Code != 1 || result.Stderr != test.want {
-				t.Errorf("%s -n %s: exit %d, stderr %q, want exit 1, stderr %q", test.command, name, result.Code, result.Stderr, test.want)
+		want := "cld: session '" + name + "' exists, but cld did not start it (see tmux -L cld ls)\n"
+		for _, command := range []string{"join", "kill", "new"} {
+			if result := s.RunCld(nil, command, "-n", name); result.Code != 1 || result.Stderr != want {
+				t.Errorf("%s -n %s: exit %d, stderr %q, want exit 1, stderr %q", command, name, result.Code, result.Stderr, want)
 			}
 		}
 	}
@@ -547,11 +553,22 @@ func TestServerOptions(t *testing.T) {
 		{"-gv", "allow-passthrough", "on"},
 		{"-gv", "status", "off"},
 		{"-gv", "prefix", "C-q"},
-		{"-gwv", "remain-on-exit", remain},
-		{"-gwv", "remain-on-exit-format", ""},
 	} {
 		if value := s.MustTmux("show", option.scope, option.name); value != option.value {
 			t.Errorf("%s is %q, want %q", option.name, value, option.value)
+		}
+	}
+	// What cld sets for a failed claude goes to claude's window; other sessions keep tmux's.
+	for _, option := range []struct {
+		args  []string
+		value string
+	}{
+		{[]string{"-wv", "-t", "=cld-main:", "remain-on-exit"}, remain},
+		{[]string{"-Awv", "-t", "=cld-main:", "remain-on-exit-format"}, ""},
+		{[]string{"-gwv", "remain-on-exit"}, "off"},
+	} {
+		if value := s.MustTmux(append([]string{"show"}, option.args...)...); value != option.value {
+			t.Errorf("show %s is %q, want %q", strings.Join(option.args, " "), value, option.value)
 		}
 	}
 	if features := s.MustTmux("show", "-sv", "terminal-features"); !slices.Contains(strings.Split(features, "\n"), "xterm*:extkeys") {
@@ -580,8 +597,14 @@ func TestRepeatedRunsDoNotStackOptions(t *testing.T) {
 	if count := len(slices.DeleteFunc(features, func(f string) bool { return f != "xterm*:extkeys" })); count != 1 {
 		t.Errorf("%d xterm*:extkeys entries after three sessions, want 1", count)
 	}
-	if hooks := strings.Split(s.MustTmux("show-hooks", "-g", "pane-died"), "\n"); len(hooks) != 1 {
-		t.Errorf("%d pane-died hooks after three sessions, want 1:\n%s", len(hooks), strings.Join(hooks, "\n"))
+	if hooks := s.MustTmux("show-hooks", "-g", "pane-died"); strings.Contains(hooks, "[") {
+		t.Errorf("global pane-died hooks, want none: they go to claude's window\n%s", hooks)
+	}
+	for _, name := range []string{"a", "b", "c"} {
+		hooks := strings.Split(s.MustTmux("show-hooks", "-w", "-t", "=cld-"+name+":", "pane-died"), "\n")
+		if len(hooks) != 1 || !strings.Contains(hooks[0], "window_active_clients") {
+			t.Errorf("pane-died hooks of %s's window, want one:\n%s", name, strings.Join(hooks, "\n"))
+		}
 	}
 }
 
@@ -676,7 +699,7 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	startCld(t, s, "tmux", nil, "new", "-n", "a")
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
-	want := "cld: this terminal is inside a cld session; detach with C-q d first\n"
+	want := "cld: this terminal is a pane of cld's tmux server; detach with C-q d first\n"
 	for _, args := range [][]string{{"join", "-n", "a"}, {"new", "-n", "b"}} {
 		// The pane runs cld on its own pty, with the TMUX tmux sets for it.
 		out := filepath.Join(s.Root, args[0])

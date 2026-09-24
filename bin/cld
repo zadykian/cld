@@ -6,7 +6,7 @@
 # `claude --name cld-NAME` in the current directory and attaches to it; with -w claude also gets
 # --worktree NAME, makes git worktree NAME from HEAD or reopens it, and works there.
 # `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it, and `cld list`
-# shows the sessions; all three see only the sessions cld started (see find_session). A private
+# shows the sessions; all three see only the sessions cld started (see has_session). A private
 # server (-L cld, no ~/.tmux.conf) keeps these options away from any other tmux use:
 # - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 #   modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
@@ -34,7 +34,7 @@
 #   terminal attaches to, which then takes no keys until q; join shows it instead. tmux 3.3 and
 #   3.4 keep writing focus reports to a dead pane that had them on, as claude's has, and crash -
 #   with every session on the server - when the terminal's focus changes or it detaches, so
-#   there remain-on-exit stays off
+#   there remain-on-exit stays off. These go to claude's window only, not the server (see new)
 # join attaches with -d, detaching other clients. tmux keeps claude's title changes to the pane
 # (set-titles is off), so the tab keeps the session name. The server keeps the environment of
 # the client that started it, and claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux: a
@@ -50,14 +50,15 @@ usage() {
 usage: cld COMMAND [OPTIONS]
 
 Run Claude Code in named sessions on a private tmux server that ignores ~/.tmux.conf.
-Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME".
+Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME". cld sees
+only the sessions it started; tmux -L cld ls lists every session on its server.
 
 commands:
   new [-n NAME] [-w]  create session NAME in the current directory and attach to it
   join [-n NAME]      attach to session NAME, detaching any other terminal from it
   kill [-n NAME]      end session NAME and the claude running in it
-  list                list the sessions: name, whether a terminal is attached (or claude
-                      exited), and the directory claude is in
+  list                list the sessions cld started: name, whether a terminal is
+                      attached (or claude exited), and the directory claude is in
   help                show this help
   version             show the version
 
@@ -119,17 +120,24 @@ no_arguments() {
     esac
 }
 
-# find_session: sets owner to "cld" when session $name is one cld started, to "other" when a
-# session of that name is not, and to nothing when there is none. new marks each session it
-# starts with the user option @cld: whatever claude runs inherits TMUX, which takes a bare tmux to
-# cld's server, and a session made there that way - or by hand with tmux -L cld - is not cld's.
+# has_session: whether session $name exists; a session of that name that cld did not start ends
+# cld with an error. new marks the sessions it starts: the user option @cld holds the session's
+# id, which $mine checks. Whatever claude runs inherits TMUX, which takes a bare tmux to cld's
+# server, and a session made there that way - or by hand with tmux -L cld - is not cld's. The
+# mark is the id rather than a flag because a format looks @cld up in the server's, the pane's
+# and the window's options before the session's, and a flag set there would mark any session.
 # The filter compares whole names, where a target "cld-rev" would find cld-review. No server, no
 # session.
-find_session() {
-    local filter="#{==:#{session_name},$name}"
-    owner=$(tmux -L cld list-sessions -f "$filter" -F '#{?#{@cld},cld,other}' 2>&1) && return
-    no_server "$owner" || die 1 "$owner"
-    owner=
+mine='#{==:#{@cld},#{session_id}}'
+has_session() {
+    local filter="#{==:#{session_name},$name}" found
+    if ! found=$(tmux -L cld list-sessions -f "$filter" -F "#{?$mine,cld,other}" 2>&1); then
+        no_server "$found" || die 1 "$found"
+        return 1
+    fi
+    [[ $found != other ]] ||
+        die 1 "session '$suffix' exists, but cld did not start it (see tmux -L cld ls)"
+    [[ $found == cld ]]
 }
 
 # no_server ERROR: whether tmux failed because cld's server is not running.
@@ -198,21 +206,17 @@ hint="display-message -d 0 'claude exited with $how: C-q d detaches, cld kill -n
 # cld makes the check itself, on the live panes, and gives its client an empty TMUX, which tmux's
 # check skips; set, even empty, TMUX still tells the client that the terminal takes UTF-8.
 if [[ $command == new || $command == join ]]; then
-    ! own_pane || die 1 "this terminal is inside a cld session; detach with C-q d first"
+    ! own_pane || die 1 "this terminal is a pane of cld's tmux server; detach with C-q d first"
     [[ -z ${TMUX-} ]] || TMUX=
 fi
 
 case $command in
 new)
-    find_session
-    case $owner in
-    cld)
+    if has_session; then
         [[ $(tmux -L cld list-panes -t "=$name" -F '#{pane_dead}') != 1 ]] ||
             die 1 "session '$suffix' exists, but its claude exited; end it with cld kill -n $suffix"
         die 1 "session '$suffix' exists; attach to it with cld join -n $suffix"
-        ;;
-    other) die 1 "a tmux session $name that cld did not start is on cld's server (tmux -L cld)" ;;
-    esac
+    fi
     claude=(claude --name "$name")
     if $worktree; then
         # cld reports a missing repository in the terminal; claude would report it in a session
@@ -225,36 +229,38 @@ new)
     fi
     printf '\033]0;✳ %s\007' "$name"
     # claude and its arguments go to tmux as separate words: tmux then executes them directly
-    # instead of through sh -c. The mark comes in the same tmux command as the session, which
-    # tmux cuts short when new-session fails: a session of that name made meanwhile stays
-    # unmarked. The target ends in ":" because set takes a pane, which "=NAME" does not find.
+    # instead of through sh -c. What follows new-session in the same tmux command - the mark,
+    # remain-on-exit and the pane-died hook, which go to claude's window only, so that a session
+    # made on the server without cld closes as tmux would - takes effect before tmux sees claude
+    # exit, however soon; tmux cuts the command short when new-session fails, so a session of
+    # that name made meanwhile stays unmarked. The targets end in ":" because set takes a pane,
+    # which "=NAME" does not find.
     exec env -u TERMINAL_EMULATOR tmux -L cld -f /dev/null \
         set -s extended-keys on \; set -s 'terminal-features[100]' 'xterm*:extkeys' \; \
         set -s focus-events on \; \
         set -g mouse on \; set -g allow-passthrough on \; set -g status off \; \
         set -g prefix C-q \; bind C-q send-prefix \; \
-        set -g remain-on-exit "$remain" \; set -g remain-on-exit-format '' \; \
-        set-hook -g pane-died "if -F '#{window_active_clients}' \"$hint\"" \; \
         new-session -s "$name" -n "$suffix" -c "$PWD" "${claude[@]}" \; \
-        set -t "=$name:" @cld 1
+        set -F -t "=$name:" @cld '#{session_id}' \; \
+        set -w -t "=$name:" remain-on-exit "$remain" \; \
+        set -w -t "=$name:" remain-on-exit-format '' \; \
+        set-hook -w -t "=$name:" pane-died "if -F '#{window_active_clients}' \"$hint\""
     ;;
 join)
-    find_session
-    [[ $owner == cld ]] || die 1 "no session '$suffix'; create it with cld new -n $suffix"
+    has_session || die 1 "no session '$suffix'; create it with cld new -n $suffix"
     printf '\033]0;✳ %s\007' "$name"
     # After attach-session in one command list, the hint goes to this terminal, attached by then.
     exec tmux -L cld attach-session -d -t "=$name" \; if -F '#{pane_dead}' "$hint"
     ;;
 kill)
     # claude gets SIGHUP, as when its terminal closes; an attached terminal is detached.
-    find_session
-    [[ $owner == cld ]] || die 1 "no session '$suffix' (see cld list)"
+    has_session || die 1 "no session '$suffix' (see cld list)"
     tmux -L cld kill-session -t "=$name"
     ;;
 list)
     # pane_current_path is the directory claude is in now, not the one its session started in;
-    # once claude has exited there is none, and list shows where the session started. The
-    # sessions cld did not start have no @cld (see find_session).
+    # once claude has exited there is none, and list shows where the session started. Only the
+    # sessions cld started hold their id in @cld (see has_session).
     state_format='#{?pane_dead,exited,#{?session_attached,attached,detached}}'
     path_format='#{?pane_dead,#{session_path},#{pane_current_path}}'
     format="#{session_name}"$'\t'"$state_format"$'\t'"$path_format"
@@ -262,7 +268,7 @@ list)
     # over ssh, in containers and cron - with "_" for each character it cannot print: the tabs,
     # and any non-ASCII letter in a directory. -u marks the client UTF-8, so the output arrives
     # as it is.
-    if ! sessions=$(tmux -u -L cld list-sessions -f '#{@cld}' -F "$format" 2>&1); then
+    if ! sessions=$(tmux -u -L cld list-sessions -f "$mine" -F "$format" 2>&1); then
         no_server "$sessions" || die 1 "$sessions"
         exit 0
     fi

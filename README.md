@@ -11,7 +11,7 @@ cld new             # create the session "cld-main" in the current directory
 cld new -n review   # create the session "cld-review"
 cld new -n fix -w   # create "cld-fix", with claude in the git worktree "fix"
 cld join -n review  # attach to it again, from this terminal or another one
-cld list            # list the sessions
+cld list            # list the sessions cld started
 cld kill -n review  # end the session and its claude
 ```
 
@@ -37,7 +37,7 @@ of letters, digits, `_` and `-`; without `-n` it is `main`.
 | `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session; claude exits as when its terminal closes |
-| `cld list` | list the sessions: name, whether a terminal is attached (or claude exited), and the directory claude is in |
+| `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in |
 | `cld help` | show the usage |
 | `cld version` | show the version |
 
@@ -61,12 +61,13 @@ wherever you join from. A killed session's conversation stays in Claude Code's h
 `cld` sees only the sessions it started: `cld new` marks each one with the tmux option `@cld`.
 Whatever claude runs - its Bash tool, a hook - reaches cld's tmux server with a plain `tmux`, as
 `tmux -L cld` does by hand, and a session made that way is not cld's, whatever its name: `cld list`
-leaves it out, `join` and `kill` do not find it, and `new` refuses its name, saying why.
+leaves it out, and `new`, `join` and `kill` refuse its name, saying so. `tmux -L cld ls` lists
+every session on the server.
 
 Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
 the two commands. cld 0.2.0 and earlier did not mark their sessions, so later versions do not see
-the sessions they started: end them before upgrading, or afterwards with
-`tmux -L cld kill-session -t =cld-NAME`.
+the sessions they started: end them before upgrading, or afterwards find them with
+`tmux -L cld ls` and end them with `tmux -L cld kill-session -t =cld-NAME`.
 
 ### Worktrees
 
@@ -106,8 +107,8 @@ your `~/.tmux.conf` never touches claude:
   passthrough;
 - `status off`: claude keeps the whole tab;
 - prefix `C-q`: claude binds `C-b` and nearly every other Ctrl key, but not `C-q`;
-- `remain-on-exit failed` (tmux 3.5 or newer): a claude that exits with an error keeps its pane,
-  so its message stays readable;
+- `remain-on-exit failed` on claude's window (tmux 3.5 or newer): a claude that exits with an
+  error keeps its pane, so its message stays readable;
 - the tab title is set to `✳ cld-NAME`, and tmux keeps claude's own title changes to its pane;
 - `TERMINAL_EMULATOR` is removed from the server's environment: claude trusts it over
   `TERM_PROGRAM=tmux`, and a server started from a JetBrains terminal would otherwise make every
