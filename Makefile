@@ -1,4 +1,6 @@
 PREFIX ?= $(HOME)/.local
+# Terminals the terminal contract runs against (see tests/main_test.go).
+TERMINALS ?= tmux
 # Docker checks: the base image picks the tmux version (see tests/Dockerfile).
 BASE ?= debian:bookworm
 IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))
@@ -14,7 +16,7 @@ lint:
 	go vet ./...
 
 test:
-	cd tests && go test -count=1 ./...
+	cd tests && CLD_TERMINALS=$(TERMINALS) go test -count=1 ./...
 
 docker-image:
 	docker build --build-arg BASE=$(BASE) -t $(IMAGE) -f tests/Dockerfile .

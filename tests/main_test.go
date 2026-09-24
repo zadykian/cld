@@ -1,6 +1,7 @@
 // Package tests holds cld's tests. They run cld against real tmux servers, one private world per
 // test (see internal/sandbox), with a probe in claude's place (see probe).
 //
+// CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux").
 // CLD_BASH runs cld under a specific bash.
 package tests
 
@@ -15,6 +16,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
+
+var terminals = strings.Split(envOr("CLD_TERMINALS", "tmux"), ",")
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "cld-tests.")
@@ -49,6 +52,23 @@ func run(name string, args ...string) error {
 		return fmt.Errorf("%s: %w", strings.Join(cmd.Args, " "), err)
 	}
 	return nil
+}
+
+func envOr(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
+}
+
+// forEachTerminal runs body as a subtest per terminal in CLD_TERMINALS.
+func forEachTerminal(t *testing.T, body func(t *testing.T, name string)) {
+	for _, name := range terminals {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			body(t, name)
+		})
+	}
 }
 
 // startCld runs cld with args in a new terminal of the given kind; extra variables are added to
