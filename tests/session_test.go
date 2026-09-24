@@ -85,6 +85,29 @@ func TestReattachFromElsewhereKeepsClaude(t *testing.T) {
 	}
 }
 
+// claude exiting closes its own session only: the other session, its client and its claude
+// carry on.
+func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	a := startCld(t, s, "tmux", nil, "a")
+	s.WaitProbes(1)
+	b := startCld(t, s, "tmux", nil, "b")
+	probes := map[string]*sandbox.Probe{}
+	for _, probe := range s.WaitProbes(2) {
+		probes[probe.Argv[1]] = probe
+	}
+	waitClients(t, s, 2)
+	probes["cld-a"].Send("exit")
+	sandbox.WaitFor(t, 10*time.Second, "cld a to exit", func() bool { return !a.Running() })
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b"}) {
+		t.Errorf("sessions %q, want [cld-b]", sessions)
+	}
+	if !b.Running() || !probes["cld-b"].Alive() {
+		t.Error("session b did not survive session a's claude exiting")
+	}
+}
+
 func TestSessionsShareOneServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
