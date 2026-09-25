@@ -250,9 +250,10 @@ func TestContractClaudeExit(t *testing.T) {
 }
 
 // C10: the session list reads the terminal's own keys, not tmux's: Down and Enter join the second
-// session, with the terminal handed to tmux as it was before the list, which a detach shows; Esc
-// leaves the terminal as it was. (Whether a JetBrains IDE passes Esc on to its terminal depends on
-// its keymap, which the driver cannot see; Ctrl+C also leaves.)
+// session, with the terminal handed to tmux as it was before the list, which a detach shows;
+// Ctrl+X twice kills the selected session; Esc leaves the terminal as it was. (Whether a JetBrains
+// IDE passes Esc and Ctrl+X on to its terminal depends on its keymap, which the driver cannot see;
+// Ctrl+C also leaves.)
 func TestContractList(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		t.Run("join", func(t *testing.T) {
@@ -273,6 +274,32 @@ func TestContractList(t *testing.T) {
 				t.Errorf("terminal title %q, want %q", title, "✳ cld-b")
 			}
 			term.Keys("C-q", "d")
+			if code := list.code(t); code != "0" {
+				t.Errorf("exit %s, want 0", code)
+			}
+			list.checkRestored(t, term)
+		})
+		t.Run("kill", func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			probes := detachedSessions(t, s, "a", "b")
+			term := terminal.New(t, name, s)
+			list := startList(t, s, term, listScript, nil)
+			waitScreen(t, term, listHints)
+			armThen(t, term, func() {
+				waitScreen(t, term, killArmed)
+				if !probes["a"].Alive() {
+					t.Error("the first Ctrl+X killed a")
+				}
+			}, "C-x")
+			sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
+			sandbox.WaitFor(t, 10*time.Second, "the list to show b alone, selected", func() bool {
+				return selectedRow(term) == "b" && !strings.Contains(term.Screen(), "a     detached")
+			})
+			if !probes["b"].Alive() {
+				t.Error("claude b exited")
+			}
+			term.Keys("Escape")
 			if code := list.code(t); code != "0" {
 				t.Errorf("exit %s, want 0", code)
 			}

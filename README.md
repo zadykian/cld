@@ -11,7 +11,7 @@ cld new             # create the session "cld-main" in the current directory
 cld new -n review   # create the session "cld-review"
 cld new -n fix -w   # create "cld-fix", with claude in the git worktree "fix"
 cld join -n review  # attach to it again, from this terminal or another one
-cld list            # pick one of the sessions cld started with the arrow keys; Enter joins it
+cld list            # pick a session with the arrow keys: Enter joins it, Ctrl+X twice kills it
 cld kill -n review  # end the session and its claude
 ```
 
@@ -76,7 +76,7 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session and its tmux server; claude exits as when its terminal closes, and what claude started through tmux ends too |
-| `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in. On a terminal, pick a session with the arrow keys and press Enter to join it (see below); `cld list \| cat` prints the table |
+| `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in. On a terminal, pick a session with the arrow keys and press Enter to join it, or Ctrl+X twice to kill it (see below); `cld list \| cat` prints the table |
 | `cld help [COMMAND]` | show the help of cld, or of one command: its options and their defaults. `cld -h` and `cld COMMAND -h` (or `--help`) do the same |
 | `cld version` | show the version |
 
@@ -92,15 +92,30 @@ at the bottom:
 |---|---|
 | `↑` / `↓` | select a session |
 | `Enter` | join it, as `cld join -n NAME` does: another terminal attached to it is detached |
+| `Ctrl+X` | ask to kill it: the bottom line asks for `Ctrl+X` again |
+| `Ctrl+X` again, within two seconds | kill it with its tmux server, as `cld kill -n NAME` does: claude exits, and a terminal attached to it is detached |
+| `Esc`, once `Ctrl+X` has asked | keep the session; the list stays open |
 | `Esc`, `Ctrl+C` | leave, printing the table |
+
+After the first `Ctrl+X`, two seconds without the second one also keep the session, and any other
+key keeps it and then does what it does: an arrow moves the selection, `Enter` joins, `Ctrl+C`
+leaves. After a kill the list reads the sessions again and selects the row that took the killed
+one's place, or the one above it. `Ctrl+X` then does nothing until you have not pressed it for a
+second, or pressed another key: a key held down repeats, and the second `Ctrl+X` held a little too
+long would otherwise go on to kill the newly selected session, and the next. Like `cld kill`, the
+list leaves a `cld new -w` worktree where it is, and the conversation stays in `claude --resume`.
+The state `attached` counts terminals only: someone on the session from claude.ai or the Claude
+app through Remote Control does not show, and a kill ends the session for them too.
 
 Other keys do nothing, keys with `Alt` among them: terminals send those as `Esc` and the key, so
 `Esc` followed at once by another key is that key with `Alt` - but for `Esc` itself: `Esc` twice,
 or `Alt+Esc`, leaves as `Esc` does.
 
-If the session has ended when you press Enter, the list says so at the bottom, reads the sessions
-again and stays open. It reads them only then and when it opens, so a session made or ended
-elsewhere shows once you leave and run `cld list` again. Where its output or input is not a
+If the session has ended when you press Enter or the second `Ctrl+X`, the list says so at the
+bottom, reads the sessions again and stays open. The second `Ctrl+X` also ends nothing when the
+session was ended and made again under the same name since the list read it: its claude is another
+one. The list reads the sessions only then, after a kill and when it opens, so a session made or
+ended elsewhere shows once you leave and run `cld list` again. Where its output or input is not a
 terminal (`cld list | cat`, `$(cld list)`), `TERM` is unset or `dumb`, it runs in the background
 (`cld list &`), or in a pane of one of cld's tmux servers - claude's external editor, say -
 `cld list` prints the table and exits, as before; with no sessions it prints nothing. A script
@@ -151,7 +166,8 @@ A new worktree branches from your current `HEAD`, not from the remote's default 
 `claude --worktree` does by default: `cld` also puts `"worktree":{"baseRef":"head"}` in the
 settings it passes claude, which overrides the `worktree.baseRef` setting.
 
-`cld kill` leaves the worktree where it is, and `cld new -n NAME -w` reopens it.
+`cld kill`, and `Ctrl+X` in `cld list`, leave the worktree where it is, and `cld new -n NAME -w`
+reopens it.
 
 claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
 (or `cld new`) there once first; otherwise claude says so and exits, and the session stays open
@@ -216,8 +232,8 @@ clipboard, paste, claude exiting, and the keys of the session list - against eac
 | JetBrains IDEs (JediTerm) | JediTerm's emulator, headless, typing through its own key handling | Shift+Enter arrives as ESC CR (the IDE's newline setting); no focus reports; no OSC 52 |
 | iTerm2 | not automated yet | |
 
-Whether a JetBrains IDE passes `Esc` on to its terminal depends on its keymap, which the tests
-cannot see; `Ctrl+C` also leaves the session list.
+Whether a JetBrains IDE passes `Esc` and `Ctrl+X` on to its terminal depends on its keymap, which
+the tests cannot see; `Ctrl+C` also leaves the session list.
 
 ## Development
 

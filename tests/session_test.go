@@ -19,6 +19,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/zadykian/cld/tests/internal/sandbox"
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
@@ -1049,10 +1051,13 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	}
 }
 
-// The footer of the interactive list, on a detached row and on an attached one.
+// The footer of the interactive list, on a detached row and on an attached one, and once Ctrl+X
+// has armed the kill.
 const (
-	listHints         = "↑/↓ to navigate · enter to join · esc to quit"
-	listHintsAttached = "↑/↓ to navigate · enter to join and detach its terminal · esc to quit"
+	listHints         = "↑/↓ to navigate · enter to join · ctrl+x to kill · esc to quit"
+	listHintsAttached = "↑/↓ to navigate · enter to join and detach its terminal · ctrl+x to kill · esc to quit"
+	killArmed         = "ctrl+x again to kill · esc to keep"
+	killArmedAttached = "ctrl+x again to kill and detach its terminal · esc to keep"
 )
 
 // On a terminal, cld list shows cld's sessions on the alternate screen, the first one selected:
@@ -1616,7 +1621,7 @@ func TestListJoin(t *testing.T) {
 		if clients := s.Clients(); !slices.Equal(clients, []string{"cld-a"}) {
 			t.Errorf("clients attached to %q, want one, to cld-a", clients)
 		}
-		if count := lookup.lookups(t); count != 1 {
+		if count := lookup.begun(t); count != 1 {
 			t.Errorf("cld-a looked up %d times, want once: the second Enter looked it up again", count)
 		}
 	})
@@ -1829,14 +1834,14 @@ func TestListJoin(t *testing.T) {
 			prefix+shown,
 			cutTo("  b     detached  "+s.Work, 40),
 			"",
-			cutTo(listHintsAttached, 40))
+			footerIn(listHintsAttached, 40))
 		term.Keys("Down")
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			"  a     attached  "+shown,
 			cutTo("> b     detached  "+s.Work, 40),
 			"",
-			cutTo(listHints, 40))
+			footerIn(listHints, 40))
 		term.Keys("Escape")
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
@@ -1924,14 +1929,14 @@ func TestListJoin(t *testing.T) {
 			cutTo("> a     detached  "+long, 30),
 			cutTo("  b     detached  "+s.Work, 30),
 			"",
-			cutTo(listHints, 30))
+			footerIn(listHints, 30))
 		term.Keys("Down")
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			cutTo("  a     detached  "+long, 30),
 			cutTo("> b     detached  "+s.Work, 30),
 			"",
-			cutTo(listHints, 30))
+			footerIn(listHints, 30))
 	})
 
 	// A control character in a directory shows as "?", so that none moves the cursor or changes
@@ -2035,6 +2040,720 @@ func TestListJoin(t *testing.T) {
 	})
 }
 
+// In the interactive list, Ctrl+X arms the kill of the selected session and a second Ctrl+X
+// within two seconds kills it, as cld kill -n NAME does; Esc keeps it. The list then reads the
+// sessions again and stays open, the selection on the row that took the killed row's place.
+func TestListKill(t *testing.T) {
+	t.Parallel()
+	// A terminal attached to the session is detached and left clean, as by cld kill, and the
+	// footer says so first; the other sessions carry on.
+	t.Run("kill", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "c")
+		other := startCld(t, s, "tmux", nil, "new", "-n", "b")
+		waitClients(t, s, 1)
+		for _, probe := range s.WaitProbes(3) {
+			if probe.Argv[1] == "cld-b" {
+				probes["b"] = probe
+			}
+		}
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		rows := []string{
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  " + s.Work,
+			"> b     attached  " + s.Work,
+			"  c     detached  " + s.Work,
+			"",
+		}
+		waitScreen(t, term, listHints)
+		term.Keys("Down")
+		waitLines(t, term, append(rows, listHintsAttached)...)
+		armThen(t, term, func() {
+			waitLines(t, term, append(rows, killArmedAttached)...)
+			if footer := cells(term.Styled())[5]; footer != "[intensity=2]"+killArmedAttached {
+				t.Errorf("the footer is %q, want it dim", footer)
+			}
+			if !probes["b"].Alive() || !other.Running() {
+				t.Error("the first Ctrl+X killed b")
+			}
+		}, "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  "+s.Work,
+			"> c     detached  "+s.Work,
+			"",
+			listHints)
+		sandbox.WaitFor(t, 10*time.Second, "claude b to exit", func() bool { return !probes["b"].Alive() })
+		sandbox.WaitFor(t, 10*time.Second, "b's terminal to be detached", func() bool { return !other.Running() })
+		if modes := other.Modes(); modes.AltScreen || modes.Mouse {
+			t.Errorf("modes of b's terminal after the kill %+v, want none", modes)
+		}
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-c"}) {
+			t.Errorf("sessions %q, want [cld-a cld-c]", sessions)
+		}
+		for _, name := range []string{"a", "c"} {
+			if !probes[name].Alive() {
+				t.Errorf("claude %s exited", name)
+			}
+		}
+		list.checkRaw(t)
+		term.Keys("Escape")
+		if code := list.code(t); code != "0" {
+			t.Errorf("exit %s, want 0", code)
+		}
+		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n"+"c     detached  "+s.Work+"\n")
+		list.checkRestored(t, term)
+	})
+
+	// Esc disarms the kill and does nothing more: the list stays open, and the next Ctrl+X arms
+	// the kill again.
+	t.Run("esc", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		rows := []string{
+			"  NAME  STATE     DIRECTORY",
+			"> a     detached  " + s.Work,
+			"  b     detached  " + s.Work,
+			"",
+		}
+		waitLines(t, term, append(rows, listHints)...)
+		armThen(t, term, func() { waitLines(t, term, append(rows, killArmed)...) }, "Escape")
+		waitLines(t, term, append(rows, listHints)...)
+		term.Keys("C-x")
+		waitLines(t, term, append(rows, killArmed)...)
+		if list.exited() {
+			t.Error("the list closed")
+		}
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) || !probes["a"].Alive() {
+			t.Errorf("sessions %q, claude a alive: %v; want both, a alive", sessions, probes["a"].Alive())
+		}
+	})
+
+	// Two seconds after the first Ctrl+X, the kill disarms; a Ctrl+X after that arms it again.
+	t.Run("timeout", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b")
+		term := startCld(t, s, "tmux", nil, "list")
+		rows := []string{
+			"  NAME  STATE     DIRECTORY",
+			"> a     detached  " + s.Work,
+			"  b     detached  " + s.Work,
+			"",
+		}
+		waitLines(t, term, append(rows, listHints)...)
+		pressed := time.Now()
+		term.Keys("C-x")
+		waitLines(t, term, append(rows, killArmed)...)
+		waitLines(t, term, append(rows, listHints)...)
+		// Seeing the footer change takes a while: two seconds more is slack for load.
+		if waited := time.Since(pressed); waited < 2*time.Second || waited > 4*time.Second {
+			t.Errorf("the kill disarmed %v after Ctrl+X, want two seconds", waited)
+		}
+		term.Keys("C-x")
+		waitLines(t, term, append(rows, killArmed)...)
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) || !probes["a"].Alive() {
+			t.Errorf("sessions %q, claude a alive: %v; want both, a alive", sessions, probes["a"].Alive())
+		}
+	})
+
+	// A key that has come by the end of the two seconds counts as typed within them, although cld
+	// has not read it yet - held up, stopped here, over their end: Esc keeps the session and the
+	// list open, and a second Ctrl+X kills it. Once cld goes on, the key and the end of the wait
+	// are there to take together, and cld may take either first: Esc is typed three times.
+	t.Run("read late", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, pidScript, nil)
+		pid, err := strconv.Atoi(list.read(t, "pid"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := []string{
+			"  NAME  STATE     DIRECTORY",
+			"> a     detached  " + s.Work,
+			"  b     detached  " + s.Work,
+			"",
+		}
+		waitLines(t, term, append(rows, listHints)...)
+		// readLate arms the kill, stops cld, types key and has cld go on once the two seconds are
+		// over and key is there to read. When cld stopped too late to be sure that the two seconds
+		// were not over by then, it types nothing, and reports false once the kill has disarmed;
+		// the third time, the test is skipped.
+		late := 0
+		readLate := func(key string) bool {
+			t.Helper()
+			pressed := time.Now()
+			term.Keys("C-x")
+			waitLines(t, term, append(rows, killArmed)...)
+			armed := time.Now()
+			if err := syscall.Kill(pid, syscall.SIGSTOP); err != nil {
+				t.Fatal(err)
+			}
+			sandbox.WaitFor(t, 10*time.Second, "cld to stop", func() bool { return isStopped(pid) })
+			inTime := time.Since(pressed) < 2*time.Second
+			if inTime {
+				term.Keys(key)
+				sandbox.WaitFor(t, 10*time.Second, "the key to reach the terminal", func() bool { return list.unread(t) })
+				time.Sleep(time.Until(armed.Add(2200 * time.Millisecond)))
+			}
+			if err := syscall.Kill(pid, syscall.SIGCONT); err != nil {
+				t.Fatal(err)
+			}
+			if !inTime {
+				waitLines(t, term, append(rows, listHints)...)
+				if late++; late == 3 {
+					t.Skip("cld stopped two seconds after Ctrl+X or later three times: too loaded to tell")
+				}
+			}
+			return inTime
+		}
+		for kept := 0; kept < 3; {
+			if !readLate("Escape") {
+				continue
+			}
+			sandbox.WaitFor(t, 10*time.Second, "the list to take Esc", func() bool {
+				return list.exited() || strings.Contains(term.Screen(), listHints)
+			})
+			if list.exited() {
+				t.Fatalf("Esc %d of 3, read late, closed the list", kept+1)
+			}
+			waitLines(t, term, append(rows, listHints)...)
+			kept++
+		}
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) || !probes["a"].Alive() {
+			t.Errorf("sessions %q, claude a alive: %v; want both, a alive", sessions, probes["a"].Alive())
+		}
+		for !readLate("C-x") {
+		}
+		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", "> b     detached  "+s.Work, "", listHints)
+		term.Keys("Escape")
+		if code := list.code(t); code != "0" {
+			t.Errorf("exit %s, want 0", code)
+		}
+		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"b     detached  "+s.Work+"\n")
+		if !probes["b"].Alive() {
+			t.Error("claude b exited")
+		}
+	})
+
+	// Any other key disarms the kill, and then does what it does: an arrow moves the selection, a
+	// letter does nothing more, and Ctrl+C leaves. A Ctrl+X right after the key, within the two
+	// seconds, then arms the kill again rather than kill.
+	t.Run("other keys", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		lines := func(selected, footer string) []string {
+			lines := []string{"  NAME  STATE     DIRECTORY"}
+			for _, row := range []string{"a", "b"} {
+				marker := " "
+				if row == selected {
+					marker = ">"
+				}
+				lines = append(lines, marker+" "+row+"     detached  "+s.Work)
+			}
+			return append(lines, "", footer)
+		}
+		waitLines(t, term, lines("a", listHints)...)
+		term.Keys("C-x")
+		waitLines(t, term, lines("a", killArmed)...)
+		term.Keys("Down", "C-x")
+		waitLines(t, term, lines("b", killArmed)...)
+		term.Keys("k", "C-x")
+		waitLines(t, term, lines("b", killArmed)...)
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
+			t.Errorf("sessions %q, want [cld-a cld-b]", sessions)
+		}
+		term.Keys("C-c")
+		if code := list.code(t); code != "0" {
+			t.Errorf("exit %s, want 0", code)
+		}
+		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n"+"b     detached  "+s.Work+"\n")
+		for name, probe := range probes {
+			if !probe.Alive() {
+				t.Errorf("claude %s exited", name)
+			}
+		}
+	})
+
+	// Enter, once Ctrl+X has armed the kill, disarms it and joins the selected session, which the
+	// kill leaves alone.
+	t.Run("enter", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		waitScreen(t, term, listHints)
+		term.Keys("Down")
+		sandbox.WaitFor(t, 10*time.Second, "the selection to move to b", func() bool { return selectedRow(term) == "b" })
+		armThen(t, term, func() { waitScreen(t, term, killArmed) }, "Enter")
+		waitScreen(t, term, "probe --name cld-b")
+		waitClients(t, s, 1)
+		if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b"}) {
+			t.Errorf("clients attached to %q, want one, to cld-b", clients)
+		}
+		term.Keys("C-q", "d")
+		if code := list.code(t); code != "0" {
+			t.Errorf("exit %s, want 0", code)
+		}
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
+			t.Errorf("sessions %q, want [cld-a cld-b]", sessions)
+		}
+		for name, probe := range probes {
+			if !probe.Alive() {
+				t.Errorf("claude %s exited", name)
+			}
+		}
+	})
+
+	// A key held down repeats: the terminal types it again after a delay, and then many times a
+	// second. After the Ctrl+X that killed, Ctrl+X does nothing until none has come for a second,
+	// so that the repeats of that Ctrl+X, held a little too long, do not arm and kill the session
+	// that took the killed one's place, and the next; another key ends the wait at once.
+	t.Run("held down", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b", "c")
+		term := startCld(t, s, "tmux", nil, "list")
+		header := "  NAME  STATE     DIRECTORY"
+		row := func(marker, name string) string { return marker + " " + name + "     detached  " + s.Work }
+		waitScreen(t, term, listHints)
+		term.Keys("C-x")
+		waitScreen(t, term, killArmed)
+		// The second Ctrl+X, held down: it repeats after half a second, a common delay, then 20
+		// times a second for a second, past the second after the kill. Two that reach cld a second
+		// apart are two presses rather than a key held down, and end the wait. The terminal times
+		// the keys, but the time it took beyond their waits may have come between any two: where
+		// that may have made a second, the case cannot tell, and is skipped.
+		holding := time.Now()
+		term.Hold("C-x", 500*time.Millisecond, 50*time.Millisecond, 20)
+		if over := time.Since(holding) - 500*time.Millisecond - 20*50*time.Millisecond; over >= 400*time.Millisecond {
+			t.Skipf("typing Ctrl+X held down took %v beyond its waits: two may have reached cld a second apart", over.Round(time.Millisecond))
+		}
+		// Down, after the repeats, moves the selection from b, which took a's place, to c, and ends
+		// the wait: a Ctrl+X right after it arms the kill, and a second one kills c.
+		term.Keys("Down")
+		armThen(t, term, func() {
+			waitLines(t, term, header, row(" ", "b"), row(">", "c"), "", killArmed)
+			sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
+			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b", "cld-c"}) {
+				t.Errorf("sessions %q, want [cld-b cld-c]", sessions)
+			}
+			for _, name := range []string{"b", "c"} {
+				if !probes[name].Alive() {
+					t.Errorf("claude %s exited", name)
+				}
+			}
+		}, "C-x")
+		waitLines(t, term, header, row(">", "b"), "", listHints)
+		// A second without Ctrl+X ends the wait too; the test leaves it half a second more.
+		time.Sleep(1500 * time.Millisecond)
+		term.Keys("C-x")
+		waitLines(t, term, header, row(">", "b"), "", killArmed)
+		if !probes["b"].Alive() {
+			t.Error("claude b exited")
+		}
+	})
+
+	// Killing the last session leaves the list with no sessions, as when its last row has gone
+	// elsewhere: the header over "no sessions", and leaving prints nothing.
+	t.Run("last row", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		waitScreen(t, term, listHints)
+		term.Keys("C-x", "C-x")
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
+		// Ctrl+X has nothing to arm, or to kill; a letter first ends the wait after a kill (see
+		// held down).
+		term.Keys("k", "C-x", "C-x")
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		if list.exited() {
+			t.Error("the list closed")
+		}
+		term.Keys("Escape")
+		if code := list.code(t); code != "0" {
+			t.Errorf("exit %s, want 0", code)
+		}
+		afterList(t, term, "")
+	})
+
+	// An exited session is killed the same way, and the terminal still attached to it is
+	// detached.
+	t.Run("exited", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		detachedSessions(t, s, "a")
+		failed := startCld(t, s, "tmux", nil, "new", "-n", "b")
+		waitClients(t, s, 1)
+		for _, probe := range s.WaitProbes(2) {
+			if probe.Argv[1] == "cld-b" {
+				probe.Send("exit 1")
+			}
+		}
+		waitScreen(t, failed, "claude exited with status 1: C-q d detaches, cld kill -n b ends the session")
+		term := startCld(t, s, "tmux", nil, "list")
+		rows := []string{
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  " + s.Work,
+			"> b     exited    " + s.Work,
+			"",
+		}
+		waitScreen(t, term, listHints)
+		term.Keys("Down")
+		waitLines(t, term, append(rows, listHintsAttached)...)
+		armThen(t, term, func() { waitLines(t, term, append(rows, killArmedAttached)...) }, "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"> a     detached  "+s.Work,
+			"",
+			listHints)
+		sandbox.WaitFor(t, 10*time.Second, "b's terminal to be detached", func() bool { return !failed.Running() })
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
+			t.Errorf("sessions %q, want [cld-a]", sessions)
+		}
+	})
+
+	// A session gone by the second Ctrl+X - killed elsewhere here - is reported, and the list reads
+	// the sessions again and stays open. The steps outside come before the first Ctrl+X, so that
+	// they need not fit in the two seconds.
+	t.Run("gone", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b", "c")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		waitScreen(t, term, listHints)
+		term.Keys("Down")
+		sandbox.WaitFor(t, 10*time.Second, "the selection to move to b", func() bool { return selectedRow(term) == "b" })
+		if result := s.RunCld(nil, "kill", "-n", "b"); result.Code != 0 {
+			t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
+		}
+		armThen(t, term, func() { waitScreen(t, term, killArmed) }, "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  "+s.Work,
+			"> c     detached  "+s.Work,
+			"",
+			"no session 'b'")
+		list.checkRaw(t)
+		if list.exited() {
+			t.Error("the list closed")
+		}
+		for _, name := range []string{"a", "c"} {
+			if !probes[name].Alive() {
+				t.Errorf("claude %s exited", name)
+			}
+		}
+	})
+
+	// A session ended and made again under the same name is another session, with another
+	// claude: the kill ends nothing, as for a session gone, and the list shows the new one.
+	t.Run("replaced", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		old := detachedSessions(t, s, "a", "b", "c")["b"]
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		waitScreen(t, term, listHints)
+		term.Keys("Down")
+		sandbox.WaitFor(t, 10*time.Second, "the selection to move to b", func() bool { return selectedRow(term) == "b" })
+		if result := s.RunCld(nil, "kill", "-n", "b"); result.Code != 0 {
+			t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
+		}
+		sandbox.WaitFor(t, 10*time.Second, "the first claude b to exit", func() bool { return !old.Alive() })
+		detachedSessions(t, s, "b")
+		var replaced *sandbox.Probe
+		for _, probe := range s.Probes() {
+			if probe.Argv[1] == "cld-b" && probe.PID != old.PID {
+				replaced = probe
+			}
+		}
+		if replaced == nil {
+			t.Fatal("no second claude b")
+		}
+		armThen(t, term, func() { waitScreen(t, term, killArmed) }, "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  "+s.Work,
+			"> b     detached  "+s.Work,
+			"  c     detached  "+s.Work,
+			"",
+			"no session 'b'")
+		if !replaced.Alive() {
+			t.Error("the second claude b exited")
+		}
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b", "cld-c"}) {
+			t.Errorf("sessions %q, want [cld-a cld-b cld-c]", sessions)
+		}
+		if list.exited() {
+			t.Error("the list closed")
+		}
+	})
+
+	// A session whose server runs on without it - claude exited, and the tmux session it made keeps
+	// the server running - is refused as cld kill refuses it: the server stays, and the list says
+	// why without the command line's advice.
+	t.Run("lingering server", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b", "c")
+		probes["b"].Send("tmux new-session -d -s side sleep 600")
+		sandbox.WaitFor(t, 10*time.Second, "claude's tmux to make a session", func() bool {
+			return slices.Contains(s.Sessions(), "cld-b/side")
+		})
+		term := startCld(t, s, "tmux", nil, "list")
+		waitScreen(t, term, listHints)
+		term.Keys("Down")
+		sandbox.WaitFor(t, 10*time.Second, "the selection to move to b", func() bool { return selectedRow(term) == "b" })
+		probes["b"].Send("exit")
+		sandbox.WaitFor(t, 10*time.Second, "b's session to end", func() bool {
+			return !slices.Contains(s.Sessions(), "cld-b")
+		})
+		armThen(t, term, func() { waitScreen(t, term, killArmed) }, "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  "+s.Work,
+			"> c     detached  "+s.Work,
+			"",
+			"session 'b' has ended, but its tmux server still runs")
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b/side", "cld-c"}) {
+			t.Errorf("sessions %q, want [cld-a cld-b/side cld-c]", sessions)
+		}
+	})
+
+	// A kill-session that fails leaves the session listed, with what tmux said in the footer, or
+	// its exit status when it said nothing. A tmux first on the PATH fails it.
+	t.Run("kill-session fails", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		detachedSessions(t, s, "a")
+		silent := filepath.Join(s.Root, "silent")
+		env := wrapTmux(t, s, "case \"$*\" in *kill-session*)\n"+
+			"\tif [ -e '"+silent+"' ]; then exit 5; fi\n"+
+			"\techo 'tmux: cannot kill' >&2; exit 5 ;;\n"+
+			"esac\n")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, env)
+		waitScreen(t, term, listHints)
+		row := "> a     detached  " + s.Work
+		term.Keys("C-x", "C-x")
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", row, "", "tmux: cannot kill")
+		s.WriteFile(silent, "")
+		// A letter first ends the wait after a kill (see held down).
+		term.Keys("k", "C-x", "C-x")
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", row, "", "tmux kill-session: exit status 5")
+		list.checkRaw(t)
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
+			t.Errorf("sessions %q, want [cld-a]", sessions)
+		}
+	})
+
+	// When the sessions cannot be read again after a kill, the list says why and keeps its rows,
+	// but for the one it killed. A tmux first on the PATH fails to read them once the test says so.
+	t.Run("read again fails", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		detachedSessions(t, s, "a", "b", "c")
+		broken := filepath.Join(s.Root, "broken")
+		env := wrapTmux(t, s, "case \"$*\" in *'#{?pane_dead,exited'*)\n"+
+			"\tif [ -e '"+broken+"' ]; then echo 'lost the server' >&2; exit 1; fi ;;\n"+
+			"esac\n")
+		term := startCld(t, s, "tmux", env, "list")
+		waitScreen(t, term, listHints)
+		term.Keys("Down")
+		sandbox.WaitFor(t, 10*time.Second, "the selection to move to b", func() bool { return selectedRow(term) == "b" })
+		s.WriteFile(broken, "")
+		term.Keys("C-x", "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  "+s.Work,
+			"> c     detached  "+s.Work,
+			"",
+			"lost the server")
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-c"}) {
+			t.Errorf("sessions %q, want [cld-a cld-c]", sessions)
+		}
+	})
+
+	// The killed session's server exits after the kill, and a read of the sessions that meets it
+	// exiting is told now and then that the server exited unexpectedly (see Findings in
+	// docs/design.md): the list passes over that server, as cld list does. A tmux first on the PATH
+	// fails the first read of the killed session's server after the kill as tmux does then.
+	t.Run("server exiting", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		detachedSessions(t, s, "a", "b")
+		exiting := filepath.Join(s.Root, "exiting")
+		env := wrapTmux(t, s, "case \"$*\" in *'-L cld-a list-sessions '*'#{?pane_dead,exited'*)\n"+
+			"\tif [ -e '"+exiting+"' ]; then rm '"+exiting+"'; echo 'server exited unexpectedly' >&2; exit 1; fi ;;\n"+
+			"esac\n")
+		term := startCld(t, s, "tmux", env, "list")
+		waitScreen(t, term, listHints)
+		s.WriteFile(exiting, "")
+		term.Keys("C-x", "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"> b     detached  "+s.Work,
+			"",
+			listHints)
+		if _, err := os.Stat(exiting); err == nil {
+			t.Error("the list did not read the killed session's server after the kill")
+		}
+	})
+
+	// While the kill runs, keys other than those that leave do nothing: Down leaves the selection
+	// where it is, and Ctrl+X arms nothing - Down has ended the wait after the kill (see held
+	// down), which would keep Ctrl+X from doing anything too. Each key the list takes draws a
+	// frame, which tells the test that the list has taken it. A tmux first on the PATH holds the
+	// kill's lookup.
+	t.Run("keys during the kill", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b")
+		lookup := holdLookup(t, s, "a")
+		term := startCld(t, s, "tmux", lookup.env, "list")
+		waitScreen(t, term, listHints)
+		term.Keys("C-x", "C-x")
+		lookup.held(t)
+		waitFrames(t, term, 3)
+		term.Keys("Down")
+		waitFrames(t, term, 4)
+		term.Keys("C-x")
+		waitFrames(t, term, 5)
+		if row := selectedRow(term); row != "a" {
+			t.Errorf("row %q selected during the kill, want a", row)
+		}
+		if strings.Contains(term.Screen(), killArmed) {
+			t.Error("Ctrl+X armed the kill while the kill ran")
+		}
+		lookup.release(t)
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"> b     detached  "+s.Work,
+			"",
+			listHints)
+		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
+		if !probes["b"].Alive() {
+			t.Error("claude b exited")
+		}
+	})
+
+	// Esc leaves while the kill runs, printing the table: the kill's tmux is killed, and the table
+	// shows what it did by then. Held in its lookup or in kill-session, the kill ends nothing;
+	// held as it reads the sessions again, it has ended the session, which the table leaves out.
+	// A tmux first on the PATH holds the step, once the list has read the sessions it opens with.
+	for _, step := range []struct {
+		name, pattern string
+		ends          bool
+	}{
+		{"lookup", "*'#{==:#{session_name},cld-a} -F #{session_name} #{W:#{P:#{pane_pid} }}'", false},
+		{"kill-session", "*kill-session*", false},
+		{"read", "*'#{?pane_dead,exited'*", true},
+	} {
+		t.Run("quit during the kill's "+step.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			probes := detachedSessions(t, s, "a", "b")
+			hold := holdTmux(t, s, "the kill's "+step.name, step.pattern)
+			term := terminal.New(t, "tmux", s)
+			list := startList(t, s, term, listScript, hold.env)
+			waitScreen(t, term, listHints)
+			hold.start(t)
+			term.Keys("C-x", "C-x")
+			held := hold.held(t)
+			term.Keys("Escape")
+			if code := list.code(t); code != "0" {
+				t.Errorf("exit %s, want 0", code)
+			}
+			if !gone(held) {
+				t.Error("the kill's tmux outlived cld")
+			}
+			table := "NAME  STATE     DIRECTORY\n" + "a     detached  " + s.Work + "\n" + "b     detached  " + s.Work + "\n"
+			sessions := []string{"cld-a", "cld-b"}
+			if step.ends {
+				table, sessions = "NAME  STATE     DIRECTORY\n"+"b     detached  "+s.Work+"\n", []string{"cld-b"}
+			}
+			afterList(t, term, table)
+			list.checkRestored(t, term)
+			if got := s.Sessions(); !slices.Equal(got, sessions) {
+				t.Errorf("sessions %q, want %q", got, sessions)
+			}
+			if probes["a"].Alive() == step.ends {
+				t.Errorf("claude a alive: %v, want %v", !step.ends, step.ends)
+			}
+		})
+	}
+
+	// The kill goes by the pids of all the session's panes, as tmux reports only the active one's
+	// for a session: claude's window split by hand, its other pane selected since the list read
+	// the sessions, is still the session on the row.
+	t.Run("split window", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		probes := detachedSessions(t, s, "a", "b")
+		term := startCld(t, s, "tmux", nil, "list")
+		waitScreen(t, term, listHints)
+		s.MustTmux("cld-a", "split-window", "-d", "-t", "=cld-a:", "sleep", "600")
+		s.MustTmux("cld-a", "select-pane", "-t", "=cld-a:.1")
+		term.Keys("C-x", "C-x")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"> b     detached  "+s.Work,
+			"",
+			listHints)
+		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b"}) {
+			t.Errorf("sessions %q, want [cld-b]", sessions)
+		}
+	})
+
+	// With the kill's hint, the hints on a row with a terminal attached take 86 cells: in 80
+	// columns the arrows' hint goes, so that the others, esc to quit last, show whole.
+	t.Run("80 columns", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		detachedSessions(t, s, "a")
+		startCld(t, s, "tmux", nil, "new", "-n", "b")
+		waitClients(t, s, 1)
+		s.WaitProbes(2)
+		term := terminal.New(t, "tmux", s)
+		term.Resize(80, 24)
+		term.Start(s.CldArgv("list"), s.Env, s.Work)
+		rows := func(selected string) []string {
+			lines := []string{"  NAME  STATE     DIRECTORY"}
+			for _, row := range []string{"a     detached  ", "b     attached  "} {
+				marker := " "
+				if row[:1] == selected {
+					marker = ">"
+				}
+				lines = append(lines, cutTo(marker+" "+row+s.Work, 80))
+			}
+			return append(lines, "")
+		}
+		waitLines(t, term, append(rows("a"), listHints)...)
+		term.Keys("Down")
+		waitLines(t, term, append(rows("b"), "enter to join and detach its terminal · ctrl+x to kill · esc to quit")...)
+		term.Keys("C-x")
+		waitLines(t, term, append(rows("b"), killArmedAttached)...)
+	})
+}
+
 // program is the name of the program process pid runs: from /proc where there is one, which is
 // quicker than ps. A tmux client may name itself "tmux: client" there (prctl in tmux's
 // setproctitle, where the system has no setproctitle of its own).
@@ -2044,6 +2763,26 @@ func program(pid string) string {
 	}
 	name, _ := exec.Command("ps", "-o", "comm=", "-p", pid).Output()
 	return filepath.Base(strings.TrimSpace(string(name)))
+}
+
+// isStopped reports whether process pid is stopped, every thread of it: from /proc where there is
+// one, or else from ps.
+func isStopped(pid int) bool {
+	if tasks, _ := filepath.Glob("/proc/" + strconv.Itoa(pid) + "/task/*/stat"); len(tasks) > 0 {
+		for _, task := range tasks {
+			stat, err := os.ReadFile(task)
+			if err != nil {
+				return false
+			}
+			// The state follows the program's name, which is in parentheses and may hold any.
+			if fields := strings.Fields(string(stat[bytes.LastIndexByte(stat, ')')+1:])); len(fields) == 0 || fields[0] != "T" {
+				return false
+			}
+		}
+		return true
+	}
+	state, _ := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
+	return strings.HasPrefix(strings.TrimSpace(string(state)), "T")
 }
 
 // gitInit makes dir a git repository.
@@ -2137,6 +2876,15 @@ func cutTo(text string, columns int) string {
 	return string(runes[:min(columns, len(runes))])
 }
 
+// footerIn is the list's hints as they show in columns cells: without the arrows' hint when the
+// hints do not all fit, then cut, without the spaces the screen does not show at the end.
+func footerIn(hints string, columns int) string {
+	if utf8.RuneCountInString(hints) > columns {
+		hints = strings.TrimPrefix(hints, "↑/↓ to navigate · ")
+	}
+	return strings.TrimRight(cutTo(hints, columns), " ")
+}
+
 // detachedSessions creates cld's sessions of the given names, each from a terminal of its own
 // that then detaches with C-q d, and returns their claudes by name.
 func detachedSessions(t *testing.T, s *sandbox.Sandbox, names ...string) map[string]*sandbox.Probe {
@@ -2178,33 +2926,55 @@ func wrapTmux(t *testing.T, s *sandbox.Sandbox, script string) map[string]string
 	return map[string]string{"PATH": bin + string(os.PathListSeparator) + s.Env["PATH"]}
 }
 
-// heldLookup holds the lookup of session cld-NAME that Enter makes, for cld run with env, until
-// the test releases it or ends: a tmux first on the PATH (see wrapTmux) waits as long as the
-// file hold is there. It tells the lookup from the read of the sessions, which asks server
-// cld-NAME with the same filter, by the one format that follows. It also counts the lookups, held
-// or not, a line each in hold.lookups.
-type heldLookup struct {
-	hold string
-	env  map[string]string
+// heldTmux holds the tmux commands of a kind that cld run with env runs, from when the test holds
+// them until it releases them or ends: a tmux first on the PATH (see wrapTmux) waits as long as
+// the file hold is there. It also counts the commands that begin, held or not, a line each in
+// hold.begun.
+type heldTmux struct {
+	hold, what string
+	env        map[string]string
 }
 
-func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldLookup {
+// holdLookup holds the lookup of session cld-NAME that Enter and the kill make, from the start. It
+// tells the lookup from the read of the sessions, which asks server cld-NAME with the same filter,
+// by the one format that follows.
+func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldTmux {
 	t.Helper()
-	hold := filepath.Join(s.Root, "hold-"+name)
-	s.WriteFile(hold, "")
+	lookup := holdTmux(t, s, "the lookup of cld-"+name, "*'#{==:#{session_name},cld-"+name+"} -F #{session_name} #{W:#{P:#{pane_pid} }}'")
+	lookup.start(t)
+	return lookup
+}
+
+// holdTmux is ready to hold the tmux commands, described by what, whose arguments match pattern,
+// a pattern of sh's case, once the test calls start.
+func holdTmux(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
+	t.Helper()
+	dir, err := os.MkdirTemp(s.Root, "hold.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hold := filepath.Join(dir, "hold")
 	t.Cleanup(func() { _ = os.Remove(hold) })
-	return heldLookup{hold: hold, env: wrapTmux(t, s, "case \"$*\" in *'#{==:#{session_name},cld-"+name+"} -F #{session_name} #{W:#{P:#{pane_pid} }}')\n"+
-		"\techo $$ >>'"+hold+".lookups'\n"+
-		"\techo $$ >'"+hold+".held'\n"+
+	return heldTmux{hold: hold, what: what, env: wrapTmux(t, s, "case \"$*\" in "+pattern+")\n"+
+		"\techo $$ >>'"+hold+".begun'\n"+
+		"\tif [ -e '"+hold+"' ]; then echo $$ >'"+hold+".held'; fi\n"+
 		"\twhile [ -e '"+hold+"' ]; do sleep 0.05; done ;;\n"+
 		"esac\n")}
 }
 
-// held waits for the lookup to be held, and returns the pid of the tmux holding it.
-func (h heldLookup) held(t *testing.T) int {
+// start holds the commands from now on.
+func (h heldTmux) start(t *testing.T) {
+	t.Helper()
+	if err := os.WriteFile(h.hold, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// held waits for a command to be held, and returns the pid of the tmux holding it.
+func (h heldTmux) held(t *testing.T) int {
 	t.Helper()
 	var data []byte
-	sandbox.WaitFor(t, 10*time.Second, "Enter's lookup", func() bool {
+	sandbox.WaitFor(t, 10*time.Second, h.what, func() bool {
 		data, _ = os.ReadFile(h.hold + ".held")
 		return len(data) > 0 && data[len(data)-1] == '\n'
 	})
@@ -2215,18 +2985,18 @@ func (h heldLookup) held(t *testing.T) int {
 	return pid
 }
 
-// release lets the lookup go on.
-func (h heldLookup) release(t *testing.T) {
+// release lets the commands go on.
+func (h heldTmux) release(t *testing.T) {
 	t.Helper()
 	if err := os.Remove(h.hold); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// lookups counts the lookups of the session that have begun.
-func (h heldLookup) lookups(t *testing.T) int {
+// begun counts the commands that have begun, held or not.
+func (h heldTmux) begun(t *testing.T) int {
 	t.Helper()
-	data, err := os.ReadFile(h.hold + ".lookups")
+	data, err := os.ReadFile(h.hold + ".begun")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2266,6 +3036,23 @@ func waitFrames(t *testing.T, term terminal.Terminal, count int) {
 	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("%d frames in the output log", count), func() bool {
 		return bytes.Count(term.Output(), []byte("\x1b[1;1H")) >= count
 	})
+}
+
+// armThen presses Ctrl+X, runs armed - which waits for the list to arm the kill, and checks what
+// it will meanwhile - and presses then, such as C-x to kill or Escape to keep, which has to reach
+// the list within the two seconds of the arm. Under load the checks can take them all: when a
+// second has gone by since the first Ctrl+X, a letter disarms the kill, if it is still armed, and
+// Ctrl+X arms it again, then follows at once.
+func armThen(t *testing.T, term terminal.Terminal, armed func(), then string) {
+	t.Helper()
+	pressed := time.Now()
+	term.Keys("C-x")
+	armed()
+	if time.Since(pressed) < time.Second {
+		term.Keys(then)
+		return
+	}
+	term.Keys("k", "C-x", then)
 }
 
 // listRun is cld list run under sh, with the files sh writes: the terminal's name (tty), its
@@ -2351,6 +3138,22 @@ func (r listRun) checkRaw(t *testing.T) {
 			t.Errorf("the terminal is not in raw mode: no %s in\n%s", flag, out)
 		}
 	}
+}
+
+// unread reports whether the terminal has input that cld has not read, as cld itself tells: in
+// raw mode, the terminal is readable once it has a byte.
+func (r listRun) unread(t *testing.T) bool {
+	t.Helper()
+	tty, err := os.Open(strings.TrimSpace(r.readTTY(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tty.Close()
+	fd := int(tty.Fd())
+	var set unix.FdSet
+	set.Set(fd)
+	n, err := unix.Select(fd+1, &set, nil, nil, &unix.Timeval{})
+	return err == nil && n > 0
 }
 
 // readTTY is the terminal's name; uutils' tty (0.8.0) prints it without a newline.
