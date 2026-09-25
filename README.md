@@ -28,7 +28,7 @@ mkdir -p ~/.local/bin && curl -fsSL "https://github.com/zadykian/cld/releases/la
 builds cld and installs it there (`make install PREFIX=/usr/local` for another prefix); it needs
 Go 1.26 or newer.
 
-Requirements: tmux 3.7 or newer, and Claude Code 2.1.222 or newer as `claude` on the `PATH`; git
+Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
 for `cld new --worktree`.
 
 Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a - which cld
@@ -165,16 +165,16 @@ Code removes it (after 30 days by default). `cld resume -n NAME` brings it back 
 mistake, say - in a new session `cld-NAME`, made as `cld new` makes it, with
 `claude --resume cld-NAME` in place of a new conversation:
 
-- run it where the conversation belongs: in its directory or, in a git repository, in any
-  checkout of it, where claude looks names up. A killed session no longer shows in `cld list`,
-  and cld keeps no record of where it ran. A session ID is found from any directory (Claude Code
-  2.1.223 or newer). claude looks in the history of the shell's `CLAUDE_CONFIG_DIR`, if you set
-  one: it gets the environment of the shell that runs `cld resume` (see above);
+- run it where the conversation belongs: in its directory or, in a git repository, in any checkout
+  of it, where claude looks names up. A killed session no longer shows in `cld list`, and cld keeps
+  no record of where it ran. A session ID is found from any directory. claude looks in the history
+  of the shell's `CLAUDE_CONFIG_DIR`, if you set one: it gets the environment of the shell that
+  runs `cld resume` (see above);
 - when exactly one conversation there has the name, claude resumes it. Several can have it:
-  `/clear` keeps the name for the conversation it starts, and with Claude Code 2.1.232 or newer a
-  later `cld new -n NAME` presumably gives it to a new one as well (not checked yet). claude then
-  opens its picker with the name as the search term, which may not be an exact filter: for
-  `cld-rev` it may list `cld-review` too (not checked yet);
+  `/clear` keeps the name for the conversation it starts, and a later `cld new -n NAME` presumably
+  gives it to a new one as well (not checked yet). claude then opens its picker with the name as
+  the search term, which may not be an exact filter: for `cld-rev` it may list `cld-review` too
+  (not checked yet);
 - `cld resume -n NAME SESSION` resumes `SESSION` instead: whatever `claude --resume` takes - a
   session ID, a name, a search term for the picker - such as a conversation cld did not start.
   It comes after the options, and cannot start with `-`. claude gets `--name cld-NAME` here too,
@@ -191,10 +191,10 @@ included: end it with `cld kill -n NAME` first. It cannot tell whether the conve
 elsewhere - in another cld session, or in a plain `claude --resume` in another terminal. Resuming
 it twice makes two claudes write to one transcript, their messages interleaved, as the
 [Claude Code docs](https://code.claude.com/docs/en/sessions) say. When the other claude has the
-conversation's Remote Control session, Claude Code 2.1.232 or newer leaves Remote Control off in
-the resumed one and says so (`Remote Control not started here`), until `/remote-control` moves it
-over; whether a cld session, which turns Remote Control on as it starts, records that session in
-its conversation has not been checked yet.
+conversation's Remote Control session, Claude Code leaves Remote Control off in the resumed one
+and says so (`Remote Control not started here`), until `/remote-control` moves it over; whether a
+cld session, which turns Remote Control on as it starts, records that session in its conversation
+has not been checked yet.
 
 ### Worktrees
 

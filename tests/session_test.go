@@ -1133,10 +1133,10 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 		{nil, []string{"resume", "-n", "c"}, nested},
 		// tmux -L cld-a would look for the socket in the directory TMUX_TMPDIR names now.
 		{[]string{"TMUX_TMPDIR=" + moved}, []string{"join", "-n", "a"}, nested},
-		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.221 (Claude Code)"}, []string{"new", "-n", "d"},
-			"cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n"},
-		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.221 (Claude Code)"}, []string{"resume", "-n", "d"},
-			"cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n"},
+		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.231 (Claude Code)"}, []string{"new", "-n", "d"},
+			"cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n"},
+		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.231 (Claude Code)"}, []string{"resume", "-n", "d"},
+			"cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n"},
 	} {
 		// A pane on session a's server runs cld on its own pty, with the TMUX tmux sets for it.
 		out := filepath.Join(s.Root, strconv.Itoa(i))

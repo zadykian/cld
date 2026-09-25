@@ -37,10 +37,11 @@ platform and `cld.sha256`.
 - Requires **tmux 3.7 or newer**, the release the tests run on (3.7c, pinned in
   `tests/Dockerfile` and the `Makefile`); there is no behaviour per tmux version. The check reads
   `tmux -V` at startup. Raising the minimum is one change: the pin, the check, the docs.
-- `new` and `resume` require **claude 2.1.222 or newer**, the first release that takes what cld
-  passes and does what it relies on (the tests never run the real claude): they run
-  `claude --version` before starting that claude; `join`, `kill` and `list` do not. Re-derive
-  the minimum when cld starts to pass or rely on something newer (docs/design.md, decision 6).
+- `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
+  passes and does what it relies on, `resume`'s documented behaviour included (the tests never
+  run the real claude): they run `claude --version` before starting that claude; `join`, `kill`
+  and `list` do not. Re-derive the minimum when cld starts to pass or rely on something newer
+  (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
