@@ -32,6 +32,13 @@ Requirements: bash (3.2 or newer), tmux 3.3 or newer, and `claude` on the `PATH`
 Session `NAME` is the tmux session `cld-NAME`, running `claude --name cld-NAME`. A name consists
 of letters, digits, `_` and `-`; without `-n` it is `main`.
 
+Each session starts with [Remote Control](https://code.claude.com/docs/en/remote-control) on, so
+you can also continue it from claude.ai or the Claude app: `cld new` passes claude
+`--settings '{"remoteControlAtStartup":true}'`, which overrides the "Enable Remote Control for all
+sessions" setting in `/config`. claude still keeps it off where your organisation's policy does,
+or where the project's `.claude/settings.json` or `.claude/settings.local.json` sets
+`remoteControlAtStartup` to `false`.
+
 | Command | Action |
 |---|---|
 | `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
@@ -80,8 +87,8 @@ shows its directory. As with `claude --worktree`:
 - when claude exits it asks whether to keep the worktree.
 
 A new worktree branches from your current `HEAD`, not from the remote's default branch as
-`claude --worktree` does by default: `cld` also passes claude
-`--settings '{"worktree":{"baseRef":"head"}}'`, which overrides the `worktree.baseRef` setting.
+`claude --worktree` does by default: `cld` also puts `"worktree":{"baseRef":"head"}` in the
+settings it passes claude, which overrides the `worktree.baseRef` setting.
 
 `cld kill` leaves the worktree where it is, and `cld new -n NAME -w` reopens it.
 
