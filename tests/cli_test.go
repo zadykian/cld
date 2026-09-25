@@ -2,29 +2,168 @@ package tests
 
 import (
 	"bytes"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
 // Everything cld does before it hands over to tmux; no terminal needed.
 
+var update = flag.Bool("update", false, "rewrite the help in testdata/help from what cld help prints")
+
+// helpTopics are what cld help takes, "" for none, in the order the help lists them.
+var helpTopics = []string{"", "new", "join", "kill", "list", "help", "version"}
+
+// goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
+// testdata/help/COMMAND.txt for cld help COMMAND.
+func goldenHelp(topic string) string {
+	if topic == "" {
+		topic = "cld"
+	}
+	return filepath.Join("testdata", "help", topic+".txt")
+}
+
+// The help of cld and of each command, byte for byte: cobra generates it from each command's texts
+// and options, with its default templates, so a change to either shows here. -update rewrites
+// the files. cobra wraps nothing, so the texts break their lines by hand, within 80 columns, and
+// a usage line names the options before the arguments, as cld reads them.
+func TestHelpText(t *testing.T) {
+	t.Parallel()
+	for _, topic := range helpTopics {
+		args := []string{"help"}
+		if topic != "" {
+			args = append(args, topic)
+		}
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			result := s.RunCld(nil, args...)
+			if result.Code != 0 || result.Stderr != "" {
+				t.Fatalf("exit %d, stderr %q", result.Code, result.Stderr)
+			}
+			if *update {
+				if err := os.WriteFile(goldenHelp(topic), []byte(result.Stdout), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want, err := os.ReadFile(goldenHelp(topic))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Stdout != string(want) {
+				t.Errorf("stdout\n%s\nwant, as in %s\n%s", result.Stdout, goldenHelp(topic), want)
+			}
+			for number, line := range strings.Split(result.Stdout, "\n") {
+				if width := utf8.RuneCountInString(line); width > 80 {
+					t.Errorf("line %d is %d columns wide: %q", number+1, width, line)
+				}
+			}
+			// cld reads a command's options only up to its first argument.
+			if late := optionsAfterArguments(result.Stdout); len(late) > 0 {
+				t.Errorf("the usage line names %q after an argument, where cld reads no options", late)
+			}
+			// A command added to cld gets its own file here.
+			if topic == "" {
+				if listed := listedCommands(result.Stdout); !slices.Equal(listed, helpTopics[1:]) {
+					t.Errorf("the help lists %q, want %q: one file in testdata/help for each", listed, helpTopics[1:])
+				}
+			}
+		})
+	}
+}
+
+// listedCommands are the commands the help of cld lists, in its order.
+func listedCommands(help string) []string {
+	_, listing, _ := strings.Cut(help, "\nAvailable Commands:\n")
+	listing, _, _ = strings.Cut(listing, "\n\n")
+	var names []string
+	for _, line := range strings.Split(listing, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			names = append(names, fields[0])
+		}
+	}
+	return names
+}
+
+// usageWord is a word of a usage line: one in brackets, such as [-n NAME], or a plain one.
+var usageWord = regexp.MustCompile(`\[[^]]*\]|\S+`)
+
+// optionsAfterArguments are the options that the usage lines of help name after an argument:
+// [flags], or one in brackets starting with "-". An argument is a word in brackets or in
+// capitals, such as [COMMAND]; the others name cld and its command.
+func optionsAfterArguments(help string) []string {
+	_, usage, _ := strings.Cut(help, "\nUsage:\n")
+	usage, _, _ = strings.Cut(usage, "\n\n")
+	var late []string
+	for _, line := range strings.Split(usage, "\n") {
+		argument := false
+		for _, word := range usageWord.FindAllString(line, -1) {
+			switch {
+			case word == "[flags]" || strings.HasPrefix(word, "[-"):
+				if argument {
+					late = append(late, word)
+				}
+			case strings.HasPrefix(word, "[") || strings.ToUpper(word) == word:
+				argument = true
+			}
+		}
+	}
+	return late
+}
+
+// help, -h and --help print the help of cld, or of the command they are given to: the command
+// after them, or the one before -h. -h before a wrong argument shows the help too, since
+// arguments are read left to right.
 func TestHelp(t *testing.T) {
 	t.Parallel()
-	s := sandbox.New(t)
-	// -h before a wrong argument shows the help too: arguments are read left to right.
-	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"new", "--help"}, {"join", "-n", "x", "-h"}, {"kill", "--help"}, {"list", "-h"},
-		{"new", "-h", "-x"}, {"join", "-h", "-w"}, {"new", "-h", "--help=x"}, {"list", "-h", "-h=no"}, {"join", "--help", "--help=maybe"}} {
-		result := s.RunCld(nil, args...)
-		if result.Code != 0 || !strings.HasPrefix(result.Stdout, "usage: cld COMMAND [OPTIONS]\n") {
-			t.Errorf("cld %q: exit %d, stdout %q", args, result.Code, result.Stdout)
-		}
+	for _, test := range []struct {
+		args  []string
+		topic string
+	}{
+		{[]string{"help"}, ""},
+		{[]string{"-h"}, ""},
+		{[]string{"--help"}, ""},
+		{[]string{"help", "new"}, "new"},
+		{[]string{"-h", "join"}, "join"},
+		{[]string{"--help", "version"}, "version"},
+		{[]string{"help", "help"}, "help"},
+		{[]string{"new", "--help"}, "new"},
+		{[]string{"join", "-n", "x", "-h"}, "join"},
+		{[]string{"kill", "--help"}, "kill"},
+		{[]string{"list", "-h"}, "list"},
+		{[]string{"help", "-h"}, "help"},
+		{[]string{"version", "--help"}, "version"},
+		{[]string{"-V", "-h"}, "version"},
+		{[]string{"--version", "--help"}, "version"},
+		{[]string{"new", "-h", "-x"}, "new"},
+		{[]string{"join", "-h", "-w"}, "join"},
+		{[]string{"new", "-h", "--help=x"}, "new"},
+		{[]string{"list", "-h", "-h=no"}, "list"},
+		{[]string{"join", "--help", "--help=maybe"}, "join"},
+		{[]string{"kill", "-h", "a"}, "kill"},
+		{[]string{"help", "-h", "nope"}, "help"},
+		{[]string{"help", "--help", "-x"}, "help"},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			want, err := os.ReadFile(goldenHelp(test.topic))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := sandbox.New(t)
+			if result := s.RunCld(nil, test.args...); result.Code != 0 || result.Stdout != string(want) || result.Stderr != "" {
+				t.Errorf("exit %d, stderr %q, stdout\n%s\nwant exit 0, stdout as in %s", result.Code, result.Stderr, result.Stdout, goldenHelp(test.topic))
+			}
+		})
 	}
 }
 
@@ -128,7 +267,8 @@ func TestNamesAreASCII(t *testing.T) {
 }
 
 // Arguments are read left to right, and the first wrong one decides the message: an option after
-// an argument is not read, and -- ends nothing. help and version are named as typed.
+// an argument is not read, and -- ends nothing. help and version are named as typed. help takes
+// one argument, a command of cld's.
 func TestRejectsUnexpectedArguments(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -143,10 +283,18 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"join", "-w"}, "cld: join: unexpected argument '-w' (see cld help)\n"},
 		{[]string{"kill", "-n", "a", "--worktree"}, "cld: kill: unexpected argument '--worktree' (see cld help)\n"},
 		{[]string{"list", "-n", "a"}, "cld: list: unexpected argument '-n' (see cld help)\n"},
-		{[]string{"help", "new"}, "cld: help: unexpected argument 'new' (see cld help)\n"},
+		{[]string{"help", "nope"}, "cld: help: unknown command 'nope' (see cld help)\n"},
+		{[]string{"help", "new", "join"}, "cld: help: unexpected argument 'join' (see cld help)\n"},
+		{[]string{"help", "nope", "join"}, "cld: help: unknown command 'nope' (see cld help)\n"},
+		{[]string{"help", "-V"}, "cld: help: unexpected argument '-V' (see cld help)\n"},
+		{[]string{"help", ""}, "cld: help: unknown command '' (see cld help)\n"},
+		{[]string{"help", "--", "new"}, "cld: help: unexpected argument '--' (see cld help)\n"},
+		{[]string{"help", "new", "--"}, "cld: help: unexpected argument '--' (see cld help)\n"},
+		{[]string{"help", "new", "-h"}, "cld: help: unexpected argument '-h' (see cld help)\n"},
+		{[]string{"-h", "-n", "x"}, "cld: -h: unexpected argument '-n' (see cld help)\n"},
+		{[]string{"--help", "x"}, "cld: --help: unknown command 'x' (see cld help)\n"},
 		{[]string{"version", "-n", "a"}, "cld: version: unexpected argument '-n' (see cld help)\n"},
 		{[]string{"-V", "x"}, "cld: -V: unexpected argument 'x' (see cld help)\n"},
-		{[]string{"--help", "x"}, "cld: --help: unexpected argument 'x' (see cld help)\n"},
 		{[]string{"new", "--"}, "cld: new: unexpected argument '--' (see cld help)\n"},
 		{[]string{"join", "--", "-x"}, "cld: join: unexpected argument '--' (see cld help)\n"},
 		{[]string{"list", "--"}, "cld: list: unexpected argument '--' (see cld help)\n"},
@@ -576,9 +724,9 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 }
 
 // A write to stdout that fails ends cld with status 1, as the script's printf and cat failing
-// under set -e did, so that output cut short does not pass for whole: list, the usage and the
-// version, and new and join, which then do not hand over to tmux. stdout is open for reading
-// only here, so that every write to it fails.
+// under set -e did, so that output cut short does not pass for whole: list, the help - from help
+// and from -h - and the version, and new and join, which then do not hand over to tmux. stdout is
+// open for reading only here, so that every write to it fails.
 func TestFailedWriteEndsCld(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -588,7 +736,10 @@ func TestFailedWriteEndsCld(t *testing.T) {
 	}{
 		{[]string{"list"}, "cld-a\tdetached\t/w"},
 		{[]string{"help"}, ""},
+		{[]string{"help", "new"}, ""},
+		{[]string{"new", "-h"}, ""},
 		{[]string{"join", "-h"}, ""},
+		{[]string{"kill", "-h", "-x"}, ""},
 		{[]string{"version"}, ""},
 		{[]string{"new", "-n", "x"}, ""},
 		{[]string{"join", "-n", "x"}, "cld"},

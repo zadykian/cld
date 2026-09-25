@@ -57,6 +57,7 @@ cld() {
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
 | the script's name check and `list`'s columns under `en_US.UTF-8`, `C.UTF-8` and `C` (bash 5.3.9, glibc 2.43; bash 3.2 on macOS not checked) | `[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]` follows the locale's collation: under `en_US.UTF-8` it matched `é`, `ñ`, `ß`, `Ä`, `ǅ`, `①` and `٣`, so `cld new -n café` made `cld-café`, which `tmux -L cld kill-session -t =cld-café` ends (tmux 3.7c); under `C.UTF-8` and `C` it matched ASCII only. `${#name}` counts characters under a UTF-8 locale and bytes under `C`; `printf '%-*s'` pads by bytes under all three, so `é` took three columns of a four-column NAME |
 | where bash itself stepped in for the script (bash 5.3.9 on Ubuntu 26.04 unless noted; tmux 3.7c) | a write to stdout that failed (`/dev/full`, or a descriptor open for reading) ended the script under `set -e` with status 1 and bash's message (`printf: write error: No space left on device`, `cat: -: ...` for the usage), and `new` and `join` did not get as far as their `exec` of tmux; `printf` and `cat` failed the same way under 5.2.15 and 3.2.57. A write to a pipe whose reader had gone ended it by SIGPIPE (the usage with status 141, `cat`'s, under `set -e`), and when it was started with SIGPIPE ignored - from a script under `trap '' PIPE`, say - with status 1 and `printf: write error: Broken pipe` (`cat: -: Broken pipe` for the usage). A tmux that could not run at all ended it with 127 when there was no such file, and 126 for a file the system refuses (`Exec format error`); for a `#!` naming a missing interpreter, 127 with Debian's 5.2.15 and 5.2.37 and Ubuntu's 5.2.21, 126 with 5.3.9 and 3.2.57 as released. A text file without `#!` bash ran as a script. A tmux on the `PATH` without the execute permission, with no executable one on it, bash found all the same - its search takes the first file of that name where none is executable, for `command -v` too - and ran, ending with `Permission denied` and 126; a `claude` like that let `new` go on and hand it to tmux, and a `git` like that made `new -w` say the directory was in no git repository. A tmux that stopped being runnable once it had answered `tmux -V` ended the script from a session lookup (`list-sessions`) with its `die 1`, status 1 and bash's message, and from `kill-session` or the `exec` with 127 or 126. With `PATH` unset bash searched a default path built into it, which differs by build: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` (Ubuntu's 5.2.21 and 5.3.9), `/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:.` (Debian's 5.2.15 and 5.2.37), `/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin:.` (3.2.57 as released); macOS's `/bin/bash` was not checked. Started in a directory since removed, bash warned `shell-init: error retrieving current directory: ...` and kept the `PWD` it got: `new` passed that path to tmux with `-c`, and tmux started claude in the home directory (with Debian's 5.2.37); `new -w` said the directory was in no git repository |
+| the help cobra 1.10.2 generates with its default templates (pflag 1.0.9), from a test program with cld's commands | commands are listed sorted by name unless `cobra.EnableCommandSorting` is false; then in the order they were added, but for the help command - cobra's or one set with `SetHelpCommand` - which `Execute` moves after all the others as it runs (`InitDefaultHelpCmd`). A flag's value shows as its type (`--name string`) unless its usage names it in backquotes. A command with flags gets ` [flags]` at the end of its usage line, after any argument in its `Use`, unless `Use` has `[flags]` already or `DisableFlagsInUseLine` is set. Nothing is wrapped; a newline in a flag's usage goes on under the usage's column. The help function writes to stdout and drops a write that fails: `help`, and `new --help`, with stdout on `/dev/full` or open for reading only print nothing, on stderr either, and exit 0. `help nope` prints ``Unknown help topic [`nope`]`` and the root's usage on stderr and exits 0; `help new join` shows `new`'s help |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
@@ -225,8 +226,9 @@ Every Linux job runs the same Docker image a developer runs locally.
        can be less than was typed: `-x` for `-wx`, `--foo` for `--foo=bar`, and `--worktree=VALUE`
        for a `-w=VALUE` that is not a boolean;
     3. an argument starting with `-test.` is skipped: pflag leaves it to `go test`;
-    4. an empty argument to `list`, `help` or `version` is refused as unexpected; the script took
-       it for the end of the arguments (`cld list '' x` listed);
+    4. an empty argument to `list`, `help` or `version` is refused as unexpected - by `help`,
+       since 12, as an unknown command; the script took it for the end of the arguments
+       (`cld list '' x` listed);
     5. cld looks for `tmux`, `claude` and `git` in the absolute `PATH` entries only, and runs
        `tmux`, `git` and `tty` from there: one found only through a relative entry (`.`, or an
        empty one) counts as not installed, and one that both have runs from the absolute entry,
@@ -276,9 +278,45 @@ Every Linux job runs the same Docker image a developer runs locally.
 
     Settled with it: the port landed before the tmux and claude guards (#21) and a server per
     session (#22), so both follow in Go; `help`, `-h` and `--help` print the one usage text there
-    was, rather than cobra's help per command; the spellings in 1 are accepted rather than refused
-    before pflag sees them; and releases publish plain binaries and one `cld.sha256`, rather than
-    archives, so installing stays one `curl` and a `chmod`.
+    was, rather than cobra's help per command (reversed by 12); the spellings in 1 are accepted
+    rather than refused before pflag sees them; and releases publish plain binaries and one
+    `cld.sha256`, rather than archives, so installing stays one `curl` and a `chmod`.
+12. Help from cobra (#28): `help`, `-h` and `--help` print the help cobra generates from each
+    command's `Use`, `Short` and `Long` and its options, rather than the one usage text the port
+    kept (decision 11). Each feature edited that text by hand, next to options whose descriptions
+    nobody saw, and the two could drift; now a command's text lives with the command, and
+    `cld new -h` shows `new`'s options alone. Settled with it:
+    1. cobra's default help and usage templates, with command sorting off, so the commands keep
+       their order: `new`, `join`, `kill`, `list`, `help`, `version`. `Execute` moves the help
+       command after the others (see Findings), so cld moves `version` back after it before it
+       prints the help. An option's usage names its value in backquotes (`-n, --name NAME`), and
+       pflag shows `-n`'s default, `main`. cobra wraps nothing, so the texts break their lines by
+       hand, within 80 columns, which the test of the help's text holds them to. A template of
+       cld's own, in the usage text's layout, was the other way: closer to what cld printed, but
+       one more thing for cld to keep, where cobra's changes with cobra and shows in that test;
+    2. `help [COMMAND]` shows the help of one of the commands the root's help lists. `-h` and
+       `--help`, given first, are `help` spelled otherwise, so `cld -h new` shows `new`'s help. A
+       `COMMAND` that is not one of those, the empty one included, and an argument after it are
+       refused with status 2 - `cld: help: unknown command 'nope' (see cld help)`, `cld: help:
+       unexpected argument 'join' (see cld help)` - where cobra shows the root's usage for the
+       one and passes over the other, exiting 0 (see Findings). cld's `help` is a command of its
+       own, set with `SetHelpCommand`, so it lacks the `ValidArgsFunction` with which cobra's
+       completes command names after `help`: completion (#25) has to give it one. Keeping `help`
+       without an argument was the other way; per-command help would then be only `-h`'s;
+    3. error messages keep `(see cld help)`, rather than naming the command's help (`see cld
+       help new`): no message changes;
+    4. `-h` and `--help` are read as before: before a wrong argument they show the help, now of
+       the command they are given to, and after an argument they are no option but one more
+       argument, and refused (`cld help new -h`, as `cld new review -h`). So `help`'s usage line
+       names its options before `COMMAND`, `cld help [flags] [COMMAND]`, with
+       `DisableFlagsInUseLine`, where cobra adds ` [flags]` at the end (see Findings), and the test
+       of the help's text refuses an option after an argument in any usage line;
+    5. the help is rendered into a buffer that `fail.Print` prints, so that a write that fails
+       still ends cld with status 1 (see 11.9), where cobra's own help function drops the error;
+    6. the root's help holds what the usage text said besides the commands and options: what a
+       session is, the private server, Remote Control, the detach keys and failed sessions.
+       `list`'s one line in the root's help is shorter than the usage text's, and its own help
+       says the rest. `version`'s help names `-V` and `--version`, since cobra lists commands only.
 
 ## Implementation notes
 
@@ -310,9 +348,10 @@ Where the implementation departs from the plan above:
   its own message; one that cannot run ends it with 127 or 126, as `syscall.Exec` failing does.
   A session lookup (`list-sessions`) that fails ends cld with status 1 and what tmux said, or
   the same `cannot run` message, as the script's `die 1` did.
-  cld's own output goes through `fail.Print`, which turns a failed write into an error; cobra's
-  help function returns nothing, so what it printed reaches `main` through a variable. Reading
-  the sessions is one function returning rows, which `list` lays out.
+  cld's own output goes through `fail.Print`, which turns a failed write into an error, the help
+  too once cobra has rendered it into a buffer; cobra's help function returns nothing, so what
+  it printed for `-h` and `--help` reaches `main` through a variable. Reading the sessions is one
+  function returning rows, which `list` lays out.
 - cobra's defaults give way to cld's command line (cobra 1.10.2, pflag 1.0.9):
   - the first argument is checked before cobra sees it: cobra takes an unknown command for an
     argument of the root, skips options before the command (`cld -n x new` would run `new`),
@@ -326,8 +365,14 @@ Where the implementation departs from the plan above:
   - a `FlagErrorFunc` turns pflag's typed errors (`NotExistError`, `ValueRequiredError`,
     `InvalidValueError`, `InvalidSyntaxError`) into cld's messages, and shows the help when `-h`
     or `--help` came before the error: cobra looks at `-h` only once every option has parsed;
-  - `SetHelpCommand` replaces cobra's `help [command]` with a `help` that takes no argument, and
-    one help function prints the usage text for `help`, `-h` and `--help` on every command;
+  - `SetHelpCommand` replaces cobra's `help [command]` with cld's `help [COMMAND]`, whose `Args`
+    refuses what cobra's passes over (decision 12), and a help function set on the root, which
+    every command inherits, renders cobra's default help into a buffer for `fail.Print`: it is
+    cobra's own help function, taken from the root before cld sets its own. Each command has
+    `-h` and `--help` of its own (`helpOption`), worded as cobra words its own ("help for new");
+    `cobra.EnableCommandSorting` is off, and the help function moves `version` back after
+    `help`. `tests/testdata/help` holds the help of the root and of each command, which
+    `TestHelpText` compares byte for byte and `-update` rewrites;
   - `Version` stays unset, so there is no `--version` or `-v` flag: `version` is a command, and
     `-V` and `--version` its aliases.
 - Go has no `ttyname` on Linux or macOS without cgo: cld runs `tty` with its own stdin, as the

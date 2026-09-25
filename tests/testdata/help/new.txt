@@ -1,0 +1,11 @@
+create session NAME in the current directory and attach to it
+
+Usage:
+  cld new [-n NAME] [-w] [flags]
+
+Flags:
+  -h, --help        help for new
+  -n, --name NAME   the session NAME: letters, digits, "_" and "-", starting
+                    with a letter or digit (default "main")
+  -w, --worktree    run claude in git worktree NAME, which claude creates from
+                    HEAD or reopens (claude --worktree NAME)

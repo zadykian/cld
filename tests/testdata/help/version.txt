@@ -1,0 +1,7 @@
+show the version; cld -V and cld --version show it too
+
+Usage:
+  cld version [flags]
+
+Flags:
+  -h, --help   help for version

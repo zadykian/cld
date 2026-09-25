@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
@@ -39,7 +40,7 @@ func run(args []string) error {
 		return fail.Usage(fmt.Sprintf("unknown command '%s' (see cld help)", typed))
 	}
 	// cobra's help function returns nothing, and cobra ends -h and --help without an error: what
-	// printing the usage returned comes back here.
+	// printing the help returned comes back here.
 	var printed error
 	root := commandLine(typed, &printed)
 	root.SetArgs(append([]string{command}, args[1:]...))
@@ -50,26 +51,43 @@ func run(args []string) error {
 }
 
 // commandLine is cld's commands, for a command typed as typed: the messages name it that way,
-// "-V" for version, say. Printing the usage sets printed.
+// "-V" for version, say. Printing the help for -h or --help sets printed.
 //
-// cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE",
-// and help, -h and --help print one usage for every command. help takes no command, version is
-// a command rather than cobra's --version and -v, and there is no completion command. Every
-// command reads its options up to the first argument, which pflag would otherwise pass over,
-// and takes no argument: the first one left, or a "--", which pflag would drop, is refused.
+// The help is cobra's, from its default templates: each command's Use, and its Long or else its
+// Short, then its options with their usages, which name their value in backquotes (`NAME`). Its
+// text is here and nowhere else; cobra wraps none of it, so the lines break by hand, within 80
+// columns. help, -h and --help print it through fail.Print, and it lists the commands in the
+// order they are added here rather than by name.
+//
+// cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE".
+// help takes one of cld's commands at most, version is a command rather than cobra's --version
+// and -v, and there is no completion command. Every command reads its options up to the first
+// argument, which pflag would otherwise pass over, and takes no argument but help's COMMAND: the
+// first one left, or a "--", which pflag would drop, is refused.
 func commandLine(typed string, printed *error) *cobra.Command {
+	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
-		Use:               "cld",
+		Use: "cld",
+		Long: `Run Claude Code in named sessions on a private tmux server that ignores
+~/.tmux.conf. Session NAME is the tmux session "cld-NAME", running
+"claude --name cld-NAME" with Remote Control on. cld sees only the sessions it
+started; tmux -L cld ls lists every session on its server.
+
+Detach with C-q d; C-q C-q sends C-q to claude. With tmux 3.5 or newer, a
+session whose claude fails stays, showing why, until cld kill ends it.`,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
-	root.SetHelpFunc(func(*cobra.Command, []string) { *printed = fail.Print(usage) })
 	root.SetFlagErrorFunc(flagError(typed))
 
-	newCommand := &cobra.Command{Use: "new"}
-	newName := newCommand.Flags().StringP("name", "n", "main", "the session")
-	worktree := newCommand.Flags().BoolP("worktree", "w", false, "run claude in git worktree NAME")
+	newCommand := &cobra.Command{
+		Use:   "new [-n NAME] [-w]",
+		Short: "create session NAME in the current directory and attach to it",
+	}
+	newName := newCommand.Flags().StringP("name", "n", "main", nameUsage)
+	worktree := newCommand.Flags().BoolP("worktree", "w", false,
+		"run claude in git worktree NAME, which claude creates from\nHEAD or reopens (claude --worktree NAME)")
 	newCommand.RunE = func(*cobra.Command, []string) error {
 		suffix, err := sessionName(*newName)
 		if err != nil {
@@ -86,8 +104,11 @@ func commandLine(typed string, printed *error) *cobra.Command {
 		return tmux.New(suffix, *worktree)
 	}
 
-	join := &cobra.Command{Use: "join"}
-	joinName := join.Flags().StringP("name", "n", "main", "the session")
+	join := &cobra.Command{
+		Use:   "join [-n NAME]",
+		Short: "attach to session NAME, detaching any other terminal from it",
+	}
+	joinName := join.Flags().StringP("name", "n", "main", nameUsage)
 	join.RunE = func(*cobra.Command, []string) error {
 		suffix, err := sessionName(*joinName)
 		if err != nil {
@@ -100,8 +121,11 @@ func commandLine(typed string, printed *error) *cobra.Command {
 		return tmux.Join(suffix)
 	}
 
-	kill := &cobra.Command{Use: "kill"}
-	killName := kill.Flags().StringP("name", "n", "main", "the session")
+	kill := &cobra.Command{
+		Use:   "kill [-n NAME]",
+		Short: "end session NAME and the claude running in it",
+	}
+	killName := kill.Flags().StringP("name", "n", "main", nameUsage)
 	kill.RunE = func(*cobra.Command, []string) error {
 		suffix, err := sessionName(*killName)
 		if err != nil {
@@ -114,37 +138,85 @@ func commandLine(typed string, printed *error) *cobra.Command {
 		return tmux.Kill(suffix)
 	}
 
-	list := &cobra.Command{Use: "list", RunE: func(*cobra.Command, []string) error {
-		tmux, err := session.Check()
-		if err != nil {
-			return err
-		}
-		sessions, err := tmux.Sessions()
-		if err != nil {
-			return err
-		}
-		return fail.Print(table(sessions))
-	}}
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "list the sessions cld started",
+		Long: `list the sessions cld started: name, whether a terminal is attached (or claude
+exited), and the directory claude is in`,
+		RunE: func(*cobra.Command, []string) error {
+			tmux, err := session.Check()
+			if err != nil {
+				return err
+			}
+			sessions, err := tmux.Sessions()
+			if err != nil {
+				return err
+			}
+			return fail.Print(table(sessions))
+		},
+	}
 
-	help := &cobra.Command{Use: "help", RunE: func(c *cobra.Command, _ []string) error {
-		c.HelpFunc()(c, nil)
-		return nil
-	}}
+	// cobra would add "[flags]" at the end of help's usage line, after COMMAND, where cld reads no
+	// options. Unlike cobra's help command, cld's completes no command names after help
+	// (ValidArgsFunction): cld has no completion yet (#25).
+	help := &cobra.Command{
+		Use:                   "help [flags] [COMMAND]",
+		Short:                 "show this help, or the help of COMMAND",
+		Args:                  helpArguments(typed),
+		DisableFlagsInUseLine: true,
+	}
 
-	versionCommand := &cobra.Command{Use: "version", RunE: func(*cobra.Command, []string) error {
-		return fail.Print("cld " + version + "\n")
-	}}
+	// cobra lists commands only: version's Long names its other spellings.
+	versionCommand := &cobra.Command{
+		Use:   "version",
+		Short: "show the version",
+		Long:  "show the version; cld -V and cld --version show it too",
+		RunE: func(*cobra.Command, []string) error {
+			return fail.Print("cld " + version + "\n")
+		},
+	}
 
-	for _, command := range []*cobra.Command{newCommand, join, kill, list, help, versionCommand} {
-		command.Args = noArguments(typed)
-		command.Flags().SetInterspersed(false)
+	for _, command := range []*cobra.Command{root, newCommand, join, kill, list, help, versionCommand} {
 		// cobra adds -h and --help only where a command has no "help" option of its own.
-		command.Flags().VarPF(new(helpOption), "help", "h", "show the usage").NoOptDefVal = "true"
+		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
+		if command == root {
+			continue // The root only has a help: run always hands cobra one of the commands.
+		}
+		if command.Args == nil {
+			command.Args = noArguments(typed)
+		}
+		command.Flags().SetInterspersed(false)
 	}
 	root.AddCommand(newCommand, join, kill, list, versionCommand)
 	root.SetHelpCommand(help)
+
+	// cobra's own help function, which cld's calls, writes the help to stdout and drops the error
+	// of a write that fails, which would end cld with status 0: the help goes to a buffer
+	// instead, which fail.Print prints.
+	cobraHelp := root.HelpFunc()
+	printHelp := func(c *cobra.Command) error {
+		// Execute has moved the help command after the others as it ran: version goes back after
+		// it, where cld lists version.
+		root.RemoveCommand(versionCommand)
+		root.AddCommand(versionCommand)
+		var text bytes.Buffer
+		c.SetOut(&text)
+		cobraHelp(c, nil)
+		c.SetOut(nil)
+		return fail.Print(text.String())
+	}
+	root.SetHelpFunc(func(c *cobra.Command, _ []string) { *printed = printHelp(c) })
+	help.RunE = func(_ *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return printHelp(root)
+		}
+		return printHelp(topic(root, args[0]))
+	}
 	return root
 }
+
+// nameUsage is -n and --name in the help of new, join and kill.
+const nameUsage = "the session `NAME`: letters, digits, \"_\" and \"-\", starting\nwith a letter or digit"
 
 // sessionName is the NAME given with -n, checked once the options have been read.
 func sessionName(name string) (string, error) {
@@ -155,7 +227,7 @@ func sessionName(name string) (string, error) {
 }
 
 // noArguments refuses the first argument left after a command's options, or a "--" among them:
-// no command takes an argument.
+// no command but help takes an argument.
 func noArguments(typed string) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
 		if c.ArgsLenAtDash() >= 0 {
@@ -166,6 +238,34 @@ func noArguments(typed string) cobra.PositionalArgs {
 		}
 		return nil
 	}
+}
+
+// helpArguments takes help's COMMAND, one of cld's, and refuses a "--" before it, as noArguments
+// does, a COMMAND that is not cld's, and an argument after it: the first of these decides.
+func helpArguments(typed string) cobra.PositionalArgs {
+	return func(c *cobra.Command, args []string) error {
+		if c.ArgsLenAtDash() >= 0 {
+			return unexpected(typed, "--")
+		}
+		if len(args) > 0 && topic(c.Root(), args[0]) == nil {
+			return fail.Usage(fmt.Sprintf("%s: unknown command '%s' (see cld help)", typed, args[0]))
+		}
+		if len(args) > 1 {
+			return unexpected(typed, args[1])
+		}
+		return nil
+	}
+}
+
+// topic is the command named name among those the root's help lists, which help shows the help
+// of; nil for any other name.
+func topic(root *cobra.Command, name string) *cobra.Command {
+	for _, command := range root.Commands() {
+		if command.Name() == name && (command.IsAvailableCommand() || command.Name() == "help") {
+			return command
+		}
+	}
+	return nil
 }
 
 // flagError turns pflag's errors into cld's messages, naming what pflag reports. -h or --help
