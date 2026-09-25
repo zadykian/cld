@@ -24,6 +24,11 @@
 // With $CLD_PROBE_FAIL set, it prints that and exits with status 1 at once, as claude does when
 // it cannot start.
 //
+// "claude --version" answers first, before $CLD_PROBE_FAIL and without writing any file, so that
+// the version check cld makes before starting claude neither fails nor counts as a claude: it
+// prints $CLD_FAKE_CLAUDE_VERSION, or "99.0.0 (Claude Code)" where that is unset, and exits 0.
+// In a directory that has been removed it fails, as claude 2.1.282 does.
+//
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
 // $CLD_FAKE_TMUX_VERSION, list-sessions prints $CLD_FAKE_TMUX_SESSIONS - no session unless a test
 // sets it - and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json.
@@ -87,6 +92,9 @@ func fakeTmux() error {
 }
 
 func claude() error {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		return version()
+	}
 	if message := os.Getenv("CLD_PROBE_FAIL"); message != "" {
 		fmt.Println(message)
 		os.Exit(1)
@@ -133,6 +141,20 @@ func claude() error {
 			return nil // the terminal went away
 		}
 	}
+}
+
+// version answers claude --version.
+func version() error {
+	if _, err := os.Getwd(); err != nil {
+		fmt.Fprintln(os.Stderr, "error: The current working directory was deleted, so that command didn't work. Please cd into a different directory and try again.")
+		os.Exit(1)
+	}
+	reported, set := os.LookupEnv("CLD_FAKE_CLAUDE_VERSION")
+	if !set {
+		reported = "99.0.0 (Claude Code)"
+	}
+	_, err := fmt.Println(reported)
+	return err
 }
 
 func obey(control *os.File, write func(string)) {

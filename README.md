@@ -27,7 +27,8 @@ mkdir -p ~/.local/bin && curl -fsSL "https://github.com/zadykian/cld/releases/la
 builds cld and installs it there (`make install PREFIX=/usr/local` for another prefix); it needs
 Go 1.26 or newer.
 
-Requirements: tmux 3.7 or newer, and `claude` on the `PATH`; git for `cld new --worktree`.
+Requirements: tmux 3.7 or newer, and Claude Code 2.1.222 or newer as `claude` on the `PATH`; git
+for `cld new --worktree`.
 
 Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a - which cld
 refuses, naming the version it found. [Homebrew](https://formulae.brew.sh/formula/tmux) has tmux
@@ -42,6 +43,12 @@ curl -fsSL https://github.com/zadykian/cld/releases/download/v0.3.0/cld -o ~/.lo
 After upgrading tmux, end cld's sessions (`cld list`, then `cld kill -n NAME`): cld checks the
 version of the `tmux` on the `PATH`, but the server that holds its sessions keeps running the
 tmux that started it until the last of them ends.
+
+Before it starts claude, `cld new` runs `claude --version` in the directory claude will start in
+and refuses an older claude, naming the version it found; a newer one always passes. It then
+starts that same `claude`, by its path: cld skips relative `PATH` entries (`.`, or an empty one).
+Update claude the way you installed it: `claude update` for the native installer, or through
+Homebrew, npm or your system's package manager.
 
 cld 0.3.0 and earlier were a bash script, downloaded from `releases/latest/download/cld`. Later
 releases publish a binary per platform instead, so that download fails once one of them is the

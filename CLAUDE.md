@@ -36,6 +36,10 @@ platform and `cld.sha256`.
 - Requires **tmux 3.7 or newer**, the release the tests run on (3.7c, pinned in
   `tests/Dockerfile` and the `Makefile`); there is no behaviour per tmux version. The check reads
   `tmux -V` at startup. Raising the minimum is one change: the pin, the check, the docs.
+- `new` requires **claude 2.1.222 or newer**, the first release that takes what cld passes and
+  does what it relies on (the tests never run the real claude): it runs `claude --version` before
+  starting that claude; `join`, `kill` and `list` do not. Re-derive the minimum when cld starts
+  to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new` and `join` end in
@@ -49,7 +53,8 @@ platform and `cld.sha256`.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`), never sanitised.
-- claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`.
+- claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
+  and by the path of the claude `new` checked, so tmux does not look `claude` up in the `PATH`.
 - cld only sees sessions it started: `new` sets the user option `@cld` to the session's id in the
   same tmux command as `new-session`, and every lookup filters on
   `#{==:#{@cld},#{session_id}}`. A plain flag would not work, because tmux resolves `@cld` from
@@ -75,9 +80,10 @@ package doc comments at the top of each file for details.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).
-  `CLD_PROBE_FAIL` makes it fail at startup. Invoked as `tmux`, it fakes `tmux -V` via
-  `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS`, and records any other
-  command in `tmux.json`.
+  `CLD_PROBE_FAIL` makes it fail at startup. `claude --version` answers first, writing nothing,
+  with `CLD_FAKE_CLAUDE_VERSION` (`99.0.0 (Claude Code)` when unset). Invoked as `tmux`, it fakes
+  `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS`, and
+  records any other command in `tmux.json`.
 - `internal/sandbox` — an isolated world per test: its own short `TMUX_TMPDIR` (socket paths hit
   the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset. Tests are
   parallel and never touch the user's own cld sessions.

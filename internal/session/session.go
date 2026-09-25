@@ -48,6 +48,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -58,6 +59,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/zadykian/cld/internal/fail"
 )
@@ -75,12 +79,20 @@ type Tmux struct {
 	path string
 }
 
-// minTmux is the oldest tmux cld runs on: the one its tests run on, raised with it by hand (see
-// docs/design.md, decision 6).
-var minTmux = version{3, 7}
+// The oldest tmux and claude cld runs. tmux's is the one the tests run on; claude's is the first
+// release that takes everything new passes it and does what cld relies on. Both are raised by
+// hand (see docs/design.md, decision 6).
+var (
+	minTmux   = version{3, 7}
+	minClaude = version{2, 1, 222}
+)
 
-// tmuxVersion matches the start of a version tmux -V reports: "3.7c".
-var tmuxVersion = regexp.MustCompile(`^([0-9]+)\.([0-9]+)`)
+// tmuxVersion and claudeVersion match the start of a version that tmux -V and claude --version
+// report: "3.7c", "2.1.282 (Claude Code)".
+var (
+	tmuxVersion   = regexp.MustCompile(`^([0-9]+)\.([0-9]+)`)
+	claudeVersion = regexp.MustCompile(`^([0-9]+)\.([0-9]+)\.([0-9]+)`)
+)
 
 // version is the numbers of a version, the most significant first.
 type version []int
@@ -137,6 +149,145 @@ func Check(tools ...string) (*Tmux, error) {
 		return nil, fail.Runtime(fmt.Sprintf("tmux %s or newer is required, found '%s'", minTmux, found))
 	}
 	return t, nil
+}
+
+// Claude is the claude new starts: the one CheckClaude found and checked.
+type Claude struct {
+	path string
+}
+
+// CheckClaude checks the version of the claude on the PATH, for the commands that start it: an
+// older claude lacks a flag or a setting cld passes it, or behaves otherwise than cld relies on.
+// It reads the X.Y.Z that claude --version starts with. Output that starts otherwise passes, as a
+// tmux development build does, so that a new format locks no one out; there is no upper bound. A
+// claude --version that fails is refused with status 1 and what it printed: a claude that cannot
+// report its version is unlikely to start. One that cannot run at all ends cld as a tmux that
+// cannot run does (see cannotRun): its version is not what is wrong.
+func CheckClaude() (*Claude, error) {
+	path, err := lookPath("claude")
+	if err != nil {
+		return nil, fail.Runtime("claude is not installed")
+	}
+	// claude --version runs as tmux starts claude (see Tmux.New): the file lookPath found, by its
+	// path, in the current directory, with no input - so a version manager's shim, mise's say,
+	// runs the claude that directory pins. A directory that has been removed, or that cannot be
+	// entered, is refused first, as new refuses it: claude --version fails in the one (claude
+	// 2.1.282) and does not start in the other.
+	dir, err := workingDirectory()
+	if err != nil {
+		return nil, err
+	}
+	var stdout, stderr bytes.Buffer
+	run := func(name string, args ...string) error {
+		stdout.Reset()
+		stderr.Reset()
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		// What claude printed is in once it has exited. A process it leaves in the background - a
+		// wrapper's update check, say - can hold its stdout and stderr open for as long as it
+		// runs; cld waits for that no longer than this, and ends the pipes.
+		cmd.WaitDelay = time.Second
+		if err := cmd.Run(); !errors.Is(err, exec.ErrWaitDelay) {
+			return err
+		}
+		return nil
+	}
+	err = run(path, "--version")
+	// tmux starts claude with execvp, which runs a file the system will not execute with /bin/sh,
+	// as a shell does (glibc's and macOS's); os/exec does not. That is how a script without #!
+	// runs. A binary - for another machine, or cut short - is no script, and a shell such as bash
+	// refuses to read one as commands: such a claude cannot run (see cannotRun).
+	if errors.Is(err, syscall.ENOEXEC) && !binary(path) {
+		err = run("/bin/sh", path, "--version")
+	}
+	required := "claude " + minClaude.String() + " or newer is required"
+	output := strings.TrimRight(stdout.String(), "\n")
+	var exit *exec.ExitError
+	switch {
+	case errors.As(err, &exit):
+		how := "status " + strconv.Itoa(exit.ExitCode())
+		if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			how = "signal " + strconv.Itoa(int(status.Signal()))
+		}
+		message := required + ", but claude --version exited with " + how
+		if printed := strings.Trim(output+"\n"+strings.TrimRight(stderr.String(), "\n"), "\n"); printed != "" {
+			message += ": " + printed
+		}
+		return nil, fail.Runtime(message)
+	case err != nil:
+		return nil, cannotRun(path, err)
+	}
+	if v, ok := parseVersion(claudeVersion, output); ok && v.before(minClaude) {
+		return nil, fail.Runtime(fmt.Sprintf("%s, found '%s'", required, output))
+	}
+	return &Claude{path: path}, nil
+}
+
+// binary reports whether the file at path is a binary rather than a script, telling them apart as
+// bash does before it runs a file the system will not execute (check_binary_file): it starts with
+// ELF's magic number, or has a NUL in its first line - its first two, after #! - within its first
+// 80 bytes. A file cld cannot read passes for a script: /bin/sh then says why.
+func binary(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	sample := make([]byte, 80)
+	n, _ := io.ReadFull(f, sample)
+	sample = sample[:n]
+	if bytes.HasPrefix(sample, []byte("\x7fELF")) {
+		return true
+	}
+	lines := 1
+	if bytes.HasPrefix(sample, []byte("#!")) {
+		lines = 2
+	}
+	for _, c := range sample {
+		if c == 0 {
+			return true
+		}
+		if c == '\n' {
+			if lines--; lines == 0 {
+				break
+			}
+		}
+	}
+	return false
+}
+
+// workingDirectory is the current directory, where new starts claude. One that has been removed
+// is refused, and so is one that cannot be entered - its search permission, or that of a
+// directory above it, taken away since: given either with -c, tmux starts claude in the home
+// directory instead (tmux 3.7c), as it did for the script, which went on with the PWD it got
+// where the directory had been removed.
+func workingDirectory() (string, error) {
+	dir, err := os.Getwd()
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", fail.Runtime("the current directory no longer exists")
+	}
+	// With PWD set, Getwd first looks at ".", which takes the search permission as well.
+	if errors.Is(err, fs.ErrPermission) {
+		return "", cannotEnter(err)
+	}
+	if err != nil {
+		return "", fail.Runtime("cannot get the current directory: " + err.Error())
+	}
+	// tmux, and claude --version, enter the directory by its path.
+	if err := unix.Access(dir, unix.X_OK); err != nil {
+		return "", cannotEnter(err)
+	}
+	return dir, nil
+}
+
+// cannotEnter refuses a current directory that cannot be entered, with the system's reason.
+func cannotEnter(err error) error {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		err = errno
+	}
+	return fail.Runtime("cannot enter the current directory: " + err.Error())
 }
 
 // lookPath finds name in the absolute entries of the PATH: the first executable file of that
@@ -207,7 +358,7 @@ type worktreeSettings struct {
 // New creates session cld-SUFFIX, running claude in the current directory, and becomes a tmux
 // client attached to it; with worktree claude works in git worktree SUFFIX. It returns only when
 // it does not get as far.
-func (t *Tmux) New(suffix string, worktree bool) error {
+func (t *Tmux) New(c *Claude, suffix string, worktree bool) error {
 	if err := t.readyClient(); err != nil {
 		return err
 	}
@@ -223,14 +374,9 @@ func (t *Tmux) New(suffix string, worktree bool) error {
 		}
 		return fail.Runtime(fmt.Sprintf("session '%s' exists; attach to it with cld join -n %[1]s", suffix))
 	}
-	// The script went on with the PWD it got where that directory had been removed, and tmux
-	// started claude in the home directory instead.
-	dir, err := os.Getwd()
-	if errors.Is(err, fs.ErrNotExist) {
-		return fail.Runtime("the current directory no longer exists")
-	}
+	dir, err := workingDirectory()
 	if err != nil {
-		return fail.Runtime("cannot get the current directory: " + err.Error())
+		return err
 	}
 	// Settings given on claude's command line override the user's and the project's. Remote
 	// Control starts with the session, so it can be reached from claude.ai and the mobile app;
@@ -250,7 +396,7 @@ func (t *Tmux) New(suffix string, worktree bool) error {
 	if err != nil {
 		return fail.Runtime(err.Error())
 	}
-	claude := []string{"claude", "--name", name, "--settings", string(encoded)}
+	claude := []string{c.path, "--name", name, "--settings", string(encoded)}
 	if worktree {
 		claude = append(claude, "--worktree", suffix)
 	}
@@ -258,12 +404,13 @@ func (t *Tmux) New(suffix string, worktree bool) error {
 		return err
 	}
 	// claude and its arguments go to tmux as separate words: tmux then executes them directly
-	// instead of through sh -c. What follows new-session in the same tmux command - the mark,
-	// remain-on-exit and the pane-died hook, which go to claude's window only, so that a session
-	// made on the server without cld closes as tmux would - takes effect before tmux sees claude
-	// exit, however soon; tmux cuts the command short when new-session fails, so a session of
-	// that name made meanwhile stays unmarked. The targets end in ":" because set takes a pane,
-	// which "=NAME" does not find.
+	// instead of through sh -c. claude goes by the path CheckClaude checked: tmux would look the
+	// bare word up in the PATH, relative entries included, and could start another claude. What
+	// follows new-session in the same tmux command - the mark, remain-on-exit and the pane-died
+	// hook, which go to claude's window only, so that a session made on the server without cld
+	// closes as tmux would - takes effect before tmux sees claude exit, however soon; tmux cuts
+	// the command short when new-session fails, so a session of that name made meanwhile stays
+	// unmarked. The targets end in ":" because set takes a pane, which "=NAME" does not find.
 	window := "=" + name + ":"
 	argv := []string{"tmux", "-L", "cld", "-f", "/dev/null",
 		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
