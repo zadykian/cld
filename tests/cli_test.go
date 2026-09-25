@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -265,6 +266,106 @@ func TestNamesAreASCII(t *testing.T) {
 				t.Errorf("sessions %q, want none", sessions)
 			}
 		})
+	}
+}
+
+// A name has at most 64 characters, so that the path of its server's socket fits in sun_path
+// (see MaxName in internal/session): one of 65 is refused, saying so, whatever its characters, and
+// gets no legacy hint; one of 64 goes as far as tmux, whose server is named like the session. The
+// length is counted in characters, not bytes: 33 "é" are 66 bytes, and invalid for the "é".
+func TestNameLength(t *testing.T) {
+	t.Parallel()
+	longest, tooLong := strings.Repeat("n", 64), strings.Repeat("n", 65)
+	accents, tooManyAccents := strings.Repeat("é", 33), strings.Repeat("é", 65)
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"new", "-n", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"join", "--name", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"kill", "-n", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"new", "-n", tooLong[:60] + "a.b.c"}, "cld: session name '" + tooLong[:60] + "a.b.c' is longer than 64 characters (see cld help)\n"},
+		{[]string{"new", "-n", tooLong[:60] + "a.b"}, "cld: invalid session name '" + tooLong[:60] + "a.b' (see cld help)\n"},
+		{[]string{"new", "-n", accents}, "cld: invalid session name '" + accents + "' (see cld help)\n"},
+		{[]string{"new", "-n", tooManyAccents}, "cld: session name '" + tooManyAccents + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{tooLong}, "cld: unknown command '" + tooLong + "' (see cld help)\n"},
+		{[]string{longest}, "cld: unknown command '" + longest + "'; for session " + longest + ": cld new -n " + longest + ", cld join -n " + longest + "\n"},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			if result := s.RunCld(nil, test.args...); result.Code != 2 || result.Stderr != test.want || result.Stdout != "" {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, test.want)
+			}
+		})
+	}
+	t.Run("new -n "+longest, func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		result := s.RunCld(map[string]string{
+			"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+			"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+		}, "new", "-n", longest)
+		if result.Code != 0 || result.Stderr != "" {
+			t.Fatalf("exit %d, stderr %q", result.Code, result.Stderr)
+		}
+		if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:2], []string{"-L", "cld-" + longest}) {
+			t.Errorf("tmux arguments start %q, want -L cld-%s", argv[:2], longest)
+		}
+	})
+}
+
+// Under a TMUX_TMPDIR longer than tmux's default directories, a name within the 64 characters can
+// still make the socket path too long for sun_path. tmux says so, and cld ends with its message,
+// rather than take it for no server running: new before it sets the title, and join without
+// pointing at cld new, which would fail the same way. list finds no socket.
+func TestSocketPathTooLong(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	dir := filepath.Join(s.Root, strings.Repeat("d", 60))
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := strings.Repeat("n", 64)
+	path := filepath.Join(dir, "tmux-"+strconv.Itoa(os.Getuid()), "cld-"+name)
+	want := "cld: error connecting to " + path + " (File name too long)\n"
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"new", "-n", name}, want},
+		{[]string{"join", "-n", name}, want},
+		{[]string{"kill", "-n", name}, want},
+		{[]string{"list"}, ""},
+	} {
+		result := s.RunCld(map[string]string{"TMUX_TMPDIR": dir}, test.args...)
+		if code := min(len(test.want), 1); result.Code != code || result.Stdout != "" || result.Stderr != test.want {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit %d, stderr %q", test.args[0], result.Code, result.Stdout, result.Stderr, code, test.want)
+		}
+	}
+}
+
+// list reads tmux's socket directory to find the servers, and one it cannot read ends it with
+// the reason, rather than show no session: here a file where tmux-UID would be. new, join and
+// kill end with tmux's message, as for a socket path too long (tmux 3.3a to 3.7c). Where
+// TMUX_TMPDIR is unset, empty or names nothing, cld reads /tmp/tmux-UID, as tmux falls back to it;
+// no test reaches that, which would read the user's own sockets.
+func TestUnreadableSocketDirectory(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	s.WriteFile(s.SocketDir(), "")
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"list"}, "cld: cannot read " + s.SocketDir() + ": not a directory\n"},
+		{[]string{"new", "-n", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
+		{[]string{"join", "-n", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
+		{[]string{"kill", "-n", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
+	} {
+		if result := s.RunCld(nil, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", test.args[0], result.Code, result.Stdout, result.Stderr, test.want)
+		}
 	}
 }
 
@@ -694,11 +795,13 @@ const endHint = "display-message -d 0 'claude exited with " +
 	"#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}: " +
 	"C-q d detaches, cld kill -n #{window_name} ends the session'"
 
-// new hands over to tmux with this command, word for word: the server options, claude - by the
-// path of the one it checked - and its arguments as separate words, the mark, and what goes on
-// claude's window. The fake tmux records it, and the environment it gets: cld's own, without
-// TERMINAL_EMULATOR and with an empty TMUX where TMUX was set (see TestNestsOnADeadPanesPty); a
-// PS1, which the script's bash dropped, passes too (decision 11 in docs/design.md).
+// new hands over to tmux with this command, word for word: the session's own server, its options,
+// claude - by the path of the one it checked - and its arguments as separate words, and what goes
+// on claude's window. The fake tmux, which finds no server running for the session, records it,
+// and the environment it gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX where
+// TMUX was set - join's client needs it (see TestNestsOnADeadPanesPty), and with it tmux still
+// takes new's terminal for UTF-8 (see TestNestsInsideAnotherTmux); a PS1, which the script's bash
+// dropped, passes too (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -727,7 +830,7 @@ func TestNewTmuxCommand(t *testing.T) {
 			if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
-			want := []string{"-L", "cld", "-f", "/dev/null",
+			want := []string{"-L", "cld-x", "-f", "/dev/null",
 				"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
 				"set", "-s", "focus-events", "on", ";",
 				"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
@@ -735,7 +838,6 @@ func TestNewTmuxCommand(t *testing.T) {
 				"new-session", "-s", "cld-x", "-n", "x", "-c", s.Work}
 			want = append(want, claude...)
 			want = append(want, ";",
-				"set", "-F", "-t", "=cld-x:", "@cld", "#{session_id}", ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
 				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint+`"`)
@@ -753,7 +855,7 @@ func TestNewTmuxCommand(t *testing.T) {
 
 // join hands over to tmux with this command, word for word, and with the environment it got but
 // for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which only new leaves out, and a
-// PS1, which the script's bash dropped. The fake tmux finds session x among cld's, then records
+// PS1, which the script's bash dropped. The fake tmux finds session x on its server, then records
 // the command.
 func TestJoinTmuxCommand(t *testing.T) {
 	t.Parallel()
@@ -761,7 +863,7 @@ func TestJoinTmuxCommand(t *testing.T) {
 	given := map[string]string{
 		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
-		"CLD_FAKE_TMUX_SESSIONS": "cld",
+		"CLD_FAKE_TMUX_SESSIONS": "cld-x",
 		"TERMINAL_EMULATOR":      "JetBrains-JediTerm",
 		"TERM_PROGRAM":           "iTerm.app",
 		"LC_TERMINAL":            "iTerm2",
@@ -773,10 +875,41 @@ func TestJoinTmuxCommand(t *testing.T) {
 		t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 	}
 	record := s.FakeTmuxRecord()
-	if want := []string{"-L", "cld", "attach-session", "-d", "-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint}; !slices.Equal(record.Argv, want) {
+	if want := []string{"-L", "cld-x", "attach-session", "-d", "-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint}; !slices.Equal(record.Argv, want) {
 		t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 	}
 	checkEnv(t, record.Env, passedOn(s, given))
+}
+
+// A server can exit while cld asks it - its claude exits, a cld kill runs - and tmux then says that
+// the server exited unexpectedly: list passes over it and lists the other sessions, and join and
+// kill find no session there. The fake tmux answers every server but cld-b, which exits as it is
+// asked.
+func TestServerExitingWhileAsked(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	socket(t, s, "cld-a")
+	socket(t, s, "cld-b")
+	fake := map[string]string{
+		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+		"CLD_FAKE_TMUX_SESSIONS": "cld-a\tdetached\t/w",
+		"CLD_FAKE_TMUX_EXITED":   "cld-b",
+	}
+	for _, test := range []struct {
+		args           []string
+		code           int
+		stdout, stderr string
+	}{
+		{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\n" + "a     detached  /w\n", ""},
+		{[]string{"join", "-n", "b"}, 1, "", "cld: no session 'b'; create it with cld new -n b\n"},
+		{[]string{"kill", "-n", "b"}, 1, "", "cld: no session 'b' (see cld list)\n"},
+	} {
+		if result := s.RunCld(fake, test.args...); result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.stderr {
+			t.Errorf("%s: exit %d, stderr %q, stdout\n%s\nwant exit %d, stderr %q, stdout\n%s",
+				strings.Join(test.args, " "), result.Code, result.Stderr, result.Stdout, test.code, test.stderr, test.stdout)
+		}
+	}
 }
 
 // passedOn is the environment cld runs in with extra, as cld hands it on to tmux: without the
@@ -811,15 +944,15 @@ func checkEnv(t *testing.T, got, want map[string]string) {
 	}
 }
 
-// A tmux that fails where cld expects it to work - tmux -V, or kill-session - ends cld with tmux's
-// exit status, after tmux's own message: cld adds none. A signal ends it with 128 and the
-// signal's number, as a shell reports it.
+// A tmux that fails where cld expects it to work - tmux -V, or the kill-session and kill-server
+// that kill runs - ends cld with tmux's exit status, after tmux's own message: cld adds none. A
+// signal ends it with 128 and the signal's number, as a shell reports it.
 func TestPassesTmuxFailuresThrough(t *testing.T) {
 	t.Parallel()
 	const (
 		versionFails = `echo "tmux: broken" >&2; exit 3`
 		versionDies  = `kill -TERM $$`
-		killFails    = `case "$*" in -V) echo "tmux 3.7c" ;; *list-sessions*) echo cld ;; *kill-session*) echo "tmux: cannot kill" >&2; exit 5 ;; esac`
+		killFails    = `case "$*" in -V) echo "tmux 3.7c" ;; *list-sessions*) echo cld-x ;; *kill-server*) echo "tmux: cannot kill" >&2; exit 5 ;; esac`
 	)
 	for _, test := range []struct {
 		failure, script string
@@ -831,7 +964,7 @@ func TestPassesTmuxFailuresThrough(t *testing.T) {
 		{"-V exits 3", versionFails, []string{"kill", "-n", "x"}, 3, "tmux: broken\n"},
 		{"-V gets SIGTERM", versionDies, []string{"list"}, 128 + 15, ""},
 		{"-V gets SIGTERM", versionDies, []string{"join"}, 128 + 15, ""},
-		{"kill-session exits 5", killFails, []string{"kill", "-n", "x"}, 5, "tmux: cannot kill\n"},
+		{"the kill exits 5", killFails, []string{"kill", "-n", "x"}, 5, "tmux: cannot kill\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+", "+test.failure, func(t *testing.T) {
 			t.Parallel()
@@ -858,7 +991,7 @@ func TestPassesTmuxFailuresThrough(t *testing.T) {
 // tmux. So does a tmux that stops being runnable once it has answered tmux -V and the session
 // lookup: new and join cannot hand over to it, and kill cannot end the session with it. A lookup
 // that cannot run, once tmux -V has answered, ends cld with status 1 and the same message, as
-// the script's lookups ended it with bash's.
+// the script's lookups ended it with bash's. list's lookup asks the server of a socket cld-x.
 func TestCannotRunTmux(t *testing.T) {
 	t.Parallel()
 	const title = "\x1b]0;\u2733 cld-x\x07"
@@ -875,7 +1008,8 @@ func TestCannotRunTmux(t *testing.T) {
 		for _, test := range []struct {
 			args []string
 			// answers is what tmux runs before it cannot: nothing, or a script that answers tmux
-			// -V and, if it is not -V, the lookup.
+			// -V and, if it is not -V, the lookup - where new's finds no server, it fails on
+			// the way out, once the file has been moved.
 			answers string
 			// lookup is whether the command that cannot run is a session lookup.
 			lookup bool
@@ -887,9 +1021,9 @@ func TestCannotRunTmux(t *testing.T) {
 			{[]string{"list"}, "echo 'tmux 3.7c'", true, ""},
 			{[]string{"join", "-n", "x"}, "echo 'tmux 3.7c'", true, ""},
 			{[]string{"kill", "-n", "x"}, "echo 'tmux 3.7c'", true, ""},
-			{[]string{"new", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac`, false, title},
-			{[]string{"join", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld`, false, title},
-			{[]string{"kill", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld`, false, ""},
+			{[]string{"new", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo 'no server running on /fake' >&2; trap 'exit 1' EXIT`, false, title},
+			{[]string{"join", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, title},
+			{[]string{"kill", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, ""},
 		} {
 			stage := "at once"
 			if test.answers != "" {
@@ -901,6 +1035,7 @@ func TestCannotRunTmux(t *testing.T) {
 			t.Run(strings.Join(test.args, " ")+", "+stage+", "+broken.what, func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
+				socket(t, s, "cld-x")
 				fake := filepath.Join(s.Root, "fake")
 				if err := os.Mkdir(fake, 0o755); err != nil {
 					t.Fatal(err)
@@ -995,7 +1130,8 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 // A write to stdout that fails ends cld with status 1, as the script's printf and cat failing
 // under set -e did, so that output cut short does not pass for whole: list, the help - from help
 // and from -h - and the version, and new and join, which then do not hand over to tmux. stdout is
-// open for reading only here, so that every write to it fails.
+// open for reading only here, so that every write to it fails; list finds session x through a
+// socket cld-x.
 func TestFailedWriteEndsCld(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -1003,7 +1139,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		// sessions is what the fake tmux lists.
 		sessions string
 	}{
-		{[]string{"list"}, "cld-a\tdetached\t/w"},
+		{[]string{"list"}, "cld-x\tdetached\t/w"},
 		{[]string{"help"}, ""},
 		{[]string{"help", "new"}, ""},
 		{[]string{"new", "-h"}, ""},
@@ -1011,11 +1147,12 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"kill", "-h", "-x"}, ""},
 		{[]string{"version"}, ""},
 		{[]string{"new", "-n", "x"}, ""},
-		{[]string{"join", "-n", "x"}, "cld"},
+		{[]string{"join", "-n", "x"}, "cld-x"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
+			socket(t, s, "cld-x")
 			stdout, err := os.Open(os.DevNull)
 			if err != nil {
 				t.Fatal(err)
@@ -1138,4 +1275,14 @@ func TestNewRefusesADirectoryItCannotEnter(t *testing.T) {
 			}
 		})
 	}
+}
+
+// socket makes a file where tmux keeps the sandbox's socket of server, for list to find: its
+// lookups go to a fake tmux, which answers whatever the file is.
+func socket(t *testing.T, s *sandbox.Sandbox, server string) {
+	t.Helper()
+	if err := os.MkdirAll(s.SocketDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s.WriteFile(filepath.Join(s.SocketDir(), server), "")
 }

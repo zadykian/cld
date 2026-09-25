@@ -1,5 +1,6 @@
 // Package sandbox gives each test an isolated world: its own tmux socket directory, HOME and
-// probe records, so tests run in parallel and never touch the user's own cld sessions.
+// probe records, so tests run in parallel and never touch the user's own cld sessions. cld runs
+// each session on a server of its own, named like it: session cld-NAME on server cld-NAME.
 package sandbox
 
 import (
@@ -84,7 +85,12 @@ func New(t testing.TB) *Sandbox {
 		"LANG":          locale,
 	}
 	t.Cleanup(func() {
-		_, _ = s.Tmux("kill-server")
+		sockets, _ := os.ReadDir(s.SocketDir())
+		for _, socket := range sockets {
+			cmd := exec.Command("tmux", "-S", filepath.Join(s.SocketDir(), socket.Name()), "kill-server")
+			cmd.Env = s.Environ(nil)
+			_ = cmd.Run()
+		}
 		_ = os.RemoveAll(root)
 	})
 	return s
@@ -161,45 +167,86 @@ func (s *Sandbox) Tools(names ...string) string {
 	return dir
 }
 
-// Tmux runs a command against cld's private tmux server.
-func (s *Sandbox) Tmux(args ...string) (string, error) {
-	cmd := exec.Command("tmux", append([]string{"-L", "cld"}, args...)...)
+// SocketDir is the directory tmux keeps the sandbox's sockets in.
+func (s *Sandbox) SocketDir() string {
+	return filepath.Join(s.Root, "tmux-"+strconv.Itoa(os.Getuid()))
+}
+
+// Tmux runs a command against the sandbox's tmux server named server (tmux -L server): cld's
+// session cld-NAME is on server cld-NAME.
+func (s *Sandbox) Tmux(server string, args ...string) (string, error) {
+	cmd := exec.Command("tmux", append([]string{"-L", server}, args...)...)
 	cmd.Env = s.Environ(nil)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", errors.New("tmux " + strings.Join(args, " ") + ": " + strings.TrimSpace(stderr.String()))
+		return "", errors.New("tmux -L " + server + " " + strings.Join(args, " ") + ": " + strings.TrimSpace(stderr.String()))
 	}
 	return strings.TrimRight(string(out), "\n"), nil
 }
 
 // MustTmux is Tmux that fails the test on error.
-func (s *Sandbox) MustTmux(args ...string) string {
+func (s *Sandbox) MustTmux(server string, args ...string) string {
 	s.t.Helper()
-	out, err := s.Tmux(args...)
+	out, err := s.Tmux(server, args...)
 	if err != nil {
 		s.t.Fatal(err)
 	}
 	return out
 }
 
-// Format expands a tmux format for a session's pane (cld sessions have one).
-// "display -p -t =SESSION" would be shorter, but tmux 3.3 expands it to nothing without a client.
+// Format expands a tmux format for a session's pane (cld sessions have one), on the server named
+// like the session. "display -p -t =SESSION" would be shorter, but tmux 3.3 expands it to nothing
+// without a client.
 func (s *Sandbox) Format(session, format string) string {
 	s.t.Helper()
-	return s.MustTmux("list-panes", "-s", "-t", "="+session, "-F", format)
+	return s.MustTmux(session, "list-panes", "-s", "-t", "="+session, "-F", format)
 }
 
-// Sessions lists the sessions on cld's server, or nothing if it is not running.
-func (s *Sandbox) Sessions() []string {
-	out, err := s.Tmux("list-sessions", "-F", "#{session_name}")
-	if err != nil {
-		return nil
+// Servers lists the names of the sandbox's sockets that cld's servers have - cld-*, whether a
+// server still runs on them or not - in order.
+func (s *Sandbox) Servers() []string {
+	paths, _ := filepath.Glob(filepath.Join(s.SocketDir(), "cld-*"))
+	servers := make([]string, 0, len(paths))
+	for _, path := range paths {
+		servers = append(servers, filepath.Base(path))
 	}
-	sessions := strings.Fields(out)
+	return servers
+}
+
+// Sessions lists the sessions on the servers of Servers, in order: a session on the server named
+// like it as its name, cld-NAME, and any other as SERVER/SESSION - one that claude made on its
+// server, say. Nothing where no server runs.
+func (s *Sandbox) Sessions() []string {
+	var sessions []string
+	for _, server := range s.Servers() {
+		out, err := s.Tmux(server, "list-sessions", "-F", "#{session_name}")
+		if err != nil {
+			continue
+		}
+		for _, session := range strings.Fields(out) {
+			if session != server {
+				session = server + "/" + session
+			}
+			sessions = append(sessions, session)
+		}
+	}
 	slices.Sort(sessions)
 	return sessions
+}
+
+// Clients lists the clients attached to the servers of Servers, as the sessions they are
+// attached to, in order.
+func (s *Sandbox) Clients() []string {
+	var clients []string
+	for _, server := range s.Servers() {
+		if out, err := s.Tmux(server, "list-clients", "-F", "#{session_name}"); err == nil {
+			clients = append(clients, strings.Fields(out)...)
+		}
+	}
+	slices.Sort(clients)
+	return clients
 }
 
 // WriteFile writes a file or fails the test.

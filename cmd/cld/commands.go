@@ -68,10 +68,10 @@ func commandLine(typed string, printed *error) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
 		Use: "cld",
-		Long: `Run Claude Code in named sessions on a private tmux server that ignores
-~/.tmux.conf. Session NAME is the tmux session "cld-NAME", running
-"claude --name cld-NAME" with Remote Control on. cld sees only the sessions it
-started; tmux -L cld ls lists every session on its server.
+		Long: `Run Claude Code in named sessions, each on a private tmux server that ignores
+~/.tmux.conf. Session NAME is the tmux session "cld-NAME" on the server
+"tmux -L cld-NAME", running "claude --name cld-NAME" with Remote Control on.
+What claude starts through tmux runs on that server too, and ends with it.
 
 Detach with C-q d; C-q C-q sends C-q to claude. A session whose claude fails
 stays, showing why, until cld kill ends it.`,
@@ -130,7 +130,9 @@ stays, showing why, until cld kill ends it.`,
 
 	kill := &cobra.Command{
 		Use:   "kill [-n NAME]",
-		Short: "end session NAME and the claude running in it",
+		Short: "end session NAME and its tmux server",
+		Long: `end session NAME and its tmux server: claude exits as when its terminal closes,
+and what claude started through tmux ends too`,
 	}
 	killName := kill.Flags().StringP("name", "n", "main", nameUsage)
 	kill.RunE = func(*cobra.Command, []string) error {
@@ -223,10 +225,14 @@ exited), and the directory claude is in`,
 }
 
 // nameUsage is -n and --name in the help of new, join and kill.
-const nameUsage = "the session `NAME`: letters, digits, \"_\" and \"-\", starting\nwith a letter or digit"
+const nameUsage = "the session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\nstarting with a letter or digit"
 
-// sessionName is the NAME given with -n, checked once the options have been read.
+// sessionName is the NAME given with -n, checked once the options have been read: first its
+// length, whatever its characters, then its characters.
 func sessionName(name string) (string, error) {
+	if utf8.RuneCountInString(name) > session.MaxName {
+		return "", fail.Usage(fmt.Sprintf("session name '%s' is longer than %d characters (see cld help)", name, session.MaxName))
+	}
 	if !session.ValidName(name) {
 		return "", fail.Usage(fmt.Sprintf("invalid session name '%s' (see cld help)", name))
 	}

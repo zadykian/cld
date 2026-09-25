@@ -2,9 +2,9 @@
 
 [![ci](https://github.com/zadykian/cld/actions/workflows/ci.yml/badge.svg)](https://github.com/zadykian/cld/actions/workflows/ci.yml)
 
-Run [Claude Code](https://code.claude.com) in named sessions on a private tmux server: detach,
-close the terminal, and reattach later - from the same terminal or another one - without losing
-the conversation.
+Run [Claude Code](https://code.claude.com) in named sessions, each on a private tmux server of its
+own: detach, close the terminal, and reattach later - from the same terminal or another one -
+without losing the conversation.
 
 ```
 cld new             # create the session "cld-main" in the current directory
@@ -40,9 +40,9 @@ last release that runs on tmux 3.3 to 3.6:
 curl -fsSL https://github.com/zadykian/cld/releases/download/v0.3.0/cld -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld
 ```
 
-After upgrading tmux, end cld's sessions (`cld list`, then `cld kill -n NAME`): cld checks the
-version of the `tmux` on the `PATH`, but the server that holds its sessions keeps running the
-tmux that started it until the last of them ends.
+After upgrading tmux, end the sessions started before (`cld list`, then `cld kill -n NAME`): cld
+checks the version of the `tmux` on the `PATH`, and each `cld new` starts a server of its own with
+it, but a session's server keeps running the tmux that started it until the session ends.
 
 Before it starts claude, `cld new` runs `claude --version` in the directory claude will start in
 and refuses an older claude, naming the version it found; a newer one always passes. It then
@@ -57,8 +57,12 @@ latest; an installed script keeps working until you update it with the lines abo
 
 ## Usage
 
-Session `NAME` is the tmux session `cld-NAME`, running `claude --name cld-NAME`. A name consists
-of ASCII letters, digits, `_` and `-`; without `-n` it is `main`.
+Session `NAME` is the tmux session `cld-NAME` on a tmux server of its own, also named `cld-NAME`
+(`tmux -L cld-NAME`), running `claude --name cld-NAME`. A name consists of up to 64 ASCII letters,
+digits, `_` and `-`; without `-n` it is `main`. Under a long `TMUX_TMPDIR` fewer fit: the path of
+the server's socket, `$TMUX_TMPDIR/tmux-UID/cld-NAME` with its symlinks resolved (on macOS `/tmp`
+is `/private/tmp`), has to stay within 103 bytes on macOS and 107 on Linux, and tmux otherwise
+fails with `File name too long`.
 
 Each session starts with [Remote Control](https://code.claude.com/docs/en/remote-control) on, so
 you can also continue it from claude.ai or the Claude app: `cld new` passes claude
@@ -71,7 +75,7 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 |---|---|
 | `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
-| `cld kill [-n NAME]` | end the session; claude exits as when its terminal closes |
+| `cld kill [-n NAME]` | end the session and its tmux server; claude exits as when its terminal closes, and what claude started through tmux ends too |
 | `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in |
 | `cld help [COMMAND]` | show the help of cld, or of one command: its options and their defaults. `cld -h` and `cld COMMAND -h` (or `--help`) do the same |
 | `cld version` | show the version |
@@ -91,20 +95,25 @@ Joining from a second terminal detaches the first one; claude keeps running in i
 wherever you join from. A killed session's conversation stays in Claude Code's history, named
 `cld-NAME` in the `claude --resume` picker.
 
-`cld` sees only the sessions it started: `cld new` marks each one with the tmux option `@cld`.
-Whatever claude runs - its Bash tool, a hook - reaches cld's tmux server with a plain `tmux`, as
-`tmux -L cld` does by hand, and a session made that way is not cld's, whatever its name: `cld list`
-leaves it out, and `new`, `join` and `kill` refuse its name, saying so. `tmux -L cld ls` lists
-every session on the server.
+Each session has its tmux server to itself; `tmux -L cld-NAME ls` lists what runs on session
+`NAME`'s. Whatever claude runs - its Bash tool, a hook - reaches that server with a plain `tmux`,
+and a session made that way has another name there: `cld` sees only `cld-NAME`, and `cld kill`
+ends the others with the server. Each claude also gets the environment of the shell that ran
+`cld new` - `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like. If claude exits while
+sessions it started through tmux keep its server running, `cld new`, `cld join` and `cld kill`
+refuse the name and point at the server; end it with `tmux -L cld-NAME kill-server`. Where tmux's
+socket directory ignores case, as it does on macOS's default file system, names that differ only
+in case share one socket: while session `a` or its server runs, `cld new -n A`, `cld join -n A`
+and `cld kill -n A` refuse the name and say that it clashes with `a`.
 
 Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
-the two commands. cld 0.2.0 and earlier did not mark their sessions, so later versions do not see
-the sessions they started: end them before upgrading, or afterwards find them with
-`tmux -L cld ls` and end them with `tmux -L cld kill-session -t =cld-NAME`.
+the two commands.
 
-Under a locale such as `en_US.UTF-8`, cld 0.3.0 also took names with non-ASCII letters or
-digits, such as `café`; later versions list such a session but cannot join or kill it. End it
-with `tmux -L cld kill-session -t =cld-NAME`.
+cld 0.3.0 and earlier ran every session on one tmux server, `tmux -L cld`, where later versions do
+not look: end those sessions before upgrading, or afterwards find them with `tmux -L cld ls` and
+end them with `tmux -L cld kill-session -t =cld-NAME`, or all of them with
+`tmux -L cld kill-server`. Under a locale such as `en_US.UTF-8`, cld 0.3.0 also took names with
+non-ASCII letters or digits, such as `café`, which later versions refuse.
 
 ### Worktrees
 
@@ -127,9 +136,13 @@ claude makes a worktree only in a directory whose workspace trust you have accep
 with the message (see Usage). `cld` itself checks that the current directory is in a git
 repository.
 
-### Why a private tmux server
+### Why a private tmux server per session
 
-`cld` runs tmux with `-L cld -f /dev/null`, so its options never touch any other tmux you use, and
+`cld` runs tmux with `-L cld-NAME -f /dev/null`: a server for each session, shared with no other
+session and no other tmux you use. tmux starts a pane with the environment of the shell that
+started its server, apart from `PATH` and a few variables such as `SSH_AUTH_SOCK`; on a server of
+its own, each claude gets the environment of the shell that ran `cld new`. What claude runs
+through tmux stays on its session's server. cld's options never touch any other tmux you use, and
 your `~/.tmux.conf` never touches claude:
 
 - `extended-keys on` lets modified keys such as Shift+Enter reach claude when it asks for them;
@@ -148,8 +161,8 @@ your `~/.tmux.conf` never touches claude:
   so its message stays readable;
 - the tab title is set to `✳ cld-NAME`, and tmux keeps claude's own title changes to its pane;
 - `TERMINAL_EMULATOR` is removed from the server's environment: claude trusts it over
-  `TERM_PROGRAM=tmux`, and a server started from a JetBrains terminal would otherwise make every
-  session on it behave as if it ran in JediTerm, even when attached from iTerm2.
+  `TERM_PROGRAM=tmux`, and a session created in a JetBrains terminal would otherwise behave as if
+  it ran in JediTerm, even when joined from iTerm2.
 
 ## cld and `claude --tmux`
 
@@ -162,7 +175,7 @@ problem:
 | Working copy | the directory you run it in, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
 | Needs | tmux 3.7 or newer; a git repository for `-w` | a git repository |
 | Coming back | `cld join -n NAME` attaches to the session | not documented |
-| tmux server and options | a private server that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
+| tmux server and options | a private server per session that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
 
 The `claude --tmux` column is based on `claude --help` in Claude Code 2.1.281: the Claude Code docs
