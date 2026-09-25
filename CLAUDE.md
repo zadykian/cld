@@ -63,7 +63,8 @@ comments at the top of each file for details.
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).
   `CLD_PROBE_FAIL` makes it fail at startup. Invoked as `tmux`, it fakes `tmux -V` via
-  `CLD_FAKE_TMUX_VERSION`.
+  `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS`, and records any other
+  command in `tmux.json`.
 - `internal/sandbox` — an isolated world per test: its own short `TMUX_TMPDIR` (socket paths hit
   the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset. Tests are
   parallel and never touch the user's own cld sessions.
