@@ -1,3 +1,5 @@
 /dist/
 /tests/jediterm/lib/
 /.idea
+/.claude/*
+!/.claude/settings.json
