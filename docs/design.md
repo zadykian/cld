@@ -92,6 +92,27 @@ cld() {
 | the same through cobra 1.10.2's zsh and fish scripts (zsh 5.9, `compinit` on, the script as `_cld` in a directory on `$fpath` (see the next row); fish 4.0.2, the script in `~/.config/fish/completions`; Debian trixie, tmux 3.5a) | both list the names with their states on the first TAB - zsh as `bad -- exited` and `review  rev -- detached`, one line per state; fish as `bad (exited)  rev (detached)  review (detached)` - and insert the first on the second. Both add a space after a completed name, offer nothing where cld offers nothing, and list the commands and options with their descriptions. fish still shows its autosuggestion for a word that starts like a file name in the directory - the rest of the name, in grey - which TAB does not insert |
 | where zsh 5.9 looks for `_cld` (Debian trixie, as an ordinary user without `sudo`; `cld join -n <TAB>` typed into an interactive zsh in a tmux pane, tmux 3.7c) | the user's `${fpath[1]}` is `/usr/local/share/zsh/site-functions`, owned by root with mode 755, so `cld completion zsh > "${fpath[1]}/_cld"`, the Linux line of cobra's help, fails with `permission denied`. With the script in `~/.zfunc/_cld` and `fpath=(~/.zfunc $fpath)` before `autoload -U compinit; compinit` in `~/.zshrc`, `$_comps[cld]` is `_cld` and the first TAB lists `bad -- exited`, `rev -- attached` and `review -- detached`; with the script written into that `${fpath[1]}` as root, the user's `compinit` loads it too |
 | how long `cld __complete join -n ''` takes, beside `cld list | cat` (tmux 3.7c, in the image `tests/Dockerfile` builds on `debian:trixie`, 8 CPUs, load about 2; natively too, with Ubuntu's tmux 3.7c snap) | in the image about 3 ms with no socket, 22 ms with four sessions and 147 ms over 36 sockets, 16 of them stale, where `cld list | cat` took 9, 27 and 152 ms: one `list-sessions` a socket, as `list` (13.1), and no `tmux -V`. Before a server per session (13) it was one `list-sessions` in all: about 5 ms with no server and 10 ms with four sessions. Natively, where each tmux client of the snap took about 150 ms to start, 6 ms with no socket and 625 ms with four sessions |
+| when `claude` 2.1.282 reads its telemetry settings (Linux; this row and the next two with GoLand 2026.2.3 and the JetBrains OpenTelemetry plugin 2.1.5) | at startup only (the docs: environment variables). A running session keeps the endpoint it started with |
+| the plugin's receiver | a separate process, `java -jar .../open-telemetry-plugin/satellite/satellite.jar`, listening on all interfaces on a random port (37223 in the probe). Settings › OpenTelemetry › Common has "Use fixed OTLP server port" and "OTLP server port". Not probed: what a GoLand terminal gets from the plugin's terminal customizer (`SatelliteTerminalCustomizer`; its core module names `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and `OTEL_METRIC_EXPORT_INTERVAL`), and whether the `env` of `settings.json` wins over it for a claude started there |
+| the plugin's protocols | OTLP/gRPC `Export` for traces, metrics and logs: `grpc-status: 0`. OTLP/HTTP `POST /v1/traces` over HTTP/1.1: no HTTP response. gRPC only |
+| the collector config from an environment variable (Docker 29.6.0 and `otel/opentelemetry-collector` 0.161.0 on Linux, as in the rows below) | `docker run -e CFG="..." IMAGE --config=env:CFG` works, and so does `validate --config=env:CFG`; so does `-e CFG` with `CFG` in the environment of `docker` itself |
+| two `--config` sources | merged in order: maps merge, lists are replaced. A second source that added `headers` and `compression: gzip` to `otlp/remote`, plus `processors: [batch]` to the metrics pipeline, kept the first source's `endpoint`, `tls`, receivers and exporters. `print-config` shows the merged result, with header values `[REDACTED]` |
+| `validate` on a bad second source | `'otlpexporter.Config' has invalid keys: bogus_key`, exit 1; on a source that is no YAML, `retrieved value (type=string) cannot be used as a Conf ...`, exit 1. It prints nothing and exits 0 for a valid config, and for an empty second source |
+| the exporter type `otlp` | a deprecated alias in 0.161.0: each exporter of that type logs `"otlp" alias is deprecated; use "otlp_grpc" instead` as the collector starts (`validate` says nothing). `otlp_grpc` takes the same settings, and a second source's `headers` and `compression` merge into `otlp_grpc/remote` as they did into `otlp/remote`; the receiver `otlp` is not deprecated. A second source written for `otlp/remote`, as #30's example was, adds an exporter of that name with no endpoint, which `validate` refuses: `exporters::otlp/remote: requires a non-empty "endpoint"`, exit 1 |
+| the collector's own metrics, with `--network host` | its Prometheus server takes `localhost:8888` on the host. A second collector there exits 1: `failed to create meter provider: binding address localhost:8888 for Prometheus exporter: listen tcp 127.0.0.1:8888: bind: address already in use`. With `service.telemetry.metrics.level: none` no server starts (`Internal metrics telemetry disabled`), and both run |
+| collector startup | logs `Everything is ready. Begin running and processing data.` within 3 s |
+| collector startup with `service.telemetry.logs.level: warn` from a second source | `docker logs` shows nothing, the ready line included, and the collector runs: its receiver took connections on its port 0.6 s after `docker run`. The collector starts its extensions, then its pipelines, receivers last, and only then logs the ready line, at info level (`service.go` and `internal/graph/graph.go` of `go.opentelemetry.io/collector/service` v0.161.0) |
+| a second source that moves the receiver (`receivers.otlp.protocols.grpc.endpoint: 127.0.0.1:M`) | the collector logs `Everything is ready` and listens on `M` alone: nothing takes connections on the port of the first source. With `service.telemetry.logs.level: warn` as well, its log stays empty |
+| a collector whose receiver's port is taken, under `--restart unless-stopped` | logs `Error: cannot start pipelines: failed to start "otlp" receiver: listen tcp 127.0.0.1:4319: bind: address already in use` and exits 1; Docker restarts it at once, so `docker container inspect` can find it `running` again, with a `RestartCount` of 1 |
+| `docker update --restart no` on that collector | prints its name, exit 0, whether it was `restarting` or `running` again with a `RestartCount` of 1: it ends `exited` and stays so, its log kept. A restart Docker had already scheduled may still come, once |
+| the collector's log while the `--local` endpoint is down | about 30 lines in 45 s after one span: gRPC reconnect warnings for each exporter's channel, backing off, and `Exporting failed. Will retry the request after interval.` |
+| a collector whose `--local` endpoint is its own receiver (`cld setup telemetry --local http://127.0.0.1:P --port P` before cld refused it), with the debug exporter added to its metrics pipeline, after `telemetrygen` sent it one metric | the debug exporter counted 1 batch after 2 s and 107 after 5 s, still growing, and `docker stats` showed the collector at 146% CPU: it sends what it receives back to itself, without end |
+| where a Go program (Go 1.27.1, Ubuntu 26.04 with systemd-resolved) connects, dialling port P with a listener on `127.0.0.1:P` alone | `127.0.0.1`, `0.0.0.0`, `::`, `::ffff:127.0.0.1`, `localhost` and `foo.localhost` reach the listener; `::1` and `127.0.0.2` are refused |
+| `docker rm -f` on a missing container | prints `Error response from daemon: No such container: NAME`, exit 0; `docker container inspect` prints the same, exit 1 |
+| `docker pause` on the collector | `docker container inspect` says `paused`, and the receiver keeps its port: listening on `127.0.0.1:PORT` fails with `EADDRINUSE`, and the kernel accepts a connection there, with nothing to answer it. `docker rm -f` removes the paused container, and frees the port |
+| a variable in `docker`'s environment passed on with `docker run -e NAME` (Linux 7.0, 4 KiB pages) | `NAME=VALUE` can be 131071 bytes long - Linux's `MAX_ARG_STRLEN`, 32 pages, less the NUL that ends it - and reaches the collector: with `CLD_TELEMETRY_EXTRA=` and 131051 bytes, `docker run -e CLD_TELEMETRY_EXTRA IMAGE --version` ran, and `cld setup telemetry` with a `--collector-config` of that length started the collector; with one byte more, `docker` could not start: `Argument list too long` (`E2BIG`). A NUL byte cannot be in a variable at all: Go's `exec` refuses such an environment |
+| DNS in a container on the default bridge | a name the host resolves through its own DNS (systemd-resolved) resolves the same in the container |
+| `cld setup telemetry --local http://127.0.0.1:4319 --remote http://127.0.0.1:4320`, with a collector with the debug exporter on each of those ports standing in for the plugin and a team's collector, and `telemetrygen` sending a span, a metric and a log to the port cld chose | the local one got all three, the remote one the metric only. A rerun kept the port; a second source with a key the exporter does not know was refused by `validate`, and the collector kept running with the settings unchanged; one that moved the receiver onto a taken port made cld report the collector stopped, with its log, within 2.4 s, and leave it `exited` (after one more restart Docker had scheduled) where it had restarted again and again, and a rerun without it recovered on the same port; one that set the collector's log level to `warn` left its log empty, and cld found it ready by its port within 1.5 s, the span reaching the local one. Checked again once cld waited for the port alone, with collectors of the debug exporter on two other ports: the same three signals and the metric, cld done within 1.2 s, `validate` included; with the collector paused, a rerun kept its port, and so did `--port` with that port, where cld had given the new collector another port; a second source that moved the receiver to another port made cld say after 10 s that the collector took no connections on its port, naming it, below the end of the log, with the ready line, and leave the settings - or say that its log was empty, with the level at `warn` too - and a rerun without it recovered on the same port |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
@@ -209,7 +230,7 @@ The Linux job runs the same Docker image a developer runs locally.
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
    fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
    `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME` (but for `cld completion`, a
-   command since 17). Commands address sessions as `=cld-NAME`, since tmux would otherwise take
+   command since 17, and `cld setup`, since 18). Commands address sessions as `=cld-NAME`, since tmux would otherwise take
    `cld-rev` for `cld-review`. `list` shows the
    directory claude is in now (`pane_current_path`), not the one its session started in, and
    nothing at all when no server runs; on a terminal it lets you pick a session and join it (see
@@ -241,8 +262,9 @@ The Linux job runs the same Docker image a developer runs locally.
 6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
    Claude Code 2.1.232 or newer, the first release that does what cld passes and relies on. Both
    are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
-   for every command but `help`, `version` and completion (17.4), and refuses an older tmux with
-   `cld: tmux 3.7 or newer is required, found 'tmux 3.6b'` and status 1.
+   for every command but `help`, `version`, completion (17.4) and `setup telemetry`, which runs
+   no tmux (18), and refuses an older tmux with `cld: tmux 3.7 or newer is required, found
+   'tmux 3.6b'` and status 1.
    - It reads `tmux -V`: the major and minor version, after `next-` for a development build
      (`next-3.9` is 3.9, `3.8-rc2` 3.8); a version without them (`master`) passes. Letters mark
      bug-fix releases and are not compared, so 3.7 to 3.7c all pass, and there is no upper bound.
@@ -272,10 +294,11 @@ The Linux job runs the same Docker image a developer runs locally.
      placed it right after the lookup of `claude`; it comes after the checks every command makes
      instead - the tools, then `tmux -V` - so that cld runs claude only once those cheap checks
      pass, and a missing tool or a tmux too old is reported before a claude too old. `join`, `kill`,
-     `list` and completion (17.4) never start claude and do not check it. cld compares the `X.Y.Z`
-     the output starts with as numbers (2.1.30 is older than 2.1.232) and refuses an older claude
-     with `cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'` and status 1.
-     It does not say how to update, which depends on how claude was installed; the README does.
+     `list`, completion (17.4) and `setup telemetry` (18) never start claude and do not check it.
+     cld compares the `X.Y.Z` the output starts with as numbers (2.1.30 is older than 2.1.232) and
+     refuses an older claude with `cld: claude 2.1.232 or newer is required, found
+     '2.1.231 (Claude Code)'` and status 1. It does not say how to update, which depends on how
+     claude was installed; the README does.
    - `claude --version` runs the claude that tmux then starts, as tmux starts it: the `claude` that
      cld finds in the absolute `PATH` entries (11.5), by its path, with no input, in the current
      directory. `new` and `resume` hand tmux that path rather than the word `claude`, so claude sees
@@ -431,22 +454,23 @@ The Linux job runs the same Docker image a developer runs locally.
     `cld new -h` shows `new`'s options alone. Settled with it:
     1. cobra's default help and usage templates, with command sorting off, so the commands keep
        their order: `new`, `resume`, `join`, `kill`, `list`, `help`, `version`, with `completion`
-       before `help` since 17. `Execute` moves the help command after the others (see Findings), so
-       cld moves `version` back after it before it prints the help. An option's usage names its
-       value in backquotes (`-n, --name NAME`), and pflag shows `-n`'s default, `main`. cobra wraps
-       nothing, so the texts break their lines by hand, within 80 columns, which the test of the
-       help's text holds them to. A template of cld's own, in the usage text's layout, was the
-       other way: closer to what cld printed, but one more thing for cld to keep, where cobra's
-       changes with cobra and shows in that test;
+       before `help` since 17, and `setup` after `list` since 18. `Execute` moves the help command
+       after the others (see Findings), so cld moves `version` back after it before it prints the
+       help. An option's usage names its value in backquotes (`-n, --name NAME`), and pflag shows
+       `-n`'s default, `main`. cobra wraps nothing, so the texts break their lines by hand, within
+       80 columns, which the test of the help's text holds them to. A template of cld's own, in the
+       usage text's layout, was the other way: closer to what cld printed, but one more thing for
+       cld to keep, where cobra's changes with cobra and shows in that test;
     2. `help [COMMAND]` shows the help of one of the commands the root's help lists. `-h` and
        `--help`, given first, are `help` spelled otherwise, so `cld -h new` shows `new`'s help. A
-       `COMMAND` that is not one of those, the empty one included, and an argument after it are
-       refused with status 2 - `cld: help: unknown command 'nope' (see cld help)`, `cld: help:
-       unexpected argument 'join' (see cld help)` - where cobra shows the root's usage for the
-       one and passes over the other, exiting 0 (see Findings). cld's `help` is a command of its
-       own, set with `SetHelpCommand`, so it lacks the `ValidArgsFunction` with which cobra's
-       completes command names after `help`: completion gives it one (17.3). Keeping `help`
-       without an argument was the other way; per-command help would then be only `-h`'s;
+       `COMMAND` that is not one of those, the empty one included, and an argument after it - but
+       one of that command's own, as in `help setup telemetry` (18.8) - are refused with status
+       2 - `cld: help: unknown command 'nope' (see cld help)`, `cld: help: unexpected argument
+       'join' (see cld help)` - where cobra shows the root's usage for the one and passes over
+       the other, exiting 0 (see Findings). cld's `help` is a command of its own, set with
+       `SetHelpCommand`, so it lacks the `ValidArgsFunction` with which cobra's completes command
+       names after `help`: completion gives it one (17.3). Keeping `help` without an argument was
+       the other way; per-command help would then be only `-h`'s;
     3. error messages keep `(see cld help)`, rather than naming the command's help (`see cld
        help new`): no message changes;
     4. `-h` and `--help` are read as before: before a wrong argument they show the help, now of
@@ -822,11 +846,12 @@ The Linux job runs the same Docker image a developer runs locally.
        `resume -n`, for the same reason, or `resume`'s SESSION (16): offering the conversations
        claude keeps would mean reading its transcripts, which cld does not (16.4). `kill -n`
        offers none either, as the request named `join` only; it could take the same function
-       later. No argument offers file names, since none is a file: the root's default directive
-       is `ShellCompDirectiveNoFileComp`, and where cobra answers `ShellCompDirectiveDefault` all
-       the same - a command line it cannot read before the word, such as `cld joni -n <TAB>` -
-       cld turns its `:0` into `:4`. bash 3.2, without `compopt`, offers file names wherever cld
-       offers nothing (see Findings); the README says so.
+       later. No argument offers file names, since none is a file (since 18, but for
+       `setup telemetry --collector-config`'s `FILE`, which offers none either, 18.9): the root's
+       default directive is `ShellCompDirectiveNoFileComp`, and where cobra answers
+       `ShellCompDirectiveDefault` all the same - a command line it cannot read before the word,
+       such as `cld joni -n <TAB>` - cld turns its `:0` into `:4`. bash 3.2, without `compopt`,
+       offers file names wherever cld offers nothing (see Findings); the README says so.
     4. Completion makes none of the startup checks (6): `new`, `resume`, `join`, `kill` and
        `list` call them, and there is no root `PersistentPreRunE`. `cld completion SHELL` works
        where neither tmux nor claude is installed, and `__complete` does not check tmux's
@@ -866,6 +891,117 @@ The Linux job runs the same Docker image a developer runs locally.
 
     Out of scope: a positional `cld join NAME`, completing claude's conversation names (16.4), and
     hints printed under the prompt (cobra's ActiveHelp).
+18. Telemetry (#30): `cld setup telemetry [--local URL] [--remote URL] [--port PORT]
+    [--collector-config FILE]` runs a local OpenTelemetry Collector in Docker, the container
+    `cld-telemetry`, and points Claude Code's user settings at it. claude exports each signal to
+    one endpoint, and can send the same signal to one place only; the collector sends traces,
+    metrics and logs to `--local` - the JetBrains OpenTelemetry plugin in the IDE, say, whose spans
+    for model requests, tool calls, MCP calls and hooks, per agent, show where a long multi-agent
+    run spends its time - and metrics only to `--remote`, a team's collector, which keeps getting
+    them while the IDE is closed: each exporter queues on its own, and the local one drops data
+    after 30 s rather than retrying for 5 min. At least one of the two is needed; a URL is
+    `http://HOST:PORT` (plaintext gRPC) or `https://HOST:PORT` (TLS), as
+    `OTEL_EXPORTER_OTLP_ENDPOINT` takes it - `HOST` an IP address or a name whose labels start
+    and end with a letter or digit, the last not all digits (`127.1` would be looked up as a
+    name), `PORT` without a leading zero - and mistakes are usage errors (status 2). Settled
+    with it:
+    1. Linux only: the container runs with `--network host`, so that `127.0.0.1` in a URL is the
+       host itself and reaches a receiver that listens on loopback only. On any other system cld
+       fails with status 1 (`cld: setup telemetry works on Linux only`) before it looks at
+       anything but `-h` and `--help`, which show the help. Not taken: on macOS, publishing the
+       port and rewriting loopback URLs to `host.docker.internal`, which waits for a probe on
+       Docker Desktop, where host networking is an opt-in;
+    2. the port, on `127.0.0.1`: `--port` - refused when something else listens there, the
+       running collector not counting, nor a paused one, which keeps its port (see Findings);
+       else the running or paused collector's, from its label `cld.port`, so that claude sessions
+       running keep sending to it; else, the collector not running, that port if nothing else
+       holds it - after a reboot another program may, the port being in the ephemeral range; else
+       one the kernel picks (listening on `127.0.0.1:0`). cld holds a port it checks with a
+       listener, closed just before the collector starts. Not 4317, which another collector or
+       Jaeger is likely to have. Never the port of a `--local` or `--remote` URL whose host leads
+       to the collector's receiver on `127.0.0.1` - that address, `0.0.0.0` or `::`, which are
+       dialled as the host itself, `localhost` or a name under it - since the collector would
+       send what it receives to itself without end (see Findings): as `--port` it is a usage
+       error, as the running collector's port a runtime one (status 1), which changes nothing,
+       and a stopped collector's port, or one the kernel picks, is passed over. `::1` and
+       `127.0.0.2` do not reach the receiver. Not taken: the first free port from 14317 upward;
+    3. extra configuration is `--collector-config FILE` only: YAML the collector merges over
+       cld's config (see Findings), whose parts have fixed names to refer to - the receiver
+       `otlp`, the exporters `otlp_grpc/local` and `otlp_grpc/remote`, the pipelines - for auth
+       headers, TLS, compression, timeouts, processors or more exporters. Not taken:
+       `--remote-header KEY=VALUE`;
+    4. the config reaches the container as copies in environment variables, read with
+       `--config=env:CLD_TELEMETRY_CONFIG` and, for the file, `--config=env:CLD_TELEMETRY_EXTRA`.
+       The container needs no file of the host, `validate` checks exactly what will run, and
+       edits to the file apply when setup runs again; `docker inspect` shows them, secrets in the
+       file included. cld hands them to `docker` in its environment (`-e NAME`), not on its
+       command line, which every user of the host can list. The file must fit in a variable: cld
+       refuses one with a NUL byte, and one longer than Linux takes a variable,
+       `MAX_ARG_STRLEN` - 32 pages, the name and the NUL that ends it included: 131051 bytes of
+       file with 4 KiB pages (see Findings) - with status 1, where `docker` could not run. Not
+       taken: a bind-mounted file;
+    5. the order catches a mistake before anything that runs is replaced: `docker` looked for (as
+       `tmux` is), the settings read and parsed, the file read; the port; `docker run --rm IMAGE
+       validate`, whose refusal changes nothing; `docker rm -f cld-telemetry`, then `docker run
+       -d --name cld-telemetry --restart unless-stopped --network host --label cld.port=PORT` -
+       `unless-stopped` so that the collector is back after a reboot or a restart of Docker,
+       where claude's settings still send to it, and a `docker stop` stays stopped; up to 10 s
+       for the collector to be ready: for its receiver to take connections on `127.0.0.1:PORT`,
+       where claude will send. The collector starts its receivers last, as it logs `Everything is
+       ready`, so the port tells as soon, and it tells what the log cannot: a
+       `--collector-config` may keep that line out of the log, raising its level or sending it
+       elsewhere, or move the receiver to another port, where the collector is ready but out of
+       claude's reach (see Findings). Not taken: the line, with the port for a quiet log, which
+       let the moved receiver pass; forcing the level to info with `--set`, which would have
+       overridden a `debug` too. A container that stops or restarts first (see Findings), or
+       takes no connections by then, leaves the settings as they were, and cld shows the last 20
+       lines of its log, or says that it is empty, names the port of one that takes no
+       connections, and says that the collector that ran before is gone; one that stopped or
+       restarted is left for `docker logs`, but `docker update --restart no` stops Docker
+       restarting it again and again, and at every boot, which cld says. Then the settings, read
+       again - what claude or anything else wrote meanwhile stays - and a report of the port,
+       where each signal goes and the keys changed. Running it again gives the same result;
+    6. the settings: cld sets these keys in `env`, `CLAUDE_CODE_ENABLE_TELEMETRY=1`,
+       `OTEL_METRICS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` and, for the collector,
+       `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:PORT`; with `--local` it also sets
+       `OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER` to `otlp`, and to `1` both
+       `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`, which turns claude's traces on, and
+       `OTEL_LOG_TOOL_DETAILS`, and it removes these four without `--local` - tool details put
+       Bash commands and MCP server and tool names on events and spans, which only the local
+       endpoint gets; and it always removes the six keys
+       `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,PROTOCOL}`, which would bypass the
+       collector. Every other key stays where and as it was, and so does everything outside
+       `env`; the file is replaced atomically, keeping its mode and indentation, and a symbolic
+       link to it stays one. A missing file is created, and one that has the settings already is
+       not written again;
+    7. the collector config departs from the one #30 proposed where the pinned image required
+       it (see Findings): the exporters are `otlp_grpc/local` and `otlp_grpc/remote`, `otlp`
+       being a deprecated alias in 0.161.0 that every start warns about and a later image may
+       drop; and the collector's own metrics are off, since with host networking their server
+       takes `localhost:8888` and the collector exits when another collector has it;
+    8. `setup` is cld's first command with commands of its own, as `completion` (17) is cobra's.
+       `run` checks its first argument before cobra, as it checks cld's: `telemetry`, or `-h` or
+       `--help`, setup's help; cobra would run `telemetry` for `cld setup --local URL telemetry`,
+       taking `--local` for an option of setup's. `help setup telemetry` shows telemetry's help:
+       `help`'s `COMMAND` may be followed by one of that command's own (see 12.2), as with
+       cobra's help command - so `help completion bash` now shows what `completion bash --help`
+       shows (17.5), where `help` refused it. Error messages keep `(see cld help)` (12.3). The
+       usage line, `cld setup telemetry [--local URL] [--remote URL] [flags]`, folds `--port` and
+       `--collector-config` into `[flags]`: with them it would be 90 columns, past the 80 of 12.1;
+    9. completion (17) takes `setup` as it takes cld's other commands: `cld <TAB>` offers it with
+       its `Short`, after `list` and before `completion`, which cobra adds after the commands cld
+       adds; `cld setup <TAB>` offers `telemetry`, and `cld setup telemetry --<TAB>` its options;
+       `help <TAB>` offers `setup`, and `help setup <TAB>` `telemetry`, as `help` takes them
+       (17.3). `run`'s check of the argument after `setup` applies where `setup` runs, not to
+       `__complete setup ...`, and setup's checks are `setup telemetry`'s own - Linux in its
+       `Args`, `docker` in its `RunE` - as the check of claude is `new`'s and `resume`'s (17.4),
+       not a root hook's, which completion would run: completion runs no `docker`. Nothing
+       completes the URLs, the port or `--collector-config`'s `FILE`, the one argument of cld's
+       that is a file: no argument offers file names (17.3), a gap left for later;
+    10. the image, `otel/opentelemetry-collector:0.161.0`, is pinned and bumped deliberately, as
+        JediTerm is (7). Out of scope: other systems, a header option, turning it off (removing
+        the container and cld's keys), overriding the image, and the plugin's port, which is set
+        in the IDE.
 
 ## Implementation notes
 
@@ -901,7 +1037,8 @@ Where the implementation departs from the plan above:
   failing does.
   A session lookup (`list-sessions`) that fails ends cld with status 1 and what tmux said, or
   the same `cannot run` message, as the script's `die 1` did. How cld finds a program on the
-  `PATH` (11.5) and ends when it cannot run one (11.9) is `internal/tool`.
+  `PATH` (11.5) and ends when it cannot run one (11.9) is `internal/tool`, which `setup
+  telemetry` shares for `docker` (decision 18).
   cld's own output goes through `fail.Print`, which turns a failed write into an error. What
   cobra prints - the help, the completion scripts and the answers to `__complete` (decision 17) -
   goes to a buffer, the root's output, which `run` then prints with `fail.Print`: cobra's help
@@ -911,7 +1048,9 @@ Where the implementation departs from the plan above:
   - the first argument is checked before cobra sees it: cobra takes an unknown command for an
     argument of the root, and skips options before the command (`cld -n x new` would run
     `new`). `completion`, `__complete` and `__completeNoDesc` pass (decision 17), and a bare
-    `__complete` is refused there, where cobra's `Args` would refuse it with its own message;
+    `__complete` is refused there, where cobra's `Args` would refuse it with its own message. The
+    argument after `setup` is checked the same way (decision 18.8) where `setup` runs, and not
+    after `__complete`, which completes it;
   - `SilenceErrors` and `SilenceUsage`: cobra would print `Error: MESSAGE` and the usage;
   - `SetInterspersed(false)` on every command: pflag reads options up to the first argument,
     where it would pass over arguments and read every option first (`cld join a -x` would name
@@ -921,14 +1060,15 @@ Where the implementation departs from the plan above:
     `InvalidValueError`, `InvalidSyntaxError`) into cld's messages, and shows the help when `-h`
     or `--help` came before the error: cobra looks at `-h` only once every option has parsed;
   - `SetHelpCommand` replaces cobra's `help [command]` with cld's `help [COMMAND]`, whose `Args`
-    refuses what cobra's passes over (decision 12), and whose `ValidArgsFunction` completes
-    `COMMAND` as cobra's does (17.3). A help function set on the root, which every command
-    inherits, `completion`'s included, renders cobra's default help into the root's output: it is
-    cobra's own help function, taken from the root before cld sets its own. Each command has
-    `-h` and `--help` of its own (`helpOption`), worded as cobra words its own ("help for new");
-    `cobra.EnableCommandSorting` is off, and the help function moves `version` back after
-    `help`. `tests/testdata/help` holds the help of the root and of each command, which
-    `TestHelpText` compares byte for byte and `-update` rewrites;
+    refuses what cobra's passes over (decision 12) and takes, as cobra's does, a command's own
+    command after it (`help setup telemetry`, 18.8), and whose `ValidArgsFunction` completes
+    both as cobra's does (17.3); `helpTopic` reads them for the two. A help function set on the
+    root, which every command inherits, `completion`'s included, renders cobra's default help
+    into the root's output: it is cobra's own help function, taken from the root before cld sets
+    its own. Each command has `-h` and `--help` of its own (`helpOption`), worded as cobra words
+    its own ("help for new"); `cobra.EnableCommandSorting` is off, and the help function moves
+    `version` back after `help`. `tests/testdata/help` holds the help of the root and of each
+    command, which `TestHelpText` compares byte for byte and `-update` rewrites;
   - `Version` stays unset, so there is no `--version` or `-v` flag: `version` is a command, and
     `-V` and `--version` its aliases;
   - cld makes cobra's `completion` command itself (`InitDefaultCompletionCmd`, which `Execute`
@@ -1055,6 +1195,35 @@ Where the implementation departs from the plan above:
   call one function, `create`, that makes the session on its own server, and differ in claude's
   arguments only, so what `new` passes later reaches `resume` too, apart from the worktree. The
   contract tests (C1-C10) run through `new`, and cover `resume` with it.
+- `setup telemetry` (decision 18) is `internal/telemetry`. The settings edit needs no new
+  dependency: `json.Decoder`'s tokens read the top-level object and `env` into lists of keys and
+  raw values in the file's order, and the file is written back from them, the values byte for
+  byte, one member a line in the indentation of its first member - so a file Claude Code wrote
+  comes back as it was but for cld's keys. The collector config is YAML written by hand, its
+  strings quoted as JSON strings are, which YAML reads the same (`[::1]:4317` would otherwise be
+  a list). docker's failures are told apart by what it prints and its status: `No such
+  container` from `inspect` means none, and `docker run` exits with 125 when docker fails and
+  with the collector's status otherwise.
+- The tests fake docker with the probe, which TestMain links as `docker` next to `claude`, so
+  every sandbox finds it before the real one. It records each call, with its environment, in
+  `docker.jsonl`, keeps the one container's state in a file (`inspect`, `rm -f` and `run -d` read
+  and change it), and records whether the port of the label was free as `run -d` came, which pins
+  that cld lets go of it in time. A container that `run -d` starts running takes connections on
+  that port, as the collector's receiver: the probe starts itself as one, in a session of its own
+  and with none of the pipes cld reads docker's output from, and it listens until `rm -f` removes
+  the file it keeps - `rm -f` returns once the port is free, as Docker's does - or the test
+  removes the sandbox. Environment variables give the container's state before, the state a
+  container starts in and its restart count, whether it takes connections, the log, a call that
+  fails, and a file that `run -d` writes, as claude might while cld waits. `update` only answers.
+  The wait of 10 s for a collector that never takes connections is waited out in full by two
+  tests, one of them with the ready line in its log. Where the test holds the port as that of the
+  collector that ran before, which cld does not check, the new collector's receiver cannot have
+  it, and the test's listener takes the connection. A write of the settings that fails once the
+  collector runs comes from a `CLAUDE_CONFIG_DIR` whose `settings.json` is 4095 bytes long, the
+  most Linux takes: the temporary file beside it has a longer name. A rename that fails after the
+  temporary file is written has no such cause, so the removal of that file is not tested. The
+  limit on a `--collector-config` is checked against the kernel: the longest file passes to
+  docker, and a program run with a variable one byte longer fails with `E2BIG`.
 
 ## What the tests found
 
@@ -1094,6 +1263,10 @@ by hand in a nested tmux).
 - Baseline and JediTerm contracts run on tmux 3.7c (Linux, Docker, built from source), and the
   baseline on Homebrew's tmux on macOS. Until the minimum rose to 3.7 (see 6), they also ran on
   3.3a, 3.4 and 3.5a.
+- `setup telemetry` is tested against a fake docker on Linux, and on macOS only for its refusal;
+  it was checked by hand against the real collector image (see Findings), with collectors of the
+  debug exporter in the plugin's place: the plugin itself, and claude sending through the
+  collector, are still to check.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

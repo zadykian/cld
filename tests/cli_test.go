@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"os"
 	"os/exec"
@@ -23,16 +24,33 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the help in testdata/help from what cld help prints")
 
-// helpTopics are what cld help takes, "" for none, in the order the help lists them.
-var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "completion", "help", "version"}
+// helpTopics are what cld help takes, "" for none, in the order the help lists them: a command
+// of cld's, followed by the commands it has, "setup telemetry" for setup's telemetry.
+var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "setup", "setup telemetry", "completion", "help", "version"}
 
 // goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
-// testdata/help/COMMAND.txt for cld help COMMAND.
+// testdata/help/COMMAND.txt for cld help COMMAND, and setup-telemetry.txt for cld help setup
+// telemetry.
 func goldenHelp(topic string) string {
 	if topic == "" {
 		topic = "cld"
 	}
-	return filepath.Join("testdata", "help", topic+".txt")
+	return filepath.Join("testdata", "help", strings.ReplaceAll(topic, " ", "-")+".txt")
+}
+
+// subtopics are the commands the help of topic lists: the topics that name one after it.
+func subtopics(topic string) []string {
+	var names []string
+	for _, other := range helpTopics[1:] {
+		parent, name := "", other
+		if last := strings.LastIndex(other, " "); last >= 0 {
+			parent, name = other[:last], other[last+1:]
+		}
+		if parent == topic {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // The help of cld and of each command, byte for byte: cobra generates it from each command's texts
@@ -42,10 +60,7 @@ func goldenHelp(topic string) string {
 func TestHelpText(t *testing.T) {
 	t.Parallel()
 	for _, topic := range helpTopics {
-		args := []string{"help"}
-		if topic != "" {
-			args = append(args, topic)
-		}
+		args := append([]string{"help"}, strings.Fields(topic)...)
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
@@ -74,11 +89,10 @@ func TestHelpText(t *testing.T) {
 			if late := optionsAfterArguments(result.Stdout); len(late) > 0 {
 				t.Errorf("the usage line names %q after an argument, where cld reads no options", late)
 			}
-			// A command added to cld gets its own file here.
-			if topic == "" {
-				if listed := listedCommands(result.Stdout); !slices.Equal(listed, helpTopics[1:]) {
-					t.Errorf("the help lists %q, want %q: one file in testdata/help for each", listed, helpTopics[1:])
-				}
+			// A command added to cld, or to one of its commands, gets its own file here. completion's
+			// commands are cobra's, whose help is cobra's too (see TestCompletionScripts).
+			if listed, want := listedCommands(result.Stdout), subtopics(topic); topic != "completion" && !slices.Equal(listed, want) {
+				t.Errorf("the help lists %q, want %q: one file in testdata/help for each", listed, want)
 			}
 		})
 	}
@@ -165,6 +179,20 @@ func TestHelp(t *testing.T) {
 		{[]string{"completion", "-h", "tcsh"}, "completion"},
 		{[]string{"completion", "-h", "--help=x"}, "completion"},
 		{[]string{"completion", "--help", "-h=no"}, "completion"},
+		// setup's commands: after it, or after help setup; -h after setup is setup's.
+		{[]string{"help", "setup"}, "setup"},
+		{[]string{"-h", "setup"}, "setup"},
+		{[]string{"setup", "-h"}, "setup"},
+		{[]string{"setup", "--help"}, "setup"},
+		{[]string{"setup", "-h", "x"}, "setup"},
+		{[]string{"help", "setup", "telemetry"}, "setup telemetry"},
+		{[]string{"--help", "setup", "telemetry"}, "setup telemetry"},
+		{[]string{"setup", "-h", "telemetry"}, "setup telemetry"},
+		{[]string{"setup", "telemetry", "-h"}, "setup telemetry"},
+		{[]string{"setup", "telemetry", "--help"}, "setup telemetry"},
+		{[]string{"setup", "telemetry", "-h", "x"}, "setup telemetry"},
+		{[]string{"setup", "telemetry", "--local", "x", "-h"}, "setup telemetry"},
+		{[]string{"setup", "telemetry", "-h", "--bogus"}, "setup telemetry"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -213,7 +241,8 @@ func TestCompletionScripts(t *testing.T) {
 			}
 		}
 		for _, args := range [][]string{{"completion", test.shell, "--help"}, {"completion", test.shell, "-h", "-x"},
-			{"completion", test.shell, "-h", "--help=x"}, {"completion", test.shell, "--help", "-h=no"}} {
+			{"completion", test.shell, "-h", "--help=x"}, {"completion", test.shell, "--help", "-h=no"},
+			{"help", "completion", test.shell}} {
 			result := s.RunCld(none, args...)
 			if help := "Generate the autocompletion script for the " + test.shell + " shell.\n"; result.Code != 0 ||
 				!strings.HasPrefix(result.Stdout, help) || !strings.Contains(result.Stdout, test.setup) || result.Stderr != "" {
@@ -230,11 +259,11 @@ func TestCompletionScripts(t *testing.T) {
 	}
 }
 
-// __complete offers the commands, completion among them, and the commands help takes, each with
-// its description; the options; and no file names where nothing is offered (":4",
-// ShellCompDirectiveNoFileComp, which cobra reports on stderr), the root's default for an
-// argument with nothing to complete. Without the word to complete it fails, as cld's other
-// command-line mistakes do.
+// __complete offers the commands, completion and setup among them, and the commands help takes -
+// after setup or completion, theirs - each with its description; the options; and no file names
+// where nothing is offered (":4", ShellCompDirectiveNoFileComp, which cobra reports on stderr),
+// the root's default for an argument with nothing to complete, setup telemetry's included.
+// Without the word to complete it fails, as cld's other command-line mistakes do.
 func TestCompleteCommands(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -244,9 +273,15 @@ func TestCompleteCommands(t *testing.T) {
 		"join\tattach to session NAME, detaching any other terminal from it\n" +
 		"kill\tend session NAME and its tmux server\n" +
 		"list\tlist the sessions cld started; on a terminal, join or kill one\n" +
+		"setup\tset up what claude runs with: so far, its telemetry\n" +
 		"version\tshow the version\n" +
 		"completion\tprint the completion script for a shell\n" +
 		"help\tshow this help, or the help of COMMAND\n"
+	telemetry := "telemetry\tsend claude's telemetry through a local OpenTelemetry collector\n"
+	shells := "bash\tprint the completion script for bash\n" +
+		"zsh\tprint the completion script for zsh\n" +
+		"fish\tprint the completion script for fish\n" +
+		"powershell\tprint the completion script for powershell\n"
 	for _, test := range []struct {
 		args []string
 		want string
@@ -257,11 +292,21 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", "help", "j"}, "join\tattach to session NAME, detaching any other terminal from it\n:4\n"},
 		{[]string{"__complete", "help", "x"}, ":4\n"},
 		{[]string{"__complete", "help", "new", ""}, ":4\n"},
-		{[]string{"__complete", "completion", ""}, "bash\tprint the completion script for bash\n" +
-			"zsh\tprint the completion script for zsh\n" +
-			"fish\tprint the completion script for fish\n" +
-			"powershell\tprint the completion script for powershell\n" +
-			":4\n"},
+		// After a command with commands of its own, help takes one of those, and nothing after it.
+		{[]string{"__complete", "help", "setup", ""}, telemetry + ":4\n"},
+		{[]string{"__complete", "help", "setup", "t"}, telemetry + ":4\n"},
+		{[]string{"__complete", "help", "setup", "x"}, ":4\n"},
+		{[]string{"__complete", "help", "setup", "telemetry", ""}, ":4\n"},
+		{[]string{"__complete", "help", "completion", ""}, shells + ":4\n"},
+		{[]string{"__complete", "help", "nope", ""}, ":4\n"},
+		{[]string{"__complete", "completion", ""}, shells + ":4\n"},
+		{[]string{"__complete", "setup", ""}, telemetry + ":4\n"},
+		// No URL, port or file name is offered, --collector-config's FILE included.
+		{[]string{"__complete", "setup", "telemetry", "--l"}, "--local\twhere traces, metrics and logs go, such as\n:4\n"},
+		{[]string{"__complete", "setup", "telemetry", "--local", ""}, ":4\n"},
+		{[]string{"__complete", "setup", "telemetry", "--port", ""}, ":4\n"},
+		{[]string{"__complete", "setup", "telemetry", "--collector-config", ""}, ":4\n"},
+		{[]string{"__complete", "setup", "telemetry", "--remote", "https://otel.example.com:4317", ""}, ":4\n"},
 		{[]string{"__complete", "completion", "bash", ""}, ":4\n"},
 		// cobra describes an option by the first line of its usage, backquotes included.
 		{[]string{"__complete", "join", "-"}, "--help\thelp for join\n-h\thelp for join\n" +
@@ -500,6 +545,12 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"help", "--", "new"}, "cld: help: unexpected argument '--' (see cld help)\n"},
 		{[]string{"help", "new", "--"}, "cld: help: unexpected argument '--' (see cld help)\n"},
 		{[]string{"help", "new", "-h"}, "cld: help: unexpected argument '-h' (see cld help)\n"},
+		{[]string{"help", "new", "telemetry"}, "cld: help: unexpected argument 'telemetry' (see cld help)\n"},
+		{[]string{"help", "setup", "nope"}, "cld: help: unknown command 'setup nope' (see cld help)\n"},
+		{[]string{"help", "setup", "telemetry", "x"}, "cld: help: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"help", "telemetry"}, "cld: help: unknown command 'telemetry' (see cld help)\n"},
+		{[]string{"help", "completion", "tcsh"}, "cld: help: unknown command 'completion tcsh' (see cld help)\n"},
+		{[]string{"help", "completion", "bash", "x"}, "cld: help: unexpected argument 'x' (see cld help)\n"},
 		{[]string{"-h", "-n", "x"}, "cld: -h: unexpected argument '-n' (see cld help)\n"},
 		{[]string{"--help", "x"}, "cld: --help: unknown command 'x' (see cld help)\n"},
 		{[]string{"version", "-n", "a"}, "cld: version: unexpected argument '-n' (see cld help)\n"},
@@ -540,6 +591,176 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 			s := sandbox.New(t)
 			if result := s.RunCld(nil, test.args...); result.Code != 2 || result.Stderr != test.want || result.Stdout != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, test.want)
+			}
+		})
+	}
+}
+
+// setup takes one of its commands, telemetry, as its first argument, which run checks as it checks
+// cld's first: no option comes before it (cobra would run telemetry for setup --local URL
+// telemetry), and help can be asked for with -h or --help only, as for cld.
+func TestSetupRequiresCommand(t *testing.T) {
+	t.Parallel()
+	const telemetry = "cld setup telemetry runs a collector for claude's telemetry (see cld help)\n"
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"setup"}, "cld: setup: missing command: " + telemetry},
+		{[]string{"setup", ""}, "cld: setup: missing command: " + telemetry},
+		{[]string{"setup", "", "telemetry"}, "cld: setup: missing command: " + telemetry},
+		{[]string{"setup", "other"}, "cld: setup: unknown command 'other': " + telemetry},
+		{[]string{"setup", "other", "telemetry"}, "cld: setup: unknown command 'other': " + telemetry},
+		{[]string{"setup", "--local", "http://127.0.0.1:4319", "telemetry"}, "cld: setup: unknown command '--local': " + telemetry},
+		{[]string{"setup", "-x"}, "cld: setup: unknown command '-x': " + telemetry},
+		{[]string{"setup", "--help=false", "telemetry"}, "cld: setup: unknown command '--help=false': " + telemetry},
+		{[]string{"setup", "--"}, "cld: setup: unknown command '--': " + telemetry},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			if result := s.RunCld(nil, test.args...); result.Code != 2 || result.Stderr != test.want || result.Stdout != "" {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, test.want)
+			}
+			if calls := s.DockerCalls(); len(calls) != 0 {
+				t.Errorf("docker ran: %q", calls[0].Argv)
+			}
+		})
+	}
+}
+
+// setup telemetry's mistakes are usage errors, read left to right as other commands' are: a
+// value that is no URL or no port, neither --local nor --remote, a URL where the collector would
+// listen with --port, and so send to itself, an argument, an option cld does not know. None gets
+// as far as docker.
+func TestSetupTelemetryRejectsArguments(t *testing.T) {
+	t.Parallel()
+	linuxOnly(t)
+	const (
+		needed = "cld: setup telemetry: --local URL, --remote URL or both are needed (see cld help)\n"
+		form   = ": http://HOST:PORT or https://HOST:PORT (see cld help)\n"
+		port   = "': a number from 1 to 65535 (see cld help)\n"
+	)
+	collector := func(port string) string {
+		return " is where the collector would listen (--port " + port + "): give the receiver's port, or another --port (see cld help)\n"
+	}
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{nil, needed},
+		{[]string{"--port", "4317"}, needed},
+		{[]string{"--collector-config", "extra.yaml"}, needed},
+		{[]string{"--local", "127.0.0.1:4319"}, "cld: invalid URL '127.0.0.1:4319' for --local" + form},
+		{[]string{"--local", "http://127.0.0.1"}, "cld: invalid URL 'http://127.0.0.1' for --local" + form},
+		{[]string{"--local", "http://127.0.0.1:4319/"}, "cld: invalid URL 'http://127.0.0.1:4319/' for --local" + form},
+		{[]string{"--local", "http://127.0.0.1:4319/v1/traces"}, "cld: invalid URL 'http://127.0.0.1:4319/v1/traces' for --local" + form},
+		{[]string{"--local", "grpc://127.0.0.1:4319"}, "cld: invalid URL 'grpc://127.0.0.1:4319' for --local" + form},
+		{[]string{"--local", "http://127.0.0.1:0"}, "cld: invalid URL 'http://127.0.0.1:0' for --local" + form},
+		{[]string{"--local", "http://127.0.0.1:65536"}, "cld: invalid URL 'http://127.0.0.1:65536' for --local" + form},
+		{[]string{"--local", "http://user@127.0.0.1:4319"}, "cld: invalid URL 'http://user@127.0.0.1:4319' for --local" + form},
+		{[]string{"--local", "http://127.0.0.1:4319?x=1"}, "cld: invalid URL 'http://127.0.0.1:4319?x=1' for --local" + form},
+		{[]string{"--local", "http://a b:4319"}, "cld: invalid URL 'http://a b:4319' for --local" + form},
+		{[]string{"--local", "http://a!b:4319"}, "cld: invalid URL 'http://a!b:4319' for --local" + form},
+		{[]string{"--local", "http://[fe80::1%25eth0]:4319"}, "cld: invalid URL 'http://[fe80::1%25eth0]:4319' for --local" + form},
+		// A label of a host name starts and ends with a letter or digit, the last is not all digits,
+		// and a port has no leading zero.
+		{[]string{"--local", "http://-ide:4319"}, "cld: invalid URL 'http://-ide:4319' for --local" + form},
+		{[]string{"--local", "http://ide-.local:4319"}, "cld: invalid URL 'http://ide-.local:4319' for --local" + form},
+		{[]string{"--local", "http://ide._x:4319"}, "cld: invalid URL 'http://ide._x:4319' for --local" + form},
+		{[]string{"--local", "http://a..b:4319"}, "cld: invalid URL 'http://a..b:4319' for --local" + form},
+		{[]string{"--local", "http://127.1:4319"}, "cld: invalid URL 'http://127.1:4319' for --local" + form},
+		{[]string{"--local", "http://2130706433:4319"}, "cld: invalid URL 'http://2130706433:4319' for --local" + form},
+		{[]string{"--local", "http://127.0.0.1:04319"}, "cld: invalid URL 'http://127.0.0.1:04319' for --local" + form},
+		{[]string{"--local="}, "cld: invalid URL '' for --local" + form},
+		{[]string{"--remote", "otel.example.com:4317"}, "cld: invalid URL 'otel.example.com:4317' for --remote" + form},
+		{[]string{"--local", "http://127.0.0.1:4319", "--remote", "https://otel.example.com"}, "cld: invalid URL 'https://otel.example.com' for --remote" + form},
+		{[]string{"--remote", "https://otel.example.com:4317", "--port", "0"}, "cld: invalid port '0" + port},
+		{[]string{"--remote", "https://otel.example.com:4317", "--port", "65536"}, "cld: invalid port '65536" + port},
+		{[]string{"--remote", "https://otel.example.com:4317", "--port", "x"}, "cld: invalid port 'x" + port},
+		{[]string{"--remote", "https://otel.example.com:4317", "--port", "-1"}, "cld: invalid port '-1" + port},
+		{[]string{"--remote", "https://otel.example.com:4317", "--port="}, "cld: invalid port '" + port},
+		{[]string{"--remote", "https://otel.example.com:4317", "--port", "04317"}, "cld: invalid port '04317" + port},
+		// A URL that leads to 127.0.0.1, where the collector listens, on its --port.
+		{[]string{"--local", "http://127.0.0.1:4319", "--port", "4319"}, "cld: --local http://127.0.0.1:4319" + collector("4319")},
+		{[]string{"--port", "4317", "--remote", "http://localhost:4317"}, "cld: --remote http://localhost:4317" + collector("4317")},
+		{[]string{"--local", "https://0.0.0.0:4319", "--port", "4319"}, "cld: --local https://0.0.0.0:4319" + collector("4319")},
+		{[]string{"--local", "http://[::]:4319", "--port", "4319"}, "cld: --local http://[::]:4319" + collector("4319")},
+		{[]string{"--local", "http://[::ffff:127.0.0.1]:4319", "--port", "4319"}, "cld: --local http://[::ffff:127.0.0.1]:4319" + collector("4319")},
+		{[]string{"--local", "http://IDE.LocalHost.:4319", "--port", "4319"}, "cld: --local http://IDE.LocalHost.:4319" + collector("4319")},
+		{[]string{"--local", "http://127.0.0.1:4318", "--remote", "http://localhost:4319", "--port", "4319"}, "cld: --remote http://localhost:4319" + collector("4319")},
+		{[]string{"--remote", "http://localhost:4319", "--local", "http://127.0.0.1:4319", "--port", "4319"}, "cld: --local http://127.0.0.1:4319" + collector("4319")},
+		// The URLs are checked before the port, and both before what is missing.
+		{[]string{"--port", "x", "--local", "x"}, "cld: invalid URL 'x' for --local" + form},
+		{[]string{"--port", "x"}, "cld: invalid port 'x" + port},
+		{[]string{"--remote", "https://otel.example.com:4317", "--collector-config="}, "cld: option '--collector-config' needs a value (see cld help)\n"},
+		{[]string{"--local"}, "cld: option '--local' needs a value (see cld help)\n"},
+		{[]string{"--remote", "https://otel.example.com:4317", "x"}, "cld: setup telemetry: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"x", "--remote", "https://otel.example.com:4317"}, "cld: setup telemetry: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"--remote", "https://otel.example.com:4317", "--"}, "cld: setup telemetry: unexpected argument '--' (see cld help)\n"},
+		{[]string{"--bogus"}, "cld: setup telemetry: unexpected argument '--bogus' (see cld help)\n"},
+		{[]string{"-n", "x"}, "cld: setup telemetry: unexpected argument '-n' (see cld help)\n"},
+	} {
+		args := append([]string{"setup", "telemetry"}, test.args...)
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			if result := s.RunCld(nil, args...); result.Code != 2 || result.Stderr != test.want || result.Stdout != "" {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, test.want)
+			}
+			if calls := s.DockerCalls(); len(calls) != 0 {
+				t.Errorf("docker ran: %q", calls[0].Argv)
+			}
+		})
+	}
+}
+
+// setup telemetry needs docker, which it looks for first, as the other commands look for tmux:
+// before it reads the settings, here not valid JSON.
+func TestSetupTelemetryRequiresDocker(t *testing.T) {
+	t.Parallel()
+	linuxOnly(t)
+	s := sandbox.New(t)
+	settings := writeSettings(t, s, "{")
+	result := s.RunCld(map[string]string{"PATH": s.Tools()}, "setup", "telemetry", "--remote", "https://otel.example.com:4317")
+	if want := "cld: docker is not installed\n"; result.Code != 1 || result.Stderr != want || result.Stdout != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+	}
+	checkSettings(t, settings, "{")
+}
+
+// A docker the system cannot run ends cld as a tmux that cannot run does (see TestCannotRunTmux),
+// from its first call, which looks for the collector: nothing has changed.
+func TestCannotRunDocker(t *testing.T) {
+	t.Parallel()
+	linuxOnly(t)
+	for _, broken := range []struct {
+		what, content string
+		mode          os.FileMode
+		code          int
+		reason        string
+	}{
+		{"a missing interpreter", "#!/nonexistent/interpreter\n", 0o755, 127, "no such file or directory"},
+		{"no #!", "echo docker\n", 0o755, 126, "exec format error"},
+		{"no execute permission", "#!/bin/sh\necho docker\n", 0o644, 126, "permission denied"},
+	} {
+		t.Run(broken.what, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			fake := filepath.Join(s.Root, "fake")
+			if err := os.Mkdir(fake, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			docker := filepath.Join(fake, "docker")
+			if err := os.WriteFile(docker, []byte(broken.content), broken.mode); err != nil {
+				t.Fatal(err)
+			}
+			result := s.RunCld(map[string]string{"PATH": fake}, "setup", "telemetry", "--remote", "https://otel.example.com:4317")
+			if want := "cld: cannot run " + docker + ": " + broken.reason + "\n"; result.Code != broken.code || result.Stderr != want || result.Stdout != "" {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stderr %q", result.Code, result.Stdout, result.Stderr, broken.code, want)
+			}
+			if _, err := os.Stat(filepath.Join(s.Home, ".claude")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("~/.claude: %v, want none", err)
 			}
 		})
 	}
@@ -819,10 +1040,12 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 	}
 }
 
-// new and resume run claude; join, kill and list never do, and neither does completion -
-// __complete and __completeNoDesc - which makes no check at all (see TestCompletionSkipsChecks),
-// for new's and resume's arguments too and with a tmux the check refuses: with a claude too old
-// for new and resume, which records that it ran, the others do as they do with any other. new and
+// new and resume run claude; join, kill, list and setup telemetry never do, and neither does
+// completion - __complete and __completeNoDesc - which makes no check at all (see
+// TestCompletionSkipsChecks), for new's, resume's and setup telemetry's arguments too and with a
+// tmux the check refuses: with a claude too old for new and resume, which records that it ran,
+// the others do as they do with any other - setup telemetry, which checks no tmux, looks for
+// docker, not on the PATH here, and on a system other than Linux refuses to run. new and
 // resume run claude --version last among the checks they make before tmux - what is not
 // installed, and tmux's version, which join, kill and list check too, come first - and before the
 // session lookup: with session main found (sessions "cld-main"), a check that came later would
@@ -832,6 +1055,10 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 // TestRefusesToNestInItsOwnPane pins.
 func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 	t.Parallel()
+	noDocker := "cld: docker is not installed\n"
+	if runtime.GOOS != "linux" {
+		noDocker = "cld: setup telemetry works on Linux only\n"
+	}
 	for _, test := range []struct {
 		args        []string
 		tmuxVersion string
@@ -857,6 +1084,9 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		{[]string{"__complete", "resume", "-n", ""}, "tmux 3.6b", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 		{[]string{"__completeNoDesc", "join", "-n", ""}, "tmux 3.6b", "cld-main\tdetached\t0\t100\t/w", 0, "main\n:4\n",
+			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
+		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "tmux 3.6b", "", 1, "", noDocker, false},
+		{[]string{"__complete", "setup", "telemetry", "--local", ""}, "tmux 3.6b", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 	} {
 		name := strings.Join(test.args, " ") + ", " + test.tmuxVersion
@@ -1364,9 +1594,9 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 // A write to stdout that fails ends cld with status 1, as the script's printf and cat failing
 // under set -e did, so that output cut short does not pass for whole: list, the help - from help
 // and from -h - and the version, and new, resume and join, which then do not hand over to tmux;
-// and the completion scripts and the answers to __complete, which cobra prints for cld. stdout is
-// open for reading only here, so that every write to it fails; list and __complete find session x
-// through a socket cld-x.
+// the completion scripts and the answers to __complete, which cobra prints for cld; and setup
+// telemetry's report, once it is done. stdout is open for reading only here, so that every write
+// to it fails; list and __complete find session x through a socket cld-x.
 func TestFailedWriteEndsCld(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -1390,9 +1620,15 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"completion", "zsh", "--help"}, "", ""},
 		{[]string{"completion"}, "", ""},
 		{[]string{"__complete", "join", "-n", ""}, "cld-x\tdetached\t0\t100\t/w", "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
+		{[]string{"help", "setup"}, "", ""},
+		{[]string{"setup", "-h", "telemetry"}, "", ""},
+		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "", ""},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
+			if test.args[0] == "setup" && test.args[1] == "telemetry" {
+				linuxOnly(t)
+			}
 			s := sandbox.New(t)
 			socket(t, s, "cld-x")
 			stdout, err := os.Open(os.DevNull)

@@ -16,13 +16,14 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/picker"
 	"github.com/zadykian/cld/internal/session"
+	"github.com/zadykian/cld/internal/telemetry"
 )
 
 // commands maps each command, and each alias of one, to the command it runs: cld's, cobra's
 // completion, and the hidden commands through which cobra's completion scripts ask cld what to
 // offer, on every TAB.
 var commands = map[string]string{
-	"new": "new", "resume": "resume", "join": "join", "kill": "kill", "list": "list", "completion": "completion",
+	"new": "new", "resume": "resume", "join": "join", "kill": "kill", "list": "list", "setup": "setup", "completion": "completion",
 	"help": "help", "-h": "help", "--help": "help",
 	"version": "version", "-V": "version", "--version": "version",
 	cobra.ShellCompRequestCmd: cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd: cobra.ShellCompNoDescRequestCmd,
@@ -30,7 +31,9 @@ var commands = map[string]string{
 
 // run runs cld with the arguments args. The first is the command, which run checks before cobra
 // sees it: cobra would take an unknown one for an argument of cld itself, and skip options before
-// the command (cld -n x new would run new -n x).
+// the command (cld -n x new would run new -n x). setup has commands of its own, and the argument
+// after it is checked the same way (see setupCommand) where setup runs: __complete setup, which
+// runs nothing, completes it instead.
 func run(args []string) error {
 	if len(args) == 0 || args[0] == "" {
 		return fail.Usage("missing command: cld new creates a session, cld join attaches to one (see cld help)")
@@ -43,6 +46,11 @@ func run(args []string) error {
 			return fail.Usage(fmt.Sprintf("unknown command '%s'; for session %[1]s: cld new -n %[1]s, cld join -n %[1]s", typed))
 		}
 		return fail.Usage(fmt.Sprintf("unknown command '%s' (see cld help)", typed))
+	}
+	if command == "setup" {
+		if err := setupCommand(args[1:]); err != nil {
+			return err
+		}
 	}
 	completing := command == cobra.ShellCompRequestCmd || command == cobra.ShellCompNoDescRequestCmd
 	// The completion scripts always pass the word being completed, empty or not; without one,
@@ -84,6 +92,20 @@ func noFiles(text string) string {
 	return text
 }
 
+// setupCommand checks the argument after setup before cobra sees it, as run checks the first: it
+// names setup's command, telemetry, or is -h or --help, setup's help. cobra would run telemetry
+// for cld setup --local URL telemetry, taking --local for an option of setup's.
+func setupCommand(args []string) error {
+	const hint = "cld setup telemetry runs a collector for claude's telemetry (see cld help)"
+	switch {
+	case len(args) == 0 || args[0] == "":
+		return fail.Usage("setup: missing command: " + hint)
+	case args[0] == "telemetry" || args[0] == "-h" || args[0] == "--help":
+		return nil
+	}
+	return fail.Usage(fmt.Sprintf("setup: unknown command '%s': %s", args[0], hint))
+}
+
 // commandLine is cld's commands, for a command typed as typed: the messages name it that way,
 // "-V" for version, say. What cobra prints goes to out.
 //
@@ -94,15 +116,15 @@ func noFiles(text string) string {
 // the commands in the order they are added here rather than by name.
 //
 // cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE".
-// help takes one of cld's commands at most, and version is a command rather than cobra's
-// --version and -v. Every command reads its options up to the first argument, which pflag would
-// otherwise pass over, and takes no argument but help's COMMAND, resume's SESSION and
-// completion's SHELL: the first one left - after COMMAND or SESSION, the next - or a "--", which
-// pflag would drop, is refused.
+// help takes one of cld's commands at most - with setup, one of setup's after it - and version is
+// a command rather than cobra's --version and -v. Every command reads its options up to the first
+// argument, which pflag would otherwise pass over, and takes no argument but help's COMMAND,
+// resume's SESSION and completion's SHELL: the first one left - after COMMAND or SESSION, the next
+// - or a "--", which pflag would drop, is refused.
 //
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
-// on every TAB. join -n offers the sessions list shows (see sessionNames), help the commands, and
-// nothing offers file names, as no argument of cld's is a file.
+// on every TAB. join -n offers the sessions list shows (see sessionNames), help the commands (see
+// commandNames), and nothing offers file names, as no argument of cld's is a file.
 func commandLine(typed string, out io.Writer) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
@@ -264,6 +286,15 @@ list. cld list | cat prints the list only.`,
 		},
 	}
 
+	// setup runs nothing itself, so cobra's help shows its commands without a usage line of its
+	// own; run has made sure that one of them follows it, or -h or --help.
+	setup := &cobra.Command{
+		Use:   "setup",
+		Short: "set up what claude runs with: so far, its telemetry",
+	}
+	telemetryCommand := setupTelemetry(typed + " telemetry")
+	setup.AddCommand(telemetryCommand)
+
 	// cobra would add "[flags]" at the end of help's usage line, after COMMAND, where cld reads no
 	// options. cobra's own help command completes COMMAND, and so does cld's.
 	help := &cobra.Command{
@@ -284,7 +315,7 @@ list. cld list | cat prints the list only.`,
 		},
 	}
 
-	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, help, versionCommand} {
+	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, setup, telemetryCommand, help, versionCommand} {
 		// cobra adds -h and --help only where a command has no "help" option of its own.
 		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
 		if command == root {
@@ -295,7 +326,7 @@ list. cld list | cat prints the list only.`,
 		}
 		command.Flags().SetInterspersed(false)
 	}
-	root.AddCommand(newCommand, resume, join, kill, list, versionCommand)
+	root.AddCommand(newCommand, resume, join, kill, list, setup, versionCommand)
 	root.SetHelpCommand(help)
 	completionCommand(root)
 
@@ -312,11 +343,11 @@ list. cld list | cat prints the list only.`,
 	}
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) { showHelp(c) })
 	help.RunE = func(_ *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			showHelp(root)
-		} else {
-			showHelp(topic(root, args[0]))
+		command, err := helpTopic(root, typed, args)
+		if err != nil {
+			return err
 		}
+		showHelp(command)
 		return nil
 	}
 	return root
@@ -365,6 +396,89 @@ where its script goes and what it needs.`
 	}
 }
 
+// setupTelemetry is cld setup telemetry, named in its messages as typed. On a system other than
+// Linux it refuses to run before it looks at anything but -h and --help: an option or argument
+// it would refuse too (see telemetry.Supported).
+func setupTelemetry(typed string) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "telemetry [--local URL] [--remote URL] [flags]",
+		Short: "send claude's telemetry through a local OpenTelemetry collector",
+		Long: `send claude's telemetry through a local OpenTelemetry collector: cld runs the
+collector in Docker, as the container cld-telemetry listening on 127.0.0.1, and
+points claude's user settings at it ($CLAUDE_CONFIG_DIR/settings.json, by
+default ~/.claude/settings.json). The collector sends traces, metrics and logs
+to --local, such as the JetBrains OpenTelemetry plugin in the IDE, and metrics
+only to --remote, such as a team's collector; give one of them, or both.
+
+Running it again replaces the collector and rewrites the settings; the env keys
+cld does not manage stay as they are. claude reads its settings as a session
+starts: sessions running then keep theirs. Needs Docker; Linux only.`,
+		Args: func(c *cobra.Command, args []string) error {
+			if err := telemetry.Supported(); err != nil {
+				return err
+			}
+			return noArguments(typed)(c, args)
+		},
+	}
+	command.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		err = flagError(typed)(c, err)
+		if unsupported := telemetry.Supported(); unsupported != nil && !errors.Is(err, pflag.ErrHelp) {
+			return unsupported
+		}
+		return err
+	})
+	flags := command.Flags()
+	local := flags.String("local", "", "where traces, metrics and logs go, such as\n"+
+		"http://127.0.0.1:4319 (the IDE's plugin on a\n"+
+		"fixed port); `URL` is http://HOST:PORT for\n"+
+		"plaintext gRPC or https://HOST:PORT for TLS")
+	remote := flags.String("remote", "", "where metrics go too (`URL` as for --local), such\n"+
+		"as https://otel.example.com:4317")
+	port := flags.String("port", "", "the `PORT` the collector listens on, on 127.0.0.1\n"+
+		"(default: the one the collector has, or one\n"+
+		"the kernel picks)")
+	collectorConfig := flags.String("collector-config", "", "`FILE` holds YAML that the collector merges over\n"+
+		"cld's config, such as headers or TLS for the\n"+
+		"exporters otlp_grpc/local and otlp_grpc/remote")
+	command.RunE = func(c *cobra.Command, _ []string) error {
+		var options telemetry.Options
+		for _, endpoint := range []struct {
+			name, url string
+			into      **telemetry.Endpoint
+		}{{"local", *local, &options.Local}, {"remote", *remote, &options.Remote}} {
+			if !c.Flags().Changed(endpoint.name) {
+				continue
+			}
+			parsed, ok := telemetry.ParseEndpoint(endpoint.url)
+			if !ok {
+				return fail.Usage(fmt.Sprintf("invalid URL '%s' for --%s: http://HOST:PORT or https://HOST:PORT (see cld help)", endpoint.url, endpoint.name))
+			}
+			*endpoint.into = &parsed
+		}
+		if c.Flags().Changed("port") {
+			var ok bool
+			if options.Port, ok = telemetry.ParsePort(*port); !ok {
+				return fail.Usage(fmt.Sprintf("invalid port '%s': a number from 1 to 65535 (see cld help)", *port))
+			}
+		}
+		if options.Local == nil && options.Remote == nil {
+			return fail.Usage(typed + ": --local URL, --remote URL or both are needed (see cld help)")
+		}
+		if option := options.Collector(options.Port); options.Port != 0 && option != "" {
+			return fail.Usage(fmt.Sprintf("%s is where the collector would listen (--port %d): give the receiver's port, or another --port (see cld help)",
+				option, options.Port))
+		}
+		if c.Flags().Changed("collector-config") {
+			options.CollectorConfig = *collectorConfig
+			if options.CollectorConfig == "" {
+				return fail.Usage("option '--collector-config' needs a value (see cld help)")
+			}
+		}
+		return telemetry.Setup(options)
+	}
+	return command
+}
+
 // sessionNames completes the NAME of join -n: the names of the sessions list shows that start with
 // what was typed, in list's order, each described by its state. Every one is a name join takes:
 // list reads only the socket of a valid NAME, and only session cld-NAME on it (see
@@ -390,13 +504,14 @@ func sessionNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completio
 }
 
 // commandNames completes help's COMMAND, as cobra's help command does its own: the commands help
-// takes (see topic) that start with what was typed, each described by its Short. Nothing follows
-// COMMAND.
+// takes (see helpTopic) that start with what was typed, each described by its Short - cld's, and
+// after one with commands of its own, such as setup, those. Nothing follows any other COMMAND.
 func commandNames(c *cobra.Command, args []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	var names []cobra.Completion
-	if len(args) == 0 {
-		for _, command := range c.Root().Commands() {
-			if topic(c.Root(), command.Name()) == command && strings.HasPrefix(command.Name(), typed) {
+	parent, err := helpTopic(c.Root(), "help", args)
+	if err == nil && (parent == c.Root() || parent.HasAvailableSubCommands()) {
+		for _, command := range parent.Commands() {
+			if topic(parent, command.Name()) == command && strings.HasPrefix(command.Name(), typed) {
 				names = append(names, cobra.CompletionWithDesc(command.Name(), command.Short))
 			}
 		}
@@ -469,20 +584,16 @@ func noArguments(typed string) cobra.PositionalArgs {
 	}
 }
 
-// helpArguments takes help's COMMAND, one of cld's, and refuses a "--" before it, as noArguments
-// does, a COMMAND that is not cld's, and an argument after it: the first of these decides.
+// helpArguments takes help's COMMAND, one of cld's, or one of setup's after setup, and refuses a
+// "--" before it, as noArguments does, a COMMAND that is not cld's, and an argument after it:
+// the first of these decides.
 func helpArguments(typed string) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
 		if c.ArgsLenAtDash() >= 0 {
 			return unexpected(typed, "--")
 		}
-		if len(args) > 0 && topic(c.Root(), args[0]) == nil {
-			return fail.Usage(fmt.Sprintf("%s: unknown command '%s' (see cld help)", typed, args[0]))
-		}
-		if len(args) > 1 {
-			return unexpected(typed, args[1])
-		}
-		return nil
+		_, err := helpTopic(c.Root(), typed, args)
+		return err
 	}
 }
 
@@ -505,10 +616,26 @@ func conversationArgument(typed string) cobra.PositionalArgs {
 	}
 }
 
-// topic is the command named name among those the root's help lists, which help shows the help
-// of; nil for any other name.
-func topic(root *cobra.Command, name string) *cobra.Command {
-	for _, command := range root.Commands() {
+// helpTopic is the command whose help help shows, given args: the root for none, else the
+// command they name, one of cld's, then one of its own commands if it has them, as in help setup
+// telemetry. help is named as typed in the errors.
+func helpTopic(root *cobra.Command, typed string, args []string) (*cobra.Command, error) {
+	command := root
+	for i, name := range args {
+		if command != root && !command.HasAvailableSubCommands() {
+			return nil, unexpected(typed, name)
+		}
+		if command = topic(command, name); command == nil {
+			return nil, fail.Usage(fmt.Sprintf("%s: unknown command '%s' (see cld help)", typed, strings.Join(args[:i+1], " ")))
+		}
+	}
+	return command, nil
+}
+
+// topic is the command named name among those the help of parent lists, which help shows the
+// help of; nil for any other name.
+func topic(parent *cobra.Command, name string) *cobra.Command {
+	for _, command := range parent.Commands() {
 		if command.Name() == name && (command.IsAvailableCommand() || command.Name() == "help") {
 			return command
 		}

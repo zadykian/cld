@@ -1,0 +1,12 @@
+set up what claude runs with: so far, its telemetry
+
+Usage:
+  cld setup [command]
+
+Available Commands:
+  telemetry   send claude's telemetry through a local OpenTelemetry collector
+
+Flags:
+  -h, --help   help for setup
+
+Use "cld setup [command] --help" for more information about a command.

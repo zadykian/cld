@@ -1,0 +1,28 @@
+send claude's telemetry through a local OpenTelemetry collector: cld runs the
+collector in Docker, as the container cld-telemetry listening on 127.0.0.1, and
+points claude's user settings at it ($CLAUDE_CONFIG_DIR/settings.json, by
+default ~/.claude/settings.json). The collector sends traces, metrics and logs
+to --local, such as the JetBrains OpenTelemetry plugin in the IDE, and metrics
+only to --remote, such as a team's collector; give one of them, or both.
+
+Running it again replaces the collector and rewrites the settings; the env keys
+cld does not manage stay as they are. claude reads its settings as a session
+starts: sessions running then keep theirs. Needs Docker; Linux only.
+
+Usage:
+  cld setup telemetry [--local URL] [--remote URL] [flags]
+
+Flags:
+      --collector-config FILE   FILE holds YAML that the collector merges over
+                                cld's config, such as headers or TLS for the
+                                exporters otlp_grpc/local and otlp_grpc/remote
+  -h, --help                    help for telemetry
+      --local URL               where traces, metrics and logs go, such as
+                                http://127.0.0.1:4319 (the IDE's plugin on a
+                                fixed port); URL is http://HOST:PORT for
+                                plaintext gRPC or https://HOST:PORT for TLS
+      --port PORT               the PORT the collector listens on, on 127.0.0.1
+                                (default: the one the collector has, or one
+                                the kernel picks)
+      --remote URL              where metrics go too (URL as for --local), such
+                                as https://otel.example.com:4317

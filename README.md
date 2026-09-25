@@ -14,6 +14,7 @@ cld join -n review    # attach to it again, from this terminal or another one
 cld list              # pick a session with the arrow keys: Enter joins it, Ctrl+X twice kills it
 cld kill -n review    # end the session and its claude
 cld resume -n review  # create "cld-review" again, with claude resuming its conversation
+cld setup telemetry --local http://127.0.0.1:4319   # claude's telemetry to the IDE (Linux)
 ```
 
 ## Install
@@ -29,7 +30,7 @@ builds cld and installs it there (`make install PREFIX=/usr/local` for another p
 Go 1.26 or newer.
 
 Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
-for `cld new --worktree`.
+for `cld new --worktree`; Docker, on Linux, for `cld setup telemetry`.
 
 Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a - which cld
 refuses, naming the version it found. [Homebrew](https://formulae.brew.sh/formula/tmux) has tmux
@@ -62,11 +63,11 @@ latest; an installed script keeps working until you update it with the lines abo
 `cld completion SHELL` prints a completion script for bash, zsh or fish. With it loaded,
 `cld join -n <TAB>` offers the sessions `cld list` shows, each with its state - `attached`,
 `detached` or `exited` - and TAB also completes the commands and their options. cld offers no
-file names, as no argument of cld's is a file (but see bash 3.2 below), and neither
-`cld new -n`, `cld resume -n` nor `cld resume`'s `SESSION` offers anything. The script runs
-`cld` on every TAB, so the names are always current: it asks each session's tmux server, as
-`cld list` does, but never opens the interactive list. `cld completion SHELL --help` says where
-the script goes; in short:
+file names (but see bash 3.2 below), not even for `cld setup telemetry --collector-config FILE`,
+and neither `cld new -n`, `cld resume -n`, `cld resume`'s `SESSION` nor the URLs and port of
+`cld setup telemetry` offer anything. The script runs `cld` on every TAB, so the names are
+always current: it asks each session's tmux server, as `cld list` does, but never opens the
+interactive list. `cld completion SHELL --help` says where the script goes; in short:
 
 - **bash** needs the bash-completion package. With bash-completion 2 (Linux, or Homebrew's
   `bash-completion@2` for Homebrew's bash), put the script where it loads it when needed:
@@ -142,6 +143,7 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session and its tmux server; claude exits as when its terminal closes, and what claude started through tmux ends too |
 | `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in. On a terminal, pick a session with the arrow keys and press Enter to join it, or Ctrl+X twice to kill it (see below); `cld list \| cat` prints the table |
+| `cld setup telemetry [--local URL] [--remote URL] [--port PORT] [--collector-config FILE]` | run a local OpenTelemetry collector for claude's telemetry and point claude's settings at it (see [Telemetry](#telemetry)); needs Docker, Linux only |
 | `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish`, with which `cld join -n` completes the names `cld list` shows (see [Shell completion](#shell-completion)) |
 | `cld help [COMMAND]` | show the help of cld, or of one command: its options and their defaults. `cld -h` and `cld COMMAND -h` (or `--help`) do the same |
 | `cld version` | show the version |
@@ -286,6 +288,75 @@ claude makes a worktree only in a directory whose workspace trust you have accep
 with the message (see Usage). `cld` itself checks that the current directory is in a git
 repository.
 
+### Telemetry
+
+`cld setup telemetry` sends Claude Code's
+[telemetry](https://code.claude.com/docs/en/monitoring-usage) through an
+[OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) that runs locally, in Docker,
+as the container `cld-telemetry`, and points claude's user settings at it:
+
+```sh
+cld setup telemetry --local http://127.0.0.1:4319 --remote http://otel.example.com:4317
+```
+
+- `--local URL` gets traces, metrics and logs: for instance the JetBrains OpenTelemetry plugin in
+  your IDE, with a fixed port (Settings › OpenTelemetry › Common, "Use fixed OTLP server port";
+  its port is random otherwise). claude then reports spans for model requests, tool calls, MCP
+  calls and hooks, per agent, which show where a long run spends its time; they name the Bash
+  commands and MCP tools claude runs, and only the local endpoint gets them.
+- `--remote URL` gets metrics only: a team's or company's collector, say. It keeps getting them
+  while the IDE is closed; the local endpoint's data is dropped after 30 s.
+
+Give either, or both. A URL is `http://HOST:PORT` (gRPC without TLS) or `https://HOST:PORT` (TLS),
+as `OTEL_EXPORTER_OTLP_ENDPOINT` takes it. claude can send each signal to one endpoint only; the
+collector is what sends metrics to two.
+
+The collector listens on `127.0.0.1`, on a port the kernel picks the first time and that later runs
+keep, so that claude sessions already running keep reaching it; `--port PORT` picks one yourself. A
+`--local` or `--remote` URL on `127.0.0.1`, `0.0.0.0` or `localhost` cannot have the collector's
+port, which would have it send to itself: give the port of the receiver. cld validates the
+collector's config before it replaces a running collector, waits for the new one to be ready, and
+only then writes `settings.json` (`$CLAUDE_CONFIG_DIR/settings.json`, by default
+`~/.claude/settings.json`): in its `env` it sets `CLAUDE_CODE_ENABLE_TELEMETRY`,
+`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_ENDPOINT`; with
+`--local` also `OTEL_TRACES_EXPORTER`, `OTEL_LOGS_EXPORTER`, `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`
+and `OTEL_LOG_TOOL_DETAILS`, which it removes without `--local`; and it removes the per-signal
+`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,PROTOCOL}`, which would bypass the collector.
+Every other key stays as it is, such as `OTEL_RESOURCE_ATTRIBUTES` or
+`OTEL_METRIC_EXPORT_INTERVAL`. claude reads its settings when a session starts: sessions running
+then keep theirs. Run `cld setup telemetry` again to change anything; it replaces the collector and
+rewrites the settings.
+
+`--collector-config FILE` is YAML that the collector merges over cld's config: maps merge, lists
+are replaced. cld's config names its parts: the receiver `otlp`, the exporters `otlp_grpc/local`
+and `otlp_grpc/remote`, and the pipelines `traces`, `metrics` and `logs`. An auth header for the
+remote endpoint, say:
+
+```yaml
+exporters:
+  otlp_grpc/remote:
+    headers:
+      authorization: Bearer <token>
+    compression: gzip
+```
+
+To add an exporter to a pipeline, repeat the pipeline's whole `exporters` list. cld reads the file
+when it runs and hands the container a copy, as it does its own config, in an environment
+variable: edits apply when you run setup again, and `docker inspect cld-telemetry` shows them,
+secrets included. Linux takes a variable of 32 pages at most, so the file can have 131051 bytes
+with 4 KiB pages.
+
+cld waits up to 10 s for the collector to take connections on its port, where claude will send,
+whatever its log says, and only then writes the settings: a config that moves the receiver to
+another port leaves them as they were. If the new collector stops first - it cannot have a port
+your config gives it, say - cld shows the end of its log; the stopped container stays, for
+`docker logs cld-telemetry`, but Docker no longer restarts it.
+
+The container runs with `--network host`, so that `127.0.0.1` in a URL is your machine; hence
+Linux only. It runs with `--restart unless-stopped`: Docker starts it again after a reboot, until
+you stop or remove it. To turn telemetry off, remove the container (`docker rm -f cld-telemetry`)
+and the keys above from `settings.json`.
+
 ### Why a private tmux server per session
 
 `cld` runs tmux with `-L cld-NAME -f /dev/null`: a server for each session, shared with no other
@@ -364,8 +435,8 @@ For JediTerm add a JDK, fetch its jars once with `tests/jediterm/fetch-deps test
 and run `make check TERMINALS=tmux,jediterm`.
 
 cld is a Go program on [cobra](https://github.com/spf13/cobra): the command line is in `cmd/cld`,
-how it uses tmux - and why - in `internal/session`, and the interactive `cld list` in
-`internal/picker`.
+how it uses tmux - and why - in `internal/session`, the interactive `cld list` in
+`internal/picker`, and `cld setup telemetry` in `internal/telemetry`.
 
 How the tests work - the probe that stands in for claude, the sandboxes, the terminal drivers - is
 described in [docs/design.md](docs/design.md) and at the top of each package under `tests/`.

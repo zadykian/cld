@@ -8,9 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 (`tmux -L cld-NAME -f /dev/null`), so a conversation can be detached and rejoined from any
 terminal. The product is a Go program on cobra: `cmd/cld` is the command line (commands, their
 help texts, argument errors), `internal/session` the tmux side, `internal/picker` the interactive
-`cld list` on a terminal, `internal/tool` finds the programs cld runs on the `PATH` (and ends cld
-as a shell would when one cannot run), and `internal/fail` carries exit statuses up to `main`.
-Everything else is its test harness (Go, under `tests/`), docs and CI.
+`cld list` on a terminal, `internal/telemetry` `cld setup telemetry` (a local OpenTelemetry
+Collector in Docker, and claude's settings pointed at it), `internal/tool` finds the programs cld
+runs on the `PATH` (and ends cld as a shell would when one cannot run), and `internal/fail`
+carries exit statuses up to `main`. Everything else is its test harness (Go, under `tests/`), docs
+and CI.
 
 ## Commands
 
@@ -41,23 +43,25 @@ platform and `cld.sha256`.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
   run the real claude): they run `claude --version` before starting that claude; `join`, `kill`,
-  `list` and completion do not. Re-derive the minimum when cld starts to pass or rely on
-  something newer (docs/design.md, decision 6).
+  `list`, `setup telemetry` and completion do not. Re-derive the minimum when cld starts to pass
+  or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
   and the list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep
-  cld's command line - the first argument checked before cobra, options read up to the first
-  argument, a `help [COMMAND]` that refuses anything but one of cld's commands, the help and
+  cld's command line - the first argument checked before cobra, and the one after `setup`,
+  options read up to the first argument, a `help [COMMAND]` that takes one of cld's commands
+  (and after `setup` or `completion`, one of theirs) and refuses anything else, the help and
   cobra's other output printed through `fail.Print`, the commands unsorted (see docs/design.md,
   Implementation notes).
 - The help is cobra's, generated with its default templates from each command's `Use`, `Short`
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
   nothing: break the texts by hand within 80 columns, which `TestHelpText` checks.
 - Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the names
-  `list` shows, read as `list` reads them, `help` the commands, nothing offers file names, and
-  completion makes none of the startup checks and never starts the interactive list (decision 17
-  in docs/design.md). The `Short`s are also what `cld <TAB>` shows.
+  `list` shows, read as `list` reads them, `help` the commands it takes, `setup telemetry` among
+  them, nothing offers file names (`--collector-config`'s `FILE` neither), and completion makes
+  none of the startup checks, `setup telemetry`'s included, and never starts the interactive list
+  (decisions 17 and 18 in docs/design.md). The `Short`s are also what `cld <TAB>` shows.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
@@ -80,9 +84,19 @@ platform and `cld.sha256`.
   window, not the server, so the sessions claude makes on its server behave as plain tmux would.
 - `TERMINAL_EMULATOR` is removed from the environment `new` and `resume` exec tmux with, so from
   the server's; claude trusts it over `TERM_PROGRAM=tmux`.
+- `setup telemetry` needs Docker, and Linux (`--network host`): it replaces the container
+  `cld-telemetry`, one per Docker daemon, and rewrites the `env` of claude's user settings,
+  `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude/settings.json`), keeping every other key.
+  Outside the tests - whose fake docker comes first on the `PATH` - run it only with `HOME` and
+  `CLAUDE_CONFIG_DIR` pointing at a scratch directory. The collector image is pinned
+  (`otel/opentelemetry-collector:0.161.0`) and bumped deliberately.
+- `setup` has commands of its own: `run` checks the argument after it before cobra, as it checks
+  the first, and `help` takes `setup telemetry`. Its checks (Linux, docker) stay in its `Args`
+  and `RunE`, never in a root hook, so completion (`__complete setup ...`), which `run` lets
+  through, runs none of them.
 
-The package comment of `internal/session` explains why each tmux option is set; keep it accurate
-when changing options.
+The package comments of `internal/session` and `internal/telemetry` explain why each tmux option
+is set and each step of `setup telemetry` is taken; keep them accurate when changing either.
 
 ## Test architecture (`tests/`)
 
@@ -123,17 +137,19 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, and the names completion offers;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
-  byte with `testdata/help`, and the completion scripts.
+  byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
+  against the fake docker: its calls, the collector config, the port, the settings file, failures
+  (Linux only; macOS checks the refusal).
 
 ## Documentation conventions
 
 `docs/design.md` is the project's record of tmux/claude behaviour: **Findings** (probed behaviour,
 with the tmux versions checked), **Decisions** (numbered) and **Implementation notes**. Behaviour
-changes are made together across the code (`internal/session`'s and `internal/picker`'s package
-comments, inline comments, the commands' `Short`, `Long` and option usages in `cmd/cld`, which the
-help is generated from, and `tests/testdata/help`), `README.md` and `docs/design.md`, with tests.
-When a change rests on observed tmux or claude behaviour, record the probe and the versions in
-Findings.
+changes are made together across the code (the package comments of `internal/session`,
+`internal/picker` and `internal/telemetry`, inline comments, the commands' `Short`, `Long` and
+option usages in `cmd/cld`, which the help is generated from, and `tests/testdata/help`),
+`README.md` and `docs/design.md`, with tests. When a change rests on observed tmux or claude
+behaviour, record the probe and the versions in Findings.
 
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
 a header `type(scope): description`, then a body, then optional footers, each separated by a blank
