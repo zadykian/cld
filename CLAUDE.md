@@ -86,13 +86,14 @@ when changing options.
 
 ## Test architecture (`tests/`)
 
-Tests build cld (`cmd/cld`) and run it against real tmux; only `claude` is faked. Read the
-package doc comments at the top of each file for details.
+Tests build cld (`cmd/cld`) and run it against real tmux; only `claude` is faked, and `docker`
+for `setup telemetry`. Read the package doc comments at the top of each file for details.
 
 - `main_test.go` — `TestMain` builds cld and `probe/` into a temp dir, the probe as `claude` (and
   symlinks it as a fake `tmux` for version/tool checks and the commands `new`, `resume` and
-  `join` exec), and compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`.
-  `forEachTerminal` runs a body as a parallel subtest per terminal.
+  `join` exec, and as `docker` beside `claude`, so that no test reaches the real Docker), and
+  compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`. `forEachTerminal` runs a
+  body as a parallel subtest per terminal.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).
@@ -101,6 +102,12 @@ package doc comments at the top of each file for details.
   `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS` (unset:
   no server running; `CLD_FAKE_TMUX_EXITED` names servers that exit as they are asked), and
   records any other command in `tmux.json`, or runs the real tmux `CLD_FAKE_TMUX_REAL` names.
+  Invoked as `docker`, it records each call in `docker.jsonl`, keeps the state of the container
+  `cld-telemetry` in `docker.container`, takes connections on the port of a container it starts
+  running (the probe again, as the collector's receiver, until `rm -f`), and takes
+  `CLD_FAKE_DOCKER_*` variables: the container before, the state one starts in and its restart
+  count, whether it takes connections, the collector's log, a call that fails, a file that
+  `run -d` writes.
 - `internal/sandbox` — an isolated world per test: its own short `TMUX_TMPDIR` (socket paths hit
   the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset. Tests are
   parallel and never touch the user's own cld sessions. `Tmux(server, ...)` runs tmux against one
