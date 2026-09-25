@@ -459,20 +459,20 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	}
 	// claude and its arguments go to tmux as separate words: tmux then executes them directly
 	// instead of through sh -c, and each reaches claude as given, as the directory reaches tmux
-	// (see literal). claude goes by the path CheckClaude checked: tmux would look the bare word
-	// up in the PATH, relative entries included, and could start another claude. What follows
-	// new-session in the same tmux command - remain-on-exit and the pane-died hook, which go to
-	// claude's window only, so that a session claude makes on its server closes as tmux would
-	// close it - takes effect before tmux sees claude exit, however soon; tmux cuts the command
-	// short when new-session fails, as when another cld new or cld resume -n NAME got there
-	// first. The targets end in ":" because set takes a pane, which "=NAME" does not find.
+	// (see literal and unexpanded). claude goes by the path CheckClaude checked: tmux would look
+	// the bare word up in the PATH, relative entries included, and could start another claude.
+	// What follows new-session in the same tmux command - remain-on-exit and the pane-died hook,
+	// which go to claude's window only, so that a session claude makes on its server closes as
+	// tmux would close it - takes effect before tmux sees claude exit, however soon; tmux cuts the
+	// command short when new-session fails, as when another cld new or cld resume -n NAME got
+	// there first. The targets end in ":" because set takes a pane, which "=NAME" does not find.
 	window := "=" + name + ":"
 	argv := []string{"tmux", "-L", name, "-f", "/dev/null",
 		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
 		"set", "-s", "focus-events", "on", ";",
 		"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 		"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
-		"new-session", "-s", name, "-n", suffix, "-c", literal(dir)}
+		"new-session", "-s", name, "-n", suffix, "-c", literal(unexpanded(dir))}
 	for _, word := range claude {
 		argv = append(argv, literal(word))
 	}
@@ -496,6 +496,15 @@ func literal(word string) string {
 		return before + `\;`
 	}
 	return word
+}
+
+// unexpanded is text as a tmux format that expands to text itself: every "#" doubled, since
+// "##" expands to "#". tmux expands new-session's -c as a format, in which a "#" starts
+// something to replace - #S, #{...}, or #(command), which runs command through the shell - and
+// where the result is no directory it starts claude in the home directory. claude's words are
+// not expanded.
+func unexpanded(text string) string {
+	return strings.ReplaceAll(text, "#", "##")
 }
 
 // Join becomes a tmux client attached to session cld-SUFFIX, detaching any other. It returns

@@ -59,7 +59,8 @@ platform and `cld.sha256`.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
   the `PATH`; a word of cld's ending in `;` (resume's SESSION or the directory given with `-c`
-  can) goes with a `\` before the `;`, since tmux would end its command there.
+  can) goes with a `\` before the `;`, since tmux would end its command there. The directory also
+  goes with every `#` doubled: tmux expands `-c` as a format, where `#(...)` runs a shell command.
 - A server per session: session `cld-NAME` lives on server `cld-NAME` (`tmux -L cld-NAME`), and
   cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}`. Anything
   claude runs inherits `TMUX` and reaches claude's own server, where a session it makes has another

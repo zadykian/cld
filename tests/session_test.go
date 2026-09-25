@@ -184,36 +184,48 @@ func TestResume(t *testing.T) {
 	}
 }
 
-// tmux ends a command at a word ending in ";" (see literal in internal/session), and the
-// directory cld runs in can end in one: new and resume still make their session there, with
-// claude in that directory.
-func TestDirectoryEndingInSemicolon(t *testing.T) {
+// tmux would change the directory cld runs in, which cld gives it with -c: tmux ends a command at
+// a word ending in ";" (see literal in internal/session), and expands -c as a format (see
+// unexpanded), where "#S" is the session's name and "#(touch ran)" runs touch. new and resume
+// still make their session there, with claude in that directory, and run nothing. The session's
+// path is -c as tmux expanded it: for a directory that does not exist, tmux starts claude in the
+// home directory.
+func TestDirectoryTmuxWouldChange(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	for _, command := range []struct {
 		args, argv []string
 	}{
 		{[]string{"new", "-n", "x"}, []string{"--name", "cld-x", "--settings", remoteControl}},
 		{[]string{"resume", "-n", "x"}, []string{"--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
 	} {
-		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
-			t.Parallel()
-			s := sandbox.New(t)
-			dir := filepath.Join(s.Work, "w;")
-			if err := os.Mkdir(dir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			startCldIn(t, s, "tmux", dir, nil, test.args...)
-			probe := s.WaitProbes(1)[0]
-			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
-				t.Errorf("sessions %q, want [cld-x]", sessions)
-			}
-			if !slices.Equal(probe.Argv, test.argv) {
-				t.Errorf("claude arguments %q, want %q", probe.Argv, test.argv)
-			}
-			if probe.Cwd != dir {
-				t.Errorf("claude runs in %s, want %s", probe.Cwd, dir)
-			}
-		})
+		for _, name := range []string{"w;", "C#S", "x#(touch ran)", "#{session_name};"} {
+			args, argv := command.args, command.argv
+			t.Run(strings.Join(args, " ")+" in "+name, func(t *testing.T) {
+				t.Parallel()
+				s := sandbox.New(t)
+				dir := filepath.Join(s.Work, name)
+				if err := os.Mkdir(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				startCldIn(t, s, "tmux", dir, nil, args...)
+				probe := s.WaitProbes(1)[0]
+				if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
+					t.Errorf("sessions %q, want [cld-x]", sessions)
+				}
+				if !slices.Equal(probe.Argv, argv) {
+					t.Errorf("claude arguments %q, want %q", probe.Argv, argv)
+				}
+				if probe.Cwd != dir {
+					t.Errorf("claude runs in %s, want %s", probe.Cwd, dir)
+				}
+				if path := s.Format("cld-x", "#{session_path}"); path != dir {
+					t.Errorf("session path %s, want %s", path, dir)
+				}
+				if _, err := os.Stat(filepath.Join(dir, "ran")); err == nil {
+					t.Errorf("tmux ran touch from the directory's name")
+				}
+			})
+		}
 	}
 }
 
