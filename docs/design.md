@@ -898,7 +898,8 @@ Where the implementation departs from the plan above:
   status after its own message; one that cannot run ends it with 127 or 126, as `syscall.Exec`
   failing does.
   A session lookup (`list-sessions`) that fails ends cld with status 1 and what tmux said, or
-  the same `cannot run` message, as the script's `die 1` did.
+  the same `cannot run` message, as the script's `die 1` did. How cld finds a program on the
+  `PATH` (11.5) and ends when it cannot run one (11.9) is `internal/tool`.
   cld's own output goes through `fail.Print`, which turns a failed write into an error. What
   cobra prints - the help, the completion scripts and the answers to `__complete` (decision 17) -
   goes to a buffer, the root's output, which `run` then prints with `fail.Print`: cobra's help

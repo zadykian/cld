@@ -86,6 +86,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/tool"
 )
 
 // validName matches a session NAME, in ASCII whatever the locale. tmux turns "." and ":" into
@@ -153,10 +154,10 @@ func (v version) String() string {
 	return strings.Join(numbers, ".")
 }
 
-// Find finds tmux on the PATH (see lookPath) and checks nothing else: completion reads the
+// Find finds tmux on the PATH (see tool.LookPath) and checks nothing else: completion reads the
 // sessions with it on every TAB, where Check would cost a tmux -V each time.
 func Find() (*Tmux, error) {
-	path, err := lookPath("tmux")
+	path, err := tool.LookPath("tmux")
 	if err != nil {
 		return nil, fail.Runtime("tmux is not installed")
 	}
@@ -164,15 +165,15 @@ func Find() (*Tmux, error) {
 }
 
 // Check makes the checks every command makes before it runs tmux, in this order: tmux, then
-// each of tools, on the PATH (see lookPath), and tmux's version. A tmux -V that fails ends cld
-// with its status, after its own message (see exitStatus). Completion makes none of them.
+// each of tools, on the PATH (see tool.LookPath), and tmux's version. A tmux -V that fails ends
+// cld with its status, after its own message (see exitStatus). Completion makes none of them.
 func Check(tools ...string) (*Tmux, error) {
 	t, err := Find()
 	if err != nil {
 		return nil, err
 	}
 	for _, name := range tools {
-		if _, err := lookPath(name); err != nil {
+		if _, err := tool.LookPath(name); err != nil {
 			return nil, fail.Runtime(name + " is not installed")
 		}
 	}
@@ -202,14 +203,14 @@ type Claude struct {
 // tmux development build does, so that a new format locks no one out; there is no upper bound. A
 // claude --version that fails is refused with status 1 and what it printed: a claude that cannot
 // report its version is unlikely to start. One that cannot run at all ends cld as a tmux that
-// cannot run does (see cannotRun): its version is not what is wrong.
+// cannot run does (see tool.CannotRun): its version is not what is wrong.
 func CheckClaude() (*Claude, error) {
-	path, err := lookPath("claude")
+	path, err := tool.LookPath("claude")
 	if err != nil {
 		return nil, fail.Runtime("claude is not installed")
 	}
-	// claude --version runs as tmux starts claude (see Tmux.create): the file lookPath found, by
-	// its path, in the current directory, with no input - so a version manager's shim, mise's
+	// claude --version runs as tmux starts claude (see Tmux.create): the file tool.LookPath found,
+	// by its path, in the current directory, with no input - so a version manager's shim, mise's
 	// say, runs the claude that directory pins. A directory that has been removed, or that cannot
 	// be entered, is refused first, as new and resume refuse it: claude --version fails in the
 	// one (claude 2.1.282) and does not start in the other.
@@ -237,7 +238,7 @@ func CheckClaude() (*Claude, error) {
 	// tmux starts claude with execvp, which runs a file the system will not execute with /bin/sh,
 	// as a shell does (glibc's and macOS's); os/exec does not. That is how a script without #!
 	// runs. A binary - for another machine, or cut short - is no script, and a shell such as bash
-	// refuses to read one as commands: such a claude cannot run (see cannotRun).
+	// refuses to read one as commands: such a claude cannot run (see tool.CannotRun).
 	if errors.Is(err, syscall.ENOEXEC) && !binary(path) {
 		err = run("/bin/sh", path, "--version")
 	}
@@ -256,7 +257,7 @@ func CheckClaude() (*Claude, error) {
 		}
 		return nil, fail.Runtime(message)
 	case err != nil:
-		return nil, cannotRun(path, err)
+		return nil, tool.CannotRun(path, err)
 	}
 	if v, ok := parseVersion(claudeVersion, output); ok && v.before(minClaude) {
 		return nil, fail.Runtime(fmt.Sprintf("%s, found '%s'", required, output))
@@ -328,43 +329,6 @@ func cannotEnter(err error) error {
 		err = errno
 	}
 	return fail.Runtime("cannot enter the current directory: " + err.Error())
-}
-
-// lookPath finds name in the absolute entries of the PATH: the first executable file of that
-// name or, where none is executable, the first file of that name, as bash's search had it - one
-// that then cannot run (see cannotRun), rather than one not installed. cld never runs a program
-// from a relative entry - ".", or an empty one - where the shell would; exec.LookPath refuses one
-// found there, but stops at it, even when a later, absolute entry has the program too.
-func lookPath(name string) (string, error) {
-	lastResort := ""
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if !filepath.IsAbs(dir) {
-			continue
-		}
-		path := filepath.Join(dir, name)
-		if _, err := exec.LookPath(path); err == nil {
-			return path, nil
-		}
-		if info, err := os.Stat(path); lastResort == "" && err == nil && !info.IsDir() {
-			lastResort = path
-		}
-	}
-	if lastResort != "" {
-		return lastResort, nil
-	}
-	return "", &exec.Error{Name: name, Err: exec.ErrNotFound}
-}
-
-// tool is the program name, found by lookPath, to run with args, cld's stdin and stderr.
-func tool(name string, args ...string) (*exec.Cmd, error) {
-	path, err := lookPath(name)
-	if err != nil {
-		return nil, err
-	}
-	cmd := exec.Command(path, args...)
-	cmd.Args[0] = name
-	cmd.Stdin, cmd.Stderr = os.Stdin, os.Stderr
-	return cmd, nil
 }
 
 // number is a run of digits as a number, one too large for an int as the largest.
@@ -799,7 +763,7 @@ func (t *Tmux) OwnPane() (string, bool) {
 	if !found || !ValidName(suffix) {
 		return "", false
 	}
-	tty, err := tool("tty")
+	tty, err := tool.Command("tty")
 	if err != nil {
 		return "", false
 	}
@@ -818,7 +782,7 @@ func (t *Tmux) OwnPane() (string, bool) {
 
 // inWorkTree reports whether the current directory is in a git work tree.
 func inWorkTree() bool {
-	git, err := tool("git", "rev-parse", "--is-inside-work-tree")
+	git, err := tool.Command("git", "rev-parse", "--is-inside-work-tree")
 	if err != nil {
 		return false
 	}
@@ -862,16 +826,17 @@ func (t *Tmux) serverContext(ctx context.Context, suffix string, args ...string)
 }
 
 // combinedOutput runs cmd and returns its stdout and stderr together, without the newlines at
-// the end; when cmd cannot run at all, cannotRun's message instead. A session lookup that fails
-// ends cld with status 1 and that output, as the script's did with bash's message: a tmux that
-// cannot run gets as far as a lookup only when it stops being runnable after answering tmux -V.
+// the end; when cmd cannot run at all, tool.CannotRun's message instead. A session lookup that
+// fails ends cld with status 1 and that output, as the script's did with bash's message: a tmux
+// that cannot run gets as far as a lookup only when it stops being runnable after answering
+// tmux -V.
 func combinedOutput(cmd *exec.Cmd) (string, error) {
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()
 	var exit *exec.ExitError
 	if err != nil && !errors.As(err, &exit) && out.Len() == 0 {
-		out.WriteString(cannotRun(cmd.Path, err).Error())
+		out.WriteString(tool.CannotRun(cmd.Path, err).Error())
 	}
 	return strings.TrimRight(out.String(), "\n"), err
 }
@@ -879,7 +844,7 @@ func combinedOutput(cmd *exec.Cmd) (string, error) {
 // become replaces cld with tmux, run with argv and env: the terminal's process is tmux from
 // then on, and tmux's exit status is cld's. It returns only when that fails.
 func (t *Tmux) become(argv, env []string) error {
-	return cannotRun(t.path, syscall.Exec(t.path, argv, env))
+	return tool.CannotRun(t.path, syscall.Exec(t.path, argv, env))
 }
 
 // exitStatus is the exit status of a tmux command that failed, which has said why, or how cld
@@ -887,25 +852,10 @@ func (t *Tmux) become(argv, env []string) error {
 func (t *Tmux) exitStatus(err error) error {
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) {
-		return cannotRun(t.path, err)
+		return tool.CannotRun(t.path, err)
 	}
 	if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
 		return fail.Status(128 + int(status.Signal()))
 	}
 	return fail.Status(exit.ExitCode())
-}
-
-// cannotRun ends cld when the system cannot run the program at path at all - a #! naming no
-// interpreter, a binary for another machine, a file without the execute permission - with the
-// status a shell gives: 127 when the system reports no such file, 126 otherwise.
-func cannotRun(path string, err error) error {
-	status := 126
-	if errors.Is(err, fs.ErrNotExist) {
-		status = 127
-	}
-	var pathError *fs.PathError
-	if errors.As(err, &pathError) {
-		err = pathError.Err
-	}
-	return &fail.Error{Status: status, Message: fmt.Sprintf("cannot run %s: %v", path, err)}
 }
