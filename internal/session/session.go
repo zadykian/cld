@@ -456,11 +456,21 @@ func (t *Tmux) New(c *Claude, suffix string, worktree bool) error {
 }
 
 // Join becomes a tmux client attached to session cld-SUFFIX, detaching any other. It returns
-// only when it does not get as far.
+// only when it does not get as far. Joinable and Attach are its steps after the terminal's check,
+// for a caller that has to look the session up before it hands the terminal over.
 func (t *Tmux) Join(suffix string) error {
 	if err := t.readyClient(); err != nil {
 		return err
 	}
+	if err := t.Joinable(suffix); err != nil {
+		return err
+	}
+	return t.Attach(suffix)
+}
+
+// Joinable is join's lookup: nil when session cld-SUFFIX is on its server, and otherwise why join
+// refuses it, with the advice for the command line kept apart (fail.Error's Advice).
+func (t *Tmux) Joinable(suffix string) error {
 	server, exists, err := t.lookup(suffix)
 	if err != nil {
 		return err
@@ -469,7 +479,17 @@ func (t *Tmux) Join(suffix string) error {
 		return t.lingering(suffix)
 	}
 	if !exists {
-		return fail.Runtime(fmt.Sprintf("no session '%s'; create it with cld new -n %[1]s", suffix))
+		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: "; create it with cld new -n " + suffix}
+	}
+	return nil
+}
+
+// Attach is the rest of join, for a session Joinable found, from a terminal that is not a live
+// pane of one of cld's servers (see OwnPane): it becomes a tmux client attached to session
+// cld-SUFFIX, detaching any other. It returns only when it does not get as far.
+func (t *Tmux) Attach(suffix string) error {
+	if err := emptyTMUX(); err != nil {
+		return err
 	}
 	name := "cld-" + suffix
 	if err := setTitle(name); err != nil {
@@ -612,16 +632,21 @@ func (t *Tmux) lookup(suffix string) (server, session bool, err error) {
 // ignores case, as macOS's does by default, the socket cld-SUFFIX can be that of another session's
 // server, whose NAME differs only in case: tmux -L cld-A reaches the server of session a, which
 // the socket path it was started with names. That session may well be running, so cld refuses the
-// name and names the session, rather than point at a kill-server that would end it.
+// name and names the session, rather than point at a kill-server that would end it. The advice
+// for the command line is kept apart (fail.Error's Advice).
 func (t *Tmux) lingering(suffix string) error {
 	socket := t.server(suffix, "list-sessions", "-F", "#{socket_path}")
 	socket.Stderr = nil
 	out, _ := socket.Output()
 	path, _, _ := strings.Cut(string(out), "\n")
 	if other, found := strings.CutPrefix(filepath.Base(path), "cld-"); found && other != suffix && strings.EqualFold(other, suffix) {
-		return fail.Runtime(fmt.Sprintf("session name '%s' clashes with session '%s': tmux's socket directory ignores case here, so both names reach server cld-%[2]s (see tmux -L cld-%[2]s ls)", suffix, other))
+		return &fail.Error{Status: 1,
+			Message: fmt.Sprintf("session name '%s' clashes with session '%s': tmux's socket directory ignores case here, so both names reach server cld-%[2]s", suffix, other),
+			Advice:  fmt.Sprintf(" (see tmux -L cld-%s ls)", other)}
 	}
-	return fail.Runtime(fmt.Sprintf("session '%s' has ended, but its tmux server still runs (see tmux -L cld-%[1]s ls); end it with tmux -L cld-%[1]s kill-server", suffix))
+	return &fail.Error{Status: 1,
+		Message: fmt.Sprintf("session '%s' has ended, but its tmux server still runs", suffix),
+		Advice:  fmt.Sprintf(" (see tmux -L cld-%[1]s ls); end it with tmux -L cld-%[1]s kill-server", suffix)}
 }
 
 // noServer reports whether tmux failed, saying message, because the server is not running: its
@@ -646,23 +671,28 @@ func noServer(message string) bool {
 // one of cld's servers, and empties a TMUX that is set, for the client and every tmux command
 // before it.
 func (t *Tmux) readyClient() error {
+	if suffix, found := t.OwnPane(); found {
+		return fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d first", suffix))
+	}
+	return emptyTMUX()
+}
+
+// emptyTMUX empties TMUX where it is set (see above).
+func emptyTMUX() error {
 	if os.Getenv("TMUX") == "" {
 		return nil
-	}
-	if suffix, found := t.ownPane(); found {
-		return fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d first", suffix))
 	}
 	return os.Setenv("TMUX", "")
 }
 
-// ownPane reports whether this terminal is a live pane of one of cld's servers - claude's
-// external editor, say - and names the server's session. A session attached there would show
-// inside a session of cld's, itself or another, both taking C-q. tmux refuses the first too,
-// advising to unset $TMUX, but goes by name, dead panes included (see above); cld says how to get
-// out instead. Like tmux it looks only when $TMUX is set, and only on the server TMUX names, if
-// that is one of cld's: the terminal of any other tmux nests. tty names the terminal on its
-// stdin, cld's.
-func (t *Tmux) ownPane() (string, bool) {
+// OwnPane reports whether this terminal is a live pane of one of cld's servers - claude's
+// external editor, say - and names the server's session: new and join refuse it. A session
+// attached there would show inside a session of cld's, itself or another, both taking C-q. tmux
+// refuses the first too, advising to unset $TMUX, but goes by name, dead panes included (see
+// above); cld says how to get out instead. Like tmux it looks only when $TMUX is set, and only on
+// the server TMUX names, if that is one of cld's: the terminal of any other tmux nests. tty names
+// the terminal on its stdin, cld's.
+func (t *Tmux) OwnPane() (string, bool) {
 	socket, _, _ := strings.Cut(os.Getenv("TMUX"), ",")
 	suffix, found := strings.CutPrefix(filepath.Base(socket), "cld-")
 	if !found || !ValidName(suffix) {

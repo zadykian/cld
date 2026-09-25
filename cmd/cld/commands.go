@@ -234,7 +234,7 @@ func sessionName(name string) (string, error) {
 		return "", fail.Usage(fmt.Sprintf("session name '%s' is longer than %d characters (see cld help)", name, session.MaxName))
 	}
 	if !session.ValidName(name) {
-		return "", fail.Usage(fmt.Sprintf("invalid session name '%s' (see cld help)", name))
+		return "", &fail.Error{Status: 2, Message: fmt.Sprintf("invalid session name '%s'", name), Advice: " (see cld help)"}
 	}
 	return name, nil
 }
