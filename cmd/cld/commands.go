@@ -154,13 +154,14 @@ and what claude started through tmux ends too`,
 	// Leaving it prints the table, from the sessions it last read.
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "list the sessions cld started; on a terminal, pick one to join",
+		Short: "list the sessions cld started; on a terminal, join or kill one",
 		Long: `list the sessions cld started: name, whether a terminal is attached (or claude
 exited), and the directory claude is in.
 
-On a terminal, pick one to join: Up and Down select a session, Enter joins it
-as cld join does, and Esc or C-c leaves, printing the list. cld list | cat
-prints the list only.`,
+On a terminal, pick one to join or kill: Up and Down select a session, Enter
+joins it as cld join does, C-x twice within two seconds kills it as cld kill
+does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
+list. cld list | cat prints the list only.`,
 		RunE: func(*cobra.Command, []string) error {
 			tmux, err := session.Check()
 			if err != nil {
@@ -172,7 +173,7 @@ prints the list only.`,
 			}
 			if len(sessions) > 0 && picker.Available() {
 				if _, own := tmux.OwnPane(); !own {
-					picked, last, err := picker.Run(joining{tmux}, sessions)
+					picked, last, err := picker.Run(listSource{tmux}, sessions)
 					if err != nil {
 						return err
 					}
@@ -260,19 +261,40 @@ func sessionName(name string) (string, error) {
 	return name, nil
 }
 
-// joining is what the interactive list joins through: join's checks, which Enter makes while
-// the list is open - the name, then the lookup - and the sessions to list.
-type joining struct{ tmux *session.Tmux }
+// listSource is what the interactive list reads and acts through: the sessions to list, join's
+// checks, which Enter makes while the list is open - the name, then the lookup - and kill's steps,
+// which the second Ctrl+X takes.
+type listSource struct{ tmux *session.Tmux }
 
-func (j joining) Sessions(ctx context.Context) ([]session.Session, error) {
-	return j.tmux.Sessions(ctx)
+func (l listSource) Sessions(ctx context.Context) ([]session.Session, error) {
+	return l.tmux.Sessions(ctx)
 }
 
-func (j joining) Joinable(ctx context.Context, name string) error {
+func (l listSource) Joinable(ctx context.Context, name string) error {
 	if _, err := sessionName(name); err != nil {
 		return err
 	}
-	return j.tmux.Joinable(ctx, name)
+	return l.tmux.Joinable(ctx, name)
+}
+
+// Kill is kill's steps - the name, then End - with End's check that the session is still the one
+// whose panes' pids the list read. What tmux says when the kill - kill-session, then kill-server -
+// fails becomes the error, for the list's footer, rather than going to the terminal the list draws
+// on.
+func (l listSource) Kill(ctx context.Context, name string, pids []string) error {
+	if _, err := sessionName(name); err != nil {
+		return err
+	}
+	var said bytes.Buffer
+	err := l.tmux.End(ctx, name, pids, &said, &said)
+	var status fail.Status
+	if errors.As(err, &status) {
+		if message := strings.TrimSpace(said.String()); message != "" {
+			return fail.Runtime(message)
+		}
+		return fail.Runtime("tmux kill-session: " + status.Error())
+	}
+	return err
 }
 
 // noArguments refuses the first argument left after a command's options, or a "--" among them:

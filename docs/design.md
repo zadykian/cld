@@ -47,7 +47,7 @@ cld() {
 | `remain-on-exit-format` (tmux 3.3a, 3.7c) | a non-empty format scrolls the dead pane up a line to write itself at the bottom, so a short error on the top line goes out of sight; `#{session_name}` is empty in it, `#{window_name}` is not. An empty format writes nothing and scrolls nothing. `#{pane_dead_signal}` is a number on Linux and a name (`term`) where the C library has `sys_signame`, as on macOS (tmux 3.7c) |
 | `display-message` from the `pane-died` hook (tmux 3.5a, 3.7c) | with no terminal on the dead pane's window it goes to another session's terminal, the one used last; with no terminal attached at all tmux keeps it, as it keeps errors in its configuration, and shows it as `(null):0: claude exited with ...` in view-mode over the next session a terminal attaches to - any session, a new one too - whose claude then gets no keys until `q`. Under `if -F '#{window_active_clients}'` it reaches only a terminal on that window. After `attach-session` in the same command list, `display-message` reaches the attaching terminal, on its message line |
 | a dead pane that had focus reporting (`?1004h`) on, client attached | tmux 3.3a crashes on `kill-session` and on detach; 3.4 on detach and on a focus change of the terminal - both with every session on the server. 3.5a and 3.7c survive keys, wheel, clicks, paste, focus changes, resize, detach, reattach, the terminal closing and `kill-session`; `kill-pane` is safe in all four |
-| `cld list` where `LC_ALL`, `LC_CTYPE` and `LANG` do not name UTF-8 - unset or `C`, as over ssh, in containers and cron (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux writes a command's output to such a client with `_` for each character it cannot print: the tabs, so a session showed as `demo_detached_/tmp` under NAME with STATE and DIRECTORY empty, and a directory's non-ASCII letters (`/tmp/café` became `/tmp/caf_`). `tmux -u` marks the client UTF-8, and the output arrives as it is. The other output cld reads - the session's name, `cld-NAME`, from its session lookup, `list-panes`' `0` or `1` - is printable ASCII and passes unchanged |
+| `cld list` where `LC_ALL`, `LC_CTYPE` and `LANG` do not name UTF-8 - unset or `C`, as over ssh, in containers and cron (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux writes a command's output to such a client with `_` for each character it cannot print: the tabs, so a session showed as `demo_detached_/tmp` under NAME with STATE and DIRECTORY empty, and a directory's non-ASCII letters (`/tmp/café` became `/tmp/caf_`). `tmux -u` marks the client UTF-8, and the output arrives as it is. The other output cld reads - the session's name, `cld-NAME`, and the pids of its panes from its session lookup, `list-panes`' `0` or `1` - is printable ASCII and passes unchanged |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, and tmux refuses a client with `$TMUX` set only when its tty has the name of one of the server's own panes - but see the next row |
 | a dead pane's pty (tmux 3.3a to 3.7c) | tmux closes it but keeps its name (`#{pane_tty}`), and the system hands the name to the next pty opened. A client with `$TMUX` set on that pty - a pane of another tmux - is refused with `sessions should be nested with care, unset $TMUX to force`: tmux compares the client's tty with every pane's, dead or alive. An empty `$TMUX` skips the check; set, even empty, it still makes the client take the terminal for UTF-8 whatever the locale says |
 | a bare `tmux new-session -d -s cld-x` run inside claude's pane (tmux 3.3a to 3.7c) | the pane's `TMUX` names cld's socket, so `cld-x` lands on cld's server, as with `tmux -L cld` by hand; until cld marked its sessions, `list`, `join`, `kill` and `new` took it for one of theirs |
@@ -77,6 +77,10 @@ cld() {
 | SIGTSTP in a Go program that has had it through `os/signal` (Go 1.27.1, Linux 7.0) | after `signal.Stop` or `signal.Reset`, `kill -TSTP` of the process did nothing: `sigdisable` leaves Go's handler in place for any signal that `sigInstallGoHandler` accepts, and the handler drops a `_SigNotify` signal that no channel wants. Never notified, SIGTSTP keeps its default action, since `initsig` skips `_SigDefault` signals. `kill(getpid(), SIGSTOP)` returned before the process stopped, under dash with `set -m`, and it stopped soon after; the SIGCONT of `fg` then reached `os/signal` |
 | a job of a `sh -c` script under `set -m` that stops, and a background one that ends: macOS's `sh`, bash 3.2.57 as Apple builds it (read in its source, tag `bash-144`; seen on the CI's macOS 26 arm64 runner; run on Linux as GNU bash 3.2.57 with Apple's change to `jobs.c`), GNU bash 3.2.57 and 5.3.9, dash 0.5.12 | Apple's bash asks `waitpid` to report a stopped child (`WUNTRACED`) only when the shell is interactive, where GNU's asks whenever job control is on: in a script, `set -m` puts the job in a process group of its own, in the foreground, but once the job stops the shell goes on waiting for it to end, and never runs the rest of its script. With `-i` it goes on, `$?` 128 and the signal's number, as the others do in a script. bash 3.2.57, Apple's and GNU's, also reports a background job's end on stderr in a script while job control is on (`[1]+  Done ...`), which 5.3.9 and dash do not; with job control off again (`set +m`) once the job has started, it does not |
 | a `list-sessions` client that connects as the server exits with its last session: `new-session -d`, `kill-session`, then `list-sessions -f`, 400 times (tmux 3.3a, 3.4, 3.7c) | the client printed `no server running on ...`, but for `server exited unexpectedly`, failing, in one round on 3.4 and one on 3.7c, and nothing in one on 3.3a and one on 3.7c. cld took the first for no session and reported the second as an error, `cld join` as the list's footer; since 13 it takes both for no server (see the row on a server that exits as it is asked). `TestListJoin`'s last-row case waits for the server to have exited before Enter |
+| `kill-session`, then `list-sessions` at once, 400 rounds (tmux 3.3a, 3.4, 3.5a, 3.7c; Docker, 3.7c also natively) | with another session left, `list-sessions` never showed the killed one. With the last one killed, it reported `no server running on ...` every time; under load, eight such loops at once (2400 rounds in Docker), it failed with `server exited unexpectedly` in 40 on 3.3a, 19 on 3.4, none on 3.5a and 10 on 3.7c, and printed nothing, succeeding, in 53, 17, 0 and 1: tmux had not finished exiting. A `list-sessions` right after each failure reported no server. Natively on 3.7c (Linux 7.0, eight loops of 400) all 3200 reported no server |
+| `kill-server`, then `list-sessions` at once, 400 rounds (tmux 3.3a, 3.4, 3.5a, 3.7c; Docker) | `no server running on ...` every time on 3.5a and 3.7c, but for `server exited unexpectedly` in 31 rounds on 3.3a and 44 on 3.4. Under load, eight such loops at once (2400 rounds), 3.5a failed so in 5 and 3.7c in 30; a `list-sessions` right after each failure reported no server. Since 13 cld takes both for no server, so the session list's read after a kill passes over the killed session's server as it exits (15.5) |
+| `#{session_created}`, `#{session_id}` and `#{pane_pid}` in `list-sessions -F` (tmux 3.3a, 3.4, 3.5a, 3.7c) | `session_created` counts whole seconds: a session killed and made again within the second has the same value. `session_id` starts again at `$0` on a new server - after the last session was killed, say - so a session made again under the name can have the killed one's id; with another session left it gets the next id. `pane_pid` is the pid of the program tmux started in the session's pane, which a dead pane (`remain-on-exit`) keeps; `kill-session` ends such a session, with status 0 (no terminal attached). For a session, `pane_pid` is the active pane's in its current window: after `split-window -d` and `select-pane` onto the new pane it is the new pane's program's. `#{W:#{P:#{pane_pid} }}` gives every pane's, in every window, the active one or not, a dead one's too |
+| Ctrl+X in Claude Code's agent view (`claude agents`): [its docs](https://code.claude.com/docs/en/agent-view), read 2026-09-25, and the hints of 2.1.282, read from its bundle, not run | the docs: `Ctrl+X` "Stop the session; press again within two seconds to delete it", and "Press `Esc` to dismiss the confirmation without deleting"; the second press deletes even when the stop failed. A deleted session leaves the list, its transcript stays for `claude --resume`, and agent view removes a worktree Claude created for it, uncommitted changes included - but keeps the worktree and the session when another session uses or has locked it, or it has commits Claude Code cannot confirm are saved elsewhere. The hints: `ctrl+x to stop` or `ctrl+x to delete` among a selected row's hints; `stopped · ctrl+x again to delete · esc to keep` and `ctrl+x again to delete · esc to keep` dim, as other hints; `stopped · ctrl+x again to delete` and `ctrl+x again to delete` in the error colour. Which shows when was not observed |
 | a directory whose name holds control characters (0x01, ESC), in `#{pane_current_path}` of `list-sessions -F` and `list-panes -F` (tmux 3.3a, 3.4, 3.5a, 3.7c), for a client under `LANG=C.UTF-8` and `LANG=C` | 3.3a and 3.7c write the characters as they are to a UTF-8 client - under `C.UTF-8`, or with `-u` - and each as `_` under `C` without `-u`; 3.4 and 3.5a write them as octal escapes, `\001` and `\033`, under either, with `-u` or not |
 | hint strings in Claude Code 2.1.282 (read from its bundle, not run) | hints are lower case, but for Enter and Esc in some, joined by ` · ` and drawn dim: `↑/↓ to navigate · enter to resume as a background session`, `↑/↓ to navigate · Esc to cancel`, and a list of hints beside `ctrl+x to ...` and `to go back` that ends in `esc to quit` or `esc to close · esc again quits`. Where each shows was not observed |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
@@ -127,7 +131,7 @@ a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the prob
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
 | C9 | claude exiting ends its session, and its server unless tmux sessions claude made keep it running; the terminal is left clean. A claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
-| C10 | the session list (`cld list` on a terminal) reads the terminal's own keys: Down and Enter join the second session, which shows, with the title `✳ cld-NAME`; Esc leaves the terminal as it was: the main screen, no mouse reporting, the cursor visible and the same `stty -g` | terminal |
+| C10 | the session list (`cld list` on a terminal) reads the terminal's own keys: Down and Enter join the second session, which shows, with the title `✳ cld-NAME`; Ctrl+X pressed twice kills the selected session - its row goes, and its claude exits; Esc leaves the terminal as it was: the main screen, no mouse reporting, the cursor visible and the same `stty -g` | terminal, probe |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
@@ -192,8 +196,9 @@ The Linux job runs the same Docker image a developer runs locally.
    `=cld-NAME`, since tmux would otherwise take `cld-rev` for `cld-review`. `list` shows the
    directory claude is in now (`pane_current_path`), not the one its session started in, and
    nothing at all when no server runs; on a terminal it lets you pick a session and join it (see
-   14). `kill` ends a session with `kill-session`: claude gets SIGHUP, as when its terminal closes
-   (since 13, `kill-session` and then `kill-server` in one tmux command, with the same SIGHUP).
+   14) or kill it (see 15). `kill` ends a session with `kill-session`: claude gets SIGHUP, as when
+   its terminal closes (since 13, `kill-session` and then `kill-server` in one tmux command, with the
+   same SIGHUP).
 4. Worktrees: `new -w` passes `--worktree NAME` to claude instead of running `git worktree add`.
    claude then applies what it applies to every worktree it makes - `.worktreeinclude`,
    `worktree.baseRef`, `WorktreeCreate` hooks - reopens an existing one, and one repository keeps
@@ -512,16 +517,18 @@ The Linux job runs the same Docker image a developer runs locally.
 14. The session list (#23): on a terminal, `cld list` shows the sessions to pick one and join it, as
     Claude Code's agent view (`claude agents`, a research preview whose keys may change) lists its
     background sessions: `↑`/`↓` move between rows, Enter attaches, Esc leaves. Its footer follows
-    Claude Code's hints (see Findings): `↑/↓ to navigate · enter to join · esc to quit`, dim, under
-    the rows after a blank line; on a row with a terminal attached - an exited one too - `enter to
-    join` reads `enter to join and detach its terminal`. The first row is selected, marked `>` and
+    Claude Code's hints (see Findings): `↑/↓ to navigate · enter to join · esc to quit` - with
+    `ctrl+x to kill` before `esc to quit` since the kill (see 15) - dim, under the rows after a
+    blank line; on a row with a terminal attached - an exited one too - `enter to join` reads
+    `enter to join and detach its terminal`. The first row is selected, marked `>` and
     in inverse video; `↑`/`↓` stop at the first and the last row, Enter joins, and Esc and Ctrl+C
-    leave with status 0 - one Ctrl+C, since the list has no input to clear. Other keys, letters
-    included, do nothing: agent view binds none, and its `→` pairs with a `←` to come back, which a
-    cld session does not offer. Keys with Alt do nothing either: terminals send them as Esc and the
-    key, so Esc followed within the wait for a lone Esc by another key is that key with Alt - but
-    for a second Esc, which stands alone unless a sequence follows it (Alt+Up as ESC ESC [ A, as
-    rxvt sends it). A message - why Enter could not join - takes the hints' place until the next
+    leave with status 0 - one Ctrl+C, since the list has no input to clear; once Ctrl+X has armed a
+    kill, Esc only disarms it (see 15). Other keys, letters included, do nothing: agent view binds
+    none, and its `→` pairs with a `←` to come back, which a cld session does not offer. Keys with
+    Alt do nothing either: terminals send them as Esc and the key, so Esc followed within the wait
+    for a lone Esc by another key is that key with Alt - but for a second Esc, which stands alone
+    unless a sequence follows it (Alt+Up as ESC ESC [ A, as rxvt sends it). A message - why Enter
+    could not join, or why a kill ended nothing (see 15) - takes the hints' place until the next
     key. Settled with it:
     1. when: the list is interactive when stdin and stdout are terminals, `TERM` is set and not
        `dumb`, which cannot move the cursor, and cld is in the terminal's foreground (its process
@@ -553,14 +560,14 @@ The Linux job runs the same Docker image a developer runs locally.
        whether a terminal is attached or not - and on an exited row joins and shows claude's last
        words with the hint - joining is how claude's message is read. Asking again, or refusing an
        exited row, would protect nothing: a detach ends nothing;
-    6. the list reads the sessions when it opens and after its own actions - a failed Enter here -
-       never on a timer or on a key, so a row does not change under a key; each read asks every
-       server in turn, as `list` does (see 13.1). A stale row costs at most a message, detaching a
-       terminal the list did not show, or joining a session made again under the same name, which
-       `cld join -n NAME` would join too. After a read the selection stays on its session or, once
-       that is gone, goes to the next row the list showed that is still there - the one that took
-       its place - or else to the one above. Leaving and running `cld list` again shows what changed
-       elsewhere;
+    6. the list reads the sessions when it opens and after its own actions - a failed Enter here,
+       and a kill (see 15) - never on a timer or on a key, so a row does not change under a key;
+       each read asks every server in turn, as `list` does (see 13.1). A stale row costs at most a
+       message, detaching a terminal the list did not show, or joining a session made again under
+       the same name, which `cld join -n NAME` would join too. After a read the selection stays on
+       its session or, once that is gone, goes to the next row the list showed that is still there -
+       the one that took its place - or else to the one above. Leaving and running `cld list` again
+       shows what changed elsewhere;
     7. Go (see 11) on `golang.org/x/term`, which the module already required for the probe:
        `MakeRaw`, which clears `ISIG` so that Ctrl+C arrives as the byte 0x03, `GetSize` and
        `Restore`. The list reads a byte at a time, and only once there is one: reads block, so a
@@ -625,6 +632,81 @@ The Linux job runs the same Docker image a developer runs locally.
     shell with job control takes a job out of. A SIGTSTP during the handover stops cld once the
     terminal is back, before it becomes tmux. In the background, after `bg`, taking the terminal
     again stops cld (SIGTTOU) until `fg`.
+15. Killing from the session list (#24): in the list (see 14), Ctrl+X arms the kill of the selected
+    session and a second Ctrl+X within two seconds kills it, as `cld kill -n NAME` does; Esc keeps
+    it, and the list stays open. This follows agent view, where Ctrl+X stops a session and a second
+    press within two seconds deletes it (see Findings). Where agent view has two steps, cld has one:
+    `cld kill`'s `kill-session` and `kill-server` end claude, like agent view's stop, and the row
+    leaves the list at once, like its delete; there is no stopped row to come back to, and the
+    conversation comes back only through `claude --resume`. Settled with it:
+    1. confirming: the second press, as agent view asks for one before a row leaves its list. On a
+       selected row the footer's hints read `↑/↓ to navigate · enter to join · ctrl+x to kill · esc
+       to quit` (62 cells, 86 on an attached row); once armed, `ctrl+x again to kill · esc to keep`,
+       or `ctrl+x again to kill and detach its terminal · esc to keep` on a row with a terminal
+       attached, an exited one too - dim, as agent view draws its own. Where the hints do not all
+       fit, `↑/↓ to navigate`, which the arrows need least, goes first: in 80 columns an attached
+       row's then take 68 cells, and `esc to quit` shows whole rather than cut to `esc t`. A
+       terminal narrower still cuts the rest at its edge, as every line. Esc and the two seconds
+       running out disarm it and do nothing more; any other key disarms it and then does what it
+       does: an arrow moves the selection, Enter joins, Ctrl+C leaves. A key that has begun holds
+       the two seconds back, so that an Esc typed within them keeps the session although the wait
+       for a lone Esc ends after them. A key that has come by their end, but that cld, held up
+       meanwhile - stopped, or busy - has not read yet, counts as typed within them too - the footer
+       still asked for the second Ctrl+X: Esc keeps the session, Ctrl+X kills it, and another key
+       disarms the kill. Without that, whichever cld took first, the end or the key, decided, and an
+       Esc read late now kept the session and now closed the list. After a kill, whatever came of
+       it, Ctrl+X does nothing until none has come for a second, or another key has come. A terminal
+       types a key held down again after a delay, half a second or so by default, and then many
+       times a second: without the wait, the second Ctrl+X held a little too long armed the kill of
+       the row that took the killed one's place, which the selection had moved to, then killed it,
+       and so on down the list - sessions the user never selected, which the second press is there
+       to keep a stray key from ending. A second covers the usual delays; a Ctrl+X that comes
+       meanwhile, as each repeat does, starts it again, and another key ends it at once, since only
+       the key pressed last repeats. A Ctrl+X pressed on purpose right after a kill does nothing,
+       and one after the wait arms the kill as before. One press, as agent view's stop, would be
+       quicker, but a stray key would end a session and detach whoever is on it - through Remote
+       Control too, which cld cannot see (`attached` counts terminals only). A `y/n` question is not
+       how agent view asks. Ctrl+X is the byte 0x18 in raw mode;
+    2. the session the list runs in: moot, since the list is not interactive in a live pane of one
+       of cld's servers (14.3), where a kill would take the list, and the claude it came from, down
+       with it;
+    3. the same session: the list kills the session on the row only while its claude is the one
+       the list read. The list reads the pids of the session's panes (`#{pane_pid}`) from each
+       server, and the lookup asks for them with the session's name: a session that has none of
+       the pids the list read counts as gone, `no session 'b'`. A session made again has a new
+       claude, and a dead pane keeps its pid, so an exited row is killed as any other (see
+       Findings). Every pane counts, `#{W:#{P:#{pane_pid} }}`: `#{pane_pid}` alone is the active
+       pane's, and claude's window split by hand, the other pane selected since the list read it,
+       made the session look gone. `#{session_created}`, in whole seconds, and `#{session_id}`,
+       which starts again at `$0` on a new server - as a session made again gets one since 13 - do
+       not tell a session made again from the one killed. The check narrows the window to the one
+       `cld kill` has between its lookup and the kill. `cld kill -n NAME` goes on killing by name;
+    4. one kill step: the list and `cld kill` run the same code, `End` in `internal/session` -
+       after the name's check, the lookup and the refusal of a server that runs without its
+       session (13), then `kill-session -t =cld-NAME` and `kill-server` in one tmux command. `End`
+       returns its errors, and `cld kill` prints them and exits as before: a lookup that fails
+       with its message and status 1, a kill that fails with tmux's own message and status. The
+       list shows the lookup's errors in the footer, without the advice meant for the command
+       line, as Enter does (`no session 'b'`, `session 'b' has ended, but its tmux server still
+       runs`), and what tmux says when the kill fails - `tmux kill-session: exit status N` when it
+       says nothing - rather than letting it write over the list;
+    5. after the kill, whether it ended the session or not, the list reads the sessions again, and
+       the selection moves as after any read (14.6): to the row that took the killed row's place,
+       or the one above it for the last row; with none left, `no sessions`. The killed session's
+       server exits after it, and a read that meets it exiting passes over it, as `list` does since
+       13: tmux says that no server is running there or, now and then, that the server exited
+       unexpectedly (see Findings). Before 13 the read met the shared server exiting with its last
+       session and failed, and was made once more. When the sessions cannot be read, the list says
+       why and keeps its rows, but for the one it killed. The kill runs beside the list, as Enter's
+       lookup does: Esc, Ctrl+C and the signals leave, killing its tmux, and other keys do nothing
+       until it ends. What the kill did by then counts for the table Esc and Ctrl+C print: once
+       the kill's tmux command has returned, the table leaves the session out, or shows the
+       sessions read again. An Esc typed right after the second Ctrl+X, meant as the armed
+       footer's `esc to keep`, leaves once the wait for a lone Esc is over, when the kill has
+       usually ended. A kill cut short may or may not have ended the session, whose row then stays;
+    6. like `cld kill`, the kill leaves a `cld new -w` worktree where it is, where agent view's
+       delete removes the worktree Claude created. Killing several sessions at once, a stopped
+       state and removing worktrees are not part of it.
 
 ## Implementation notes
 
@@ -708,14 +790,43 @@ Where the implementation departs from the plan above:
   `list-sessions`, so that a second `cld new` can reach a running server as the one of two at once
   that loses the race does.
 - The session list (decision 14) is `internal/picker`; `cmd/cld` decides when it runs and hands
-  it join's checks. A `fail.Error` keeps the advice for the command line (`Advice`, such as
-  ` (see cld help)`) apart from its `Message`: `main` prints both, the list's footer the message.
-  The list's lookups run tmux with the terminal, in raw mode, as their stdin; `list-sessions`
-  leaves its mode alone (`TestListJoin`'s gone case reads it with `stty -a`).
+  it join's checks and kill's steps (`listSource`). A `fail.Error` keeps the advice for the
+  command line (`Advice`, such as ` (see cld help)`) apart from its `Message`: `main` prints both,
+  the list's footer the message. The list's lookups and its kill run tmux with the terminal, in
+  raw mode, as their stdin; `list-sessions` and the kill's `kill-session` and `kill-server` leave
+  its mode alone (`TestListJoin`'s gone case and `TestListKill`'s kill case read it with
+  `stty -a`).
 - The baseline terminal types the list's keys by name with `send-keys`, which sends, on tmux
-  3.7c: `Up` ESC [ A, `Down` ESC [ B, `Escape` 0x1b, `Enter` 0x0d and `C-c` 0x03, and after the
-  program in the pane has sent CSI ?1h (application cursor keys) ESC O A and ESC O B for `Up` and
-  `Down`.
+  3.7c: `Up` ESC [ A, `Down` ESC [ B, `Escape` 0x1b, `Enter` 0x0d, `C-c` 0x03 and `C-x` 0x18, and
+  after the program in the pane has sent CSI ?1h (application cursor keys) ESC O A and ESC O B for
+  `Up` and `Down`. The JediTerm driver types `C-x` as any Ctrl+letter: a key-pressed event of `X`
+  with Ctrl, the control character as its key char.
+- No test holds the two seconds back with a key that has begun (15.1): that matters only to an Esc
+  typed in their last 100 ms, the wait for a lone Esc, which a test cannot time from outside cld
+  without flaking under load. `TestListKill`'s timeout case pins the two seconds between two and
+  four. A key read late (15.1) is a check where the two seconds' timer fires: with a byte waiting to
+  be read, the kill stays armed, with no timer, for the key the byte begins. `TestListKill`'s read
+  late case stops cld (SIGSTOP) within the two seconds, types the key, and has cld go on (SIGCONT)
+  once they are over and the key has reached the terminal - the test sees it readable, as cld does -
+  so that the key and the timer are there to take together: an Esc three times, then a Ctrl+X, which
+  kills. Without the check, cld took the timer first about half the time, and the case failed 4 runs
+  out of 4. Where cld stopped two seconds after the first Ctrl+X or later, the timer may have fired
+  first: the round is tried again, and the third time the case is skipped.
+- The wait after a kill (15.1) goes by a timer, which each Ctrl+X starts again. When it fires with a
+  byte waiting to be read - cld held up while the key went on repeating - it starts again, and the
+  byte, read next, ends it or starts it again: a late read cannot end the wait early and let the
+  repeats queued behind it arm and kill. No test holds cld up so. `TestListKill`'s held down case
+  types the second Ctrl+X held down (`Hold`, timed by the terminal): again half a second later, then
+  20 a second for a second, past the second after the kill; it checks that one session was killed,
+  and that another key ends the wait at once, and a second and a half without Ctrl+X too. Two Ctrl+X
+  that reach cld a second apart are two presses: where typing them took 400 ms or more beyond their
+  waits, time that may have come between two of them, the case cannot tell and is skipped. Typed
+  with `Keys`, a tmux client started for each, the repeats came some 5 a second natively, and under
+  heavy load two of them came a second apart now and then, and killed the next session too.
+- The tests that check something between the two presses of Ctrl+X do so in `armThen`: when a
+  second has gone by since the first press, it disarms the kill with a letter, if it is still
+  armed, and presses Ctrl+X and then the second key with nothing between them. Under heavy load
+  the checks took over two seconds, and the second press only armed the kill again.
 - `Modes` tells whether the cursor is visible: in the baseline terminal the outer pane's
   `#{cursor_flag}`, 1, and 0 after CSI ?25l (tmux 3.7c); in JediTerm what its display's
   `setCursorVisible` last received - the emulator's `CursorVisible` mode (DECTCEM) calls it -

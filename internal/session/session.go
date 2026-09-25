@@ -7,8 +7,8 @@
 // makes git worktree NAME from HEAD or reopens it, and works there.
 // `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it with its server
 // (see Tmux.Kill), and `cld list` shows the sessions, asking each server for its own (see
-// Tmux.Sessions) - on a terminal as a list to pick one from with the arrow keys and join with
-// Enter, as join does (see internal/picker).
+// Tmux.Sessions) - on a terminal as a list to pick one from with the arrow keys, to join with
+// Enter, as join does, or to kill with Ctrl+X pressed twice, as kill does (see internal/picker).
 //
 // cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
 // Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
@@ -509,17 +509,18 @@ func (t *Tmux) Kill(suffix string) error {
 	return t.End(context.Background(), suffix, nil, os.Stdout, os.Stderr)
 }
 
-// End is kill's steps after the name's check: the lookup of session cld-SUFFIX, then the kill of
-// the session with its server, and so of whatever claude started there through tmux. claude gets
-// SIGHUP, as when its terminal closes. The session goes first, in the same tmux command: a
-// terminal attached to it is told that the session exited, and the cld there - tmux by then -
-// exits with status 0, where a kill-server alone would tell it that the server exited, with
-// status 1. With pids, End ends the session only if one of its panes' pids (#{pane_pid}) is among
-// them - claude's, read with the session (see Session) - so that a session made again under the
-// name since they were read counts as no session. No session is an error, with the advice for the
-// command line kept apart (fail.Error's Advice), and so is a server that runs without it (see
-// lingering). A kill that fails is its exit status (fail.Status), after what tmux wrote to stdout
-// and stderr. Once ctx is done, its tmux is killed.
+// End is kill's steps after the name's check, which the interactive list's Ctrl+X takes too (see
+// internal/picker): the lookup of session cld-SUFFIX, then the kill of the session with its
+// server, and so of whatever claude started there through tmux. claude gets SIGHUP, as when its
+// terminal closes. The session goes first, in the same tmux command: a terminal attached to it is
+// told that the session exited, and the cld there - tmux by then - exits with status 0, where a
+// kill-server alone would tell it that the server exited, with status 1. With pids, End ends the
+// session only if one of its panes' pids (#{pane_pid}) is among them - claude's, read with the
+// session (see Session) - so that a session made again under the name since they were read
+// counts as no session. No session is an error, with the advice for the command line kept apart
+// (fail.Error's Advice), and so is a server that runs without it (see lingering). A kill that
+// fails is its exit status (fail.Status), after what tmux wrote to stdout and stderr. Once ctx is
+// done, its tmux is killed.
 func (t *Tmux) End(ctx context.Context, suffix string, pids []string, stdout, stderr io.Writer) error {
 	server, exists, found, err := t.lookup(ctx, suffix)
 	if err != nil {
@@ -773,9 +774,9 @@ func (t *Tmux) command(args ...string) *exec.Cmd {
 	return t.commandContext(context.Background(), args...)
 }
 
-// commandContext is command, killed once ctx is done: the interactive list abandons a lookup
-// that way (see internal/picker). A program the killed tmux left behind with its output open
-// then holds cld up for a second at most.
+// commandContext is command, killed once ctx is done: the interactive list abandons a lookup, a
+// kill or a read of the sessions that way (see internal/picker). A program the killed tmux left
+// behind with its output open then holds cld up for a second at most.
 func (t *Tmux) commandContext(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, t.path, args...)
 	cmd.Args[0] = "tmux"

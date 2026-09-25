@@ -13,7 +13,7 @@ Available Commands:
   new         create session NAME in the current directory and attach to it
   join        attach to session NAME, detaching any other terminal from it
   kill        end session NAME and its tmux server
-  list        list the sessions cld started; on a terminal, pick one to join
+  list        list the sessions cld started; on a terminal, join or kill one
   help        show this help, or the help of COMMAND
   version     show the version
 
