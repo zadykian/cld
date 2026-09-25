@@ -11,6 +11,7 @@ Usage:
 
 Available Commands:
   new         create session NAME in the current directory and attach to it
+  resume      create session NAME with claude resuming its conversation
   join        attach to session NAME, detaching any other terminal from it
   kill        end session NAME and its tmux server
   list        list the sessions cld started; on a terminal, join or kill one

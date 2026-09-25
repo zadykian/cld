@@ -24,7 +24,7 @@ import (
 var update = flag.Bool("update", false, "rewrite the help in testdata/help from what cld help prints")
 
 // helpTopics are what cld help takes, "" for none, in the order the help lists them.
-var helpTopics = []string{"", "new", "join", "kill", "list", "help", "version"}
+var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "help", "version"}
 
 // goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
 // testdata/help/COMMAND.txt for cld help COMMAND.
@@ -136,10 +136,14 @@ func TestHelp(t *testing.T) {
 		{[]string{"-h"}, ""},
 		{[]string{"--help"}, ""},
 		{[]string{"help", "new"}, "new"},
+		{[]string{"help", "resume"}, "resume"},
 		{[]string{"-h", "join"}, "join"},
 		{[]string{"--help", "version"}, "version"},
 		{[]string{"help", "help"}, "help"},
 		{[]string{"new", "--help"}, "new"},
+		{[]string{"resume", "--help"}, "resume"},
+		{[]string{"resume", "-n", "x", "-h"}, "resume"},
+		{[]string{"resume", "-h", "a", "b"}, "resume"},
 		{[]string{"join", "-n", "x", "-h"}, "join"},
 		{[]string{"kill", "--help"}, "kill"},
 		{[]string{"list", "-h"}, "list"},
@@ -229,7 +233,7 @@ func TestRejectsInvalidNames(t *testing.T) {
 	t.Parallel()
 	// tmux would rename "." and ":" to "_", a space would split claude's arguments.
 	for _, name := range []string{"", "a b", "foo.bar", "a:b", "x/y", "-x", "_x", "café", "a\nb"} {
-		for _, args := range [][]string{{"new", "-n", name}, {"join", "--name", name}, {"kill", "-n", name}, {"new", "--name=" + name}} {
+		for _, args := range [][]string{{"new", "-n", name}, {"resume", "-n", name}, {"join", "--name", name}, {"kill", "-n", name}, {"new", "--name=" + name}} {
 			t.Run(strings.Join(args, " "), func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
@@ -271,8 +275,9 @@ func TestNamesAreASCII(t *testing.T) {
 
 // A name has at most 64 characters, so that the path of its server's socket fits in sun_path
 // (see MaxName in internal/session): one of 65 is refused, saying so, whatever its characters, and
-// gets no legacy hint; one of 64 goes as far as tmux, whose server is named like the session. The
-// length is counted in characters, not bytes: 33 "é" are 66 bytes, and invalid for the "é".
+// gets no legacy hint; one of 64 goes as far as tmux, whose server is named like the session, with
+// new and resume alike. The length is counted in characters, not bytes: 33 "é" are 66 bytes, and
+// invalid for the "é".
 func TestNameLength(t *testing.T) {
 	t.Parallel()
 	longest, tooLong := strings.Repeat("n", 64), strings.Repeat("n", 65)
@@ -284,6 +289,7 @@ func TestNameLength(t *testing.T) {
 		{[]string{"new", "-n", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{"join", "--name", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{"kill", "-n", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"resume", "-n", tooLong, "SESSION"}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{"new", "-n", tooLong[:60] + "a.b.c"}, "cld: session name '" + tooLong[:60] + "a.b.c' is longer than 64 characters (see cld help)\n"},
 		{[]string{"new", "-n", tooLong[:60] + "a.b"}, "cld: invalid session name '" + tooLong[:60] + "a.b' (see cld help)\n"},
 		{[]string{"new", "-n", accents}, "cld: invalid session name '" + accents + "' (see cld help)\n"},
@@ -299,20 +305,22 @@ func TestNameLength(t *testing.T) {
 			}
 		})
 	}
-	t.Run("new -n "+longest, func(t *testing.T) {
-		t.Parallel()
-		s := sandbox.New(t)
-		result := s.RunCld(map[string]string{
-			"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
-			"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
-		}, "new", "-n", longest)
-		if result.Code != 0 || result.Stderr != "" {
-			t.Fatalf("exit %d, stderr %q", result.Code, result.Stderr)
-		}
-		if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:2], []string{"-L", "cld-" + longest}) {
-			t.Errorf("tmux arguments start %q, want -L cld-%s", argv[:2], longest)
-		}
-	})
+	for _, command := range []string{"new", "resume"} {
+		t.Run(command+" -n "+longest, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			result := s.RunCld(map[string]string{
+				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+			}, command, "-n", longest)
+			if result.Code != 0 || result.Stderr != "" {
+				t.Fatalf("exit %d, stderr %q", result.Code, result.Stderr)
+			}
+			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:2], []string{"-L", "cld-" + longest}) {
+				t.Errorf("tmux arguments start %q, want -L cld-%s", argv[:2], longest)
+			}
+		})
+	}
 }
 
 // Under a TMUX_TMPDIR longer than tmux's default directories, a name within the 64 characters can
@@ -371,7 +379,8 @@ func TestUnreadableSocketDirectory(t *testing.T) {
 
 // Arguments are read left to right, and the first wrong one decides the message: an option after
 // an argument is not read, and -- ends nothing. help and version are named as typed. help takes
-// one argument, a command of cld's.
+// one argument, a command of cld's; resume takes one, SESSION, after its options: never empty,
+// never one claude would take for an option, and nothing after it.
 func TestRejectsUnexpectedArguments(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -407,6 +416,17 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"join", "-w", "-h"}, "cld: join: unexpected argument '-w' (see cld help)\n"},
 		// An empty argument is one too (cld's shell script took it for none).
 		{[]string{"list", ""}, "cld: list: unexpected argument '' (see cld help)\n"},
+		{[]string{"resume", "-w"}, "cld: resume: unexpected argument '-w' (see cld help)\n"},
+		{[]string{"resume", "-n", "x", "--worktree"}, "cld: resume: unexpected argument '--worktree' (see cld help)\n"},
+		{[]string{"resume", "-x"}, "cld: resume: unexpected argument '-x' (see cld help)\n"},
+		{[]string{"resume", "--", "-p"}, "cld: resume: unexpected argument '--' (see cld help)\n"},
+		{[]string{"resume", "-n", "x", "--", "-p"}, "cld: resume: unexpected argument '--' (see cld help)\n"},
+		{[]string{"resume", "a", "b"}, "cld: resume: unexpected argument 'b' (see cld help)\n"},
+		{[]string{"resume", "x", "-n", "y"}, "cld: resume: unexpected argument '-n' (see cld help)\n"},
+		{[]string{"resume", "x", "-h"}, "cld: resume: unexpected argument '-h' (see cld help)\n"},
+		{[]string{"resume", "x", "--"}, "cld: resume: unexpected argument '--' (see cld help)\n"},
+		{[]string{"resume", "-n", "x", ""}, "cld: resume: unexpected argument '' (see cld help)\n"},
+		{[]string{"resume", "-"}, "cld: resume: unexpected argument '-' (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -418,8 +438,8 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
-// new needs tmux and claude, and git for -w; the other commands only tmux: the fake tmux finds no
-// session, so join and kill get as far as saying so.
+// new and resume need tmux and claude, and new -w git; the other commands only tmux: the fake tmux
+// finds no session, so join and kill get as far as saying so.
 func TestRequiresTools(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -430,6 +450,8 @@ func TestRequiresTools(t *testing.T) {
 		{[]string{"new"}, []string{"claude"}, "cld: tmux is not installed\n"},
 		{[]string{"new"}, []string{"tmux"}, "cld: claude is not installed\n"},
 		{[]string{"new", "-w"}, []string{"tmux", "claude"}, "cld: git is not installed\n"},
+		{[]string{"resume"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"resume", "-n", "x", "SESSION"}, []string{"tmux"}, "cld: claude is not installed\n"},
 		{[]string{"join"}, []string{"claude"}, "cld: tmux is not installed\n"},
 		{[]string{"join"}, []string{"tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
 		{[]string{"kill"}, []string{"claude"}, "cld: tmux is not installed\n"},
@@ -513,28 +535,30 @@ func TestRequiresTmux(t *testing.T) {
 		"tmux 2.9a":     false,
 		"tmux next-3.6": false,
 	} {
-		t.Run(version, func(t *testing.T) {
-			t.Parallel()
-			s := sandbox.New(t)
-			result := s.RunCld(map[string]string{
-				"PATH":                  s.Tools("tmux", "claude"),
-				"CLD_FAKE_TMUX_VERSION": version,
-			}, "new")
-			_, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json"))
-			started := err == nil
-			if accepted && (result.Code != 0 || !started) {
-				t.Errorf("rejected: exit %d, stderr %q", result.Code, result.Stderr)
-			}
-			if want := "cld: tmux 3.7 or newer is required, found '" + version + "'\n"; !accepted &&
-				(result.Code != 1 || result.Stderr != want || started) {
-				t.Errorf("accepted: exit %d, stderr %q, tmux started: %v", result.Code, result.Stderr, started)
-			}
-		})
+		for _, command := range []string{"new", "resume"} {
+			t.Run(command+" "+version, func(t *testing.T) {
+				t.Parallel()
+				s := sandbox.New(t)
+				result := s.RunCld(map[string]string{
+					"PATH":                  s.Tools("tmux", "claude"),
+					"CLD_FAKE_TMUX_VERSION": version,
+				}, command)
+				_, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json"))
+				started := err == nil
+				if accepted && (result.Code != 0 || !started) {
+					t.Errorf("rejected: exit %d, stderr %q", result.Code, result.Stderr)
+				}
+				if want := "cld: tmux 3.7 or newer is required, found '" + version + "'\n"; !accepted &&
+					(result.Code != 1 || result.Stderr != want || started) {
+					t.Errorf("accepted: exit %d, stderr %q, tmux started: %v", result.Code, result.Stderr, started)
+				}
+			})
+		}
 	}
 }
 
-// new requires claude 2.1.222, the first release that does what cld passes and relies on,
-// comparing the numbers claude --version starts with as numbers: 2.1.30 is older. Output that
+// new and resume require claude 2.1.222, the first release that does what cld passes and relies
+// on, comparing the numbers claude --version starts with as numbers: 2.1.30 is older. Output that
 // does not start with a version passes. An older claude is refused before tmux starts. The probe
 // answers --version without leaving a record of a claude: the fake tmux starts none.
 func TestRequiresClaude(t *testing.T) {
@@ -551,27 +575,29 @@ func TestRequiresClaude(t *testing.T) {
 		"2.0.999 (Claude Code)":   false,
 		"1.9.9 (Claude Code)":     false,
 	} {
-		t.Run(version, func(t *testing.T) {
-			t.Parallel()
-			s := sandbox.New(t)
-			result := s.RunCld(map[string]string{
-				"PATH":                    s.Tools("tmux", "claude"),
-				"CLD_FAKE_TMUX_VERSION":   "tmux 3.7c",
-				"CLD_FAKE_CLAUDE_VERSION": version,
-			}, "new")
-			_, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json"))
-			started := err == nil
-			if accepted && (result.Code != 0 || !started) {
-				t.Errorf("rejected: exit %d, stderr %q", result.Code, result.Stderr)
-			}
-			if want := "cld: claude 2.1.222 or newer is required, found '" + version + "'\n"; !accepted &&
-				(result.Code != 1 || result.Stderr != want || result.Stdout != "" || started) {
-				t.Errorf("accepted: exit %d, stdout %q, stderr %q, tmux started: %v", result.Code, result.Stdout, result.Stderr, started)
-			}
-			if probes := s.Probes(); len(probes) != 0 {
-				t.Errorf("claude --version left %d probe record(s)", len(probes))
-			}
-		})
+		for _, command := range []string{"new", "resume"} {
+			t.Run(command+" "+version, func(t *testing.T) {
+				t.Parallel()
+				s := sandbox.New(t)
+				result := s.RunCld(map[string]string{
+					"PATH":                    s.Tools("tmux", "claude"),
+					"CLD_FAKE_TMUX_VERSION":   "tmux 3.7c",
+					"CLD_FAKE_CLAUDE_VERSION": version,
+				}, command)
+				_, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json"))
+				started := err == nil
+				if accepted && (result.Code != 0 || !started) {
+					t.Errorf("rejected: exit %d, stderr %q", result.Code, result.Stderr)
+				}
+				if want := "cld: claude 2.1.222 or newer is required, found '" + version + "'\n"; !accepted &&
+					(result.Code != 1 || result.Stderr != want || result.Stdout != "" || started) {
+					t.Errorf("accepted: exit %d, stdout %q, stderr %q, tmux started: %v", result.Code, result.Stdout, result.Stderr, started)
+				}
+				if probes := s.Probes(); len(probes) != 0 {
+					t.Errorf("claude --version left %d probe record(s)", len(probes))
+				}
+			})
+		}
 	}
 }
 
@@ -684,14 +710,15 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 	}
 }
 
-// join, kill and list never run claude: with a claude too old for new, which records that it ran,
-// they do as they do with any other. new runs claude --version last among the checks it makes
-// before tmux - what is not installed, and tmux's version, which every command checks, come first
-// - and before the session lookup: with session main found (sessions "cld"), a check that came
-// later would say the session exists, after a list-panes the fake tmux records. The fake tmux
-// lists the sessions that sessions names, none if it is empty. That it comes before the check for
-// cld's own pane as well, which needs a terminal, TestRefusesToNestInItsOwnPane pins.
-func TestOnlyNewRunsClaude(t *testing.T) {
+// new and resume run claude, join, kill and list never do: with a claude too old for new and
+// resume, which records that it ran, the others do as they do with any other. new and resume run
+// claude --version last among the checks they make before tmux - what is not installed, and
+// tmux's version, which every command checks, come first - and before the session lookup: with
+// session main found (sessions "cld"), a check that came later would say the session exists,
+// after a list-panes the fake tmux records. The fake tmux lists the sessions that sessions names,
+// none if it is empty. That it comes before the check for cld's own pane as well, which needs a
+// terminal, TestRefusesToNestInItsOwnPane pins.
+func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args        []string
@@ -703,9 +730,12 @@ func TestOnlyNewRunsClaude(t *testing.T) {
 		ran bool
 	}{
 		{[]string{"new"}, "tmux 3.7c", "", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
-		{[]string{"new"}, "tmux 3.7c", "cld", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
+		{[]string{"new"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
 		{[]string{"new", "-w"}, "tmux 3.7c", "", 1, "cld: git is not installed\n", false},
 		{[]string{"new"}, "tmux 3.6b", "", 1, "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
+		{[]string{"resume"}, "tmux 3.7c", "", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
+		{[]string{"resume", "-n", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
+		{[]string{"resume"}, "tmux 3.6b", "", 1, "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
 		{[]string{"join"}, "tmux 3.7c", "", 1, "cld: no session 'main'; create it with cld new -n main\n", false},
 		{[]string{"kill"}, "tmux 3.7c", "", 1, "cld: no session 'main' (see cld list)\n", false},
 		{[]string{"list"}, "tmux 3.7c", "", 0, "", false},
@@ -789,36 +819,42 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 	}
 }
 
-// endHint is how the pane-died hook that new sets, and join, show how to end a session whose
-// claude failed.
+// endHint is how the pane-died hook that new and resume set, and join, show how to end a session
+// whose claude failed.
 const endHint = "display-message -d 0 'claude exited with " +
 	"#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}: " +
 	"C-q d detaches, cld kill -n #{window_name} ends the session'"
 
-// new hands over to tmux with this command, word for word: the session's own server, its options,
-// claude - by the path of the one it checked - and its arguments as separate words, and what goes
-// on claude's window. The fake tmux, which finds no server running for the session, records it,
-// and the environment it gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX where
-// TMUX was set - join's client needs it (see TestNestsOnADeadPanesPty), and with it tmux still
-// takes new's terminal for UTF-8 (see TestNestsInsideAnotherTmux); a PS1, which the script's bash
-// dropped, passes too (decision 11 in docs/design.md).
+// new and resume hand over to tmux with this command, word for word: the session's own server,
+// its options, claude - by the path of the one it checked - and its arguments as separate words,
+// and what goes on claude's window. resume's claude gets new's arguments, never -w's, then
+// --resume; a word ending in ";", which tmux would take for the end of its command, goes with a
+// "\" before the ";", which tmux drops. The fake tmux, which finds no server running for the
+// session, records it, and the environment it gets: cld's own, without TERMINAL_EMULATOR and with
+// an empty TMUX where TMUX was set - join's client needs it (see TestNestsOnADeadPanesPty), and
+// with it tmux still takes new's terminal for UTF-8 (see TestNestsInsideAnotherTmux); a PS1,
+// which the script's bash dropped, passes too (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
-	for _, worktree := range []bool{false, true} {
-		args := []string{"new", "-n", "x"}
-		claude := []string{probe, "--name", "cld-x", "--settings", remoteControl}
-		if worktree {
-			args = append(args, "-w")
-			claude = []string{probe, "--name", "cld-x", "--settings",
-				`{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`, "--worktree", "x"}
-		}
+	const fromHead = `{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`
+	for _, command := range []struct {
+		args []string
+		// claude is claude and its arguments, as tmux gets them
+		claude []string
+	}{
+		{[]string{"new", "-n", "x"}, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-n", "x", "-w"}, []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "x"}},
+		{[]string{"resume", "-n", "x"}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+		{[]string{"resume", "-n", "x", "a b"}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "a b"}},
+		{[]string{"resume", "-n", "x", "a;"}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\;`}},
+		{[]string{"resume", "-n", "x", `a\;`}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\\;`}},
+	} {
+		args, claude := command.args, command.claude
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			if worktree {
-				gitInit(t, s.Work)
-			}
+			gitInit(t, s.Work)
 			given := map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
@@ -854,9 +890,9 @@ func TestNewTmuxCommand(t *testing.T) {
 }
 
 // join hands over to tmux with this command, word for word, and with the environment it got but
-// for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which only new leaves out, and a
-// PS1, which the script's bash dropped. The fake tmux finds session x on its server, then records
-// the command.
+// for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which only new and resume leave
+// out, and a PS1, which the script's bash dropped. The fake tmux finds session x on its server,
+// then records the command.
 func TestJoinTmuxCommand(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1129,9 +1165,9 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 
 // A write to stdout that fails ends cld with status 1, as the script's printf and cat failing
 // under set -e did, so that output cut short does not pass for whole: list, the help - from help
-// and from -h - and the version, and new and join, which then do not hand over to tmux. stdout is
-// open for reading only here, so that every write to it fails; list finds session x through a
-// socket cld-x.
+// and from -h - and the version, and new, resume and join, which then do not hand over to tmux.
+// stdout is open for reading only here, so that every write to it fails; list finds session x
+// through a socket cld-x.
 func TestFailedWriteEndsCld(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -1147,6 +1183,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"kill", "-h", "-x"}, ""},
 		{[]string{"version"}, ""},
 		{[]string{"new", "-n", "x"}, ""},
+		{[]string{"resume", "-n", "x"}, ""},
 		{[]string{"join", "-n", "x"}, "cld-x"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
@@ -1178,17 +1215,17 @@ func TestFailedWriteEndsCld(t *testing.T) {
 	}
 }
 
-// new refuses a working directory that no longer exists, with or without -w: the script went on
-// with the PWD it got, and tmux started claude in the home directory instead. claude --version
-// fails there, the probe's as claude 2.1.282's, so cld refuses the directory before it runs
-// claude --version there. On Linux only: what macOS's getcwd does in a removed directory has not
-// been checked.
+// new, with or without -w, and resume refuse a working directory that no longer exists: the
+// script went on with the PWD it got, and tmux started claude in the home directory instead.
+// claude --version fails there, the probe's as claude 2.1.282's, so cld refuses the directory
+// before it runs claude --version there. On Linux only: what macOS's getcwd does in a removed
+// directory has not been checked.
 func TestNewRefusesARemovedDirectory(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS != "linux" {
 		t.Skip("getcwd in a removed directory is checked on Linux only")
 	}
-	for _, args := range [][]string{{"new", "-n", "x"}, {"new", "-n", "x", "-w"}} {
+	for _, args := range [][]string{{"new", "-n", "x"}, {"new", "-n", "x", "-w"}, {"resume", "-n", "x"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)

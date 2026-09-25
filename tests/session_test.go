@@ -141,6 +141,49 @@ func TestNewWorktree(t *testing.T) {
 	}
 }
 
+// resume makes its session as new does, in the current directory, and claude gets new's arguments
+// - never -w's - then --resume with the conversation: the one named like the session, or SESSION,
+// as one word, whatever it holds. tmux would end its command at a word ending in ";" (see
+// literal in internal/session), and a git repository makes no worktree session.
+func TestResume(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args         []string
+		name, resume string
+	}{
+		{[]string{"resume"}, "main", "cld-main"},
+		{[]string{"resume", "-n", "x"}, "x", "cld-x"},
+		{[]string{"resume", "--name=x"}, "x", "cld-x"},
+		{[]string{"resume", "-n", "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"},
+		{[]string{"resume", "-n", "x", "a b"}, "x", "a b"},
+		{[]string{"resume", "-n", "x", "fix;"}, "x", "fix;"},
+		{[]string{"resume", "-n", "x", `fix\;`}, "x", `fix\;`},
+		{[]string{"resume", "-n", "x", "#{session_name}"}, "x", "#{session_name}"},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			gitInit(t, s.Work)
+			startCld(t, s, "tmux", nil, test.args...)
+			probe := s.WaitProbes(1)[0]
+			waitClients(t, s, 1)
+			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-" + test.name}) {
+				t.Errorf("sessions %q, want [cld-%s]", sessions, test.name)
+			}
+			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl, "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
+				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
+			}
+			if probe.Cwd != s.Work {
+				t.Errorf("claude runs in %s, want %s", probe.Cwd, s.Work)
+			}
+			list := fmt.Sprintf("NAME  STATE     DIRECTORY\n%-4s  attached  %s\n", test.name, s.Work)
+			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
+				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
+			}
+		})
+	}
+}
+
 // Outside a git work tree new -w fails before starting anything: claude would say so in a
 // session left to kill.
 func TestNewWorktreeRequiresRepository(t *testing.T) {
@@ -155,8 +198,8 @@ func TestNewWorktreeRequiresRepository(t *testing.T) {
 	}
 }
 
-// new refuses a session that exists, before touching it: the attached client and its claude
-// carry on.
+// new and resume refuse a session that exists, before touching it: the attached client and its
+// claude carry on.
 func TestNewRefusesExistingSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -164,12 +207,14 @@ func TestNewRefusesExistingSession(t *testing.T) {
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
 
-	result := s.RunCld(nil, "new", "-n", "dup")
-	if want := "cld: session 'dup' exists; attach to it with cld join -n dup\n"; result.Code != 1 || result.Stderr != want {
-		t.Errorf("exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
-	}
-	if result.Stdout != "" {
-		t.Errorf("printed %q before failing", result.Stdout)
+	for _, args := range [][]string{{"new", "-n", "dup"}, {"resume", "-n", "dup"}, {"resume", "-n", "dup", "other"}} {
+		result := s.RunCld(nil, args...)
+		if want := "cld: session 'dup' exists; attach to it with cld join -n dup\n"; result.Code != 1 || result.Stderr != want {
+			t.Errorf("%q: exit %d, stderr %q, want exit 1, stderr %q", args, result.Code, result.Stderr, want)
+		}
+		if result.Stdout != "" {
+			t.Errorf("%q printed %q before failing", args, result.Stdout)
+		}
 	}
 	if probes := s.Probes(); len(probes) != 1 || !first.Running() {
 		t.Errorf("%d claude processes, first client running: %v; want the original one, attached", len(probes), first.Running())
@@ -338,11 +383,11 @@ func TestKillRequiresSession(t *testing.T) {
 // cld sees only the sessions it started, each cld-NAME on its server cld-NAME. A bare tmux that
 // claude runs reaches claude's own server through TMUX, and a session made that way has another
 // name there, even named like a session of cld's: list leaves it out, join and kill act as for no
-// session, and new makes a session of that name on a server of its own. Beside one whose name
-// starts with claude's session's, as cld-a-x does with cld-a, cld still finds cld-a, by its whole
-// name: new says that a exists, join attaches to it, and kill ends it. kill ends the others with
-// the server. What cld sets for a failed claude stays on claude's window: a session claude makes
-// whose program fails closes, as tmux would close it.
+// session, and new and resume make a session of that name on a server of its own. Beside one
+// whose name starts with claude's session's, as cld-a-x does with cld-a, cld still finds cld-a,
+// by its whole name: new and resume say that a exists, join attaches to it, and kill ends it.
+// kill ends the others with the server. What cld sets for a failed claude stays on claude's
+// window: a session claude makes whose program fails closes, as tmux would close it.
 func TestSeesOnlyItsOwnSessions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -369,8 +414,10 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
 	exists := "cld: session 'a' exists; attach to it with cld join -n a\n"
-	if result := s.RunCld(nil, "new", "-n", "a"); result.Code != 1 || result.Stdout != "" || result.Stderr != exists {
-		t.Errorf("new -n a: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, exists)
+	for _, command := range []string{"new", "resume"} {
+		if result := s.RunCld(nil, command, "-n", "a"); result.Code != 1 || result.Stdout != "" || result.Stderr != exists {
+			t.Errorf("%s -n a: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", command, result.Code, result.Stdout, result.Stderr, exists)
+		}
 	}
 	second := startCld(t, s, "tmux", nil, "join", "-n", "a")
 	sandbox.WaitFor(t, 10*time.Second, "join -n a to detach the first client", func() bool { return !first.Running() })
@@ -387,24 +434,29 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 	if probe := s.WaitProbes(2)[1]; !slices.Equal(probe.Argv[:2], []string{"--name", "cld-inside"}) {
 		t.Errorf("new -n inside started claude with %q", probe.Argv)
 	}
-	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-a/cld-a-x", "cld-a/cld-inside", "cld-inside"}) {
-		t.Errorf("sessions %q, want [cld-a cld-a/cld-a-x cld-a/cld-inside cld-inside]", sessions)
+	startCld(t, s, "tmux", nil, "resume", "-n", "a-x")
+	resumed := []string{"--name", "cld-a-x", "--settings", remoteControl, "--resume", "cld-a-x"}
+	if probes := s.WaitProbes(3); !slices.ContainsFunc(probes, func(p *sandbox.Probe) bool { return slices.Equal(p.Argv, resumed) }) {
+		t.Errorf("resume -n a-x started no claude with %q", resumed)
+	}
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-a-x", "cld-a/cld-a-x", "cld-a/cld-inside", "cld-inside"}) {
+		t.Errorf("sessions %q, want [cld-a cld-a-x cld-a/cld-a-x cld-a/cld-inside cld-inside]", sessions)
 	}
 
 	if result := s.RunCld(nil, "kill", "-n", "a"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
 		t.Errorf("kill -n a: exit %d, stdout %q, stderr %q, want exit 0 and no output", result.Code, result.Stdout, result.Stderr)
 	}
 	sandbox.WaitFor(t, 10*time.Second, "the cld joined to a to return", func() bool { return !second.Running() })
-	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-inside"}) {
-		t.Errorf("sessions %q after kill -n a, want [cld-inside]", sessions)
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a-x", "cld-inside"}) {
+		t.Errorf("sessions %q after kill -n a, want [cld-a-x cld-inside]", sessions)
 	}
 }
 
 // A server outlives its session when claude exits while the tmux sessions it made keep the
-// server running. list shows nothing for it, and new, join and kill refuse the name, pointing at
-// the server: new would start claude there with the environment of the cld that started the
-// server, join finds no session to attach to, and kill leaves what claude made to the user. Once
-// the server is gone new starts a fresh one.
+// server running. list shows nothing for it, and new, resume, join and kill refuse the name,
+// pointing at the server: new and resume would start claude there with the environment of the
+// cld that started the server, join finds no session to attach to, and kill leaves what claude
+// made to the user. Once the server is gone new starts a fresh one.
 func TestRefusesALingeringServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -431,6 +483,8 @@ func TestRefusesALingeringServer(t *testing.T) {
 		{[]string{"join", "-n", "a"}, 1, lingering},
 		{[]string{"kill", "-n", "a"}, 1, lingering},
 		{[]string{"new", "-n", "a"}, 1, lingering},
+		{[]string{"resume", "-n", "a"}, 1, lingering},
+		{[]string{"resume", "-n", "a", "SESSION"}, 1, lingering},
 	} {
 		if result := s.RunCld(nil, test.args...); result.Code != test.code || result.Stdout != "" || result.Stderr != test.want {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit %d, stderr %q",
@@ -451,12 +505,12 @@ func TestRefusesALingeringServer(t *testing.T) {
 
 // Where tmux's socket directory ignores case, as macOS's does by default, names that differ only
 // in case share one socket: tmux -L cld-A reaches the server of session a, which has no session
-// cld-A. new, join and kill refuse A and name session a, rather than take its server for one that
-// outlived session A and point at a kill-server that would end a - also once a's claude has
-// exited and a session it made keeps the server running. list shows a once. Where the sandbox's
-// socket directory ignores case, as on macOS, the name cld-A finds a's socket already and the test
-// runs against the real thing; elsewhere a symlink cld-A to a's socket plays such a directory, as
-// a casefold tmpfs does on Linux (see docs/design.md, Findings).
+// cld-A. new, resume, join and kill refuse A and name session a, rather than take its server for
+// one that outlived session A and point at a kill-server that would end a - also once a's claude
+// has exited and a session it made keeps the server running. list shows a once. Where the
+// sandbox's socket directory ignores case, as on macOS, the name cld-A finds a's socket already
+// and the test runs against the real thing; elsewhere a symlink cld-A to a's socket plays such a
+// directory, as a casefold tmpfs does on Linux (see docs/design.md, Findings).
 func TestNamesDifferingInCase(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -474,7 +528,7 @@ func TestNamesDifferingInCase(t *testing.T) {
 	const clash = "cld: session name 'A' clashes with session 'a': tmux's socket directory ignores case here, so both names reach server cld-a (see tmux -L cld-a ls)\n"
 	refused := func(when string) {
 		t.Helper()
-		for _, command := range []string{"new", "join", "kill"} {
+		for _, command := range []string{"new", "resume", "join", "kill"} {
 			if result := s.RunCld(nil, command, "-n", "A"); result.Code != 1 || result.Stdout != "" || result.Stderr != clash {
 				t.Errorf("%s: %s -n A: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", when, command, result.Code, result.Stdout, result.Stderr, clash)
 			}
@@ -683,22 +737,26 @@ func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 }
 
 // A claude that fails keeps its session: the terminal stays attached and shows claude's last
-// words and how to end the session, list says claude exited, and new refuses the name until kill
-// ends the session.
+// words and how to end the session, list says claude exited, and new and resume refuse the name
+// until kill ends the session. A resume whose claude finds no conversation fails that way.
 func TestFailedClaudeKeepsSession(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name string
+		args []string
+		// startup is what claude prints as it fails at startup; fail makes it fail later instead
+		startup string
 		// how the hint says claude exited: tmux names a signal where the C library has
 		// sys_signame (macOS), and numbers it elsewhere
 		how  []string
 		fail func(t *testing.T, s *sandbox.Sandbox)
 	}{
-		{"start", []string{"status 1"}, nil},
-		{"status", []string{"status 3"}, func(t *testing.T, s *sandbox.Sandbox) {
+		{"start", []string{"new", "-n", "bad"}, "Error: cannot start", []string{"status 1"}, nil},
+		{"resume", []string{"resume", "-n", "bad", "x"}, "No conversation found with session ID: x", []string{"status 1"}, nil},
+		{"status", []string{"new", "-n", "bad"}, "", []string{"status 3"}, func(t *testing.T, s *sandbox.Sandbox) {
 			s.WaitProbes(1)[0].Send("exit 3")
 		}},
-		{"signal", []string{"signal 15", "signal term"}, func(t *testing.T, s *sandbox.Sandbox) {
+		{"signal", []string{"new", "-n", "bad"}, "", []string{"signal 15", "signal term"}, func(t *testing.T, s *sandbox.Sandbox) {
 			if err := syscall.Kill(s.WaitProbes(1)[0].PID, syscall.SIGTERM); err != nil {
 				t.Fatal(err)
 			}
@@ -708,16 +766,16 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
 			extra := map[string]string{}
-			if test.fail == nil {
-				extra["CLD_PROBE_FAIL"] = "Error: cannot start"
+			if test.startup != "" {
+				extra["CLD_PROBE_FAIL"] = test.startup
 			}
-			term := startCld(t, s, "tmux", extra, "new", "-n", "bad")
+			term := startCld(t, s, "tmux", extra, test.args...)
 			if test.fail != nil {
 				waitClients(t, s, 1)
 				test.fail(t, s)
 			}
-			if test.fail == nil {
-				waitScreen(t, term, "Error: cannot start")
+			if test.startup != "" {
+				waitScreen(t, term, test.startup)
 			}
 			hint := ": C-q d detaches, cld kill -n bad ends the session"
 			waitScreen(t, term, hint)
@@ -736,8 +794,10 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 			}
 			want := "cld: session 'bad' exists, but its claude exited; end it with cld kill -n bad\n"
-			if result := s.RunCld(nil, "new", "-n", "bad"); result.Code != 1 || result.Stderr != want {
-				t.Errorf("new: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+			for _, command := range []string{"new", "resume"} {
+				if result := s.RunCld(nil, command, "-n", "bad"); result.Code != 1 || result.Stderr != want {
+					t.Errorf("%s: exit %d, stderr %q, want exit 1, stderr %q", command, result.Code, result.Stderr, want)
+				}
 			}
 			if result := s.RunCld(nil, "kill", "-n", "bad"); result.Code != 0 {
 				t.Errorf("kill: exit %d, stderr %q", result.Code, result.Stderr)
@@ -789,20 +849,24 @@ func TestClaudeFailingDetached(t *testing.T) {
 }
 
 // Each session runs on a server of its own, named like it, and each claude gets the environment of
-// the shell that ran cld new. On one server shared by every session, tmux started each pane with
-// the environment of the client that had started the server - the first session's - but for
-// PATH and the update-environment variables.
+// the shell that ran cld new or cld resume - where resume's claude looks for the conversation, in
+// CLAUDE_CONFIG_DIR. On one server shared by every session, tmux started each pane with the
+// environment of the client that had started the server - the first session's - but for PATH and
+// the update-environment variables.
 func TestServerPerSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	shells := map[string]map[string]string{
 		"a": {"CLAUDE_CONFIG_DIR": filepath.Join(s.Home, ".claude-a")},
 		"b": {"CLAUDE_CONFIG_DIR": filepath.Join(s.Home, ".claude-b"), "VIRTUAL_ENV": "/venv/b"},
+		"c": {"CLAUDE_CONFIG_DIR": filepath.Join(s.Home, ".claude-c")},
 	}
 	startCld(t, s, "tmux", shells["a"], "new", "-n", "a")
 	s.WaitProbes(1)
 	startCld(t, s, "tmux", shells["b"], "new", "-n", "b")
-	for _, probe := range s.WaitProbes(2) {
+	s.WaitProbes(2)
+	startCld(t, s, "tmux", shells["c"], "resume", "-n", "c")
+	for _, probe := range s.WaitProbes(3) {
 		shell := shells[strings.TrimPrefix(probe.Argv[1], "cld-")]
 		for _, name := range []string{"CLAUDE_CONFIG_DIR", "VIRTUAL_ENV"} {
 			if value, want := probe.Env[name], shell[name]; value != want {
@@ -810,8 +874,8 @@ func TestServerPerSession(t *testing.T) {
 			}
 		}
 	}
-	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
-		t.Errorf("sessions %q, want [cld-a cld-b], each on its own server", sessions)
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b", "cld-c"}) {
+		t.Errorf("sessions %q, want [cld-a cld-b cld-c], each on its own server", sessions)
 	}
 }
 
@@ -993,12 +1057,12 @@ func TestNestsOnADeadPanesPty(t *testing.T) {
 }
 
 // In a live pane of one of cld's servers - claude's external editor, say - a session attached
-// would show inside a session of cld's, itself or another, both taking C-q: new and join refuse,
-// saying how to get out, and the terminals attached before stay. cld finds the server through the
-// socket the pane's TMUX names, also where TMUX_TMPDIR has changed since. new checks claude's
-// version before any tmux command but tmux -V, this check's list-panes included: a claude too old
-// is what it reports there (TestOnlyNewRunsClaude has no terminal, so cld makes no such check
-// there).
+// would show inside a session of cld's, itself or another, both taking C-q: new, resume and join
+// refuse, saying how to get out, and the terminals attached before stay. cld finds the server
+// through the socket the pane's TMUX names, also where TMUX_TMPDIR has changed since. new and
+// resume check claude's version before any tmux command but tmux -V, this check's list-panes
+// included: a claude too old is what they report there (TestOnlyNewAndResumeRunClaude has no
+// terminal, so cld makes no such check there).
 func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1021,9 +1085,12 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 		{nil, []string{"join", "-n", "a"}, nested},
 		{nil, []string{"join", "-n", "b"}, nested},
 		{nil, []string{"new", "-n", "c"}, nested},
+		{nil, []string{"resume", "-n", "c"}, nested},
 		// tmux -L cld-a would look for the socket in the directory TMUX_TMPDIR names now.
 		{[]string{"TMUX_TMPDIR=" + moved}, []string{"join", "-n", "a"}, nested},
 		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.221 (Claude Code)"}, []string{"new", "-n", "d"},
+			"cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n"},
+		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.221 (Claude Code)"}, []string{"resume", "-n", "d"},
 			"cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n"},
 	} {
 		// A pane on session a's server runs cld on its own pty, with the TMUX tmux sets for it.
@@ -2752,6 +2819,81 @@ func TestListKill(t *testing.T) {
 		term.Keys("C-x")
 		waitLines(t, term, append(rows("b"), killArmedAttached)...)
 	})
+}
+
+// A session cld resume made is a session like any other in the interactive list: Enter joins it,
+// and Ctrl+X twice kills it with its server. After such a kill - by mistake, say - cld resume -n
+// NAME brings its conversation back in a new session.
+func TestListResumedSession(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	detachedSessions(t, s, "a")
+	resumed := startCld(t, s, "tmux", nil, "resume", "-n", "b")
+	sandbox.WaitFor(t, 10*time.Second, "a terminal attached to cld-b", func() bool {
+		return slices.Contains(s.Clients(), "cld-b")
+	})
+	resumed.Keys("C-q", "d")
+	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !resumed.Running() })
+	argv := []string{"--name", "cld-b", "--settings", remoteControl, "--resume", "cld-b"}
+	claude := func(other *sandbox.Probe) *sandbox.Probe {
+		for _, probe := range s.Probes() {
+			if slices.Equal(probe.Argv, argv) && (other == nil || probe.PID != other.PID) {
+				return probe
+			}
+		}
+		return nil
+	}
+	var b *sandbox.Probe
+	sandbox.WaitFor(t, 10*time.Second, "claude b to start", func() bool { b = claude(nil); return b != nil })
+	rows := func(selected string) []string {
+		lines := []string{"  NAME  STATE     DIRECTORY"}
+		for _, name := range []string{"a", "b"} {
+			mark := " "
+			if name == selected {
+				mark = ">"
+			}
+			lines = append(lines, mark+" "+name+"     detached  "+s.Work)
+		}
+		return append(lines, "")
+	}
+
+	term := terminal.New(t, "tmux", s)
+	list := startList(t, s, term, listScript, nil)
+	waitLines(t, term, append(rows("a"), listHints)...)
+	term.Keys("Down")
+	waitLines(t, term, append(rows("b"), listHints)...)
+	term.Keys("Enter")
+	waitScreen(t, term, "probe --name cld-b")
+	waitClients(t, s, 1)
+	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b"}) {
+		t.Errorf("clients attached to %q, want one, to cld-b", clients)
+	}
+	term.Keys("C-q", "d")
+	if code := list.code(t); code != "0" {
+		t.Errorf("join: exit %s, want 0", code)
+	}
+
+	term = terminal.New(t, "tmux", s)
+	list = startList(t, s, term, listScript, nil)
+	waitLines(t, term, append(rows("a"), listHints)...)
+	term.Keys("Down")
+	waitLines(t, term, append(rows("b"), listHints)...)
+	armThen(t, term, func() { waitLines(t, term, append(rows("b"), killArmed)...) }, "C-x")
+	waitLines(t, term, "  NAME  STATE     DIRECTORY", "> a     detached  "+s.Work, "", listHints)
+	sandbox.WaitFor(t, 10*time.Second, "claude b to exit", func() bool { return !b.Alive() })
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
+		t.Errorf("sessions %q after the kill, want [cld-a]", sessions)
+	}
+	term.Keys("Escape")
+	if code := list.code(t); code != "0" {
+		t.Errorf("kill: exit %s, want 0", code)
+	}
+
+	startCld(t, s, "tmux", nil, "resume", "-n", "b")
+	sandbox.WaitFor(t, 10*time.Second, "claude b to resume again", func() bool { return claude(b) != nil })
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
+		t.Errorf("sessions %q, want [cld-a cld-b]", sessions)
+	}
 }
 
 // program is the name of the program process pid runs: from /proc where there is one, which is

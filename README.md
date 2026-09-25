@@ -7,12 +7,13 @@ own: detach, close the terminal, and reattach later - from the same terminal or 
 without losing the conversation.
 
 ```
-cld new             # create the session "cld-main" in the current directory
-cld new -n review   # create the session "cld-review"
-cld new -n fix -w   # create "cld-fix", with claude in the git worktree "fix"
-cld join -n review  # attach to it again, from this terminal or another one
-cld list            # pick a session with the arrow keys: Enter joins it, Ctrl+X twice kills it
-cld kill -n review  # end the session and its claude
+cld new               # create the session "cld-main" in the current directory
+cld new -n review     # create the session "cld-review"
+cld new -n fix -w     # create "cld-fix", with claude in the git worktree "fix"
+cld join -n review    # attach to it again, from this terminal or another one
+cld list              # pick a session with the arrow keys: Enter joins it, Ctrl+X twice kills it
+cld kill -n review    # end the session and its claude
+cld resume -n review  # create "cld-review" again, with claude resuming its conversation
 ```
 
 ## Install
@@ -41,14 +42,15 @@ curl -fsSL https://github.com/zadykian/cld/releases/download/v0.3.0/cld -o ~/.lo
 ```
 
 After upgrading tmux, end the sessions started before (`cld list`, then `cld kill -n NAME`): cld
-checks the version of the `tmux` on the `PATH`, and each `cld new` starts a server of its own with
-it, but a session's server keeps running the tmux that started it until the session ends.
+checks the version of the `tmux` on the `PATH`, and each `cld new` or `cld resume` starts a server
+of its own with it, but a session's server keeps running the tmux that started it until the
+session ends.
 
-Before it starts claude, `cld new` runs `claude --version` in the directory claude will start in
-and refuses an older claude, naming the version it found; a newer one always passes. It then
-starts that same `claude`, by its path: cld skips relative `PATH` entries (`.`, or an empty one).
-Update claude the way you installed it: `claude update` for the native installer, or through
-Homebrew, npm or your system's package manager.
+Before they start claude, `cld new` and `cld resume` run `claude --version` in the directory claude
+will start in and refuse an older claude, naming the version they found; a newer one always passes.
+They then start that same `claude`, by its path: cld skips relative `PATH` entries (`.`, or an
+empty one). Update claude the way you installed it: `claude update` for the native installer, or
+through Homebrew, npm or your system's package manager.
 
 cld 0.3.0 and earlier were a bash script, downloaded from `releases/latest/download/cld`. Later
 releases publish a binary per platform instead, so that download fails once one of them is the
@@ -65,7 +67,7 @@ is `/private/tmp`), has to stay within 103 bytes on macOS and 107 on Linux, and 
 fails with `File name too long`.
 
 Each session starts with [Remote Control](https://code.claude.com/docs/en/remote-control) on, so
-you can also continue it from claude.ai or the Claude app: `cld new` passes claude
+you can also continue it from claude.ai or the Claude app: `cld new` and `cld resume` pass claude
 `--settings '{"remoteControlAtStartup":true}'`, which overrides the "Enable Remote Control for all
 sessions" setting in `/config`. claude still keeps it off where your organisation's policy does,
 or where the project's `.claude/settings.json` or `.claude/settings.local.json` sets
@@ -74,6 +76,7 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | Command | Action |
 |---|---|
 | `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
+| `cld resume [-n NAME] [SESSION]` | create the session as `cld new` does, without `-w`, with claude resuming the conversation named `cld-NAME`, or `SESSION`, instead of starting one (see below) |
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session and its tmux server; claude exits as when its terminal closes, and what claude started through tmux ends too |
 | `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in. On a terminal, pick a session with the arrow keys and press Enter to join it, or Ctrl+X twice to kill it (see below); `cld list \| cat` prints the table |
@@ -103,7 +106,8 @@ leaves. After a kill the list reads the sessions again and selects the row that 
 one's place, or the one above it. `Ctrl+X` then does nothing until you have not pressed it for a
 second, or pressed another key: a key held down repeats, and the second `Ctrl+X` held a little too
 long would otherwise go on to kill the newly selected session, and the next. Like `cld kill`, the
-list leaves a `cld new -w` worktree where it is, and the conversation stays in `claude --resume`.
+list leaves a `cld new -w` worktree where it is, and the conversation stays: after a kill by
+mistake, `cld resume -n NAME` brings it back (see Resuming a conversation).
 The state `attached` counts terminals only: someone on the session from claude.ai or the Claude
 app through Remote Control does not show, and a kill ends the session for them too.
 
@@ -122,26 +126,27 @@ terminal (`cld list | cat`, `$(cld list)`), `TERM` is unset or `dumb`, it runs i
 that leaves `cld list` the terminal gets the list and waits for a key: pipe it (`cld list | cat`)
 for the table.
 
-If claude exits with an error - it could not start, say - its session stays open with claude's
-message on screen and a line on how to end it: `C-q d` detaches, `cld kill -n NAME` ends the
-session. `cld join -n NAME` shows the line again, also when claude exited with no terminal
-attached. `cld list` shows such a session as `exited`. Leaving claude the usual ways (`/exit`,
-`Ctrl+C` twice, `Ctrl+D` twice) closes the session.
+If claude exits with an error - it could not start, say, or found no conversation with the
+session ID `cld resume` gave it - its session stays open with claude's message on screen and a
+line on how to end it: `C-q d` detaches, `cld kill -n NAME` ends the session. `cld join -n NAME`
+shows the line again, also when claude exited with no terminal attached. `cld list` shows such a
+session as `exited`. Leaving claude the usual ways (`/exit`, `Ctrl+C` twice, `Ctrl+D` twice)
+closes the session.
 
 Joining from a second terminal detaches the first one; claude keeps running in its directory,
-wherever you join from. A killed session's conversation stays in Claude Code's history, named
-`cld-NAME` in the `claude --resume` picker.
+wherever you join from.
 
 Each session has its tmux server to itself; `tmux -L cld-NAME ls` lists what runs on session
 `NAME`'s. Whatever claude runs - its Bash tool, a hook - reaches that server with a plain `tmux`,
 and a session made that way has another name there: `cld` sees only `cld-NAME`, and `cld kill`
 ends the others with the server. Each claude also gets the environment of the shell that ran
-`cld new` - `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like. If claude exits while
-sessions it started through tmux keep its server running, `cld new`, `cld join` and `cld kill`
-refuse the name and point at the server; end it with `tmux -L cld-NAME kill-server`. Where tmux's
-socket directory ignores case, as it does on macOS's default file system, names that differ only
-in case share one socket: while session `a` or its server runs, `cld new -n A`, `cld join -n A`
-and `cld kill -n A` refuse the name and say that it clashes with `a`.
+`cld new` or `cld resume` - `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like. If
+claude exits while sessions it started through tmux keep its server running, `cld new`,
+`cld resume`, `cld join` and `cld kill` refuse the name and point at the server; end it with
+`tmux -L cld-NAME kill-server`. Where tmux's socket directory ignores case, as it does on macOS's
+default file system, names that differ only in case share one socket: while session `a` or its
+server runs, `cld new -n A`, `cld resume -n A`, `cld join -n A` and `cld kill -n A` refuse the
+name and say that it clashes with `a`.
 
 Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
 the two commands.
@@ -151,6 +156,45 @@ not look: end those sessions before upgrading, or afterwards find them with `tmu
 end them with `tmux -L cld kill-session -t =cld-NAME`, or all of them with
 `tmux -L cld kill-server`. Under a locale such as `en_US.UTF-8`, cld 0.3.0 also took names with
 non-ASCII letters or digits, such as `café`, which later versions refuse.
+
+### Resuming a conversation
+
+A session's conversation outlives the session: after `cld kill` or `Ctrl+X` in `cld list`, a
+reboot or a crashed tmux server it stays in Claude Code's history, named `cld-NAME`, until Claude
+Code removes it (after 30 days by default). `cld resume -n NAME` brings it back - after a kill by
+mistake, say - in a new session `cld-NAME`, made as `cld new` makes it, with
+`claude --resume cld-NAME` in place of a new conversation:
+
+- run it where the conversation belongs: in its directory or, in a git repository, in any
+  checkout of it, where claude looks names up. A killed session no longer shows in `cld list`,
+  and cld keeps no record of where it ran. A session ID is found from any directory (Claude Code
+  2.1.223 or newer). claude looks in the history of the shell's `CLAUDE_CONFIG_DIR`, if you set
+  one: it gets the environment of the shell that runs `cld resume` (see above);
+- when exactly one conversation there has the name, claude resumes it. Several can have it:
+  `/clear` keeps the name for the conversation it starts, and with Claude Code 2.1.232 or newer a
+  later `cld new -n NAME` presumably gives it to a new one as well (not checked yet). claude then
+  opens its picker with the name as the search term, which may not be an exact filter: for
+  `cld-rev` it may list `cld-review` too (not checked yet);
+- `cld resume -n NAME SESSION` resumes `SESSION` instead: whatever `claude --resume` takes - a
+  session ID, a name, a search term for the picker - such as a conversation cld did not start.
+  It comes after the options, and cannot start with `-`. claude gets `--name cld-NAME` here too,
+  as in every session of cld's: it is meant to give the conversation the session's name, for the
+  next `cld resume -n NAME` to find, but how claude applies it to a resumed conversation has not
+  been checked yet;
+- claude reports what it cannot find: for a session ID that matches no conversation it prints
+  `No conversation found with session ID: ...` and exits with an error, and the session stays
+  with the message, as for any failed claude (see above). cld does not read claude's
+  transcripts, whose format is internal to Claude Code.
+
+`cld resume` refuses a name that a session holds, as `cld new` does, a session whose claude exited
+included: end it with `cld kill -n NAME` first. It cannot tell whether the conversation is open
+elsewhere - in another cld session, or in a plain `claude --resume` in another terminal. Resuming
+it twice makes two claudes write to one transcript, their messages interleaved, as the
+[Claude Code docs](https://code.claude.com/docs/en/sessions) say. When the other claude has the
+conversation's Remote Control session, Claude Code 2.1.232 or newer leaves Remote Control off in
+the resumed one and says so (`Remote Control not started here`), until `/remote-control` moves it
+over; whether a cld session, which turns Remote Control on as it starts, records that session in
+its conversation has not been checked yet.
 
 ### Worktrees
 
@@ -167,7 +211,12 @@ A new worktree branches from your current `HEAD`, not from the remote's default 
 settings it passes claude, which overrides the `worktree.baseRef` setting.
 
 `cld kill`, and `Ctrl+X` in `cld list`, leave the worktree where it is, and `cld new -n NAME -w`
-reopens it.
+reopens it, with a new conversation. `cld resume -n NAME`, run in the repository, resumes the
+conversation instead, and claude takes it back to its worktree - or, if the worktree is gone,
+resumes where `cld resume` runs and says so; `cld resume` has no `-w`. A worktree claude makes
+during a resumed session - for a subagent, say - branches as your settings say, by default from
+the remote's default branch: `cld resume` does not pass `"worktree":{"baseRef":"head"}`, which
+would change conversations started without `-w` too.
 
 claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
 (or `cld new`) there once first; otherwise claude says so and exits, and the session stays open
@@ -179,9 +228,9 @@ repository.
 `cld` runs tmux with `-L cld-NAME -f /dev/null`: a server for each session, shared with no other
 session and no other tmux you use. tmux starts a pane with the environment of the shell that
 started its server, apart from `PATH` and a few variables such as `SSH_AUTH_SOCK`; on a server of
-its own, each claude gets the environment of the shell that ran `cld new`. What claude runs
-through tmux stays on its session's server. cld's options never touch any other tmux you use, and
-your `~/.tmux.conf` never touches claude:
+its own, each claude gets the environment of the shell that ran `cld new` or `cld resume`. What
+claude runs through tmux stays on its session's server. cld's options never touch any other tmux
+you use, and your `~/.tmux.conf` never touches claude:
 
 - `extended-keys on` lets modified keys such as Shift+Enter reach claude when it asks for them;
 - the `extkeys` terminal feature for `xterm*` terminals, as
@@ -212,7 +261,7 @@ problem:
 | Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
 | Working copy | the directory you run it in, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
 | Needs | tmux 3.7 or newer; a git repository for `-w` | a git repository |
-| Coming back | `cld join -n NAME` attaches to the session | not documented |
+| Coming back | `cld join -n NAME` attaches to the session; once it has ended, `cld resume -n NAME` resumes its conversation in a new one | not documented |
 | tmux server and options | a private server per session that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
 

@@ -1,0 +1,12 @@
+create session NAME in the current directory and attach to it, as new does,
+with claude resuming the conversation named cld-NAME, or SESSION: whatever
+claude --resume takes, such as a session ID, a name, or a search term for
+claude's picker. SESSION comes after the options and does not start with "-".
+
+Usage:
+  cld resume [-n NAME] [flags] [SESSION]
+
+Flags:
+  -h, --help        help for resume
+  -n, --name NAME   the session NAME: up to 64 letters, digits, "_" and "-",
+                    starting with a letter or digit (default "main")
