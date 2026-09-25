@@ -101,7 +101,14 @@ stays, showing why, until cld kill ends it.`,
 		if err != nil {
 			return err
 		}
-		return tmux.New(suffix, *worktree)
+		// new starts claude, so it checks claude's version too: after the checks every command
+		// makes, so that cld runs claude only once the tools are found and tmux's version passes,
+		// and before any other tmux command. join, kill and list never run claude.
+		claude, err := session.CheckClaude()
+		if err != nil {
+			return err
+		}
+		return tmux.New(claude, suffix, *worktree)
 	}
 
 	join := &cobra.Command{

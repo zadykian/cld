@@ -55,6 +55,10 @@ cld() {
 | `#{@cld}` in a format (tmux 3.3a, 3.7c) | tmux looks a user option up in the server's options, then the pane's, the window's and the global window options, and only then the session's and the global session options: a `@cld 1` set with `-s`, `-g` or `-w` counted for sessions that had none, and a window's `@cld 0` hid a session that had one. Compared with the session's id, a flag set anywhere makes no session cld's; one on the server or a window still hides one |
 | `tmux -V` beside a server started by an older tmux (a 3.5a server from Debian's package with a 3.7c client built from source, in the image that `tests/Dockerfile` built with `BASE=debian:trixie TMUX_VERSION=3.7c` before #21, which installed Debian's tmux 3.5a beside the source build; for #21 also a 3.6 server on the default socket with a 3.7c client) | `tmux -V` reports the client: `tmux 3.7c`. The server keeps running the tmux that started it - `#{version}` read `3.5a`, and `3.6` - and answers the newer client: the 3.7c client made a session on the 3.5a server with `new-session`, and set `remain-on-exit failed` on its window. So a check of `tmux -V` passes after an upgrade while the sessions, old and new, run on the old server until it exits |
 | how `claude` 2.1.282 resolves `remoteControlAtStartup` (read from its bundle, not run: a live check would connect the session to claude.ai) | the first of the policy settings, the `--settings` (flag) settings and the user settings that has it wins, over the old global-config key; a `false` in the project's `.claude/settings.json` or `settings.local.json` beats all of them, and a `true` there is ignored with a warning. `/config`'s "Enable Remote Control for all sessions" writes the user setting, so `--settings` overrides it either way |
+| what the claude minimum rests on (#21): Claude Code's changelog, and the linux-x64 npm bundles of 2.1.118, 2.1.119, 2.1.133, 2.1.221 and 2.1.222, read for the issue, not run | `--worktree` came in 2.1.49, `-n`/`--name` in 2.1.76 and the `worktree.baseRef` setting in 2.1.133 (changelog). `remoteControlAtStartup` moved into the settings in 2.1.119, with `/config`'s other settings ("now persist to `~/.claude/settings.json`", changelog): 2.1.118 reads it from the global config (`~/.claude.json`) only, which `--settings` does not reach. 2.1.133 and 2.1.221 decide from the merged settings, then the global config, and in the merge flag settings outrank the project's and the local ones, so cld's `true` beats a project's `false`. 2.1.222 returns `false` first when the project or local settings have it, then takes the first of the policy, flag and user settings, as the row above records for 2.1.282; its changelog agrees: repo-local settings "can no longer turn it on (they can still turn it off)". On 25 September 2026 npm's `stable` tag was at 2.1.274 and `latest` at 2.1.282; for the issue, Homebrew's default `claude-code` cask and the apt, dnf and apk `stable` repositories served 2.1.274 too |
+| how tmux starts a command given as several words, such as `new-session -c DIR claude ...` (tmux 3.7c, glibc 2.43, Ubuntu 26.04) | with `execvp`, in `DIR`, and with the `PATH` of the client that ran `new-session`, also for a second session on a server that a client with another `PATH` started. So a bare `claude` is looked up in every entry, relative ones included, from `DIR`: with `PATH=.:/abs`, or `:/abs`, and a `claude` in both, tmux started the one in `DIR`, where cld had checked `/abs/claude`. A script without `#!`, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh`, by name and by path |
+| `new-session -c DIR` with a `DIR` its user cannot enter, and a binary for another machine as the command (tmux 3.7c, glibc 2.41, in the image `tests/Dockerfile` builds on `debian:trixie`; the first as `nobody`) | tmux started the command in the home directory, printing nothing, and `new-session` exited 0: for a `DIR` of mode `000`, and for one inside a directory of mode `000`. An arm64 ELF binary on x86_64, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh` all the same, as a script: a `/bin/sh` that logged its arguments recorded `sh PATH --version`, and the pane died with dash's status 2 |
+| `claude --version` (2.1.282, native installer, Linux) | prints `2.1.282 (Claude Code)` and exits 0, in about 20 ms. It leaves nothing running that holds its output: piped to `cat`, it returns as soon. In a directory that has since been removed it prints `error: The current working directory was deleted, so that command didn't work. Please cd into a different directory and try again.` on stderr and exits 1 |
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
 | the script's name check and `list`'s columns under `en_US.UTF-8`, `C.UTF-8` and `C` (bash 5.3.9, glibc 2.43; bash 3.2 on macOS not checked) | `[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]` follows the locale's collation: under `en_US.UTF-8` it matched `é`, `ñ`, `ß`, `Ä`, `ǅ`, `①` and `٣`, so `cld new -n café` made `cld-café`, which `tmux -L cld kill-session -t =cld-café` ends (tmux 3.7c); under `C.UTF-8` and `C` it matched ASCII only. `${#name}` counts characters under a UTF-8 locale and bytes under `C`; `printf '%-*s'` pads by bytes under all three, so `é` took three columns of a four-column NAME |
 | where bash itself stepped in for the script (bash 5.3.9 on Ubuntu 26.04 unless noted; tmux 3.7c) | a write to stdout that failed (`/dev/full`, or a descriptor open for reading) ended the script under `set -e` with status 1 and bash's message (`printf: write error: No space left on device`, `cat: -: ...` for the usage), and `new` and `join` did not get as far as their `exec` of tmux; `printf` and `cat` failed the same way under 5.2.15 and 3.2.57. A write to a pipe whose reader had gone ended it by SIGPIPE (the usage with status 141, `cat`'s, under `set -e`), and when it was started with SIGPIPE ignored - from a script under `trap '' PIPE`, say - with status 1 and `printf: write error: Broken pipe` (`cat: -: Broken pipe` for the usage). A tmux that could not run at all ended it with 127 when there was no such file, and 126 for a file the system refuses (`Exec format error`); for a `#!` naming a missing interpreter, 127 with Debian's 5.2.15 and 5.2.37 and Ubuntu's 5.2.21, 126 with 5.3.9 and 3.2.57 as released. A text file without `#!` bash ran as a script. A tmux on the `PATH` without the execute permission, with no executable one on it, bash found all the same - its search takes the first file of that name where none is executable, for `command -v` too - and ran, ending with `Permission denied` and 126; a `claude` like that let `new` go on and hand it to tmux, and a `git` like that made `new -w` say the directory was in no git repository. A tmux that stopped being runnable once it had answered `tmux -V` ended the script from a session lookup (`list-sessions`) with its `die 1`, status 1 and bash's message, and from `kill-session` or the `exec` with 127 or 126. With `PATH` unset bash searched a default path built into it, which differs by build: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` (Ubuntu's 5.2.21 and 5.3.9), `/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:.` (Debian's 5.2.15 and 5.2.37), `/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin:.` (3.2.57 as released); macOS's `/bin/bash` was not checked. Started in a directory since removed, bash warned `shell-init: error retrieving current directory: ...` and kept the `PWD` it got: `new` passed that path to tmux with `-c`, and tmux started claude in the home directory (with Debian's 5.2.37); `new -w` said the directory was in no git repository |
@@ -191,8 +195,10 @@ The Linux job runs the same Docker image a developer runs locally.
    `attach-session`. `list` shows such a session as `exited`, where it started, and `new` refuses
    the name, pointing at `kill`, rather than replacing the session unseen. The option and the hook
    go to claude's window only (see 9).
-6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on. The check runs at
-   startup, for every command but `help` and `version`, and refuses an older tmux with
+6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
+   Claude Code 2.1.222 or newer, the first release that does what cld passes and relies on. Both
+   are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
+   for every command but `help` and `version`, and refuses an older tmux with
    `cld: tmux 3.7 or newer is required, found 'tmux 3.6b'` and status 1.
    - It reads `tmux -V`: the major and minor version, after `next-` for a development build
      (`next-3.9` is 3.9, `3.8-rc2` 3.8); a version without them (`master`) passes. Letters mark
@@ -216,6 +222,56 @@ The Linux job runs the same Docker image a developer runs locally.
      older server until the last one ends. The gap is accepted, as it was with the 3.3 check, and
      the README says to end cld's sessions after upgrading tmux; reading the server's `#{version}`
      as well was the alternative.
+   - claude is checked where cld starts it: `new` runs `claude --version` once it has found its
+     tools and checked tmux's version, before any other tmux command. The issue placed it right
+     after the lookup of `claude`; it comes after the checks every command makes instead - the
+     tools, then `tmux -V` - so that cld runs claude only once those cheap checks pass, and a
+     missing tool or a tmux too old is reported before a claude too old. `join`, `kill` and `list`
+     never start claude and do not check it. cld compares the `X.Y.Z` the output starts with as
+     numbers (2.1.30 is older than 2.1.222) and refuses an older claude with
+     `cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'` and status 1. It
+     does not say how to update, which depends on how claude was installed; the README does.
+   - `claude --version` runs the claude that tmux then starts, as tmux starts it: the `claude`
+     that cld finds in the absolute `PATH` entries (11.5), by its path, with no input, in the
+     current directory. `new` hands tmux that path rather than the word `claude`, so claude sees
+     its path as its `argv[0]`: tmux looks the word up with `execvp`, relative entries included
+     (see Findings), and with `.` or an empty entry ahead of the absolute one it started a
+     `claude` in the directory claude starts in, which cld had not checked. The directory counts
+     too: a version manager's shim - mise's, say - runs the claude that the directory pins, so a
+     check made anywhere else could pass a claude other than the one `new` starts. A directory
+     that has been removed is refused first, with `cld: the current directory no longer exists`,
+     as `new` refuses it anyway (11.10), because `claude --version` fails there (see Findings);
+     `new` now says so before it looks the session up. So is one that cannot be entered - its
+     search permission, or that of a directory above it, taken away since the shell entered it -
+     with `cld: cannot enter the current directory: REASON` (11.10): `claude --version` cannot
+     start there, which cld would otherwise report as a claude that cannot run.
+   - Output that does not start with a version passes, as a tmux development build does, so that a
+     new format locks no one out. A `claude --version` that fails is refused with status 1, what it
+     printed (stdout, then stderr) and its exit status or signal, since a claude that cannot report
+     its version is unlikely to start. cld reads what claude printed until it exits, and for a
+     second more at most: a process it leaves in the background with its output open - a
+     wrapper's update check, say - does not hold `new` up for as long as it runs. A script without
+     `#!`, which the system will not execute, runs with `/bin/sh`, as tmux's `execvp` runs it
+     (glibc, see Findings; macOS's libc by its source, not run), and is checked as any other
+     claude: Go's `os/exec` does not fall back so. A binary the system will not execute - one for
+     another machine, or cut short - is no script, though `execvp` hands it to `/bin/sh` all the
+     same (see Findings): cld tells the two apart as bash does (`check_binary_file`: ELF's magic
+     number, or a NUL in the first line) and does not run a binary with `/bin/sh`. A claude that
+     cannot run at all - no execute permission, a missing `#!` interpreter, such a binary - ends cld
+     as such a tmux does (11.9), with `cld: cannot run PATH: REASON` and 127 or 126, since its
+     version is not what is wrong. Where the script would have handed such a claude to tmux, which
+     failed in its pane (see 11.5), `new` now stops in the terminal.
+   - Why 2.1.222: the tests never run the real claude, so there is no tested version to require;
+     the minimum is the first release that takes what cld passes and does what it relies on. What
+     it passes came earlier - `--worktree` in 2.1.49, `--name` in 2.1.76, `remoteControlAtStartup`
+     in the settings in 2.1.119, `worktree.baseRef` in 2.1.133 - but only from 2.1.222 does a
+     project's `false` keep Remote Control off despite cld's `--settings`, as 10 and the README
+     promise (see Findings). 2.1.133 would have needed that promise qualified; 2.1.281, the version
+     probed, would refuse the stable channel (2.1.274), which runs about a week behind. The exit
+     status of `/exit` and the key mode, recorded for 2.1.281, were not checked on older releases.
+     The minimum rises when cld starts to pass a flag, or to rely on behaviour, that needs a newer
+     claude, and only once the stable channel has that release. An upper bound, or an exact match,
+     would break cld every few days: npm published 2.1.280 to 2.1.282 on 22 to 24 September 2026.
 7. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
 8. iTerm2: not automated yet (see Status).
 9. Only cld's own sessions: the private server keeps cld's options away from other tmux use, but
@@ -234,8 +290,9 @@ The Linux job runs the same Docker image a developer runs locally.
    session can also be continued from claude.ai or the Claude app, not only from a terminal that
    joins it. Flag settings outrank the user's, so this holds whatever `/config` says; claude still
    keeps Remote Control off under an org policy or a project that sets the key to `false` (see
-   Findings), and `cld` leaves those alone. With `-w` the worktree setting goes into the same JSON:
-   one `--settings` rather than two, whose merging claude does not document.
+   Findings; from 2.1.222, the minimum in 6), and `cld` leaves those alone. With `-w` the worktree
+   setting goes into the same JSON: one `--settings` rather than two, whose merging claude does
+   not document.
 11. Go and cobra (#20): cld is a Go program built on [cobra](https://github.com/spf13/cobra) and
     pflag, a port of the bash script `bin/cld` as 0.3.0 had it. One language for cld and its
     tests, no bash 3.2 to write for, cobra's shell completion to build on, and key input with
@@ -254,16 +311,18 @@ The Linux job runs the same Docker image a developer runs locally.
        since 12, as an unknown command; the script took it for the end of the arguments
        (`cld list '' x` listed);
     5. cld looks for `tmux`, `claude` and `git` in the absolute `PATH` entries only, and runs
-       `tmux`, `git` and `tty` from there: one found only through a relative entry (`.`, or an
-       empty one) counts as not installed, and one that both have runs from the absolute entry,
-       where bash ran the first it found. Go's `exec.LookPath` refuses a match in a relative
-       entry but stops at it, so cld skips those entries itself. With `PATH` unset cld finds
-       none of them, where bash searched a default path built into it, which differs by build
-       (see Findings). Within the absolute entries cld searches as bash did: the first
-       executable file of that name or, where none is executable, the first file of that name,
-       which then cannot run - such a tmux ends cld with 126 (see 9), such a claude fails in its
-       pane, and such a git leaves `new -w` saying the directory is in no git repository, as
-       with the script;
+       `tmux`, `git` and `tty` from there - and since #21 `claude` as well: its `--version`, and the
+       one `new` hands tmux by its path (see decision 6). One found only through a relative entry
+       (`.`, or an empty one) counts as not installed, and one that both have runs from the absolute
+       entry, where bash ran the first it found. Go's `exec.LookPath` refuses a match in a relative
+       entry but stops at it, so cld skips those entries itself. With `PATH` unset cld finds none of
+       them, where bash searched a default path built into it, which differs by build (see
+       Findings). Within the absolute entries cld searches as bash did: the first executable file of
+       that name or, where none is executable, the first file of that name, which then cannot run -
+       such a tmux ends cld with 126 (see 9), and such a git leaves `new -w` saying the directory is
+       in no git repository, as with the script. Such a claude failed in its pane with the script,
+       and at first with the Go cld; since #21 `new` ends with 126 there, as with such a tmux,
+       because it cannot run its `claude --version` (see decision 6);
     6. tmux gets the environment cld got, but for `TERMINAL_EMULATOR`, which `new` removes, and
        `TMUX`, emptied (see decision 2). bash had also changed it on the way (see Findings): it
        set `PWD` and `SHLVL` and dropped `_`; dropped an exported `PS1` and `PS2`, and `OLDPWD`
@@ -298,7 +357,13 @@ The Linux job runs the same Docker image a developer runs locally.
        message, as the script's lookups ended it with bash's;
     10. `new` in a directory that has been removed refuses, with `cld: the current directory no
         longer exists`, where the script went on and tmux started claude in the home directory
-        (see Findings); the other commands no longer print bash's warning there.
+        (see Findings); the other commands no longer print bash's warning there. Since #21 it
+        also refuses one it cannot enter - its search permission, or that of a directory above
+        it, taken away since - with `cld: cannot enter the current directory: REASON`: given it
+        with `-c`, tmux starts claude in the home directory as well (see Findings). The Go cld
+        had handed such a directory to tmux when its environment had no `PWD`, and with one
+        refused it as `cannot get the current directory: stat .: permission denied`, since Go's
+        `Getwd` looks at `.` first to check `PWD`.
 
     Settled with it: the port landed before the tmux and claude guards (#21) and a server per
     session (#22), so both follow in Go; `help`, `-h` and `--help` print the one usage text there
@@ -348,8 +413,12 @@ Where the implementation departs from the plan above:
 
 - The test harness is Go instead of bats: `go test` with a sandbox package, a terminal package
   (one driver per terminal) and a probe binary that stands in for claude - and, invoked as
-  `tmux`, fakes `tmux -V` for the version checks. The JediTerm driver stays Java, because JediTerm
-  is a JVM library; the Go side talks to it one line per command.
+  `tmux`, fakes `tmux -V` for the tmux version check. As claude it answers `claude --version`
+  for the claude version check (6) with `CLD_FAKE_CLAUDE_VERSION`, or `99.0.0 (Claude Code)` so
+  that raising the minimum leaves it alone; it answers before anything else, `CLD_PROBE_FAIL`
+  included, and writes no record, so that only the claude in a session counts as one. The
+  JediTerm driver stays Java, because JediTerm is a JVM library; the Go side talks to it one line
+  per command.
 - The baseline terminal types raw xterm input (`CSI 13;2u`, `CSI I`/`CSI O`, SGR wheel) through
   `send-keys -H`: tmux 3.3a does not know the key name `S-Enter` and types it literally, and an
   outer tmux reports focus changes only to panes of an attached client.

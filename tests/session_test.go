@@ -54,6 +54,49 @@ func TestSessionNames(t *testing.T) {
 	}
 }
 
+// tmux starts the claude that new checked. A relative PATH entry before the probe's, "." or an
+// empty one, holds a claude of its own, which records that it ran and fails: cld skips it, and
+// tmux, handed the probe by its path, does not take it either, as it would the bare word. A
+// claude that is a script without #!, which starts the probe, passes the check through /bin/sh
+// and starts as tmux's execvp runs it.
+func TestStartsTheClaudeItChecks(t *testing.T) {
+	t.Parallel()
+	const relative = "#!/bin/sh\necho \"$*\" >\"$CLD_PROBE_DIR/relative claude ran\"\nexit 99\n"
+	for _, test := range []struct {
+		// entry is the PATH entry before the sandbox's; claude there is script, in the working
+		// directory for a relative entry.
+		name, entry, script string
+	}{
+		{"after '.'", ".", relative},
+		{"after ''", "", relative},
+		{"without #!", "bin", "exec '" + filepath.Join(sandbox.ProbeBin, "claude") + "' \"$@\"\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			dir, entry := s.Work, test.entry
+			if entry == "bin" {
+				dir = filepath.Join(s.Root, "bin")
+				entry = dir
+				if err := os.Mkdir(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(test.script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "new")
+			probe := s.WaitProbes(1)[0]
+			if want := []string{"--name", "cld-main", "--settings", remoteControl}; !slices.Equal(probe.Argv, want) {
+				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
+			}
+			if args, err := os.ReadFile(filepath.Join(s.ProbeDir, "relative claude ran")); err == nil {
+				t.Errorf("the claude of the relative entry ran with %q", args)
+			}
+		})
+	}
+}
+
 // new -w hands the worktree to claude: claude gets --worktree NAME, with settings that also make it
 // branch a new worktree from HEAD, and starts where cld runs; it then makes or reopens the
 // worktree itself and moves into it.
@@ -697,30 +740,44 @@ func TestNestsOnADeadPanesPty(t *testing.T) {
 
 // In a live pane of cld's server - claude's external editor, say - a session attached would show
 // inside itself: new and join refuse, saying how to get out, and the terminal attached before
-// stays.
+// stays. new checks claude's version before any tmux command but tmux -V, this check's list-panes
+// included: a claude too old is what it reports there (TestOnlyNewRunsClaude has no terminal, so
+// cld makes no such check there).
 func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	startCld(t, s, "tmux", nil, "new", "-n", "a")
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
-	want := "cld: this terminal is a pane of cld's tmux server; detach with C-q d first\n"
-	for _, args := range [][]string{{"join", "-n", "a"}, {"new", "-n", "b"}} {
+	nested := "cld: this terminal is a pane of cld's tmux server; detach with C-q d first\n"
+	for _, test := range []struct {
+		name string
+		// env is what the pane runs cld with besides the server's environment.
+		env  []string
+		args []string
+		want string
+	}{
+		{"join", nil, []string{"join", "-n", "a"}, nested},
+		{"new", nil, []string{"new", "-n", "b"}, nested},
+		{"new-old-claude", []string{"CLD_FAKE_CLAUDE_VERSION=2.1.221 (Claude Code)"}, []string{"new", "-n", "c"},
+			"cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n"},
+	} {
 		// The pane runs cld on its own pty, with the TMUX tmux sets for it.
-		out := filepath.Join(s.Root, args[0])
-		s.MustTmux(append([]string{"new-session", "-d", "-s", "in-" + args[0],
-			"sh", "-c", `"$@" 2>"$0.err"; echo $? >"$0.code"`, out}, s.CldArgv(args...)...)...)
+		out := filepath.Join(s.Root, test.name)
+		argv := append(append([]string{"env"}, test.env...), s.CldArgv(test.args...)...)
+		s.MustTmux(append([]string{"new-session", "-d", "-s", "in-" + test.name,
+			"sh", "-c", `"$@" 2>"$0.err"; echo $? >"$0.code"`, out}, argv...)...)
 		var code []byte
-		sandbox.WaitFor(t, 10*time.Second, "cld "+args[0]+" to return", func() bool {
+		sandbox.WaitFor(t, 10*time.Second, "cld "+test.name+" to return", func() bool {
 			code, _ = os.ReadFile(out + ".code")
 			return strings.HasSuffix(string(code), "\n")
 		})
-		if stderr, _ := os.ReadFile(out + ".err"); string(code) != "1\n" || string(stderr) != want {
-			t.Errorf("cld %s: exit %s, stderr %q, want exit 1, stderr %q", args[0], strings.TrimSpace(string(code)), stderr, want)
+		if stderr, _ := os.ReadFile(out + ".err"); string(code) != "1\n" || string(stderr) != test.want {
+			t.Errorf("cld %s: exit %s, stderr %q, want exit 1, stderr %q", test.name, strings.TrimSpace(string(code)), stderr, test.want)
 		}
 	}
-	if sessions := s.Sessions(); slices.Contains(sessions, "cld-b") {
-		t.Errorf("sessions %q, want no cld-b", sessions)
+	if sessions := s.Sessions(); slices.Contains(sessions, "cld-b") || slices.Contains(sessions, "cld-c") {
+		t.Errorf("sessions %q, want no cld-b or cld-c", sessions)
 	}
 	if clients := s.MustTmux("list-clients", "-F", "#{session_name}"); clients != "cld-a" {
 		t.Errorf("clients attached to %q, want the first one, to cld-a", clients)

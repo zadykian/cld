@@ -35,6 +35,10 @@ func TestMain(m *testing.M) {
 }
 
 func setup(dir string) error {
+	// Open to every user, so that a test run as root can run cld as another one.
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return err
+	}
 	sandbox.Cld = filepath.Join(dir, "cld")
 	if err := run("go", "build", "-o", sandbox.Cld, "github.com/zadykian/cld/cmd/cld"); err != nil {
 		return err
