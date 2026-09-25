@@ -458,21 +458,21 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 		return err
 	}
 	// claude and its arguments go to tmux as separate words: tmux then executes them directly
-	// instead of through sh -c, and each reaches claude as given (see literal). claude goes by
-	// the path CheckClaude checked: tmux would look the bare word up in the PATH, relative
-	// entries included, and could start another claude. What follows new-session in the same
-	// tmux command - remain-on-exit and the pane-died hook, which go to claude's window only, so
-	// that a session claude makes on its server closes as tmux would close it - takes effect
-	// before tmux sees claude exit, however soon; tmux cuts the command short when new-session
-	// fails, as when another cld new or cld resume -n NAME got there first. The targets end in
-	// ":" because set takes a pane, which "=NAME" does not find.
+	// instead of through sh -c, and each reaches claude as given, as the directory reaches tmux
+	// (see literal). claude goes by the path CheckClaude checked: tmux would look the bare word
+	// up in the PATH, relative entries included, and could start another claude. What follows
+	// new-session in the same tmux command - remain-on-exit and the pane-died hook, which go to
+	// claude's window only, so that a session claude makes on its server closes as tmux would
+	// close it - takes effect before tmux sees claude exit, however soon; tmux cuts the command
+	// short when new-session fails, as when another cld new or cld resume -n NAME got there
+	// first. The targets end in ":" because set takes a pane, which "=NAME" does not find.
 	window := "=" + name + ":"
 	argv := []string{"tmux", "-L", name, "-f", "/dev/null",
 		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
 		"set", "-s", "focus-events", "on", ";",
 		"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 		"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
-		"new-session", "-s", name, "-n", suffix, "-c", dir}
+		"new-session", "-s", name, "-n", suffix, "-c", literal(dir)}
 	for _, word := range claude {
 		argv = append(argv, literal(word))
 	}
@@ -489,8 +489,8 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 
 // literal is word as tmux takes it back from its command line: tmux ends a command at a word
 // that ends in ";", keeping what comes before the ";" as an argument, and turns a "\;" at the
-// end of a word into ";". Of claude's words, only the conversation given to resume can end in
-// one: "a;" goes as "a\;", and "a\;" as "a\\;".
+// end of a word into ";". Of cld's words, the directory and the conversation given to resume
+// can end in one: "a;" goes as "a\;", and "a\;" as "a\\;".
 func literal(word string) string {
 	if before, found := strings.CutSuffix(word, ";"); found {
 		return before + `\;`

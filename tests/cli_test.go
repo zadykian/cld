@@ -826,35 +826,51 @@ const endHint = "display-message -d 0 'claude exited with " +
 	"C-q d detaches, cld kill -n #{window_name} ends the session'"
 
 // new and resume hand over to tmux with this command, word for word: the session's own server,
-// its options, claude - by the path of the one it checked - and its arguments as separate words,
-// and what goes on claude's window. resume's claude gets new's arguments, never -w's, then
-// --resume; a word ending in ";", which tmux would take for the end of its command, goes with a
-// "\" before the ";", which tmux drops. The fake tmux, which finds no server running for the
-// session, records it, and the environment it gets: cld's own, without TERMINAL_EMULATOR and with
-// an empty TMUX where TMUX was set - join's client needs it (see TestNestsOnADeadPanesPty), and
-// with it tmux still takes new's terminal for UTF-8 (see TestNestsInsideAnotherTmux); a PS1,
-// which the script's bash dropped, passes too (decision 11 in docs/design.md).
+// its options, the directory, claude - by the path of the one it checked - and its arguments as
+// separate words, and what goes on claude's window. resume's claude gets new's arguments, never
+// -w's, then --resume. A word ending in ";", which tmux would take for the end of its command,
+// goes with a "\" before the ";", which tmux drops: SESSION, or the directory cld runs in. The
+// fake tmux, which finds no server running for the session, records it, and the environment it
+// gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX where TMUX was set - join's
+// client needs it (see TestNestsOnADeadPanesPty), and with it tmux still takes new's terminal for
+// UTF-8 (see TestNestsInsideAnotherTmux); a PS1, which the script's bash dropped, passes too
+// (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
 	const fromHead = `{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`
 	for _, command := range []struct {
 		args []string
+		// dir is where in the work tree cld runs, and c what tmux gets with -c there
+		dir, c string
 		// claude is claude and its arguments, as tmux gets them
 		claude []string
 	}{
-		{[]string{"new", "-n", "x"}, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-n", "x", "-w"}, []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "x"}},
-		{[]string{"resume", "-n", "x"}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
-		{[]string{"resume", "-n", "x", "a b"}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "a b"}},
-		{[]string{"resume", "-n", "x", "a;"}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\;`}},
-		{[]string{"resume", "-n", "x", `a\;`}, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\\;`}},
+		{[]string{"new", "-n", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-n", "x", "-w"}, "", "", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "x"}},
+		{[]string{"resume", "-n", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+		{[]string{"resume", "-n", "x", "a b"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "a b"}},
+		{[]string{"resume", "-n", "x", "a;"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\;`}},
+		{[]string{"resume", "-n", "x", `a\;`}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\\;`}},
+		{[]string{"new", "-n", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-n", "x", "-w"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "x"}},
+		{[]string{"resume", "-n", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+		{[]string{"new", "-n", "x"}, `w\;`, `w\\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
 	} {
-		args, claude := command.args, command.claude
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
+		args, dir, c, claude := command.args, command.dir, command.c, command.claude
+		name := strings.Join(args, " ")
+		if dir != "" {
+			name += " in " + dir
+		}
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
 			gitInit(t, s.Work)
+			if dir != "" {
+				if err := os.Mkdir(filepath.Join(s.Work, dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 			given := map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
@@ -862,7 +878,7 @@ func TestNewTmuxCommand(t *testing.T) {
 				"TMUX":                  filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
 				"PS1":                   `\u@\h$ `,
 			}
-			result := s.RunCld(given, args...)
+			result := s.RunCldIn(filepath.Join(s.Work, dir), given, args...)
 			if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
@@ -871,7 +887,7 @@ func TestNewTmuxCommand(t *testing.T) {
 				"set", "-s", "focus-events", "on", ";",
 				"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 				"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
-				"new-session", "-s", "cld-x", "-n", "x", "-c", s.Work}
+				"new-session", "-s", "cld-x", "-n", "x", "-c", filepath.Join(s.Work, c)}
 			want = append(want, claude...)
 			want = append(want, ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
@@ -882,8 +898,8 @@ func TestNewTmuxCommand(t *testing.T) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 			}
 			checkEnv(t, record.Env, passedOn(s, given, "TERMINAL_EMULATOR"))
-			if record.Cwd != s.Work {
-				t.Errorf("tmux runs in %s, want %s", record.Cwd, s.Work)
+			if want := filepath.Join(s.Work, dir); record.Cwd != want {
+				t.Errorf("tmux runs in %s, want %s", record.Cwd, want)
 			}
 		})
 	}

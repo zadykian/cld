@@ -127,10 +127,16 @@ type Result struct {
 // extra variables are added to the sandbox environment.
 func (s *Sandbox) RunCld(extra map[string]string, args ...string) Result {
 	s.t.Helper()
+	return s.RunCldIn(s.Work, extra, args...)
+}
+
+// RunCldIn runs cld as RunCld does, in the directory dir.
+func (s *Sandbox) RunCldIn(dir string, extra map[string]string, args ...string) Result {
+	s.t.Helper()
 	argv := s.CldArgv(args...)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = s.Environ(extra)
-	cmd.Dir = s.Work
+	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

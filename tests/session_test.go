@@ -184,6 +184,39 @@ func TestResume(t *testing.T) {
 	}
 }
 
+// tmux ends a command at a word ending in ";" (see literal in internal/session), and the
+// directory cld runs in can end in one: new and resume still make their session there, with
+// claude in that directory.
+func TestDirectoryEndingInSemicolon(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args, argv []string
+	}{
+		{[]string{"new", "-n", "x"}, []string{"--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"resume", "-n", "x"}, []string{"--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			dir := filepath.Join(s.Work, "w;")
+			if err := os.Mkdir(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			startCldIn(t, s, "tmux", dir, nil, test.args...)
+			probe := s.WaitProbes(1)[0]
+			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
+				t.Errorf("sessions %q, want [cld-x]", sessions)
+			}
+			if !slices.Equal(probe.Argv, test.argv) {
+				t.Errorf("claude arguments %q, want %q", probe.Argv, test.argv)
+			}
+			if probe.Cwd != dir {
+				t.Errorf("claude runs in %s, want %s", probe.Cwd, dir)
+			}
+		})
+	}
+}
+
 // Outside a git work tree new -w fails before starting anything: claude would say so in a
 // session left to kill.
 func TestNewWorktreeRequiresRepository(t *testing.T) {
