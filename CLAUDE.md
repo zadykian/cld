@@ -37,17 +37,17 @@ platform and `cld.sha256`.
 - Requires **tmux 3.7 or newer**, the release the tests run on (3.7c, pinned in
   `tests/Dockerfile` and the `Makefile`); there is no behaviour per tmux version. The check reads
   `tmux -V` at startup. Raising the minimum is one change: the pin, the check, the docs.
-- `new` requires **claude 2.1.222 or newer**, the first release that takes what cld passes and
-  does what it relies on (the tests never run the real claude): it runs `claude --version` before
-  starting that claude; `join`, `kill` and `list` do not. Re-derive the minimum when cld starts
-  to pass or rely on something newer (docs/design.md, decision 6).
+- `new` and `resume` require **claude 2.1.222 or newer**, the first release that takes what cld
+  passes and does what it relies on (the tests never run the real claude): they run
+  `claude --version` before starting that claude; `join`, `kill` and `list` do not. Re-derive
+  the minimum when cld starts to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
-- Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `join` and the
-  list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep cld's
-  command line - the first argument checked before cobra, options read up to the first argument,
-  a `help [COMMAND]` that refuses anything but one of cld's commands, the help printed through
-  `fail.Print` with the commands unsorted, no completion command (see docs/design.md,
+- Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
+  and the list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep
+  cld's command line - the first argument checked before cobra, options read up to the first
+  argument, a `help [COMMAND]` that refuses anything but one of cld's commands, the help printed
+  through `fail.Print` with the commands unsorted, no completion command (see docs/design.md,
   Implementation notes).
 - The help is cobra's, generated with its default templates from each command's `Use`, `Short`
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
@@ -57,20 +57,22 @@ platform and `cld.sha256`.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
   path fits in `sun_path`), never sanitised.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
-  and by the path of the claude `new` checked, so tmux does not look `claude` up in the `PATH`.
+  and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
+  the `PATH`; a word ending in `;` (resume's SESSION can) goes with a `\` before the `;`, since
+  tmux would end its command there.
 - A server per session: session `cld-NAME` lives on server `cld-NAME` (`tmux -L cld-NAME`), and
   cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}`. Anything
   claude runs inherits `TMUX` and reaches claude's own server, where a session it makes has another
   name; there is no mark. `list` reads the sockets `cld-*` in `${TMUX_TMPDIR:-/tmp}/tmux-UID` and
   asks each server; stale sockets answer "no server running" and are passed over, never removed.
-  `kill` runs `kill-session`, then `kill-server`, in one tmux command; `new`, `join` and `kill`
-  refuse a name whose server runs without its session, and where that server's `#{socket_path}`
-  names another NAME that differs only in case (a socket directory that ignores case, as on
-  macOS), they name that session instead of pointing at `kill-server`.
+  `kill` runs `kill-session`, then `kill-server`, in one tmux command; `new`, `resume`, `join` and
+  `kill` refuse a name whose server runs without its session, and where that server's
+  `#{socket_path}` names another NAME that differs only in case (a socket directory that ignores
+  case, as on macOS), they name that session instead of pointing at `kill-server`.
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
   window, not the server, so the sessions claude makes on its server behave as plain tmux would.
-- `TERMINAL_EMULATOR` is removed from the environment `new` execs tmux with, so from the server's;
-  claude trusts it over `TERM_PROGRAM=tmux`.
+- `TERMINAL_EMULATOR` is removed from the environment `new` and `resume` exec tmux with, so from
+  the server's; claude trusts it over `TERM_PROGRAM=tmux`.
 
 The package comment of `internal/session` explains why each tmux option is set; keep it accurate
 when changing options.
@@ -81,9 +83,9 @@ Tests build cld (`cmd/cld`) and run it against real tmux; only `claude` is faked
 package doc comments at the top of each file for details.
 
 - `main_test.go` — `TestMain` builds cld and `probe/` into a temp dir, the probe as `claude` (and
-  symlinks it as a fake `tmux` for version/tool checks and the commands `new` and `join` exec),
-  and compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`. `forEachTerminal`
-  runs a body as a parallel subtest per terminal.
+  symlinks it as a fake `tmux` for version/tool checks and the commands `new`, `resume` and
+  `join` exec), and compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`.
+  `forEachTerminal` runs a body as a parallel subtest per terminal.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).

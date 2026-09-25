@@ -19,7 +19,7 @@ import (
 
 // commands maps each command, and each alias of one, to the command it runs.
 var commands = map[string]string{
-	"new": "new", "join": "join", "kill": "kill", "list": "list",
+	"new": "new", "resume": "resume", "join": "join", "kill": "kill", "list": "list",
 	"help": "help", "-h": "help", "--help": "help",
 	"version": "version", "-V": "version", "--version": "version",
 }
@@ -64,8 +64,9 @@ func run(args []string) error {
 // cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE".
 // help takes one of cld's commands at most, version is a command rather than cobra's --version
 // and -v, and there is no completion command. Every command reads its options up to the first
-// argument, which pflag would otherwise pass over, and takes no argument but help's COMMAND: the
-// first one left, or a "--", which pflag would drop, is refused.
+// argument, which pflag would otherwise pass over, and takes no argument but help's COMMAND and
+// resume's SESSION: the first one left - after COMMAND or SESSION, the next - or a "--", which
+// pflag would drop, is refused.
 func commandLine(typed string, printed *error) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
@@ -103,14 +104,48 @@ stays, showing why, until cld kill ends it.`,
 		if err != nil {
 			return err
 		}
-		// new starts claude, so it checks claude's version too: after the checks every command
-		// makes, so that cld runs claude only once the tools are found and tmux's version passes,
-		// and before any other tmux command. join, kill and list never run claude.
+		// new starts claude, so it checks claude's version too, as resume does: after the checks
+		// every command makes, so that cld runs claude only once the tools are found and tmux's
+		// version passes, and before any other tmux command. join, kill and list never run claude.
 		claude, err := session.CheckClaude()
 		if err != nil {
 			return err
 		}
 		return tmux.New(claude, suffix, *worktree)
+	}
+
+	// resume makes its session the way new does, and has claude resume a conversation in it. Its
+	// usage line names its options before SESSION, as help's does before COMMAND.
+	resume := &cobra.Command{
+		Use:   "resume [-n NAME] [flags] [SESSION]",
+		Short: "create session NAME with claude resuming its conversation",
+		Long: `create session NAME in the current directory and attach to it, as new does,
+with claude resuming the conversation named cld-NAME, or SESSION: whatever
+claude --resume takes, such as a session ID, a name, or a search term for
+claude's picker. SESSION comes after the options and does not start with "-".`,
+		Args:                  conversationArgument(typed),
+		DisableFlagsInUseLine: true,
+	}
+	resumeName := resume.Flags().StringP("name", "n", "main", nameUsage)
+	resume.RunE = func(_ *cobra.Command, args []string) error {
+		suffix, err := sessionName(*resumeName)
+		if err != nil {
+			return err
+		}
+		tmux, err := session.Check("claude")
+		if err != nil {
+			return err
+		}
+		// resume starts claude as new does, so it checks claude's version where new does.
+		claude, err := session.CheckClaude()
+		if err != nil {
+			return err
+		}
+		conversation := "" // the conversation named cld-NAME
+		if len(args) > 0 {
+			conversation = args[0]
+		}
+		return tmux.Resume(claude, suffix, conversation)
 	}
 
 	join := &cobra.Command{
@@ -207,7 +242,7 @@ list. cld list | cat prints the list only.`,
 		},
 	}
 
-	for _, command := range []*cobra.Command{root, newCommand, join, kill, list, help, versionCommand} {
+	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, help, versionCommand} {
 		// cobra adds -h and --help only where a command has no "help" option of its own.
 		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
 		if command == root {
@@ -218,7 +253,7 @@ list. cld list | cat prints the list only.`,
 		}
 		command.Flags().SetInterspersed(false)
 	}
-	root.AddCommand(newCommand, join, kill, list, versionCommand)
+	root.AddCommand(newCommand, resume, join, kill, list, versionCommand)
 	root.SetHelpCommand(help)
 
 	// cobra's own help function, which cld's calls, writes the help to stdout and drops the error
@@ -246,7 +281,7 @@ list. cld list | cat prints the list only.`,
 	return root
 }
 
-// nameUsage is -n and --name in the help of new, join and kill.
+// nameUsage is -n and --name in the help of new, resume, join and kill.
 const nameUsage = "the session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\nstarting with a letter or digit"
 
 // sessionName is the NAME given with -n, checked once the options have been read: first its
@@ -320,6 +355,25 @@ func helpArguments(typed string) cobra.PositionalArgs {
 		}
 		if len(args) > 0 && topic(c.Root(), args[0]) == nil {
 			return fail.Usage(fmt.Sprintf("%s: unknown command '%s' (see cld help)", typed, args[0]))
+		}
+		if len(args) > 1 {
+			return unexpected(typed, args[1])
+		}
+		return nil
+	}
+}
+
+// conversationArgument takes resume's one argument, SESSION, the conversation claude resumes. It
+// refuses an empty one and one starting with "-", which claude would read as an option;
+// anything after SESSION, an option too, since options come first; and a "--", which pflag
+// would drop, handing claude what follows it as SESSION (resume -n x -- -p).
+func conversationArgument(typed string) cobra.PositionalArgs {
+	return func(c *cobra.Command, args []string) error {
+		if c.ArgsLenAtDash() >= 0 {
+			return unexpected(typed, "--")
+		}
+		if len(args) > 0 && (args[0] == "" || strings.HasPrefix(args[0], "-")) {
+			return unexpected(typed, args[0])
 		}
 		if len(args) > 1 {
 			return unexpected(typed, args[1])

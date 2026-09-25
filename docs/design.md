@@ -59,6 +59,9 @@ cld() {
 | how tmux starts a command given as several words, such as `new-session -c DIR claude ...` (tmux 3.7c, glibc 2.43, Ubuntu 26.04) | with `execvp`, in `DIR`, and with the `PATH` of the client that ran `new-session`, also for a second session on a server that a client with another `PATH` started. So a bare `claude` is looked up in every entry, relative ones included, from `DIR`: with `PATH=.:/abs`, or `:/abs`, and a `claude` in both, tmux started the one in `DIR`, where cld had checked `/abs/claude`. A script without `#!`, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh`, by name and by path |
 | `new-session -c DIR` with a `DIR` its user cannot enter, and a binary for another machine as the command (tmux 3.7c, glibc 2.41, in the image `tests/Dockerfile` builds on `debian:trixie`; the first as `nobody`) | tmux started the command in the home directory, printing nothing, and `new-session` exited 0: for a `DIR` of mode `000`, and for one inside a directory of mode `000`. An arm64 ELF binary on x86_64, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh` all the same, as a script: a `/bin/sh` that logged its arguments recorded `sh PATH --version`, and the pane died with dash's status 2 |
 | `claude --version` (2.1.282, native installer, Linux) | prints `2.1.282 (Claude Code)` and exits 0, in about 20 ms. It leaves nothing running that holds its output: piped to `cat`, it returns as soon. In a directory that has since been removed it prints `error: The current working directory was deleted, so that command didn't work. Please cd into a different directory and try again.` on stderr and exits 1 |
+| `claude --help` of 2.1.282 on resuming | `-r, --resume [value]`: "Resume a conversation by session ID, or open interactive picker with optional search term"; `-n, --name <name>`: "Set a display name for this session (shown in the prompt box, /resume picker, and terminal title)"; `--fork-session`: "When resuming, create a new session ID instead of reusing the original". The help says nothing of resuming by name, which Claude Code's docs describe, and names no restriction on giving `--name` with `--resume`. `--resume`'s value is optional (`[value]`): by the rule of commander, whose `.option()` calls the bundle holds, a word starting with `-` after it is read as the next option, not as its value (not run) |
+| how `claude` 2.1.282 resumes (read from its bundle, not run) | `--resume ID` with no conversation for the ID prints `No conversation found with session ID: ID` and exits 1. A conversation that runs as a background session (`claude --bg`) is refused, naming `claude attach` and `claude stop`, unless `--fork-session` is given; one open in an interactive claude is not. When Remote Control starts and another process on the machine holds the conversation's Remote Control session, claude leaves Remote Control off with a notice that starts `Remote Control not started here · another Claude Code on this machine ... already has Remote Control for this conversation` and ends `run /remote-control to move it to this terminal`. Not found in the bundle: whether a session that connected at startup, as cld's do, records its Remote Control session in the conversation, and how `remoteControlAtStartup` on the command line combines with a recorded one |
+| an argv word that ends in `;` (tmux's `cmd_parse_from_arguments`, read in the 3.3a and 3.7c sources; run on 3.7c, and on 3.3a, 3.4, 3.5a and 3.7c by `TestResume`) | ends the tmux command, the text before the `;` staying an argument: `a;` reaches the program as `a`, and the next word starts a new tmux command. A word ending in `\;` becomes the text with `;` - `a\;` arrives as `a;`, `a\\;` as `a\;` - and a `;` elsewhere in a word is left alone. The words of a command given to `new-session` are not format-expanded: `#{session_name}` arrives as it is |
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
 | the script's name check and `list`'s columns under `en_US.UTF-8`, `C.UTF-8` and `C` (bash 5.3.9, glibc 2.43; bash 3.2 on macOS not checked) | `[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]` follows the locale's collation: under `en_US.UTF-8` it matched `é`, `ñ`, `ß`, `Ä`, `ǅ`, `①` and `٣`, so `cld new -n café` made `cld-café`, which `tmux -L cld kill-session -t =cld-café` ends (tmux 3.7c); under `C.UTF-8` and `C` it matched ASCII only. `${#name}` counts characters under a UTF-8 locale and bytes under `C`; `printf '%-*s'` pads by bytes under all three, so `é` took three columns of a four-column NAME |
 | where bash itself stepped in for the script (bash 5.3.9 on Ubuntu 26.04 unless noted; tmux 3.7c) | a write to stdout that failed (`/dev/full`, or a descriptor open for reading) ended the script under `set -e` with status 1 and bash's message (`printf: write error: No space left on device`, `cat: -: ...` for the usage), and `new` and `join` did not get as far as their `exec` of tmux; `printf` and `cat` failed the same way under 5.2.15 and 3.2.57. A write to a pipe whose reader had gone ended it by SIGPIPE (the usage with status 141, `cat`'s, under `set -e`), and when it was started with SIGPIPE ignored - from a script under `trap '' PIPE`, say - with status 1 and `printf: write error: Broken pipe` (`cat: -: Broken pipe` for the usage). A tmux that could not run at all ended it with 127 when there was no such file, and 126 for a file the system refuses (`Exec format error`); for a `#!` naming a missing interpreter, 127 with Debian's 5.2.15 and 5.2.37 and Ubuntu's 5.2.21, 126 with 5.3.9 and 3.2.57 as released. A text file without `#!` bash ran as a script. A tmux on the `PATH` without the execute permission, with no executable one on it, bash found all the same - its search takes the first file of that name where none is executable, for `command -v` too - and ran, ending with `Permission denied` and 126; a `claude` like that let `new` go on and hand it to tmux, and a `git` like that made `new -w` say the directory was in no git repository. A tmux that stopped being runnable once it had answered `tmux -V` ended the script from a session lookup (`list-sessions`) with its `die 1`, status 1 and bash's message, and from `kill-session` or the `exec` with 127 or 126. With `PATH` unset bash searched a default path built into it, which differs by build: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` (Ubuntu's 5.2.21 and 5.3.9), `/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:.` (Debian's 5.2.15 and 5.2.37), `/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin:.` (3.2.57 as released); macOS's `/bin/bash` was not checked. Started in a directory since removed, bash warned `shell-init: error retrieving current directory: ...` and kept the `PWD` it got: `new` passed that path to tmux with `-c`, and tmux started claude in the home directory (with Debian's 5.2.37); `new -w` said the directory was in no git repository |
@@ -90,8 +93,8 @@ cld() {
 - `cld` changes nothing in the calling shell (no `cd`, no `export`), so it does not need to be a
   shell function. It became an executable: testable in isolation, versioned, installable. Up to
   0.3.0 that was a bash script, `bin/cld`, ending in `exec tmux ...`; since then it is a Go
-  program (see 11), built per platform, whose `new` and `join` replace themselves with tmux the
-  same way (`execve`).
+  program (see 11), built per platform, whose `new`, `resume` and `join` replace themselves with
+  tmux the same way (`execve`).
 - Tagged GitHub releases (`vX.Y.Z`) publish a binary per platform, `cld-OS-ARCH` for Linux and
   macOS on amd64 and arm64, with the version stamped in, plus `cld.sha256`, which lists their
   SHA-256 checksums. The install one-liner picks the binary from `uname` and downloads it into
@@ -183,13 +186,13 @@ The Linux job runs the same Docker image a developer runs locally.
    64 characters, so that its server's socket path fits (see 13.2).
 2. Inside another tmux: `cld` nests; the private socket already allows it. Inside a live pane of
    one of its own servers - claude's external editor, say - a session attached would show inside
-   a session of cld's, itself or another, both taking `C-q`, and `new` and `join` refuse, pointing
-   at `C-q d`; tmux refuses there too, but advises to unset `$TMUX`. tmux goes by the tty's name,
-   and a dead pane's name comes back with the next pty opened (see Findings), so `cld` looks at
-   the live panes itself and gives its client an empty `TMUX`, which tmux's check skips. Since 13
-   it looks only when the socket `TMUX` names is one of cld's, `cld-NAME`, and asks that server.
-   `list` prints its table there rather than the interactive list, whose Enter would be refused
-   (see 14).
+   a session of cld's, itself or another, both taking `C-q`, and `new`, `resume` and `join`
+   refuse, pointing at `C-q d`; tmux refuses there too, but advises to unset `$TMUX`. tmux goes by
+   the tty's name, and a dead pane's name comes back with the next pty opened (see Findings), so
+   `cld` looks at the live panes itself and gives its client an empty `TMUX`, which tmux's check
+   skips. Since 13 it looks only when the socket `TMUX` names is one of cld's, `cld-NAME`, and
+   asks that server. `list` prints its table there rather than the interactive list, whose Enter
+   would be refused (see 14).
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
    fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
    `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME`. Commands address sessions as
@@ -218,9 +221,9 @@ The Linux job runs the same Docker image a developer runs locally.
    window (`if -F '#{window_active_clients}'`), since tmux would otherwise show it on another
    session's terminal or over the next session attached (see Findings); `join` shows it on
    attaching to such a session, with a `display-message` in the same command list as
-   `attach-session`. `list` shows such a session as `exited`, where it started, and `new` refuses
-   the name, pointing at `kill`, rather than replacing the session unseen. The option and the hook
-   go to claude's window only (see 9 and 13).
+   `attach-session`. `list` shows such a session as `exited`, where it started, and `new` and
+   `resume` refuse the name, pointing at `kill`, rather than replacing the session unseen. The
+   option and the hook go to claude's window only (see 9 and 13).
 6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
    Claude Code 2.1.222 or newer, the first release that does what cld passes and relies on. Both
    are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
@@ -244,51 +247,51 @@ The Linux job runs the same Docker image a developer runs locally.
      untested; keeping 3.3 and dropping versions from the tests alone would leave a branch that no
      CI runs.
    - The check reads the client: a server keeps running the tmux that started it (see Findings).
-     Since each session has a server of its own (13), `new` starts a fresh server with the tmux it
-     checked, so after an upgrade only the sessions started before it stay on the older tmux, each
-     until it ends; on one shared server, the sessions started while one of those ran stayed there
-     too. The gap is accepted, as it was with the 3.3 check, and the README says to end the
-     sessions started before upgrading tmux; reading the server's `#{version}` as well was the
-     alternative.
-   - claude is checked where cld starts it: `new` runs `claude --version` once it has found its
-     tools and checked tmux's version, before any other tmux command. The issue placed it right
-     after the lookup of `claude`; it comes after the checks every command makes instead - the
-     tools, then `tmux -V` - so that cld runs claude only once those cheap checks pass, and a
-     missing tool or a tmux too old is reported before a claude too old. `join`, `kill` and `list`
-     never start claude and do not check it. cld compares the `X.Y.Z` the output starts with as
-     numbers (2.1.30 is older than 2.1.222) and refuses an older claude with
-     `cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'` and status 1. It
-     does not say how to update, which depends on how claude was installed; the README does.
-   - `claude --version` runs the claude that tmux then starts, as tmux starts it: the `claude`
-     that cld finds in the absolute `PATH` entries (11.5), by its path, with no input, in the
-     current directory. `new` hands tmux that path rather than the word `claude`, so claude sees
-     its path as its `argv[0]`: tmux looks the word up with `execvp`, relative entries included
-     (see Findings), and with `.` or an empty entry ahead of the absolute one it started a
-     `claude` in the directory claude starts in, which cld had not checked. The directory counts
-     too: a version manager's shim - mise's, say - runs the claude that the directory pins, so a
-     check made anywhere else could pass a claude other than the one `new` starts. A directory
-     that has been removed is refused first, with `cld: the current directory no longer exists`,
-     as `new` refuses it anyway (11.10), because `claude --version` fails there (see Findings);
-     `new` now says so before it looks the session up. So is one that cannot be entered - its
-     search permission, or that of a directory above it, taken away since the shell entered it -
-     with `cld: cannot enter the current directory: REASON` (11.10): `claude --version` cannot
-     start there, which cld would otherwise report as a claude that cannot run.
+     Since each session has a server of its own (13), `new` and `resume` start a fresh server with
+     the tmux they checked, so after an upgrade only the sessions started before it stay on the
+     older tmux, each until it ends; on one shared server, the sessions started while one of those
+     ran stayed there too. The gap is accepted, as it was with the 3.3 check, and the README says to
+     end the sessions started before upgrading tmux; reading the server's `#{version}` as well was
+     the alternative.
+   - claude is checked where cld starts it: `new` and `resume` (16) run `claude --version` once they
+     have found their tools and checked tmux's version, before any other tmux command. The issue
+     placed it right after the lookup of `claude`; it comes after the checks every command makes
+     instead - the tools, then `tmux -V` - so that cld runs claude only once those cheap checks
+     pass, and a missing tool or a tmux too old is reported before a claude too old. `join`, `kill`
+     and `list` never start claude and do not check it. cld compares the `X.Y.Z` the output starts
+     with as numbers (2.1.30 is older than 2.1.222) and refuses an older claude with
+     `cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'` and status 1. It does
+     not say how to update, which depends on how claude was installed; the README does.
+   - `claude --version` runs the claude that tmux then starts, as tmux starts it: the `claude` that
+     cld finds in the absolute `PATH` entries (11.5), by its path, with no input, in the current
+     directory. `new` and `resume` hand tmux that path rather than the word `claude`, so claude sees
+     its path as its `argv[0]`: tmux looks the word up with `execvp`, relative entries included (see
+     Findings), and with `.` or an empty entry ahead of the absolute one it started a `claude` in
+     the directory claude starts in, which cld had not checked. The directory counts too: a version
+     manager's shim - mise's, say - runs the claude that the directory pins, so a check made
+     anywhere else could pass a claude other than the one `new` or `resume` starts. A directory that
+     has been removed is refused first, with `cld: the current directory no longer exists`, as `new`
+     and `resume` refuse it anyway (11.10), because `claude --version` fails there (see Findings);
+     they say so before they look the session up. So is one that cannot be entered - its search
+     permission, or that of a directory above it, taken away since the shell entered it - with
+     `cld: cannot enter the current directory: REASON` (11.10): `claude --version` cannot start
+     there, which cld would otherwise report as a claude that cannot run.
    - Output that does not start with a version passes, as a tmux development build does, so that a
      new format locks no one out. A `claude --version` that fails is refused with status 1, what it
      printed (stdout, then stderr) and its exit status or signal, since a claude that cannot report
      its version is unlikely to start. cld reads what claude printed until it exits, and for a
-     second more at most: a process it leaves in the background with its output open - a
-     wrapper's update check, say - does not hold `new` up for as long as it runs. A script without
+     second more at most: a process it leaves in the background with its output open - a wrapper's
+     update check, say - does not hold `new` or `resume` up for as long as it runs. A script without
      `#!`, which the system will not execute, runs with `/bin/sh`, as tmux's `execvp` runs it
-     (glibc, see Findings; macOS's libc by its source, not run), and is checked as any other
-     claude: Go's `os/exec` does not fall back so. A binary the system will not execute - one for
-     another machine, or cut short - is no script, though `execvp` hands it to `/bin/sh` all the
-     same (see Findings): cld tells the two apart as bash does (`check_binary_file`: ELF's magic
-     number, or a NUL in the first line) and does not run a binary with `/bin/sh`. A claude that
-     cannot run at all - no execute permission, a missing `#!` interpreter, such a binary - ends cld
-     as such a tmux does (11.9), with `cld: cannot run PATH: REASON` and 127 or 126, since its
-     version is not what is wrong. Where the script would have handed such a claude to tmux, which
-     failed in its pane (see 11.5), `new` now stops in the terminal.
+     (glibc, see Findings; macOS's libc by its source, not run), and is checked as any other claude:
+     Go's `os/exec` does not fall back so. A binary the system will not execute - one for another
+     machine, or cut short - is no script, though `execvp` hands it to `/bin/sh` all the same (see
+     Findings): cld tells the two apart as bash does (`check_binary_file`: ELF's magic number, or a
+     NUL in the first line) and does not run a binary with `/bin/sh`. A claude that cannot run at
+     all - no execute permission, a missing `#!` interpreter, such a binary - ends cld as such a
+     tmux does (11.9), with `cld: cannot run PATH: REASON` and 127 or 126, since its version is not
+     what is wrong. Where the script would have handed such a claude to tmux, which failed in its
+     pane (see 11.5), `new` now stops in the terminal.
    - Why 2.1.222: the tests never run the real claude, so there is no tested version to require;
      the minimum is the first release that takes what cld passes and does what it relies on. What
      it passes came earlier - `--worktree` in 2.1.49, `--name` in 2.1.76, `remoteControlAtStartup`
@@ -314,10 +317,12 @@ The Linux job runs the same Docker image a developer runs locally.
    cld's server, and its passthrough and `load-buffer` copies with it; a server per session would
    still need the mark for a session made on it by hand, and `list` would have to find the servers.
    The mark guards against mistakes, not intent: whatever reaches the socket can set it.
-10. Remote Control: `new` starts claude with `--settings '{"remoteControlAtStartup":true}'`, so a
-   session can also be continued from claude.ai or the Claude app, not only from a terminal that
-   joins it. Flag settings outrank the user's, so this holds whatever `/config` says; claude still
-   keeps Remote Control off under an org policy or a project that sets the key to `false` (see
+10. Remote Control: `new` and `resume` start claude with
+   `--settings '{"remoteControlAtStartup":true}'`, so a session can also be continued from
+   claude.ai or the Claude app, not only from a terminal that joins it; a resumed conversation
+   does not keep the settings it was started with, and Claude Code's docs say to pass them again.
+   Flag settings outrank the user's, so this holds whatever `/config` says; claude still keeps
+   Remote Control off under an org policy or a project that sets the key to `false` (see
    Findings; from 2.1.222, the minimum in 6), and `cld` leaves those alone. With `-w` the worktree
    setting goes into the same JSON: one `--settings` rather than two, whose merging claude does
    not document.
@@ -406,13 +411,14 @@ The Linux job runs the same Docker image a developer runs locally.
     nobody saw, and the two could drift; now a command's text lives with the command, and
     `cld new -h` shows `new`'s options alone. Settled with it:
     1. cobra's default help and usage templates, with command sorting off, so the commands keep
-       their order: `new`, `join`, `kill`, `list`, `help`, `version`. `Execute` moves the help
-       command after the others (see Findings), so cld moves `version` back after it before it
-       prints the help. An option's usage names its value in backquotes (`-n, --name NAME`), and
-       pflag shows `-n`'s default, `main`. cobra wraps nothing, so the texts break their lines by
-       hand, within 80 columns, which the test of the help's text holds them to. A template of
-       cld's own, in the usage text's layout, was the other way: closer to what cld printed, but
-       one more thing for cld to keep, where cobra's changes with cobra and shows in that test;
+       their order: `new`, `resume`, `join`, `kill`, `list`, `help`, `version`. `Execute` moves
+       the help command after the others (see Findings), so cld moves `version` back after it
+       before it prints the help. An option's usage names its value in backquotes
+       (`-n, --name NAME`), and pflag shows `-n`'s default, `main`. cobra wraps nothing, so the
+       texts break their lines by hand, within 80 columns, which the test of the help's text holds
+       them to. A template of cld's own, in the usage text's layout, was the other way: closer to
+       what cld printed, but one more thing for cld to keep, where cobra's changes with cobra and
+       shows in that test;
     2. `help [COMMAND]` shows the help of one of the commands the root's help lists. `-h` and
        `--help`, given first, are `help` spelled otherwise, so `cld -h new` shows `new`'s help. A
        `COMMAND` that is not one of those, the empty one included, and an argument after it are
@@ -448,8 +454,8 @@ The Linux job runs the same Docker image a developer runs locally.
     with the environment of the client that started the server, but for `PATH` and the
     `update-environment` variables, so on the shared server every claude had the first session's
     `CLAUDE_CONFIG_DIR`, `VIRTUAL_ENV`, `AWS_PROFILE`, `LANG` and the like; now each has the
-    environment of the shell that ran `cld new`. And a crash, or a stray `tmux kill-server` or
-    `set -g` from anything claude runs, reaches one session. What it costs:
+    environment of the shell that ran `cld new`, or `cld resume` (16). And a crash, or a stray
+    `tmux kill-server` or `set -g` from anything claude runs, reaches one session. What it costs:
     1. `list` reads tmux's socket directory, `tmux-UID` under `TMUX_TMPDIR` - or under `/tmp` where
        that is unset, empty or names nothing, as tmux falls back (see Findings) - and asks the
        server of each socket `cld-NAME` whose NAME is valid for its session `cld-NAME`, one after
@@ -487,9 +493,9 @@ The Linux job runs the same Docker image a developer runs locally.
     6. where tmux's socket directory ignores case - macOS's default file system, APFS, does, and
        `/private/tmp` is on it (not checked on macOS) - names that differ only in case share one
        socket, where the shared server kept `a` and `A` apart: `tmux -L cld-A` reaches the server
-       of session `a`, which has no session `cld-A` (see Findings). `new`, `join` and `kill` would
-       take it for a server that outlived session `A` and point at `tmux -L cld-A kill-server`,
-       which ends `a`. So where the server they reach runs without its session, they ask it for
+       of session `a`, which has no session `cld-A` (see Findings). `new`, `join` and `kill` - and
+       `resume` (16) - would take it for a server that outlived session `A` and point at
+       `tmux -L cld-A kill-server`, which ends `a`. So where the server they reach runs without its session, they ask it for
        the socket it was started on (`#{socket_path}`), and if that names a NAME that differs only
        in case, they refuse the name as clashing with that session, pointing at no `kill-server`.
        Names stay case-sensitive: where the directory keeps case, as on Linux, `a` and `A` are two
@@ -505,13 +511,13 @@ The Linux job runs the same Docker image a developer runs locally.
     `server exited unexpectedly`. cld's lookups count that as no server, and a `cld new -n NAME`
     run the moment `cld kill` returned started a fresh server every time it was tried (see
     Findings). A server that outlives its session - claude exited, and the tmux sessions it made
-    keep the server running - is not reused: `new` refuses the name, pointing at
-    `tmux -L cld-NAME ls` and `tmux -L cld-NAME kill-server`, so that every claude gets the
-    environment of the shell that ran `cld new`; `list` shows nothing for such a server, and `join`
-    and `kill` refuse the name the same way, rather than send the user to a `cld new` that refuses
-    it (but see cost 6 for a server that is another session's). `new` and `join` refuse a terminal
-    that is a live pane of any of cld's servers (see 2), found through the socket `TMUX` names, and
-    say whose session's server it is; the terminal of any other tmux nests without a check. The
+    keep the server running - is not reused: `new` refuses the name, and so does `resume` (16),
+    pointing at `tmux -L cld-NAME ls` and `tmux -L cld-NAME kill-server`, so that every claude gets
+    the environment of the shell that ran `cld new` or `cld resume`; `list` shows nothing for such a
+    server, and `join` and `kill` refuse the name the same way, rather than send the user to a
+    `cld new` that refuses it (but see cost 6 for a server that is another session's). `new`,
+    `resume` and `join` refuse a terminal that is a live pane of any of cld's servers (see 2),
+    found through the socket `TMUX` names, and say whose session's server it is; the terminal of any other tmux nests without a check. The
     options stay as they were, the fixed `terminal-features[100]` index too: `new` sets them on a
     fresh server, but two `cld new -n NAME` at once can both set them on one.
 14. The session list (#23): on a terminal, `cld list` shows the sessions to pick one and join it, as
@@ -638,7 +644,8 @@ The Linux job runs the same Docker image a developer runs locally.
     press within two seconds deletes it (see Findings). Where agent view has two steps, cld has one:
     `cld kill`'s `kill-session` and `kill-server` end claude, like agent view's stop, and the row
     leaves the list at once, like its delete; there is no stopped row to come back to, and the
-    conversation comes back only through `claude --resume`. Settled with it:
+    conversation comes back through `cld resume -n NAME`, in a new session (see 16), or
+    `claude --resume`. Settled with it:
     1. confirming: the second press, as agent view asks for one before a row leaves its list. On a
        selected row the footer's hints read `↑/↓ to navigate · enter to join · ctrl+x to kill · esc
        to quit` (62 cells, 86 on an attached row); once armed, `ctrl+x again to kill · esc to keep`,
@@ -707,6 +714,63 @@ The Linux job runs the same Docker image a developer runs locally.
     6. like `cld kill`, the kill leaves a `cld new -w` worktree where it is, where agent view's
        delete removes the worktree Claude created. Killing several sessions at once, a stopped
        state and removing worktrees are not part of it.
+16. Resume (#26): `resume [-n NAME] [SESSION]` joins the commands of decision 3. It brings back a
+    conversation whose session is gone - ended by `kill` or the list's Ctrl+X (15), a reboot or a
+    crashed server - in a new session `cld-NAME`, made as `new` makes it: the same checks and
+    refusals (the name, claude on the `PATH` and its version (6), a live pane of one of cld's
+    servers (2), a session of that name, and a server that runs without it (13)), the same title,
+    tmux command on a server of its own (13), options and hook. Only claude's arguments differ:
+    `new`'s, without `-w`'s `--worktree` and worktree base, then `--resume cld-NAME`, or
+    `--resume SESSION`.
+    1. SESSION is whatever `claude --resume` takes - an ID, a name, a search term for claude's
+       picker - for a conversation cld did not start, or one of several that share a name. It is
+       one argument, handed to claude as it is, as one word. An empty one is refused, and one
+       starting with `-`, which claude would read as an option (see Findings); so is a `--`,
+       after which pflag would hand claude what follows (`resume -n x -- -p`). Options come
+       before SESSION, the order `SetInterspersed(false)` gives every command, and whatever
+       follows it is refused, an option included: `cld resume x -n y` names `-n`. So `resume`'s
+       usage line names its options first, `cld resume [-n NAME] [flags] [SESSION]`, with
+       `DisableFlagsInUseLine`, as `help`'s does (see 12.4); its help describes SESSION.
+    2. `--name cld-NAME` goes with `--resume` always, SESSION or not: the session runs
+       `claude --name cld-NAME`, as cld's help says, and a conversation resumed through SESSION
+       is meant to take the session's name, so that the next `resume -n NAME` finds it - at the
+       cost of the name it had. How claude combines the two is not probed (see Status).
+    3. No `-w`: claude takes a worktree conversation back to its worktree itself, and the docs do
+       not say how `--worktree` combines with `--resume`; so `resume` needs no git either. The
+       worktree base (decision 4) is left out: it also governs the worktrees claude makes during a
+       session, and cld cannot tell a worktree conversation from another; passing it on every
+       resume would change conversations started without `-w`.
+    4. No lookup of its own: cld does not read claude's transcripts (`~/.claude/projects`, or
+       `$CLAUDE_CONFIG_DIR`), whose format Claude Code's docs call internal. claude resolves the
+       conversation and reports what it cannot find, as it reports workspace trust for `-w`
+       (decision 4); a claude that fails keeps its session as a failed `new` does (decision 5).
+       By name, claude looks in the current repository and its worktrees, so `resume` runs where
+       the conversation belongs; a session ID it finds from any directory (from 2.1.223).
+    5. A session whose claude exited is refused, pointing at `kill`, as `new` refuses it
+       (decision 5), rather than respawned with `--resume`: a claude that failed at startup has
+       no conversation to resume, and `kill` then `resume` covers the rest. A split pane in a
+       live session would break the one pane that `join`'s hint, the dead-pane check and `list`
+       rely on.
+    6. Not guarded: a conversation open elsewhere. cld sees tmux sessions, not conversations; two
+       claudes on one conversation interleave their messages in one transcript, as Claude Code's
+       docs say, and the README says so. claude gets the environment of the shell that ran
+       `resume`, its server being its own (13), `CLAUDE_CONFIG_DIR` included, which decides where
+       claude looks for conversations; on the one server all sessions shared before 13, it got
+       that of the cld that had started the server.
+    7. The behaviour `resume` relies on is documented up to claude 2.1.232: resuming by name
+       (2.0.64), `--name` (2.1.76), the transcript following claude into a worktree (2.1.198),
+       the search for a session ID across projects (2.1.223), and variants for live names and
+       Remote Control staying with the claude that has it (both 2.1.232). `resume` checks
+       claude's version as `new` does, against the same minimum (6).
+    8. tmux ends a command at an argv word ending in `;` (see Findings), and SESSION can end in
+       one: each of claude's words that does goes to tmux with a `\` before the `;`, which tmux
+       drops, so that claude gets every word as cld has it. The test harness's outer tmux does the
+       same for the command it starts.
+    9. A resumed session is a session like any other: `list` shows it, the interactive list joins
+       it with Enter (14) and kills it with Ctrl+X (15), and `kill` ends it with its server (13).
+       `resume` is the way back from a kill by mistake, `cld kill`'s or the list's: neither leaves
+       a stopped session to come back to (15), but the conversation stays in claude's history, and
+       `resume -n NAME`, run where the session ran (16.4), brings it back in a new session.
 
 ## Implementation notes
 
@@ -736,9 +800,10 @@ Where the implementation departs from the plan above:
   compares cells - characters and attributes - rather than the captured sequences.
 - The Go port (decision 11) is `cmd/cld`, the command line, and `internal/session`, the tmux
   side, whose package comment is the script's header comment. Errors carry an exit status up to
-  `main` (`internal/fail`), the only place that exits; `new` and `join` end in `syscall.Exec` of
-  tmux, and a tmux command that fails (`tmux -V`, the kill) ends cld with its status after
-  its own message; one that cannot run ends it with 127 or 126, as `syscall.Exec` failing does.
+  `main` (`internal/fail`), the only place that exits; `new`, `resume` and `join` end in
+  `syscall.Exec` of tmux, and a tmux command that fails (`tmux -V`, the kill) ends cld with its
+  status after its own message; one that cannot run ends it with 127 or 126, as `syscall.Exec`
+  failing does.
   A session lookup (`list-sessions`) that fails ends cld with status 1 and what tmux said, or
   the same `cannot run` message, as the script's `die 1` did.
   cld's own output goes through `fail.Print`, which turns a failed write into an error, the help
@@ -753,8 +818,8 @@ Where the implementation departs from the plan above:
   - `SilenceErrors` and `SilenceUsage`: cobra would print `Error: MESSAGE` and the usage;
   - `SetInterspersed(false)` on every command: pflag reads options up to the first argument,
     where it would pass over arguments and read every option first (`cld join a -x` would name
-    `-x`). Each command's `Args` refuses that argument, and a `--` (`ArgsLenAtDash`), which
-    pflag would drop;
+    `-x`). Each command's `Args` refuses that argument - `resume`'s takes it as SESSION and
+    refuses the next (see 16) - and a `--` (`ArgsLenAtDash`), which pflag would drop;
   - a `FlagErrorFunc` turns pflag's typed errors (`NotExistError`, `ValueRequiredError`,
     `InvalidValueError`, `InvalidSyntaxError`) into cld's messages, and shows the help when `-h`
     or `--help` came before the error: cobra looks at `-h` only once every option has parsed;
@@ -774,8 +839,8 @@ Where the implementation departs from the plan above:
 - claude's `--settings` are marshalled from a struct, its fields in the order the script wrote
   them, which gives the same bytes.
 - A server per session (decision 13): `lookup` reports whether a session's server runs and whether
-  the session is on it, and `new`, `join` and `kill` need both, to refuse a server that outlives its
-  session. `noServer` takes three of tmux's messages for no server: `no server running on` (a stale
+  the session is on it, and `new`, `resume`, `join` and `kill` need both, to refuse a server that
+  outlives its session. `noServer` takes three of tmux's messages for no server: `no server running on` (a stale
   socket), `error connecting to` with `No such file or directory` (none), and
   `server exited unexpectedly` (the server exited while tmux asked it); any other error connecting,
   `File name too long` above all, ends cld with tmux's message. `Sessions` reads the socket
@@ -875,6 +940,10 @@ Where the implementation departs from the plan above:
   the cursor, the title and the question reach the terminal in that order, in one piece, from its
   output log. The same held lookup lets the tests signal cld, or press Esc or Ctrl+C, while the
   lookup runs, and check that its tmux is gone by the time cld has exited.
+- `resume` (decision 16) is a cobra command whose `Tmux.Resume` shares `Tmux.New`'s code: both
+  call one function, `create`, that makes the session on its own server, and differ in claude's
+  arguments only, so what `new` passes later reaches `resume` too, apart from the worktree. The
+  contract tests (C1-C10) run through `new`, and cover `resume` with it.
 
 ## What the tests found
 
@@ -904,8 +973,8 @@ tmux 3.3a to 3.7c:
 
 The `VT10x` in Findings came from the probing shell, which carried
 `TERMINAL_EMULATOR=JetBrains-JediTerm`: claude's `--debug` log read `extendedKeys=no (env:
-terminal=pycharm, no answer)` - the leak `new` guards against by leaving `TERMINAL_EMULATOR` out
-of the environment it runs tmux with. From a clean environment the
+terminal=pycharm, no answer)` - the leak `new` and `resume` guard against by leaving
+`TERMINAL_EMULATOR` out of the environment they run tmux with. From a clean environment the
 real claude 2.1.281 put the pane in key mode `Ext 2`, and Shift+Enter inserted a newline (checked
 by hand in a nested tmux).
 
@@ -918,3 +987,17 @@ by hand in a nested tmux).
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not
   something the test setup should grant itself.
+- `resume`'s probes with the real `claude` (#26: claude 2.1.282 on tmux 3.7c) are not run: each
+  starts or resumes conversations, and the Remote Control ones connect to claude.ai, so the
+  maintainer runs or allows them. They are: `claude --name X --resume X` and `--resume ID`,
+  whether claude accepts them and which name the conversation keeps; `--resume cld-NAME` with one,
+  several (after `/clear`, and after repeated `cld new -n NAME`) and no conversations of that
+  name, in a git repository and outside one, with what claude shows and its exit status;
+  `--resume cld-rev` with only `cld-review` stored and with both; leaving the launch picker with
+  Esc, and its exit status; another project's conversation picked after `Ctrl+A`; a
+  `cld new -n wt -w` conversation resumed from the main checkout and from a subdirectory, and
+  what `cld list` shows; the directory another project's conversation resumes in by ID;
+  `/resume cld-NAME` inside `cld new -n NAME`; and whether a session that turned Remote Control on
+  at startup, as cld's do, records its Remote Control session in the conversation. Until then the
+  README and decision 16 go by Claude Code's docs, and by claude's `--help` and bundle (see
+  Findings), and the README says which of it is not checked.

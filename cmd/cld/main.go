@@ -15,8 +15,8 @@ import (
 // version is what cld version prints; make dist and make install set it with -ldflags.
 var version = "dev"
 
-// main is the only place cld exits: new and join end in tmux, and everything else comes back
-// here with its exit status, printing cld's message first, if tmux has not printed its own.
+// main is the only place cld exits: new, resume and join end in tmux, and everything else comes
+// back here with its exit status, printing cld's message first, if tmux has not printed its own.
 func main() {
 	err := run(os.Args[1:])
 	var failure *fail.Error
