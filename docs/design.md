@@ -53,6 +53,7 @@ cld() {
 | a bare `tmux new-session -d -s cld-x` run inside claude's pane (tmux 3.3a to 3.7c) | the pane's `TMUX` names cld's socket, so `cld-x` lands on cld's server, as with `tmux -L cld` by hand; until cld marked its sessions, `list`, `join`, `kill` and `new` took it for one of theirs |
 | `new-session ... \; set -F -t =NAME: @cld '#{session_id}' \; set -w -t =NAME: remain-on-exit failed ...` (tmux 3.3a to 3.7c) | what follows `new-session` takes effect before tmux sees the new pane's program exit, however soon: the mark is there as the session is, and the window's `remain-on-exit` and `pane-died` hook keep and report a pane whose program exits at once. When `new-session` fails (`duplicate session`) tmux skips the rest, so the other session stays unmarked. `set -t =NAME`, like any command that takes a pane, finds nothing: `=NAME:` names the session |
 | `#{@cld}` in a format (tmux 3.3a, 3.7c) | tmux looks a user option up in the server's options, then the pane's, the window's and the global window options, and only then the session's and the global session options: a `@cld 1` set with `-s`, `-g` or `-w` counted for sessions that had none, and a window's `@cld 0` hid a session that had one. Compared with the session's id, a flag set anywhere makes no session cld's; one on the server or a window still hides one |
+| how `claude` 2.1.282 resolves `remoteControlAtStartup` (read from its bundle, not run: a live check would connect the session to claude.ai) | the first of the policy settings, the `--settings` (flag) settings and the user settings that has it wins, over the old global-config key; a `false` in the project's `.claude/settings.json` or `settings.local.json` beats all of them, and a `true` there is ignored with a warning. `/config`'s "Enable Remote Control for all sessions" writes the user setting, so `--settings` overrides it either way |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
@@ -158,7 +159,7 @@ Every Linux job runs the same Docker image a developer runs locally.
    claude then applies what it applies to every worktree it makes - `.worktreeinclude`,
    `worktree.baseRef`, `WorktreeCreate` hooks - reopens an existing one, and one repository keeps
    one worktree layout (`.claude/worktrees/NAME`, branch `worktree-NAME`). A new worktree
-   branches from `HEAD`: `cld` passes `--settings '{"worktree":{"baseRef":"head"}}'`, which
+   branches from `HEAD`: `cld` adds `"worktree":{"baseRef":"head"}` to its `--settings` (see 10), which
    outranks the user's and the project's settings, so the worktree carries the work it was started
    from rather than the remote's default branch. `cld` checks for a git work tree first, which
    saves a round trip through claude; workspace trust, which claude also requires, lives in
@@ -192,6 +193,12 @@ Every Linux job runs the same Docker image a developer runs locally.
    server, and its passthrough and `load-buffer` copies with it; a server per session would still
    need the mark for a session made on it by hand, and `list` would have to find the servers. The
    mark guards against mistakes, not intent: whatever reaches the socket can set it.
+10. Remote Control: `new` starts claude with `--settings '{"remoteControlAtStartup":true}'`, so a
+   session can also be continued from claude.ai or the Claude app, not only from a terminal that
+   joins it. Flag settings outrank the user's, so this holds whatever `/config` says; claude still
+   keeps Remote Control off under an org policy or a project that sets the key to `false` (see
+   Findings), and `cld` leaves those alone. With `-w` the worktree setting goes into the same JSON:
+   one `--settings` rather than two, whose merging claude does not document.
 
 ## Implementation notes
 

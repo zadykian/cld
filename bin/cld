@@ -3,8 +3,9 @@
 # https://github.com/zadykian/cld
 #
 # `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") running
-# `claude --name cld-NAME` in the current directory and attaches to it; with -w claude also gets
-# --worktree NAME, makes git worktree NAME from HEAD or reopens it, and works there.
+# `claude --name cld-NAME` in the current directory, with Remote Control on from the start, and
+# attaches to it; with -w claude also gets --worktree NAME, makes git worktree NAME from HEAD or
+# reopens it, and works there.
 # `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it, and `cld list`
 # shows the sessions; all three see only the sessions cld started (see has_session). A private
 # server (-L cld, no ~/.tmux.conf) keeps these options away from any other tmux use:
@@ -50,8 +51,9 @@ usage() {
 usage: cld COMMAND [OPTIONS]
 
 Run Claude Code in named sessions on a private tmux server that ignores ~/.tmux.conf.
-Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME". cld sees
-only the sessions it started; tmux -L cld ls lists every session on its server.
+Session NAME is the tmux session "cld-NAME", running "claude --name cld-NAME" with Remote
+Control on. cld sees only the sessions it started; tmux -L cld ls lists every session on its
+server.
 
 commands:
   new [-n NAME] [-w]  create session NAME in the current directory and attach to it
@@ -217,16 +219,21 @@ new)
             die 1 "session '$suffix' exists, but its claude exited; end it with cld kill -n $suffix"
         die 1 "session '$suffix' exists; attach to it with cld join -n $suffix"
     fi
-    claude=(claude --name "$name")
+    # Settings given on claude's command line override the user's and the project's. Remote
+    # Control starts with the session, so it can be reached from claude.ai and the mobile app;
+    # claude still keeps it off where org policy or the project's own settings turn it off.
+    settings='"remoteControlAtStartup":true'
     if $worktree; then
         # cld reports a missing repository in the terminal; claude would report it in a session
         # left to kill or, with tmux 3.3 and 3.4, in a pane that closes as claude exits.
         [[ $(git rev-parse --is-inside-work-tree 2>/dev/null) == true ]] ||
             die 1 "--worktree needs a git repository, and $PWD is not in one"
         # claude branches a new worktree from the remote's default branch unless worktree.baseRef
-        # is "head"; settings given on its command line override the user's and the project's.
-        claude+=(--settings '{"worktree":{"baseRef":"head"}}' --worktree "$suffix")
+        # is "head".
+        settings+=',"worktree":{"baseRef":"head"}'
     fi
+    claude=(claude --name "$name" --settings "{$settings}")
+    ! $worktree || claude+=(--worktree "$suffix")
     printf '\033]0;✳ %s\007' "$name"
     # claude and its arguments go to tmux as separate words: tmux then executes them directly
     # instead of through sh -c. What follows new-session in the same tmux command - the mark,

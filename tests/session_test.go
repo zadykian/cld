@@ -20,6 +20,9 @@ import (
 // How cld uses its tmux server, independent of the outer terminal: cld runs in the baseline
 // terminal (a pane of an outer tmux server).
 
+// remoteControl is the --settings every new claude gets: Remote Control on from the start.
+const remoteControl = `{"remoteControlAtStartup":true}`
+
 func TestSessionNames(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -39,7 +42,7 @@ func TestSessionNames(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{test.session}) {
 				t.Errorf("sessions %q, want [%s]", sessions, test.session)
 			}
-			if want := []string{"--name", test.session}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", test.session, "--settings", remoteControl}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != s.Work {
@@ -49,12 +52,12 @@ func TestSessionNames(t *testing.T) {
 	}
 }
 
-// new -w hands the worktree to claude: claude gets --worktree NAME, with settings that make it
+// new -w hands the worktree to claude: claude gets --worktree NAME, with settings that also make it
 // branch a new worktree from HEAD, and starts where cld runs; it then makes or reopens the
 // worktree itself and moves into it.
 func TestNewWorktree(t *testing.T) {
 	t.Parallel()
-	const fromHead = `{"worktree":{"baseRef":"head"}}`
+	const fromHead = `{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`
 	for _, test := range []struct {
 		args []string
 		want []string
