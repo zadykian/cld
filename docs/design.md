@@ -47,13 +47,13 @@ cld() {
 | `remain-on-exit-format` (tmux 3.3a, 3.7c) | a non-empty format scrolls the dead pane up a line to write itself at the bottom, so a short error on the top line goes out of sight; `#{session_name}` is empty in it, `#{window_name}` is not. An empty format writes nothing and scrolls nothing. `#{pane_dead_signal}` is a number on Linux and a name (`term`) where the C library has `sys_signame`, as on macOS (tmux 3.7c) |
 | `display-message` from the `pane-died` hook (tmux 3.5a, 3.7c) | with no terminal on the dead pane's window it goes to another session's terminal, the one used last; with no terminal attached at all tmux keeps it, as it keeps errors in its configuration, and shows it as `(null):0: claude exited with ...` in view-mode over the next session a terminal attaches to - any session, a new one too - whose claude then gets no keys until `q`. Under `if -F '#{window_active_clients}'` it reaches only a terminal on that window. After `attach-session` in the same command list, `display-message` reaches the attaching terminal, on its message line |
 | a dead pane that had focus reporting (`?1004h`) on, client attached | tmux 3.3a crashes on `kill-session` and on detach; 3.4 on detach and on a focus change of the terminal - both with every session on the server. 3.5a and 3.7c survive keys, wheel, clicks, paste, focus changes, resize, detach, reattach, the terminal closing and `kill-session`; `kill-pane` is safe in all four |
-| `cld list` where `LC_ALL`, `LC_CTYPE` and `LANG` do not name UTF-8 - unset or `C`, as over ssh, in containers and cron (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux writes a command's output to such a client with `_` for each character it cannot print: the tabs, so a session showed as `demo_detached_/tmp` under NAME with STATE and DIRECTORY empty, and a directory's non-ASCII letters (`/tmp/café` became `/tmp/caf_`). `tmux -u` marks the client UTF-8, and the output arrives as it is. The other output cld reads - `cld` or `other` from its session lookup, `list-panes`' `0` or `1` - is printable ASCII and passes unchanged |
+| `cld list` where `LC_ALL`, `LC_CTYPE` and `LANG` do not name UTF-8 - unset or `C`, as over ssh, in containers and cron (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux writes a command's output to such a client with `_` for each character it cannot print: the tabs, so a session showed as `demo_detached_/tmp` under NAME with STATE and DIRECTORY empty, and a directory's non-ASCII letters (`/tmp/café` became `/tmp/caf_`). `tmux -u` marks the client UTF-8, and the output arrives as it is. The other output cld reads - the session's name, `cld-NAME`, from its session lookup, `list-panes`' `0` or `1` - is printable ASCII and passes unchanged |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, and tmux refuses a client with `$TMUX` set only when its tty has the name of one of the server's own panes - but see the next row |
 | a dead pane's pty (tmux 3.3a to 3.7c) | tmux closes it but keeps its name (`#{pane_tty}`), and the system hands the name to the next pty opened. A client with `$TMUX` set on that pty - a pane of another tmux - is refused with `sessions should be nested with care, unset $TMUX to force`: tmux compares the client's tty with every pane's, dead or alive. An empty `$TMUX` skips the check; set, even empty, it still makes the client take the terminal for UTF-8 whatever the locale says |
 | a bare `tmux new-session -d -s cld-x` run inside claude's pane (tmux 3.3a to 3.7c) | the pane's `TMUX` names cld's socket, so `cld-x` lands on cld's server, as with `tmux -L cld` by hand; until cld marked its sessions, `list`, `join`, `kill` and `new` took it for one of theirs |
 | `new-session ... \; set -F -t =NAME: @cld '#{session_id}' \; set -w -t =NAME: remain-on-exit failed ...` (tmux 3.3a to 3.7c) | what follows `new-session` takes effect before tmux sees the new pane's program exit, however soon: the mark is there as the session is, and the window's `remain-on-exit` and `pane-died` hook keep and report a pane whose program exits at once. When `new-session` fails (`duplicate session`) tmux skips the rest, so the other session stays unmarked. `set -t =NAME`, like any command that takes a pane, finds nothing: `=NAME:` names the session |
 | `#{@cld}` in a format (tmux 3.3a, 3.7c) | tmux looks a user option up in the server's options, then the pane's, the window's and the global window options, and only then the session's and the global session options: a `@cld 1` set with `-s`, `-g` or `-w` counted for sessions that had none, and a window's `@cld 0` hid a session that had one. Compared with the session's id, a flag set anywhere makes no session cld's; one on the server or a window still hides one |
-| `tmux -V` beside a server started by an older tmux (a 3.5a server from Debian's package with a 3.7c client built from source, in the image that `tests/Dockerfile` built with `BASE=debian:trixie TMUX_VERSION=3.7c` before #21, which installed Debian's tmux 3.5a beside the source build; for #21 also a 3.6 server on the default socket with a 3.7c client) | `tmux -V` reports the client: `tmux 3.7c`. The server keeps running the tmux that started it - `#{version}` read `3.5a`, and `3.6` - and answers the newer client: the 3.7c client made a session on the 3.5a server with `new-session`, and set `remain-on-exit failed` on its window. So a check of `tmux -V` passes after an upgrade while the sessions, old and new, run on the old server until it exits |
+| `tmux -V` beside a server started by an older tmux (a 3.5a server from Debian's package with a 3.7c client built from source, in the image that `tests/Dockerfile` built with `BASE=debian:trixie TMUX_VERSION=3.7c` before #21, which installed Debian's tmux 3.5a beside the source build; for #21 also a 3.6 server on the default socket with a 3.7c client) | `tmux -V` reports the client: `tmux 3.7c`. The server keeps running the tmux that started it - `#{version}` read `3.5a`, and `3.6` - and answers the newer client: the 3.7c client made a session on the 3.5a server with `new-session`, and set `remain-on-exit failed` on its window. So a check of `tmux -V` passes after an upgrade while the sessions on the old server - on one shared server, as before decision 13, the new ones too - run on it until it exits |
 | how `claude` 2.1.282 resolves `remoteControlAtStartup` (read from its bundle, not run: a live check would connect the session to claude.ai) | the first of the policy settings, the `--settings` (flag) settings and the user settings that has it wins, over the old global-config key; a `false` in the project's `.claude/settings.json` or `settings.local.json` beats all of them, and a `true` there is ignored with a warning. `/config`'s "Enable Remote Control for all sessions" writes the user setting, so `--settings` overrides it either way |
 | what the claude minimum rests on (#21): Claude Code's changelog, and the linux-x64 npm bundles of 2.1.118, 2.1.119, 2.1.133, 2.1.221 and 2.1.222, read for the issue, not run | `--worktree` came in 2.1.49, `-n`/`--name` in 2.1.76 and the `worktree.baseRef` setting in 2.1.133 (changelog). `remoteControlAtStartup` moved into the settings in 2.1.119, with `/config`'s other settings ("now persist to `~/.claude/settings.json`", changelog): 2.1.118 reads it from the global config (`~/.claude.json`) only, which `--settings` does not reach. 2.1.133 and 2.1.221 decide from the merged settings, then the global config, and in the merge flag settings outrank the project's and the local ones, so cld's `true` beats a project's `false`. 2.1.222 returns `false` first when the project or local settings have it, then takes the first of the policy, flag and user settings, as the row above records for 2.1.282; its changelog agrees: repo-local settings "can no longer turn it on (they can still turn it off)". On 25 September 2026 npm's `stable` tag was at 2.1.274 and `latest` at 2.1.282; for the issue, Homebrew's default `claude-code` cask and the apt, dnf and apk `stable` repositories served 2.1.274 too |
 | how tmux starts a command given as several words, such as `new-session -c DIR claude ...` (tmux 3.7c, glibc 2.43, Ubuntu 26.04) | with `execvp`, in `DIR`, and with the `PATH` of the client that ran `new-session`, also for a second session on a server that a client with another `PATH` started. So a bare `claude` is looked up in every entry, relative ones included, from `DIR`: with `PATH=.:/abs`, or `:/abs`, and a `claude` in both, tmux started the one in `DIR`, where cld had checked `/abs/claude`. A script without `#!`, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh`, by name and by path |
@@ -63,7 +63,14 @@ cld() {
 | the script's name check and `list`'s columns under `en_US.UTF-8`, `C.UTF-8` and `C` (bash 5.3.9, glibc 2.43; bash 3.2 on macOS not checked) | `[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]` follows the locale's collation: under `en_US.UTF-8` it matched `é`, `ñ`, `ß`, `Ä`, `ǅ`, `①` and `٣`, so `cld new -n café` made `cld-café`, which `tmux -L cld kill-session -t =cld-café` ends (tmux 3.7c); under `C.UTF-8` and `C` it matched ASCII only. `${#name}` counts characters under a UTF-8 locale and bytes under `C`; `printf '%-*s'` pads by bytes under all three, so `é` took three columns of a four-column NAME |
 | where bash itself stepped in for the script (bash 5.3.9 on Ubuntu 26.04 unless noted; tmux 3.7c) | a write to stdout that failed (`/dev/full`, or a descriptor open for reading) ended the script under `set -e` with status 1 and bash's message (`printf: write error: No space left on device`, `cat: -: ...` for the usage), and `new` and `join` did not get as far as their `exec` of tmux; `printf` and `cat` failed the same way under 5.2.15 and 3.2.57. A write to a pipe whose reader had gone ended it by SIGPIPE (the usage with status 141, `cat`'s, under `set -e`), and when it was started with SIGPIPE ignored - from a script under `trap '' PIPE`, say - with status 1 and `printf: write error: Broken pipe` (`cat: -: Broken pipe` for the usage). A tmux that could not run at all ended it with 127 when there was no such file, and 126 for a file the system refuses (`Exec format error`); for a `#!` naming a missing interpreter, 127 with Debian's 5.2.15 and 5.2.37 and Ubuntu's 5.2.21, 126 with 5.3.9 and 3.2.57 as released. A text file without `#!` bash ran as a script. A tmux on the `PATH` without the execute permission, with no executable one on it, bash found all the same - its search takes the first file of that name where none is executable, for `command -v` too - and ran, ending with `Permission denied` and 126; a `claude` like that let `new` go on and hand it to tmux, and a `git` like that made `new -w` say the directory was in no git repository. A tmux that stopped being runnable once it had answered `tmux -V` ended the script from a session lookup (`list-sessions`) with its `die 1`, status 1 and bash's message, and from `kill-session` or the `exec` with 127 or 126. With `PATH` unset bash searched a default path built into it, which differs by build: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` (Ubuntu's 5.2.21 and 5.3.9), `/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:.` (Debian's 5.2.15 and 5.2.37), `/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin:.` (3.2.57 as released); macOS's `/bin/bash` was not checked. Started in a directory since removed, bash warned `shell-init: error retrieving current directory: ...` and kept the `PWD` it got: `new` passed that path to tmux with `-c`, and tmux started claude in the home directory (with Debian's 5.2.37); `new -w` said the directory was in no git repository |
 | the help cobra 1.10.2 generates with its default templates (pflag 1.0.9), from a test program with cld's commands | commands are listed sorted by name unless `cobra.EnableCommandSorting` is false; then in the order they were added, but for the help command - cobra's or one set with `SetHelpCommand` - which `Execute` moves after all the others as it runs (`InitDefaultHelpCmd`). A flag's value shows as its type (`--name string`) unless its usage names it in backquotes. A command with flags gets ` [flags]` at the end of its usage line, after any argument in its `Use`, unless `Use` has `[flags]` already or `DisableFlagsInUseLine` is set. Nothing is wrapped; a newline in a flag's usage goes on under the usage's column. The help function writes to stdout and drops a write that fails: `help`, and `new --help`, with stdout on `/dev/full` or open for reading only print nothing, on stderr either, and exit 0. `help nope` prints ``Unknown help topic [`nope`]`` and the root's usage on stderr and exits 0; `help new join` shows `new`'s help |
-| `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
+| `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories. The path `TMUX_TMPDIR/tmux-UID/cld-NAME` has to stay within 107 bytes: with a NAME of 64 characters it overflows from a `TMUX_TMPDIR` of 32 characters as UID 0, and of 29 with a four-digit UID (tmux 3.3a, 3.4, 3.5a, 3.7c, as UID 0 and 1000) |
+| a pane's environment on one server shared by two sessions and on a server per session: the server started from a shell with `FOO=first`, the second session created from one with `FOO=second`, `VIRTUAL_ENV`, a longer `PATH` and another `SSH_AUTH_SOCK` (tmux 3.3a, 3.4, 3.5a, 3.7c; `sh -c 'env > FILE; sleep 600'` in claude's place) | on the shared server the second pane got `FOO=first` and no `VIRTUAL_ENV`: only `PATH`, which tmux takes from the client that runs the command, and the `update-environment` variables (`SSH_AUTH_SOCK`, `DISPLAY`, ...) came from the shell that created the session. On servers of their own each pane got exactly the environment of the shell that created it |
+| a bare `tmux new-session -d -s cld-x` inside a pane of server `cld-c` (tmux 3.3a, 3.4, 3.5a, 3.7c) | the session lands on `cld-c`, whose socket the pane's `TMUX` names; `tmux -L cld-x` finds no socket (`error connecting to ... (No such file or directory)`). `kill-session -t =cld-c` leaves the server running with `cld-x`; `kill-server` ends both. The pane's program gets SIGHUP from either, as when its terminal closes. Once `kill-server` has returned, the server answered no more in 200 tries (3.3a, 3.7c); once `kill-session` of a server's last session had, the server still answered 1 or 2 times in 200 |
+| a terminal attached to session `cld-a` when its server, `cld-a`, is killed, with and without another session on the server (tmux 3.3a, 3.4, 3.5a, 3.7c) | `kill-server` alone ends the terminal's client with `[server exited]` and status 1: tmux tells its clients that the server is shutting down, which the client takes for an error. `kill-session -t =cld-a \; kill-server`, one command, ends it with `[exited]` and status 0, as `kill-session` did on the shared server: the client hears that its session exited before the server shuts down. The pane's program and the other session's get SIGHUP, and once the command has returned the server answered no more in 200 tries (3.3a, 3.7c). But `kill-server` only signals the server (`kill(getpid(), SIGTERM)`), which then closes each new connection at once until its clients have gone and it exits (`server_accept` and `server_loop` in `server.c`, 3.3a, 3.4, 3.7c): a client that connects meanwhile fails with `server exited unexpectedly`. With a terminal attached, `list-sessions` run the moment the command returned failed so in 4 of 86 rounds and `new-session` in 1 (3.7c; none in 99 with 3.3a), and a `new-session` run the moment a `list-sessions` had failed so failed the same way (14 times with 3.7c, once with 3.3a). `cld kill -n r` with a terminal attached, then at once `cld new -n r`, reached a fresh server in 100 of 100 rounds (3.3a, 3.7c) |
+| a socket directory that ignores case: a casefold tmpfs (Linux 7.0, `chattr +F` on the directory) as `TMUX_TMPDIR`, with session `cld-a` on server `cld-a` (tmux 3.7c) | `tmux -L cld-A` reaches server `cld-a`, whose socket file is the one `cld-a`; `#{socket_path}` there is the path the server was started on, `.../cld-a`. Until cld read it, `new`, `join` and `kill -n A` took the server for one that outlived session `A` and pointed at `tmux -L cld-A kill-server`, which ended `a`. Over a stale socket `cld-a`, `new-session` on `cld-A` starts a fresh server, and the socket is `cld-A` from then on. macOS, whose default APFS ignores case, was not checked |
+| `list-sessions` on a server that exits as it asks - its last session ends, or `kill-server` runs (tmux 3.3a, 3.4, 3.5a, 3.7c; servers started and ended in a loop beside a loop of `cld list`, for 15 s) | the client connects, and the server closes the connection without an answer: tmux fails with `server exited unexpectedly`, status 1 (`CLIENT_EXIT_LOST_SERVER` in tmux's `client.c`). Until `list` passed over it, it failed so in 24 of 173 runs (3.3a), 46 of 294 (3.4), 19 of 310 (3.5a) and 6 of 147 (3.7c); since, in none of 311, 224, 368 and 381. A client that the server tells it is shutting down exits with no output and status 0 instead (read from `client.c`, not seen) |
+| the socket of `tmux -L NAME` (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux never removes it: not when the server exits with its last session, not on `kill-server`, not on SIGKILL. `list-sessions` on such a stale socket fails with `no server running on DIR/NAME`, on a name never used with `error connecting to DIR/NAME (No such file or directory)`, both with status 1; `new-session` on a stale socket starts a fresh server there. The socket is in `tmux-UID` under `TMUX_TMPDIR`, or under `/tmp` where `TMUX_TMPDIR` is unset, empty or names nothing that exists; tmux resolves a symlink in it. A socket path of 107 bytes works on Linux, one of 108 fails with `File name too long`. Where `tmux-UID` is a file, not a directory, every command fails with `DIR/tmux-UID is not a directory`, status 1 |
+| what a server per session costs (tmux 3.3a, 3.4, 3.5a, 3.7c, in Docker, on a host busy with other builds) | 3.8 MB (3.3a) to 5.1 MB (3.5a) resident per server, the same with 10 sessions on it, next to about 400 MB for claude; one `list-sessions` took 6-12 ms, and one per socket over 36 sockets, 16 of them stale, 136-282 ms. #22's plan measured 3-6 ms and 115-170 ms on an idle machine (3.3a, 3.7c) |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
@@ -95,9 +102,9 @@ cld() {
    its argv, cwd, environment and raw input bytes, and emits OSC sequences on request.
 3. **Terminal contract**: the same checks run against several *outer terminals* through drivers.
 
-Isolation needs no seams in the program: `TMUX_TMPDIR` moves the `-L cld` socket into a sandbox,
-`HOME` points at a temporary directory, `TMUX` is unset, and the probe is first on `PATH`.
-`cld new` and `cld join` attach, so they need a pty; a terminal driver provides one.
+Isolation needs no seams in the program: `TMUX_TMPDIR` moves cld's sockets (`-L cld-NAME`) into
+a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the probe is first on
+`PATH`. `cld new` and `cld join` attach, so they need a pty; a terminal driver provides one.
 
 ### Terminal contract
 
@@ -108,10 +115,10 @@ Isolation needs no seams in the program: `TMUX_TMPDIR` moves the `-L cld` socket
 | C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
 | C4 | mouse wheel and focus in/out reach claude; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
 | C5 | OSC 52 / OSC 9 wrapped in tmux passthrough, and copies through `tmux load-buffer -w`, reach the outer terminal | terminal |
-| C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created from another terminal on a server started from the JetBrains terminal | probe env dump |
+| C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created in the JetBrains terminal, nor does what claude starts through tmux on its server | probe env dump, tmux |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
-| C9 | claude exiting ends its session, and with the last session the server; the terminal is left clean. A claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
+| C9 | claude exiting ends its session, and its server unless tmux sessions claude made keep it running; the terminal is left clean. A claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
@@ -159,20 +166,23 @@ The Linux job runs the same Docker image a developer runs locally.
 ## Decisions
 
 1. Naming: names are validated (`[A-Za-z0-9][A-Za-z0-9_-]*`), not sanitised - a silent rename
-   would make `cld foo.bar` and the session it attaches to disagree.
+   would make `cld foo.bar` and the session it attaches to disagree. Since 13 a name has at most
+   64 characters, so that its server's socket path fits (see 13.2).
 2. Inside another tmux: `cld` nests; the private socket already allows it. Inside a live pane of
-   its own server - claude's external editor, say - a session attached would show inside itself,
-   and `new` and `join` refuse, pointing at `C-q d`; tmux refuses there too, but advises to unset
-   `$TMUX`. tmux goes by the tty's name, and a dead pane's name comes back with the next pty
-   opened (see Findings), so `cld` looks at the live panes itself and gives its client an empty
-   `TMUX`, which tmux's check skips.
+   one of its own servers - claude's external editor, say - a session attached would show inside
+   a session of cld's, itself or another, both taking `C-q`, and `new` and `join` refuse, pointing
+   at `C-q d`; tmux refuses there too, but advises to unset `$TMUX`. tmux goes by the tty's name,
+   and a dead pane's name comes back with the next pty opened (see Findings), so `cld` looks at
+   the live panes itself and gives its client an empty `TMUX`, which tmux's check skips. Since 13
+   it looks only when the socket `TMUX` names is one of cld's, `cld-NAME`, and asks that server.
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
    fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
    `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME`. Commands address sessions as
    `=cld-NAME`, since tmux would otherwise take `cld-rev` for `cld-review`. `list` shows the
    directory claude is in now (`pane_current_path`), not the one its session started in, and
    nothing at all when no server runs. `kill` ends a session with `kill-session`: claude gets
-   SIGHUP, as when its terminal closes.
+   SIGHUP, as when its terminal closes (since 13, `kill-session` and then `kill-server` in one
+   tmux command, with the same SIGHUP).
 4. Worktrees: `new -w` passes `--worktree NAME` to claude instead of running `git worktree add`.
    claude then applies what it applies to every worktree it makes - `.worktreeinclude`,
    `worktree.baseRef`, `WorktreeCreate` hooks - reopens an existing one, and one repository keeps
@@ -194,7 +204,7 @@ The Linux job runs the same Docker image a developer runs locally.
    attaching to such a session, with a `display-message` in the same command list as
    `attach-session`. `list` shows such a session as `exited`, where it started, and `new` refuses
    the name, pointing at `kill`, rather than replacing the session unseen. The option and the hook
-   go to claude's window only (see 9).
+   go to claude's window only (see 9 and 13).
 6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
    Claude Code 2.1.222 or newer, the first release that does what cld passes and relies on. Both
    are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
@@ -217,11 +227,13 @@ The Linux job runs the same Docker image a developer runs locally.
      stayed off below it (see Findings) - and kept those users, but 3.5 and 3.6 would run
      untested; keeping 3.3 and dropping versions from the tests alone would leave a branch that no
      CI runs.
-   - The check reads the client: a server keeps running the tmux that started it (see Findings),
-     so after an upgrade the sessions started before, and any started while it runs, stay on the
-     older server until the last one ends. The gap is accepted, as it was with the 3.3 check, and
-     the README says to end cld's sessions after upgrading tmux; reading the server's `#{version}`
-     as well was the alternative.
+   - The check reads the client: a server keeps running the tmux that started it (see Findings).
+     Since each session has a server of its own (13), `new` starts a fresh server with the tmux it
+     checked, so after an upgrade only the sessions started before it stay on the older tmux, each
+     until it ends; on one shared server, the sessions started while one of those ran stayed there
+     too. The gap is accepted, as it was with the 3.3 check, and the README says to end the
+     sessions started before upgrading tmux; reading the server's `#{version}` as well was the
+     alternative.
    - claude is checked where cld starts it: `new` runs `claude --version` once it has found its
      tools and checked tmux's version, before any other tmux command. The issue placed it right
      after the lookup of `claude`; it comes after the checks every command makes instead - the
@@ -274,18 +286,18 @@ The Linux job runs the same Docker image a developer runs locally.
      would break cld every few days: npm published 2.1.280 to 2.1.282 on 22 to 24 September 2026.
 7. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
 8. iTerm2: not automated yet (see Status).
-9. Only cld's own sessions: the private server keeps cld's options away from other tmux use, but
-   not other tmux use away from cld's server - everything claude runs inherits `TMUX` (see
-   Findings). `new` marks each session it starts, in the tmux command that creates it: the user
-   option `@cld` holds the session's id, so a `@cld` that a format finds elsewhere first makes no
-   other session cld's (see Findings). `list` shows marked sessions only, and `new`, `join` and
-   `kill` refuse a name an unmarked session holds, saying so and pointing at `tmux -L cld ls`.
-   What `cld` sets for a failed claude (see 5) goes to claude's window, not the server, so such a
-   session whose program fails closes as tmux would close it, rather than staying where `cld`
-   neither lists nor kills it. Starting claude without `TMUX` would keep its tmux off cld's
-   server, and its passthrough and `load-buffer` copies with it; a server per session would still
-   need the mark for a session made on it by hand, and `list` would have to find the servers. The
-   mark guards against mistakes, not intent: whatever reaches the socket can set it.
+9. Only cld's own sessions (from 0.2.1; replaced by 13): the private server keeps cld's options
+   away from other tmux use, but not other tmux use away from cld's server - everything claude runs
+   inherits `TMUX` (see Findings). `new` marks each session it starts, in the tmux command that
+   creates it: the user option `@cld` holds the session's id, so a `@cld` that a format finds
+   elsewhere first makes no other session cld's (see Findings). `list` shows marked sessions only,
+   and `new`, `join` and `kill` refuse a name an unmarked session holds, saying so and pointing at
+   `tmux -L cld ls`. What `cld` sets for a failed claude (see 5) goes to claude's window, not the
+   server, so such a session whose program fails closes as tmux would close it, rather than staying
+   where `cld` neither lists nor kills it. Starting claude without `TMUX` would keep its tmux off
+   cld's server, and its passthrough and `load-buffer` copies with it; a server per session would
+   still need the mark for a session made on it by hand, and `list` would have to find the servers.
+   The mark guards against mistakes, not intent: whatever reaches the socket can set it.
 10. Remote Control: `new` starts claude with `--settings '{"remoteControlAtStartup":true}'`, so a
    session can also be continued from claude.ai or the Claude app, not only from a terminal that
    joins it. Flag settings outrank the user's, so this holds whatever `/config` says; claude still
@@ -336,12 +348,14 @@ The Linux job runs the same Docker image a developer runs locally.
     7. `list` pads a name by its characters: bash took the column's width in characters under a
        UTF-8 locale and in bytes under another (`C`, say), and `printf` padded by bytes (see
        Findings), so a name with non-ASCII letters could come out short of its column. Such
-       names came from 8, or from a session renamed by hand; their columns now line up;
+       names came from 8, or from a session renamed by hand; their columns lined up until 13,
+       since which `list` shows neither (see 13.4);
     8. names are ASCII, as decision 1 has them, whatever the locale: bash's `[A-Za-z0-9]` followed
        the locale's collation, so under `en_US.UTF-8` and the like (glibc; see Findings) the
        script also took letters and digits such as `é`, `ß`, `①` and `٣`, and made sessions such
-       as `cld-café`. cld lists such a session but refuses its name to `join` and `kill`, and
-       gives no legacy hint for it; `tmux -L cld kill-session -t =cld-café` ends it;
+       as `cld-café`. cld lists such a session (until 13, see 13.4) but refuses its name to
+       `join` and `kill`, and gives no legacy hint for it; `tmux -L cld kill-session -t =cld-café`
+       ends it;
     9. where bash itself stepped in (see Findings), cld keeps the exit status but not bash's
        words. A write to stdout that fails - `list`, `help` and `version`, and the title `new`
        and `join` print - ends cld with status 1, without handing over to tmux:
@@ -406,6 +420,84 @@ The Linux job runs the same Docker image a developer runs locally.
        session is, the private server, Remote Control, the detach keys and failed sessions.
        `list`'s one line in the root's help is shorter than the usage text's, and its own help
        says the rest. `version`'s help names `-V` and `--version`, since cobra lists commands only.
+13. A server per session (#22), in place of the mark (see 9): session `cld-NAME` runs on a tmux
+    server of its own, `tmux -L cld-NAME`, with the same options, and cld looks for that one
+    session on that one server, by its whole name. Whatever claude runs inherits `TMUX` and
+    reaches claude's own server, where a session it makes has another name - `cld-NAME` is taken -
+    so no mark is needed, and none is set (see Findings). 9's reasons against this no longer
+    hold: a session made by hand on server `cld-NAME` has another name too, unless it spells out
+    cld's scheme on purpose (`tmux -L cld-x new -s cld-x`), and the mark did not guard against
+    intent either; and `list` finds the servers with one read of a directory and one
+    `list-sessions` a socket (see Findings). It also fixes the environment: tmux starts a pane
+    with the environment of the client that started the server, but for `PATH` and the
+    `update-environment` variables, so on the shared server every claude had the first session's
+    `CLAUDE_CONFIG_DIR`, `VIRTUAL_ENV`, `AWS_PROFILE`, `LANG` and the like; now each has the
+    environment of the shell that ran `cld new`. And a crash, or a stray `tmux kill-server` or
+    `set -g` from anything claude runs, reaches one session. What it costs:
+    1. `list` reads tmux's socket directory, `tmux-UID` under `TMUX_TMPDIR` - or under `/tmp` where
+       that is unset, empty or names nothing, as tmux falls back (see Findings) - and asks the
+       server of each socket `cld-NAME` whose NAME is valid for its session `cld-NAME`, one after
+       another, with `-u` as before; it shows them in the order of their names, as tmux listed the
+       sessions of one server. A stale socket says no server is running there and is passed over, as
+       is a server that exits while `list` asks it - its claude exits, a `cld kill` runs - which
+       tmux reports as `server exited unexpectedly` (see Findings); on one shared server, only the
+       last session's end ended the server. Sockets pile up, one for each name ever used, until
+       `/tmp` is cleaned: tmux removes none, and cld does not either, since tmux replaces a stale
+       socket under a lock and an unlocked `rm` could race a `cld new` and remove the socket of the
+       server it had just started (read from tmux's client code, not tested). A socket directory
+       that `list` cannot read - a file in its place, say - ends it with the reason, and `new`,
+       `join` and `kill` with tmux's message (see Findings). No test covers the fallback to
+       `/tmp`, which would read the user's own sockets;
+    2. NAME has at most 64 characters, checked before its characters, with a message of its own: the
+       socket path has to fit in `sun_path`, 107 bytes and a NUL on Linux (see Findings) and 103 on
+       macOS (not checked here), which leaves about 88 characters of NAME in Linux's default
+       directory, `/tmp/tmux-UID`, and 77 in macOS's, `/private/tmp/tmux-UID`. A name longer than 64
+       gets no legacy hint either (see 3). Under a `TMUX_TMPDIR` longer than those directories,
+       counted once tmux has resolved its symlinks (see Findings), a shorter NAME can still
+       overflow `sun_path` - as `$TMPDIR` on macOS, `/var/folders/...` (`/private/var/folders/...`
+       resolved), would beyond about 33 characters (worked out, not checked) - and tmux fails with
+       `File name too long` (see Findings): only a socket that is stale or missing counts as no
+       server, so `new`, `join` and `kill` end with tmux's message rather than take the name for a
+       session that does not exist;
+    3. `C-q s`, `C-q (` and `C-q )` no longer switch between cld's sessions, and tmux's paste
+       buffers are no longer shared between them; cld documented neither;
+    4. `tmux -L cld ls` no longer shows every session: each is `tmux -L cld-NAME ls`. The sessions
+       of cld 0.3.0 and earlier stay on the `-L cld` server, where cld does not look, not even for
+       a release: the README says to end them before upgrading, or afterwards with
+       `tmux -L cld kill-session -t =cld-NAME`. `list` no longer shows the sessions with
+       non-ASCII names that 0.3.0 made (11.7 and 11.8), nor a session renamed by hand, which is
+       not the one its server is named after (11.7);
+    5. one more tmux process per session, 4 to 5 MB, next to about 400 MB for claude;
+    6. where tmux's socket directory ignores case - macOS's default file system, APFS, does, and
+       `/private/tmp` is on it (not checked on macOS) - names that differ only in case share one
+       socket, where the shared server kept `a` and `A` apart: `tmux -L cld-A` reaches the server
+       of session `a`, which has no session `cld-A` (see Findings). `new`, `join` and `kill` would
+       take it for a server that outlived session `A` and point at `tmux -L cld-A kill-server`,
+       which ends `a`. So where the server they reach runs without its session, they ask it for
+       the socket it was started on (`#{socket_path}`), and if that names a NAME that differs only
+       in case, they refuse the name as clashing with that session, pointing at no `kill-server`.
+       Names stay case-sensitive: where the directory keeps case, as on Linux, `a` and `A` are two
+       sessions.
+
+    Settled with it: `kill` runs `kill-session` and then `kill-server`, in one tmux command, which
+    also ends what claude started through tmux, so nothing lingers and the next `cld new -n NAME`
+    starts a fresh server. The session goes first so that a terminal attached to it ends as it did,
+    with `[exited]` and status 0: `kill-server` alone tells it the server exited, with status 1.
+    claude gets SIGHUP as with `kill-session` alone. Once `cld kill` returns the server answers no
+    more, but it has not always gone: `kill-server` only signals it, and until its clients have
+    gone it still takes a connection and closes it at once, which tmux reports as
+    `server exited unexpectedly`. cld's lookups count that as no server, and a `cld new -n NAME`
+    run the moment `cld kill` returned started a fresh server every time it was tried (see
+    Findings). A server that outlives its session - claude exited, and the tmux sessions it made
+    keep the server running - is not reused: `new` refuses the name, pointing at
+    `tmux -L cld-NAME ls` and `tmux -L cld-NAME kill-server`, so that every claude gets the
+    environment of the shell that ran `cld new`; `list` shows nothing for such a server, and `join`
+    and `kill` refuse the name the same way, rather than send the user to a `cld new` that refuses
+    it (but see cost 6 for a server that is another session's). `new` and `join` refuse a terminal
+    that is a live pane of any of cld's servers (see 2), found through the socket `TMUX` names, and
+    say whose session's server it is; the terminal of any other tmux nests without a check. The
+    options stay as they were, the fixed `terminal-features[100]` index too: `new` sets them on a
+    fresh server, but two `cld new -n NAME` at once can both set them on one.
 
 ## Implementation notes
 
@@ -436,7 +528,7 @@ Where the implementation departs from the plan above:
 - The Go port (decision 11) is `cmd/cld`, the command line, and `internal/session`, the tmux
   side, whose package comment is the script's header comment. Errors carry an exit status up to
   `main` (`internal/fail`), the only place that exits; `new` and `join` end in `syscall.Exec` of
-  tmux, and a tmux command that fails (`tmux -V`, `kill-session`) ends cld with its status after
+  tmux, and a tmux command that fails (`tmux -V`, the kill) ends cld with its status after
   its own message; one that cannot run ends it with 127 or 126, as `syscall.Exec` failing does.
   A session lookup (`list-sessions`) that fails ends cld with status 1 and what tmux said, or
   the same `cannot run` message, as the script's `die 1` did.
@@ -472,6 +564,22 @@ Where the implementation departs from the plan above:
   after the name, which uutils' `tty` (0.8.0, Ubuntu 26.04) does not print.
 - claude's `--settings` are marshalled from a struct, its fields in the order the script wrote
   them, which gives the same bytes.
+- A server per session (decision 13): `lookup` reports whether a session's server runs and whether
+  the session is on it, and `new`, `join` and `kill` need both, to refuse a server that outlives its
+  session. `noServer` takes three of tmux's messages for no server: `no server running on` (a stale
+  socket), `error connecting to` with `No such file or directory` (none), and
+  `server exited unexpectedly` (the server exited while tmux asked it); any other error connecting,
+  `File name too long` above all, ends cld with tmux's message. `Sessions` reads the socket
+  directory with `os.ReadDir`, which sorts by name, and takes from each server's answer only a line
+  for the session named like the server. `ownPane` asks the server `TMUX` names with `-S` and that
+  path, whatever `TMUX_TMPDIR` is now. In the tests, `Sandbox.Tmux` takes the server to run against;
+  `Sessions` and `Clients` go over every socket `cld-*`, and `Sessions` names a session that is not
+  on the server named like it `SERVER/SESSION`, so that one on the wrong server shows. The fake tmux
+  answers `list-sessions` with `no server running` unless a test gives it sessions: `new` now tells
+  a server without its session from no server. It fails as a server exiting does for the servers
+  `CLD_FAKE_TMUX_EXITED` names, and with `CLD_FAKE_TMUX_REAL` runs a real tmux for all but
+  `list-sessions`, so that a second `cld new` can reach a running server as the one of two at once
+  that loses the race does.
 
 ## What the tests found
 

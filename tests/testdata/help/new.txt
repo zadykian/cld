@@ -5,7 +5,7 @@ Usage:
 
 Flags:
   -h, --help        help for new
-  -n, --name NAME   the session NAME: letters, digits, "_" and "-", starting
-                    with a letter or digit (default "main")
+  -n, --name NAME   the session NAME: up to 64 letters, digits, "_" and "-",
+                    starting with a letter or digit (default "main")
   -w, --worktree    run claude in git worktree NAME, which claude creates from
                     HEAD or reopens (claude --worktree NAME)

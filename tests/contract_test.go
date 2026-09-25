@@ -82,7 +82,7 @@ func TestContractTitle(t *testing.T) {
 func TestContractClientFeatures(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		s, _, _ := startContract(t, name)
-		client := s.MustTmux("list-clients", "-F", "#{client_termname}|#{client_termtype}|#{client_termfeatures}")
+		client := s.MustTmux("cld-contract", "list-clients", "-F", "#{client_termname}|#{client_termtype}|#{client_termfeatures}")
 		t.Logf("client: %s", client)
 		detected := strings.Split(strings.SplitN(client, "|", 3)[2], ",")
 		for _, feature := range expectations[name].features {
@@ -229,8 +229,8 @@ func TestContractPaste(t *testing.T) {
 	})
 }
 
-// C9: claude exiting - /exit - ends its session, and with the last session the server; cld
-// returns, and the terminal is left clean although claude restored none of its modes.
+// C9: claude exiting - /exit - ends its session, and with it the session's server; cld returns,
+// and the terminal is left clean although claude restored none of its modes.
 func TestContractClaudeExit(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		s, term, probe := startContract(t, name)
@@ -243,7 +243,7 @@ func TestContractClaudeExit(t *testing.T) {
 			return !modifiedKeysOn(term.Output())
 		})
 		sandbox.WaitFor(t, 10*time.Second, "the tmux server to exit", func() bool {
-			_, err := s.Tmux("list-sessions")
+			_, err := s.Tmux("cld-contract", "list-sessions")
 			return err != nil
 		})
 	})

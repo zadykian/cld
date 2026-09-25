@@ -1,20 +1,32 @@
-// Package session is cld's tmux side: it runs Claude Code in named sessions on a private tmux
-// server.
+// Package session is cld's tmux side: it runs Claude Code in named sessions, each on a private
+// tmux server of its own.
 //
-// `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") running
-// `claude --name cld-NAME` in the current directory, with Remote Control on from the start, and
-// attaches to it; with -w claude also gets --worktree NAME, makes git worktree NAME from HEAD or
-// reopens it, and works there.
-// `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it, and `cld list`
-// shows the sessions; all three see only the sessions cld started (see the constant mine). A
-// private server (-L cld, no ~/.tmux.conf) keeps these options away from any other tmux use:
+// `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") on the server
+// cld-NAME (tmux -L cld-NAME), running `claude --name cld-NAME` in the current directory, with
+// Remote Control on from the start, and attaches to it; with -w claude also gets --worktree NAME,
+// makes git worktree NAME from HEAD or reopens it, and works there.
+// `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it with its server
+// (see Tmux.Kill), and `cld list` shows the sessions, asking each server for its own (see
+// Tmux.Sessions).
+//
+// cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
+// Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
+// made that way has another name - cld-NAME is taken - so it is no session of cld's, and kill
+// ends it with the server. The server of a session also gives its claude the environment of the
+// shell that ran cld new: tmux starts a pane with the environment of the client that started the
+// server, but for PATH and the update-environment variables, so on one server for every session
+// each claude had the first one's. new refuses a NAME whose server outlives its session - claude
+// exited, and the tmux sessions it made keep the server running - rather than start claude there
+// with that server's environment, and join and kill refuse it the same way (see lingering). A
+// private server (-f /dev/null: no ~/.tmux.conf) keeps these options away from any other tmux use:
 //
 //   - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 //     modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
 //   - the extkeys terminal feature for xterm*: tmux asks the terminal for modified keys only when
 //     it knows the terminal supports them, and it does not recognise every terminal that does;
 //     Claude Code's docs recommend this for tmux. It goes to a fixed index past tmux's defaults:
-//     set -a would add another copy every time cld creates a session
+//     set -a would add another copy every time cld sets it on a server that has it, as two
+//     cld new -n NAME at once do
 //   - mouse on, focus-events on: claude probes both and hints when they are off. With the mouse
 //     on, the wheel over a program that draws in the main screen without the mouse - claude
 //     outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
@@ -30,17 +42,19 @@
 //     top out of sight; the pane-died hook shows how to end the session on the message line
 //     instead, until a key is pressed. It names the session through its one window, named NAME:
 //     the hook's formats know the pane and its window, not the session. The hook shows it only to
-//     a terminal on that window: tmux would show it on another session's terminal, or with none
-//     attached keep it and show it in view-mode over the next session a terminal attaches to,
-//     which then takes no keys until q; join shows it instead. These go to claude's window only,
-//     not the server (see Tmux.New)
+//     a terminal on that window: tmux would show it on the terminal of another session on the
+//     server - one claude made - or with none attached keep it and show it in view-mode over the
+//     session a terminal attaches to next, which then takes no keys until q; join shows it
+//     instead. These go to claude's window only, not the server, so that the sessions claude
+//     makes there close as tmux would close them (see Tmux.New)
 //
 // join attaches with -d, detaching other clients. tmux keeps claude's title changes to the pane
-// (set-titles is off), so the tab keeps the session name. The server keeps the environment of
-// the client that started it, and claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux: a
-// server started from the JetBrains terminal would make every claude on it act as if in
-// JediTerm (extended keys off, so Shift+Enter submits) even when attached from iTerm2 - hence
-// new leaves TERMINAL_EMULATOR out of the environment it runs tmux with.
+// (set-titles is off), so the tab keeps the session name. claude trusts TERMINAL_EMULATOR over
+// TERM_PROGRAM=tmux, and its environment comes from the client that started its server: a
+// session created in the JetBrains terminal would keep its claude, and whatever claude starts
+// through tmux, acting as if in JediTerm (extended keys off, so Shift+Enter submits) even when
+// joined from iTerm2 - hence new leaves TERMINAL_EMULATOR out of the environment it runs tmux
+// with.
 package session
 
 import (
@@ -71,8 +85,16 @@ import (
 // silently diverging.
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
-// ValidName reports whether name is a valid session NAME.
-func ValidName(name string) bool { return validName.MatchString(name) }
+// MaxName is the length of the longest NAME. The path of server cld-NAME's socket has to fit in
+// sun_path, 104 bytes on macOS and 108 on Linux with the NUL that ends it: in tmux's default
+// directories, /private/tmp/tmux-UID and /tmp/tmux-UID, that leaves room for about 77 characters
+// of NAME on macOS and 88 on Linux. Under a longer TMUX_TMPDIR a shorter NAME can overflow it too;
+// tmux then fails with "File name too long", and cld with tmux's message (see noServer).
+const MaxName = 64
+
+// ValidName reports whether name is a valid session NAME: its characters, and at most MaxName of
+// them.
+func ValidName(name string) bool { return len(name) <= MaxName && validName.MatchString(name) }
 
 // Tmux is the tmux cld runs, found and checked by Check.
 type Tmux struct {
@@ -355,24 +377,27 @@ type worktreeSettings struct {
 	BaseRef string `json:"baseRef"`
 }
 
-// New creates session cld-SUFFIX, running claude in the current directory, and becomes a tmux
-// client attached to it; with worktree claude works in git worktree SUFFIX. It returns only when
-// it does not get as far.
+// New creates session cld-SUFFIX on a server of its own, running claude in the current directory,
+// and becomes a tmux client attached to it; with worktree claude works in git worktree SUFFIX. It
+// returns only when it does not get as far.
 func (t *Tmux) New(c *Claude, suffix string, worktree bool) error {
 	if err := t.readyClient(); err != nil {
 		return err
 	}
 	name := "cld-" + suffix
-	exists, err := t.hasSession(suffix)
+	server, exists, err := t.lookup(suffix)
 	if err != nil {
 		return err
 	}
 	if exists {
-		dead, _ := t.command("-L", "cld", "list-panes", "-t", "="+name, "-F", "#{pane_dead}").Output()
+		dead, _ := t.server(suffix, "list-panes", "-t", "="+name, "-F", "#{pane_dead}").Output()
 		if strings.TrimRight(string(dead), "\n") == "1" {
 			return fail.Runtime(fmt.Sprintf("session '%s' exists, but its claude exited; end it with cld kill -n %[1]s", suffix))
 		}
 		return fail.Runtime(fmt.Sprintf("session '%s' exists; attach to it with cld join -n %[1]s", suffix))
+	}
+	if server {
+		return t.lingering(suffix)
 	}
 	dir, err := workingDirectory()
 	if err != nil {
@@ -406,13 +431,13 @@ func (t *Tmux) New(c *Claude, suffix string, worktree bool) error {
 	// claude and its arguments go to tmux as separate words: tmux then executes them directly
 	// instead of through sh -c. claude goes by the path CheckClaude checked: tmux would look the
 	// bare word up in the PATH, relative entries included, and could start another claude. What
-	// follows new-session in the same tmux command - the mark, remain-on-exit and the pane-died
-	// hook, which go to claude's window only, so that a session made on the server without cld
-	// closes as tmux would - takes effect before tmux sees claude exit, however soon; tmux cuts
-	// the command short when new-session fails, so a session of that name made meanwhile stays
-	// unmarked. The targets end in ":" because set takes a pane, which "=NAME" does not find.
+	// follows new-session in the same tmux command - remain-on-exit and the pane-died hook, which
+	// go to claude's window only, so that a session claude makes on its server closes as tmux
+	// would close it - takes effect before tmux sees claude exit, however soon; tmux cuts the
+	// command short when new-session fails, as when another cld new -n NAME got there first. The
+	// targets end in ":" because set takes a pane, which "=NAME" does not find.
 	window := "=" + name + ":"
-	argv := []string{"tmux", "-L", "cld", "-f", "/dev/null",
+	argv := []string{"tmux", "-L", name, "-f", "/dev/null",
 		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
 		"set", "-s", "focus-events", "on", ";",
 		"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
@@ -420,11 +445,11 @@ func (t *Tmux) New(c *Claude, suffix string, worktree bool) error {
 		"new-session", "-s", name, "-n", suffix, "-c", dir}
 	argv = append(argv, claude...)
 	argv = append(argv, ";",
-		"set", "-F", "-t", window, "@cld", "#{session_id}", ";",
 		"set", "-w", "-t", window, "remain-on-exit", "failed", ";",
 		"set", "-w", "-t", window, "remain-on-exit-format", "", ";",
 		"set-hook", "-w", "-t", window, "pane-died", "if -F '#{window_active_clients}' \""+hint+"\"")
-	// The server keeps the environment of the client that starts it (see the package comment).
+	// The server keeps the environment of the client that starts it, cld's (see the package
+	// comment).
 	return t.become(argv, slices.DeleteFunc(os.Environ(), func(variable string) bool {
 		return strings.HasPrefix(variable, "TERMINAL_EMULATOR=")
 	}))
@@ -436,9 +461,12 @@ func (t *Tmux) Join(suffix string) error {
 	if err := t.readyClient(); err != nil {
 		return err
 	}
-	exists, err := t.hasSession(suffix)
+	server, exists, err := t.lookup(suffix)
 	if err != nil {
 		return err
+	}
+	if !exists && server {
+		return t.lingering(suffix)
 	}
 	if !exists {
 		return fail.Runtime(fmt.Sprintf("no session '%s'; create it with cld new -n %[1]s", suffix))
@@ -448,21 +476,27 @@ func (t *Tmux) Join(suffix string) error {
 		return err
 	}
 	// After attach-session in one command list, the hint goes to this terminal, attached by then.
-	return t.become([]string{"tmux", "-L", "cld", "attach-session", "-d", "-t", "=" + name, ";",
+	return t.become([]string{"tmux", "-L", name, "attach-session", "-d", "-t", "=" + name, ";",
 		"if", "-F", "#{pane_dead}", hint}, os.Environ())
 }
 
-// Kill ends session cld-SUFFIX. claude gets SIGHUP, as when its terminal closes; an attached
-// terminal is detached. A kill-session that fails ends cld with its status, after its message.
+// Kill ends session cld-SUFFIX with its server, and so whatever claude started there through
+// tmux. claude gets SIGHUP, as when its terminal closes. The session goes first, in the same tmux
+// command: a terminal attached to it is told that the session exited, and the cld there - tmux by
+// then - exits with status 0, where a kill-server alone would tell it that the server exited,
+// with status 1. A kill that fails ends cld with its status, after its message.
 func (t *Tmux) Kill(suffix string) error {
-	exists, err := t.hasSession(suffix)
+	server, exists, err := t.lookup(suffix)
 	if err != nil {
 		return err
+	}
+	if !exists && server {
+		return t.lingering(suffix)
 	}
 	if !exists {
 		return fail.Runtime(fmt.Sprintf("no session '%s' (see cld list)", suffix))
 	}
-	kill := t.command("-L", "cld", "kill-session", "-t", "=cld-"+suffix)
+	kill := t.server(suffix, "kill-session", "-t", "=cld-"+suffix, ";", "kill-server")
 	kill.Stdout = os.Stdout
 	if err := kill.Run(); err != nil {
 		return t.exitStatus(err)
@@ -482,33 +516,67 @@ type Session struct {
 	Directory string
 }
 
-// Sessions reads the sessions cld started, in tmux's order; none when its server is not running.
+// Sessions reads the sessions cld started, in the order of their names; none where no server
+// runs. Each has a server of its own: Sessions asks every server with a socket cld-NAME in tmux's
+// directory (see socketDir) for its session cld-NAME, one tmux command a socket. It passes over a
+// socket whose NAME no session can have, and the socket cld, of the one server earlier versions
+// of cld shared. tmux never removes a socket - not when its server exits, is killed or dies - and
+// on a stale one says that no server is running, which Sessions passes over too, as it passes over
+// a server that exits while it asks, when a claude exits or a cld kill runs. cld removes none
+// either: tmux replaces a stale socket under a lock, which cld would not hold, so cld could
+// remove the socket of a server that a cld new had just started there.
 func (t *Tmux) Sessions() ([]Session, error) {
+	dir := socketDir()
+	sockets, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		var pathError *fs.PathError
+		if errors.As(err, &pathError) {
+			err = pathError.Err
+		}
+		return nil, fail.Runtime(fmt.Sprintf("cannot read %s: %v", dir, err))
+	}
 	// pane_current_path is the directory claude is in now, not the one its session started in;
-	// once claude has exited there is none, and list shows where the session started. Only the
-	// sessions cld started hold their id in @cld (see the constant mine).
+	// once claude has exited there is none, and list shows where the session started.
 	state := "#{?pane_dead,exited,#{?session_attached,attached,detached}}"
 	path := "#{?pane_dead,#{session_path},#{pane_current_path}}"
-	// tmux writes to a client whose LC_ALL, LC_CTYPE or LANG does not name UTF-8 - unset or C, as
-	// over ssh, in containers and cron - with "_" for each character it cannot print: the tabs,
-	// and any non-ASCII letter in a directory. -u marks the client UTF-8, so the output arrives
-	// as it is.
-	out, err := combinedOutput(t.command("-u", "-L", "cld", "list-sessions", "-f", mine, "-F",
-		"#{session_name}\t"+state+"\t"+path))
-	if err != nil {
-		if noServer(out) {
-			return nil, nil
-		}
-		return nil, fail.Runtime(out)
-	}
 	var sessions []Session
-	for _, line := range strings.Split(out, "\n") {
-		name, state, directory := fields(line)
-		if name, found := strings.CutPrefix(name, "cld-"); found {
-			sessions = append(sessions, Session{Name: name, State: state, Directory: directory})
+	for _, socket := range sockets {
+		suffix, found := strings.CutPrefix(socket.Name(), "cld-")
+		if !found || !ValidName(suffix) {
+			continue
+		}
+		// tmux writes to a client whose LC_ALL, LC_CTYPE or LANG does not name UTF-8 - unset or C,
+		// as over ssh, in containers and cron - with "_" for each character it cannot print: the
+		// tabs, and any non-ASCII letter in a directory. -u marks the client UTF-8, so the output
+		// arrives as it is.
+		out, err := combinedOutput(t.command("-u", "-L", "cld-"+suffix, "list-sessions",
+			"-f", only(suffix), "-F", "#{session_name}\t"+state+"\t"+path))
+		if err != nil {
+			if noServer(out) {
+				continue
+			}
+			return nil, fail.Runtime(out)
+		}
+		line, _, _ := strings.Cut(out, "\n")
+		if name, state, directory := fields(line); name == "cld-"+suffix {
+			sessions = append(sessions, Session{Name: suffix, State: state, Directory: directory})
 		}
 	}
 	return sessions, nil
+}
+
+// socketDir is the directory tmux keeps the sockets of -L in: tmux-UID in TMUX_TMPDIR, or in /tmp
+// where TMUX_TMPDIR is unset or empty, as tmux(1) has it - or names nothing, where tmux falls back
+// to /tmp as well.
+func socketDir() string {
+	base := os.Getenv("TMUX_TMPDIR")
+	if _, err := os.Stat(base); err != nil {
+		base = "/tmp"
+	}
+	return filepath.Join(base, "tmux-"+strconv.Itoa(os.Getuid()))
 }
 
 // fields splits a line of Sessions' output: runs of tabs separate the fields, tabs around the
@@ -520,34 +588,52 @@ func fields(line string) (name, state, directory string) {
 	return name, state, strings.TrimLeft(rest, "\t")
 }
 
-// mine holds for the sessions cld started. new marks them: the user option @cld holds the
-// session's id. Whatever claude runs inherits TMUX, which takes a bare tmux to cld's server, and
-// a session made there that way - or by hand with tmux -L cld - is not cld's. The mark is the id
-// rather than a flag because a format looks @cld up in the server's, the pane's and the window's
-// options before the session's, and a flag set there would mark any session.
-const mine = "#{==:#{@cld},#{session_id}}"
+// only is a filter for session cld-SUFFIX alone on its server, beside the sessions claude made
+// there. It compares whole names, where a target "cld-rev" would find cld-review.
+func only(suffix string) string { return "#{==:#{session_name},cld-" + suffix + "}" }
 
-// hasSession reports whether session cld-SUFFIX exists; a session of that name that cld did not
-// start is an error. The filter compares whole names, where a target "cld-rev" would find
-// cld-review. No server, no session.
-func (t *Tmux) hasSession(suffix string) (bool, error) {
-	filter := "#{==:#{session_name},cld-" + suffix + "}"
-	found, err := combinedOutput(t.command("-L", "cld", "list-sessions", "-f", filter, "-F", "#{?"+mine+",cld,other}"))
+// lookup reports whether the server of session cld-SUFFIX is running, and whether the session is
+// on it. No server, no session.
+func (t *Tmux) lookup(suffix string) (server, session bool, err error) {
+	found, err := combinedOutput(t.server(suffix, "list-sessions", "-f", only(suffix), "-F", "#{session_name}"))
 	if err != nil {
 		if noServer(found) {
-			return false, nil
+			return false, false, nil
 		}
-		return false, fail.Runtime(found)
+		return false, false, fail.Runtime(found)
 	}
-	if found == "other" {
-		return false, fail.Runtime(fmt.Sprintf("session '%s' exists, but cld did not start it (see tmux -L cld ls)", suffix))
-	}
-	return found == "cld", nil
+	return true, found == "cld-"+suffix, nil
 }
 
-// noServer reports whether tmux failed, saying message, because cld's server is not running.
+// lingering is how new, join and kill refuse session cld-SUFFIX when its server runs without it.
+// Mostly the server has outlived it: claude exited, and the tmux sessions it made keep the server
+// running. new would start claude there with the environment of the cld that started the server,
+// not its own, and cld leaves what claude made to the user. But where tmux's socket directory
+// ignores case, as macOS's does by default, the socket cld-SUFFIX can be that of another session's
+// server, whose NAME differs only in case: tmux -L cld-A reaches the server of session a, which
+// the socket path it was started with names. That session may well be running, so cld refuses the
+// name and names the session, rather than point at a kill-server that would end it.
+func (t *Tmux) lingering(suffix string) error {
+	socket := t.server(suffix, "list-sessions", "-F", "#{socket_path}")
+	socket.Stderr = nil
+	out, _ := socket.Output()
+	path, _, _ := strings.Cut(string(out), "\n")
+	if other, found := strings.CutPrefix(filepath.Base(path), "cld-"); found && other != suffix && strings.EqualFold(other, suffix) {
+		return fail.Runtime(fmt.Sprintf("session name '%s' clashes with session '%s': tmux's socket directory ignores case here, so both names reach server cld-%[2]s (see tmux -L cld-%[2]s ls)", suffix, other))
+	}
+	return fail.Runtime(fmt.Sprintf("session '%s' has ended, but its tmux server still runs (see tmux -L cld-%[1]s ls); end it with tmux -L cld-%[1]s kill-server", suffix))
+}
+
+// noServer reports whether tmux failed, saying message, because the server is not running: its
+// socket is stale ("no server running on"), there is none ("error connecting to", with the
+// system's message for no such file), or the server exited while tmux was asking it ("server
+// exited unexpectedly"), as a server does once its session ends or is killed. Any other error
+// connecting is cld's to report: a socket path too long for sun_path, say, which a TMUX_TMPDIR
+// longer than tmux's default directories leaves room for (see MaxName).
 func noServer(message string) bool {
-	return strings.HasPrefix(message, "no server running on ") || strings.HasPrefix(message, "error connecting to ")
+	return strings.HasPrefix(message, "no server running on ") ||
+		strings.HasPrefix(message, "error connecting to ") && strings.HasSuffix(message, " (No such file or directory)") ||
+		strings.HasSuffix(message, "server exited unexpectedly")
 }
 
 // tmux refuses to attach a client with $TMUX set whose tty has the name of any pane on the server.
@@ -557,38 +643,46 @@ func noServer(message string) bool {
 // check skips; set, even empty, TMUX still tells the client that the terminal takes UTF-8.
 
 // readyClient readies cld to become a tmux client: it refuses a terminal that is a live pane of
-// cld's server, and empties a TMUX that is set, for the client and every tmux command before it.
+// one of cld's servers, and empties a TMUX that is set, for the client and every tmux command
+// before it.
 func (t *Tmux) readyClient() error {
 	if os.Getenv("TMUX") == "" {
 		return nil
 	}
-	if t.ownPane() {
-		return fail.Runtime("this terminal is a pane of cld's tmux server; detach with C-q d first")
+	if suffix, found := t.ownPane(); found {
+		return fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d first", suffix))
 	}
 	return os.Setenv("TMUX", "")
 }
 
-// ownPane reports whether this terminal is a live pane of cld's server - claude's external
-// editor, say - where a session attached would show inside itself. tmux refuses that too,
+// ownPane reports whether this terminal is a live pane of one of cld's servers - claude's
+// external editor, say - and names the server's session. A session attached there would show
+// inside a session of cld's, itself or another, both taking C-q. tmux refuses the first too,
 // advising to unset $TMUX, but goes by name, dead panes included (see above); cld says how to get
-// out instead, and like tmux looks only when $TMUX is set. tty names the terminal on its stdin,
-// cld's.
-func (t *Tmux) ownPane() bool {
+// out instead. Like tmux it looks only when $TMUX is set, and only on the server TMUX names, if
+// that is one of cld's: the terminal of any other tmux nests. tty names the terminal on its
+// stdin, cld's.
+func (t *Tmux) ownPane() (string, bool) {
+	socket, _, _ := strings.Cut(os.Getenv("TMUX"), ",")
+	suffix, found := strings.CutPrefix(filepath.Base(socket), "cld-")
+	if !found || !ValidName(suffix) {
+		return "", false
+	}
 	tty, err := tool("tty")
 	if err != nil {
-		return false
+		return "", false
 	}
 	terminal, err := tty.Output()
 	if err != nil {
-		return false
+		return "", false
 	}
-	panes := t.command("-L", "cld", "list-panes", "-a", "-F", "#{?pane_dead,,#{pane_tty}}")
+	panes := t.command("-S", socket, "list-panes", "-a", "-F", "#{?pane_dead,,#{pane_tty}}")
 	panes.Stderr = nil
 	live, err := panes.Output()
 	if err != nil {
-		return false
+		return "", false
 	}
-	return slices.Contains(strings.Split(strings.TrimRight(string(live), "\n"), "\n"), strings.TrimRight(string(terminal), "\n"))
+	return suffix, slices.Contains(strings.Split(strings.TrimRight(string(live), "\n"), "\n"), strings.TrimRight(string(terminal), "\n"))
 }
 
 // inWorkTree reports whether the current directory is in a git work tree.
@@ -614,6 +708,11 @@ func (t *Tmux) command(args ...string) *exec.Cmd {
 	cmd.Args[0] = "tmux"
 	cmd.Stdin, cmd.Stderr = os.Stdin, os.Stderr
 	return cmd
+}
+
+// server is a tmux command run against the server of session cld-SUFFIX, named like it.
+func (t *Tmux) server(suffix string, args ...string) *exec.Cmd {
+	return t.command(append([]string{"-L", "cld-" + suffix}, args...)...)
 }
 
 // combinedOutput runs cmd and returns its stdout and stderr together, without the newlines at

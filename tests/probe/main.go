@@ -30,8 +30,12 @@
 // In a directory that has been removed it fails, as claude 2.1.282 does.
 //
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
-// $CLD_FAKE_TMUX_VERSION, list-sessions prints $CLD_FAKE_TMUX_SESSIONS - no session unless a test
-// sets it - and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json.
+// $CLD_FAKE_TMUX_VERSION, list-sessions prints $CLD_FAKE_TMUX_SESSIONS, whatever server it is
+// asked - where a test sets none it fails as tmux does with no server running, and on a server
+// named in $CLD_FAKE_TMUX_EXITED (-L NAME, separated by spaces) as tmux does when the server exits
+// while it asks - and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json. With
+// $CLD_FAKE_TMUX_REAL, the path of a real tmux, it fakes list-sessions only, and runs that tmux
+// for the rest.
 package main
 
 import (
@@ -78,15 +82,27 @@ func main() {
 }
 
 func fakeTmux() error {
-	if len(os.Args) == 2 && os.Args[1] == "-V" {
+	real := os.Getenv("CLD_FAKE_TMUX_REAL")
+	if len(os.Args) == 2 && os.Args[1] == "-V" && real == "" {
 		fmt.Println(os.Getenv("CLD_FAKE_TMUX_VERSION"))
 		return nil
 	}
 	if slices.Contains(os.Args[1:], "list-sessions") {
-		if sessions := os.Getenv("CLD_FAKE_TMUX_SESSIONS"); sessions != "" {
-			fmt.Println(sessions)
+		if i := slices.Index(os.Args, "-L"); i > 0 && i+1 < len(os.Args) &&
+			slices.Contains(strings.Fields(os.Getenv("CLD_FAKE_TMUX_EXITED")), os.Args[i+1]) {
+			fmt.Fprintln(os.Stderr, "server exited unexpectedly")
+			os.Exit(1)
 		}
+		sessions := os.Getenv("CLD_FAKE_TMUX_SESSIONS")
+		if sessions == "" {
+			fmt.Fprintln(os.Stderr, "no server running on /fake/tmux")
+			os.Exit(1)
+		}
+		fmt.Println(sessions)
 		return nil
+	}
+	if real != "" {
+		return syscall.Exec(real, append([]string{"tmux"}, os.Args[1:]...), os.Environ())
 	}
 	return writeRecord(filepath.Join(os.Getenv("CLD_PROBE_DIR"), "tmux.json"))
 }

@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`cld` runs Claude Code in named sessions on a private tmux server (`tmux -L cld -f /dev/null`), so
-a conversation can be detached and rejoined from any terminal. The product is a Go program on
-cobra: `cmd/cld` is the command line (commands, their help texts, argument errors),
-`internal/session` the tmux side, and `internal/fail` carries exit statuses up to `main`.
-Everything else is its test harness (Go, under `tests/`), docs and CI.
+`cld` runs Claude Code in named sessions, each on a private tmux server of its own
+(`tmux -L cld-NAME -f /dev/null`), so a conversation can be detached and rejoined from any
+terminal. The product is a Go program on cobra: `cmd/cld` is the command line (commands, their
+help texts, argument errors), `internal/session` the tmux side, and `internal/fail` carries exit
+statuses up to `main`. Everything else is its test harness (Go, under `tests/`), docs and CI.
 
 ## Commands
 
@@ -52,16 +52,21 @@ platform and `cld.sha256`.
   nothing: break the texts by hand within 80 columns, which `TestHelpText` checks.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
-- Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`), never sanitised.
+- Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
+  path fits in `sun_path`), never sanitised.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` checked, so tmux does not look `claude` up in the `PATH`.
-- cld only sees sessions it started: `new` sets the user option `@cld` to the session's id in the
-  same tmux command as `new-session`, and every lookup filters on
-  `#{==:#{@cld},#{session_id}}`. A plain flag would not work, because tmux resolves `@cld` from
-  server/pane/window options before session options. Anything claude runs inherits `TMUX` and can
-  reach cld's server, which is why the mark exists.
+- A server per session: session `cld-NAME` lives on server `cld-NAME` (`tmux -L cld-NAME`), and
+  cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}`. Anything
+  claude runs inherits `TMUX` and reaches claude's own server, where a session it makes has another
+  name; there is no mark. `list` reads the sockets `cld-*` in `${TMUX_TMPDIR:-/tmp}/tmux-UID` and
+  asks each server; stale sockets answer "no server running" and are passed over, never removed.
+  `kill` runs `kill-session`, then `kill-server`, in one tmux command; `new`, `join` and `kill`
+  refuse a name whose server runs without its session, and where that server's `#{socket_path}`
+  names another NAME that differs only in case (a socket directory that ignores case, as on
+  macOS), they name that session instead of pointing at `kill-server`.
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
-  window, not the server, so sessions cld did not start behave as plain tmux would.
+  window, not the server, so the sessions claude makes on its server behave as plain tmux would.
 - `TERMINAL_EMULATOR` is removed from the environment `new` execs tmux with, so from the server's;
   claude trusts it over `TERM_PROGRAM=tmux`.
 
@@ -82,11 +87,14 @@ package doc comments at the top of each file for details.
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).
   `CLD_PROBE_FAIL` makes it fail at startup. `claude --version` answers first, writing nothing,
   with `CLD_FAKE_CLAUDE_VERSION` (`99.0.0 (Claude Code)` when unset). Invoked as `tmux`, it fakes
-  `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS`, and
-  records any other command in `tmux.json`.
+  `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS` (unset:
+  no server running; `CLD_FAKE_TMUX_EXITED` names servers that exit as they are asked), and
+  records any other command in `tmux.json`, or runs the real tmux `CLD_FAKE_TMUX_REAL` names.
 - `internal/sandbox` — an isolated world per test: its own short `TMUX_TMPDIR` (socket paths hit
   the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset. Tests are
-  parallel and never touch the user's own cld sessions.
+  parallel and never touch the user's own cld sessions. `Tmux(server, ...)` runs tmux against one
+  server (`cld-NAME` for session NAME); `Sessions()` and `Clients()` span every `cld-*` server,
+  naming a session that is not on its own server `SERVER/SESSION`.
 - `internal/terminal` — the `Terminal` interface with one driver per outer terminal: `tmux.go`
   (an outer tmux server provides the pty; input as raw xterm bytes via `send-keys -H`) and
   `jediterm.go`, which talks line-by-line to `jediterm/JediTermDriver.java` (headless JediTerm
