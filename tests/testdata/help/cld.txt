@@ -1,0 +1,23 @@
+Run Claude Code in named sessions on a private tmux server that ignores
+~/.tmux.conf. Session NAME is the tmux session "cld-NAME", running
+"claude --name cld-NAME" with Remote Control on. cld sees only the sessions it
+started; tmux -L cld ls lists every session on its server.
+
+Detach with C-q d; C-q C-q sends C-q to claude. With tmux 3.5 or newer, a
+session whose claude fails stays, showing why, until cld kill ends it.
+
+Usage:
+  cld [command]
+
+Available Commands:
+  new         create session NAME in the current directory and attach to it
+  join        attach to session NAME, detaching any other terminal from it
+  kill        end session NAME and the claude running in it
+  list        list the sessions cld started
+  help        show this help, or the help of COMMAND
+  version     show the version
+
+Flags:
+  -h, --help   help for cld
+
+Use "cld [command] --help" for more information about a command.

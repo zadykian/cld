@@ -1,0 +1,9 @@
+end session NAME and the claude running in it
+
+Usage:
+  cld kill [-n NAME] [flags]
+
+Flags:
+  -h, --help        help for kill
+  -n, --name NAME   the session NAME: letters, digits, "_" and "-", starting
+                    with a letter or digit (default "main")

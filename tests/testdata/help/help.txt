@@ -1,0 +1,7 @@
+show this help, or the help of COMMAND
+
+Usage:
+  cld help [flags] [COMMAND]
+
+Flags:
+  -h, --help   help for help

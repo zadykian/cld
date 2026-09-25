@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `cld` runs Claude Code in named sessions on a private tmux server (`tmux -L cld -f /dev/null`), so
 a conversation can be detached and rejoined from any terminal. The product is a Go program on
-cobra: `cmd/cld` is the command line (commands, argument errors, usage text), `internal/session`
-the tmux side, and `internal/fail` carries exit statuses up to `main`. Everything else is its test
-harness (Go, under `tests/`), docs and CI.
+cobra: `cmd/cld` is the command line (commands, their help texts, argument errors),
+`internal/session` the tmux side, and `internal/fail` carries exit statuses up to `main`.
+Everything else is its test harness (Go, under `tests/`), docs and CI.
 
 ## Commands
 
@@ -17,6 +17,7 @@ make check                              # lint + test, natively (baseline termin
 make lint                               # gofmt, go vet; shellcheck, shfmt -i 4 on fetch-deps
 make test                               # cd tests && go test -count=1 ./...
 cd tests && go test -count=1 -run 'TestList$' .   # a single test
+cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata/help from cld
 make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
 make docker-check                       # same as CI: tmux 3.3a (debian:bookworm), tmux + jediterm
@@ -39,8 +40,12 @@ tag `vX.Y.Z` runs the checks and publishes a release: a binary per platform and 
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new` and `join` end in
   `syscall.Exec` of tmux. cobra's defaults are overridden to keep cld's command line - the
-  first argument checked before cobra, options read up to the first argument, one usage text,
-  no completion command (see docs/design.md, Implementation notes).
+  first argument checked before cobra, options read up to the first argument, a `help [COMMAND]`
+  that refuses anything but one of cld's commands, the help printed through `fail.Print` with
+  the commands unsorted, no completion command (see docs/design.md, Implementation notes).
+- The help is cobra's, generated with its default templates from each command's `Use`, `Short`
+  and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
+  nothing: break the texts by hand within 80 columns, which `TestHelpText` checks.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`), never sanitised.
@@ -84,15 +89,16 @@ package doc comments at the top of each file for details.
   Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, paste, claude exiting), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour; `cli_test.go` — argument parsing,
-  errors, tool/version checks.
+  errors, tool/version checks, and the help, compared byte for byte with `testdata/help`.
 
 ## Documentation conventions
 
 `docs/design.md` is the project's record of tmux/claude behaviour: **Findings** (probed behaviour,
 with the tmux versions checked), **Decisions** (numbered) and **Implementation notes**. Behaviour
 changes are made together across the code (`internal/session`'s package comment, inline comments,
-the usage text in `cmd/cld/usage.go`), `README.md` and `docs/design.md`, with tests. When a change
-rests on observed tmux or claude behaviour, record the probe and the versions in Findings.
+the commands' `Short`, `Long` and option usages in `cmd/cld`, which the help is generated from,
+and `tests/testdata/help`), `README.md` and `docs/design.md`, with tests. When a change rests on
+observed tmux or claude behaviour, record the probe and the versions in Findings.
 
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
 a header `type(scope): description`, then a body, then optional footers, each separated by a blank

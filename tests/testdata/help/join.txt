@@ -1,0 +1,9 @@
+attach to session NAME, detaching any other terminal from it
+
+Usage:
+  cld join [-n NAME] [flags]
+
+Flags:
+  -h, --help        help for join
+  -n, --name NAME   the session NAME: letters, digits, "_" and "-", starting
+                    with a letter or digit (default "main")

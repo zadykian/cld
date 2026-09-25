@@ -52,7 +52,7 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session; claude exits as when its terminal closes |
 | `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in |
-| `cld help` | show the usage |
+| `cld help [COMMAND]` | show the help of cld, or of one command: its options and their defaults. `cld -h` and `cld COMMAND -h` (or `--help`) do the same |
 | `cld version` | show the version |
 
 | Keys | Action |
