@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -91,7 +90,7 @@ func TestNewWorktree(t *testing.T) {
 }
 
 // Outside a git work tree new -w fails before starting anything: claude would say so in a
-// session left to kill or, with tmux 3.3 and 3.4, in a pane that closes as claude exits.
+// session left to kill.
 func TestNewWorktreeRequiresRepository(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -414,10 +413,9 @@ func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 	}
 }
 
-// From tmux 3.5 a claude that fails keeps its session: the terminal stays attached and shows
-// claude's last words and how to end the session, list says claude exited, and new refuses the
-// name until kill ends the session. With tmux 3.3 and 3.4 the session closes, as it does when
-// claude exits with status 0 (see above).
+// A claude that fails keeps its session: the terminal stays attached and shows claude's last
+// words and how to end the session, list says claude exited, and new refuses the name until kill
+// ends the session.
 func TestFailedClaudeKeepsSession(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -448,13 +446,6 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 			if test.fail != nil {
 				waitClients(t, s, 1)
 				test.fail(t, s)
-			}
-			if !keepsFailedSessions(t) {
-				sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
-				if sessions := s.Sessions(); len(sessions) != 0 {
-					t.Errorf("sessions %q, want none", sessions)
-				}
-				return
 			}
 			if test.fail == nil {
 				waitScreen(t, term, "Error: cannot start")
@@ -490,10 +481,9 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 	}
 }
 
-// From tmux 3.5, a claude that fails with no terminal attached leaves the hint to join, which
-// shows it on the message line: from the hook, tmux would keep it and show it in view-mode over
-// the next session any terminal attaches to. Joining a live session shows no hint. With tmux 3.3
-// and 3.4 the session closes.
+// A claude that fails with no terminal attached leaves the hint to join, which shows it on the
+// message line: from the hook, tmux would keep it and show it in view-mode over the next session
+// any terminal attaches to. Joining a live session shows no hint.
 func TestClaudeFailingDetached(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -503,10 +493,6 @@ func TestClaudeFailingDetached(t *testing.T) {
 	first.Keys("C-q", "d")
 	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !first.Running() })
 	probe.Send("exit 1")
-	if !keepsFailedSessions(t) {
-		sandbox.WaitFor(t, 10*time.Second, "the session to close", func() bool { return len(s.Sessions()) == 0 })
-		return
-	}
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return s.Format("cld-bad", "#{pane_dead}") == "1" })
 
 	other := startCld(t, s, "tmux", nil, "new", "-n", "other")
@@ -563,10 +549,6 @@ func TestServerOptions(t *testing.T) {
 	s := sandbox.New(t)
 	startCld(t, s, "tmux", nil, "new")
 	s.WaitProbes(1)
-	remain := "off"
-	if keepsFailedSessions(t) {
-		remain = "failed"
-	}
 	for _, option := range []struct{ scope, name, value string }{
 		{"-sv", "extended-keys", "on"},
 		{"-sv", "focus-events", "on"},
@@ -584,7 +566,7 @@ func TestServerOptions(t *testing.T) {
 		args  []string
 		value string
 	}{
-		{[]string{"-wv", "-t", "=cld-main:", "remain-on-exit"}, remain},
+		{[]string{"-wv", "-t", "=cld-main:", "remain-on-exit"}, "failed"},
 		{[]string{"-Awv", "-t", "=cld-main:", "remain-on-exit-format"}, ""},
 		{[]string{"-gwv", "remain-on-exit"}, "off"},
 	} {
@@ -670,7 +652,7 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 // join once detached. Not parallel: a terminal another test opens could take the name first.
 func TestNestsOnADeadPanesPty(t *testing.T) {
 	s := sandbox.New(t)
-	// remain-on-exit on keeps the pane with every tmux version.
+	// remain-on-exit keeps the pane, dead, once false has exited.
 	s.MustTmux("set", "-g", "remain-on-exit", "on", ";", "new-session", "-d", "-s", "dead", "false")
 	sandbox.WaitFor(t, 10*time.Second, "the pane to die", func() bool {
 		return s.Format("dead", "#{pane_dead}") == "1"
@@ -743,23 +725,6 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	if clients := s.MustTmux("list-clients", "-F", "#{session_name}"); clients != "cld-a" {
 		t.Errorf("clients attached to %q, want the first one, to cld-a", clients)
 	}
-}
-
-// keepsFailedSessions reports whether cld keeps a failed claude's session with the tmux under
-// test: from 3.5 on, and in development builds (see Check in internal/session).
-func keepsFailedSessions(t *testing.T) bool {
-	t.Helper()
-	out, err := exec.Command("tmux", "-V").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	version := regexp.MustCompile(`(\d+)\.(\d+)`).FindStringSubmatch(string(out))
-	if version == nil {
-		return true
-	}
-	major, _ := strconv.Atoi(version[1])
-	minor, _ := strconv.Atoi(version[2])
-	return major > 3 || major == 3 && minor >= 5
 }
 
 // gitInit makes dir a git repository.

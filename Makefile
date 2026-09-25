@@ -1,12 +1,13 @@
 PREFIX ?= $(HOME)/.local
 # Terminals the terminal contract runs against: tmux, jediterm (see tests/main_test.go).
 TERMINALS ?= tmux
-# Docker checks: the base image picks the tmux version, TMUX_VERSION builds a tmux release from
-# source instead (see tests/Dockerfile).
-BASE ?= debian:bookworm
-TMUX_VERSION ?=
+# Docker checks: tmux release TMUX_VERSION, built from source on BASE; the release the checks run
+# on is pinned here and in tests/Dockerfile, and bumped with cld's minimum (docs/design.md,
+# decision 6). Another release builds by hand for a probe: make docker-image TMUX_VERSION=X.
+BASE ?= debian:trixie
+TMUX_VERSION ?= 3.7c
 DOCKER_TERMINALS ?= tmux,jediterm
-IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))$(if $(TMUX_VERSION),-tmux-$(TMUX_VERSION))
+IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))-tmux-$(TMUX_VERSION)
 # The version make dist and make install stamp into cld.
 VERSION ?= dev
 # The platforms make dist builds cld for, as dist/cld-OS-ARCH.

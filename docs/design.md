@@ -53,6 +53,7 @@ cld() {
 | a bare `tmux new-session -d -s cld-x` run inside claude's pane (tmux 3.3a to 3.7c) | the pane's `TMUX` names cld's socket, so `cld-x` lands on cld's server, as with `tmux -L cld` by hand; until cld marked its sessions, `list`, `join`, `kill` and `new` took it for one of theirs |
 | `new-session ... \; set -F -t =NAME: @cld '#{session_id}' \; set -w -t =NAME: remain-on-exit failed ...` (tmux 3.3a to 3.7c) | what follows `new-session` takes effect before tmux sees the new pane's program exit, however soon: the mark is there as the session is, and the window's `remain-on-exit` and `pane-died` hook keep and report a pane whose program exits at once. When `new-session` fails (`duplicate session`) tmux skips the rest, so the other session stays unmarked. `set -t =NAME`, like any command that takes a pane, finds nothing: `=NAME:` names the session |
 | `#{@cld}` in a format (tmux 3.3a, 3.7c) | tmux looks a user option up in the server's options, then the pane's, the window's and the global window options, and only then the session's and the global session options: a `@cld 1` set with `-s`, `-g` or `-w` counted for sessions that had none, and a window's `@cld 0` hid a session that had one. Compared with the session's id, a flag set anywhere makes no session cld's; one on the server or a window still hides one |
+| `tmux -V` beside a server started by an older tmux (a 3.5a server from Debian's package with a 3.7c client built from source, in the image that `tests/Dockerfile` built with `BASE=debian:trixie TMUX_VERSION=3.7c` before #21, which installed Debian's tmux 3.5a beside the source build; for #21 also a 3.6 server on the default socket with a 3.7c client) | `tmux -V` reports the client: `tmux 3.7c`. The server keeps running the tmux that started it - `#{version}` read `3.5a`, and `3.6` - and answers the newer client: the 3.7c client made a session on the 3.5a server with `new-session`, and set `remain-on-exit failed` on its window. So a check of `tmux -V` passes after an upgrade while the sessions, old and new, run on the old server until it exits |
 | how `claude` 2.1.282 resolves `remoteControlAtStartup` (read from its bundle, not run: a live check would connect the session to claude.ai) | the first of the policy settings, the `--settings` (flag) settings and the user settings that has it wins, over the old global-config key; a `false` in the project's `.claude/settings.json` or `settings.local.json` beats all of them, and a `true` there is ignored with a warning. `/config`'s "Enable Remote Control for all sessions" writes the user setting, so `--settings` overrides it either way |
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
 | the script's name check and `list`'s columns under `en_US.UTF-8`, `C.UTF-8` and `C` (bash 5.3.9, glibc 2.43; bash 3.2 on macOS not checked) | `[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]` follows the locale's collation: under `en_US.UTF-8` it matched `é`, `ñ`, `ß`, `Ä`, `ǅ`, `①` and `٣`, so `cld new -n café` made `cld-café`, which `tmux -L cld kill-session -t =cld-café` ends (tmux 3.7c); under `C.UTF-8` and `C` it matched ASCII only. `${#name}` counts characters under a UTF-8 locale and bytes under `C`; `printf '%-*s'` pads by bytes under all three, so `é` took three columns of a four-column NAME |
@@ -106,7 +107,7 @@ Isolation needs no seams in the program: `TMUX_TMPDIR` moves the `-L cld` socket
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created from another terminal on a server started from the JetBrains terminal | probe env dump |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
-| C9 | claude exiting ends its session, and with the last session the server; the terminal is left clean. From tmux 3.5, a claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
+| C9 | claude exiting ends its session, and with the last session the server; the terminal is left clean. A claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
@@ -137,13 +138,13 @@ than skipped, so a terminal gaining or losing support flips a test.
 
 ### CI
 
-- every push and pull request: lint; contract x tmux on several tmux versions (Linux containers
-  and macOS); contract x JediTerm;
+- every push and pull request: lint; contract x tmux on one pinned tmux release (3.7c, built from
+  source, in a Linux container) and on Homebrew's current tmux on macOS; contract x JediTerm;
 - nightly, on tags and on demand: contract x iTerm2 on macOS, uploading screenshots and logs on
   failure; non-blocking until it proves stable;
 - tags: release.
 
-Every Linux job runs the same Docker image a developer runs locally.
+The Linux job runs the same Docker image a developer runs locally.
 
 ### Spike before building the iTerm2 driver
 
@@ -179,19 +180,42 @@ Every Linux job runs the same Docker image a developer runs locally.
    claude's own state, so claude reports it (see 5). `kill` leaves
    the worktree: claude offers to remove it only when it exits on its own. The worktree is named
    after the session, also when that is the default `main`.
-5. Failures stay on screen, from tmux 3.5: with `remain-on-exit failed`, a claude that exits
-   with an error or a signal keeps its pane, so what it printed - a startup error above all, which
-   would otherwise vanish with the session - stays readable. The format is empty, so tmux does not
-   scroll that out of sight; a `pane-died` hook shows how to end the session on the message line
-   instead, naming it through the session's one window, named `NAME`. The hook shows it only to a
-   terminal on that window (`if -F '#{window_active_clients}'`), since tmux would otherwise show it
-   on another session's terminal or over the next session attached (see Findings); `join` shows it
-   on attaching to such a session, with a `display-message` in the same command list as
+5. Failures stay on screen: with `remain-on-exit failed`, a claude that exits with an error or a
+   signal keeps its pane, so what it printed - a startup error above all, which would otherwise
+   vanish with the session - stays readable. The format is empty, so tmux does not scroll that out
+   of sight; a `pane-died` hook shows how to end the session on the message line instead, naming it
+   through the session's one window, named `NAME`. The hook shows it only to a terminal on that
+   window (`if -F '#{window_active_clients}'`), since tmux would otherwise show it on another
+   session's terminal or over the next session attached (see Findings); `join` shows it on
+   attaching to such a session, with a `display-message` in the same command list as
    `attach-session`. `list` shows such a session as `exited`, where it started, and `new` refuses
-   the name, pointing at `kill`, rather than replacing the session unseen. tmux 3.3 and 3.4 crash
-   over a dead pane that had focus reporting on (see Findings), so there the option stays off and a
-   failed session closes as before. The option and the hook go to claude's window only (see 9).
-6. tmux 3.3 is the minimum, checked at startup with a clear message.
+   the name, pointing at `kill`, rather than replacing the session unseen. The option and the hook
+   go to claude's window only (see 9).
+6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on. The check runs at
+   startup, for every command but `help` and `version`, and refuses an older tmux with
+   `cld: tmux 3.7 or newer is required, found 'tmux 3.6b'` and status 1.
+   - It reads `tmux -V`: the major and minor version, after `next-` for a development build
+     (`next-3.9` is 3.9, `3.8-rc2` 3.8); a version without them (`master`) passes. Letters mark
+     bug-fix releases and are not compared, so 3.7 to 3.7c all pass, and there is no upper bound.
+   - The tests run on one tmux, 3.7c, built from source in the Docker image: no released Debian
+     or Ubuntu version ships 3.7, and a package from Debian testing would change whenever the base
+     image does. The release is pinned in `tests/Dockerfile` and the `Makefile` and bumped by hand
+     together with the minimum and these docs, as JediTerm is (7). CI's Linux job is named `linux`,
+     without the version, so a bump leaves the ruleset's required checks alone; the macOS job
+     installs Homebrew's current tmux, which runs ahead of the pin when Homebrew moves - the signal
+     to bump.
+   - The cost falls on distribution packages: Debian 13 ships 3.5a (3.6b in trixie-backports),
+     Debian 12 3.3a (3.5a in bookworm-backports), Ubuntu 24.04 3.4 and 26.04 3.6a. Their users
+     need Homebrew, Debian testing or unstable, or a source build - or cld 0.3.0, which runs on
+     tmux 3.3 and newer. A minimum of 3.5 would have removed the same code - `remain-on-exit`
+     stayed off below it (see Findings) - and kept those users, but 3.5 and 3.6 would run
+     untested; keeping 3.3 and dropping versions from the tests alone would leave a branch that no
+     CI runs.
+   - The check reads the client: a server keeps running the tmux that started it (see Findings),
+     so after an upgrade the sessions started before, and any started while it runs, stay on the
+     older server until the last one ends. The gap is accepted, as it was with the 3.3 check, and
+     the README says to end cld's sessions after upgrading tmux; reading the server's `#{version}`
+     as well was the alternative.
 7. JediTerm is pinned at 3.76, the latest published, and bumped deliberately.
 8. iTerm2: not automated yet (see Status).
 9. Only cld's own sessions: the private server keeps cld's options away from other tmux use, but
@@ -334,10 +358,9 @@ Where the implementation departs from the plan above:
 - tmux 3.7 prints nothing for `list-keys -T prefix KEY`, and its `new-session -A` honours `-c`: a
   reattach from another directory moved the session's directory for new windows there. Since 0.2.0
   `join` attaches with `attach-session`, which moves neither claude nor the session.
-- `TMUX_VERSION` builds a tmux release from source into the test image, so the newest tmux
-  reproduces in Docker, not only on the macOS runner.
+- The test image builds tmux from source, the release `TMUX_VERSION` (see 6), on `debian:trixie`.
 - tmux 3.7's `paste-buffer` writes control characters as `^X` unless given `-S`; the baseline
-  terminal passes `-S` where `paste-buffer` knows it, since a terminal pastes them as they are.
+  terminal always passes `-S`, since a terminal pastes them as they are.
 - `capture-pane -e` emits an SGR change at the next cell that differs, which moves between
   redraws and sizes (a colour reset can land before or after a line break); the reattach test
   compares cells - characters and attributes - rather than the captured sequences.
@@ -416,8 +439,9 @@ by hand in a nested tmux).
 
 ## Status
 
-- Baseline and JediTerm contracts run on tmux 3.3a, 3.4, 3.5a and 3.7c (Linux, Docker; 3.7c built
-  from source), and the baseline on Homebrew's tmux on macOS.
+- Baseline and JediTerm contracts run on tmux 3.7c (Linux, Docker, built from source), and the
+  baseline on Homebrew's tmux on macOS. Until the minimum rose to 3.7 (see 6), they also ran on
+  3.3a, 3.4 and 3.5a.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

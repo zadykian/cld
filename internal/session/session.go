@@ -23,20 +23,17 @@
 //   - status off: claude keeps the whole tab
 //   - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
 //     C-q; detach is C-q d, and C-q C-q sends a C-q through
-//   - remain-on-exit failed, from tmux 3.5: a claude that fails - at startup, say, for a worktree
-//     in a directory it does not trust - leaves its pane on screen with its message, instead of
-//     taking both away; /exit and claude's other ways out exit with status 0. An empty
-//     remain-on-exit-format keeps tmux from scrolling the pane for its own line, which would push
-//     a short error at the top out of sight; the pane-died hook shows how to end the session on
-//     the message line instead, until a key is pressed. It names the session through its one
-//     window, named NAME: the hook's formats know the pane and its window, not the session. The
-//     hook shows it only to a terminal on that window: tmux would show it on another session's
-//     terminal, or with none attached keep it and show it in view-mode over the next session a
-//     terminal attaches to, which then takes no keys until q; join shows it instead. tmux 3.3 and
-//     3.4 keep writing focus reports to a dead pane that had them on, as claude's has, and crash -
-//     with every session on the server - when the terminal's focus changes or it detaches, so
-//     there remain-on-exit stays off. These go to claude's window only, not the server (see
-//     Tmux.New)
+//   - remain-on-exit failed: a claude that fails - at startup, say, for a worktree in a directory
+//     it does not trust - leaves its pane on screen with its message, instead of taking both
+//     away; /exit and claude's other ways out exit with status 0. An empty remain-on-exit-format
+//     keeps tmux from scrolling the pane for its own line, which would push a short error at the
+//     top out of sight; the pane-died hook shows how to end the session on the message line
+//     instead, until a key is pressed. It names the session through its one window, named NAME:
+//     the hook's formats know the pane and its window, not the session. The hook shows it only to
+//     a terminal on that window: tmux would show it on another session's terminal, or with none
+//     attached keep it and show it in view-mode over the next session a terminal attaches to,
+//     which then takes no keys until q; join shows it instead. These go to claude's window only,
+//     not the server (see Tmux.New)
 //
 // join attaches with -d, detaching other clients. tmux keeps claude's title changes to the pane
 // (set-titles is off), so the tab keeps the session name. The server keeps the environment of
@@ -76,13 +73,42 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 // Tmux is the tmux cld runs, found and checked by Check.
 type Tmux struct {
 	path string
-	// remain is remain-on-exit for claude's window: "failed" from tmux 3.5, "off" before (see
-	// the package comment).
-	remain string
 }
 
-// tmuxVersion matches the start of a version tmux -V reports.
+// minTmux is the oldest tmux cld runs on: the one its tests run on, raised with it by hand (see
+// docs/design.md, decision 6).
+var minTmux = version{3, 7}
+
+// tmuxVersion matches the start of a version tmux -V reports: "3.7c".
 var tmuxVersion = regexp.MustCompile(`^([0-9]+)\.([0-9]+)`)
+
+// version is the numbers of a version, the most significant first.
+type version []int
+
+// parseVersion reads a version from the start of text, as pattern matches it; false when text
+// does not start with one.
+func parseVersion(pattern *regexp.Regexp, text string) (version, bool) {
+	match := pattern.FindStringSubmatch(text)
+	if match == nil {
+		return nil, false
+	}
+	var v version
+	for _, digits := range match[1:] {
+		v = append(v, number(digits))
+	}
+	return v, true
+}
+
+// before reports whether v is older than minimum, comparing them number by number.
+func (v version) before(minimum version) bool { return slices.Compare(v, minimum) < 0 }
+
+func (v version) String() string {
+	numbers := make([]string, len(v))
+	for i, n := range v {
+		numbers[i] = strconv.Itoa(n)
+	}
+	return strings.Join(numbers, ".")
+}
 
 // Check makes the checks every command makes before it runs tmux, in this order: tmux, then
 // each of tools, on the PATH (see lookPath), and tmux's version. A tmux -V that fails ends cld
@@ -97,23 +123,18 @@ func Check(tools ...string) (*Tmux, error) {
 			return nil, fail.Runtime(name + " is not installed")
 		}
 	}
-	t := &Tmux{path: path, remain: "failed"}
-	// allow-passthrough needs tmux 3.3, keeping failed sessions 3.5 (see the package comment);
-	// "tmux next-3.6" and "tmux master" are development builds.
+	t := &Tmux{path: path}
+	// Only the major and minor version count: a letter marks a bug-fix release, so 3.7 and 3.7c
+	// alike are 3.7. Development builds pass: "tmux next-3.9" reads as 3.9, "tmux 3.8-rc2" as
+	// 3.8, and "tmux master" has no version to compare.
 	out, err := t.command("-V").Output()
 	if err != nil {
 		return nil, t.exitStatus(err)
 	}
 	found := strings.TrimRight(string(out), "\n")
-	version := strings.TrimPrefix(found[strings.LastIndex(found, " ")+1:], "next-")
-	if match := tmuxVersion.FindStringSubmatch(version); match != nil {
-		major, minor := number(match[1]), number(match[2])
-		if major < 3 || major == 3 && minor < 3 {
-			return nil, fail.Runtime(fmt.Sprintf("tmux 3.3 or newer is required, found '%s'", found))
-		}
-		if major == 3 && minor < 5 {
-			t.remain = "off"
-		}
+	reported := strings.TrimPrefix(found[strings.LastIndex(found, " ")+1:], "next-")
+	if v, ok := parseVersion(tmuxVersion, reported); ok && v.before(minTmux) {
+		return nil, fail.Runtime(fmt.Sprintf("tmux %s or newer is required, found '%s'", minTmux, found))
 	}
 	return t, nil
 }
@@ -217,7 +238,7 @@ func (t *Tmux) New(suffix string, worktree bool) error {
 	given := settings{RemoteControlAtStartup: true}
 	if worktree {
 		// cld reports a missing repository in the terminal; claude would report it in a session
-		// left to kill or, with tmux 3.3 and 3.4, in a pane that closes as claude exits.
+		// left to kill.
 		if !inWorkTree() {
 			return fail.Runtime("--worktree needs a git repository, and " + dir + " is not in one")
 		}
@@ -253,7 +274,7 @@ func (t *Tmux) New(suffix string, worktree bool) error {
 	argv = append(argv, claude...)
 	argv = append(argv, ";",
 		"set", "-F", "-t", window, "@cld", "#{session_id}", ";",
-		"set", "-w", "-t", window, "remain-on-exit", t.remain, ";",
+		"set", "-w", "-t", window, "remain-on-exit", "failed", ";",
 		"set", "-w", "-t", window, "remain-on-exit-format", "", ";",
 		"set-hook", "-w", "-t", window, "pane-died", "if -F '#{window_active_clients}' \""+hint+"\"")
 	// The server keeps the environment of the client that starts it (see the package comment).

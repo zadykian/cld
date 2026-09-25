@@ -27,7 +27,21 @@ mkdir -p ~/.local/bin && curl -fsSL "https://github.com/zadykian/cld/releases/la
 builds cld and installs it there (`make install PREFIX=/usr/local` for another prefix); it needs
 Go 1.26 or newer.
 
-Requirements: tmux 3.3 or newer, and `claude` on the `PATH`; git for `cld new --worktree`.
+Requirements: tmux 3.7 or newer, and `claude` on the `PATH`; git for `cld new --worktree`.
+
+Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a - which cld
+refuses, naming the version it found. [Homebrew](https://formulae.brew.sh/formula/tmux) has tmux
+3.7 on macOS and Linux, as do Debian testing and unstable; or build a
+[tmux release](https://github.com/tmux/tmux/releases) from source. Or stay on cld 0.3.0, the
+last release that runs on tmux 3.3 to 3.6:
+
+```sh
+curl -fsSL https://github.com/zadykian/cld/releases/download/v0.3.0/cld -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld
+```
+
+After upgrading tmux, end cld's sessions (`cld list`, then `cld kill -n NAME`): cld checks the
+version of the `tmux` on the `PATH`, but the server that holds its sessions keeps running the
+tmux that started it until the last of them ends.
 
 cld 0.3.0 and earlier were a bash script, downloaded from `releases/latest/download/cld`. Later
 releases publish a binary per platform instead, so that download fails once one of them is the
@@ -60,13 +74,11 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | `C-q d` | detach; claude keeps running |
 | `C-q C-q` | send `C-q` to claude |
 
-With tmux 3.5 or newer, if claude exits with an error - it could not start, say - its session
-stays open with claude's message on screen and a line on how to end it: `C-q d` detaches,
-`cld kill -n NAME` ends the session. `cld join -n NAME` shows the line again, also when claude
-exited with no terminal attached. `cld list` shows such a session as `exited`. Leaving claude
-the usual ways (`/exit`, `Ctrl+C` twice, `Ctrl+D` twice) closes the session. With tmux 3.3 and
-3.4 the session closes either way: they crash, taking every session with them, when a dead pane
-that had focus reporting on - as claude's does - sees the terminal's focus change or detach.
+If claude exits with an error - it could not start, say - its session stays open with claude's
+message on screen and a line on how to end it: `C-q d` detaches, `cld kill -n NAME` ends the
+session. `cld join -n NAME` shows the line again, also when claude exited with no terminal
+attached. `cld list` shows such a session as `exited`. Leaving claude the usual ways (`/exit`,
+`Ctrl+C` twice, `Ctrl+D` twice) closes the session.
 
 Joining from a second terminal detaches the first one; claude keeps running in its directory,
 wherever you join from. A killed session's conversation stays in Claude Code's history, named
@@ -104,8 +116,8 @@ settings it passes claude, which overrides the `worktree.baseRef` setting.
 `cld kill` leaves the worktree where it is, and `cld new -n NAME -w` reopens it.
 
 claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
-(or `cld new`) there once first; otherwise claude says so and exits, and with tmux 3.5 or newer
-the session stays open with the message (see Usage). `cld` itself checks that the current directory is in a git
+(or `cld new`) there once first; otherwise claude says so and exits, and the session stays open
+with the message (see Usage). `cld` itself checks that the current directory is in a git
 repository.
 
 ### Why a private tmux server
@@ -125,8 +137,8 @@ your `~/.tmux.conf` never touches claude:
   passthrough;
 - `status off`: claude keeps the whole tab;
 - prefix `C-q`: claude binds `C-b` and nearly every other Ctrl key, but not `C-q`;
-- `remain-on-exit failed` on claude's window (tmux 3.5 or newer): a claude that exits with an
-  error keeps its pane, so its message stays readable;
+- `remain-on-exit failed` on claude's window: a claude that exits with an error keeps its pane,
+  so its message stays readable;
 - the tab title is set to `✳ cld-NAME`, and tmux keeps claude's own title changes to its pane;
 - `TERMINAL_EMULATOR` is removed from the server's environment: claude trusts it over
   `TERM_PROGRAM=tmux`, and a server started from a JetBrains terminal would otherwise make every
@@ -141,7 +153,7 @@ problem:
 |---|---|---|
 | Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
 | Working copy | the directory you run it in, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
-| Needs | tmux 3.3 or newer; a git repository for `-w` | a git repository |
+| Needs | tmux 3.7 or newer; a git repository for `-w` | a git repository |
 | Coming back | `cld join -n NAME` attaches to the session | not documented |
 | tmux server and options | a private server that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
@@ -167,12 +179,14 @@ clipboard, paste, claude exiting - against each terminal:
 The checks run in Docker, the same way as in CI:
 
 ```sh
-make docker-check                      # tmux 3.3a (debian:bookworm): baseline and JediTerm
-make docker-check BASE=ubuntu:24.04    # tmux 3.4; debian:trixie has 3.5a
-make docker-check BASE=debian:trixie TMUX_VERSION=3.7c   # a tmux release built from source
+make docker-check    # tmux 3.7c, built from source on debian:trixie: baseline and JediTerm
 ```
 
-Natively, `make check` needs Go, tmux, ShellCheck and shfmt, and runs the baseline terminal only.
+They run on one tmux, pinned and bumped by hand together with the minimum cld requires;
+`make docker-image TMUX_VERSION=X` builds an image with another release, to try it.
+
+Natively, `make check` needs Go, tmux 3.7 or newer, ShellCheck and shfmt, and runs the baseline
+terminal only.
 For JediTerm add a JDK, fetch its jars once with `tests/jediterm/fetch-deps tests/jediterm/lib`
 and run `make check TERMINALS=tmux,jediterm`.
 
