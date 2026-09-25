@@ -87,18 +87,30 @@ func (o *tmuxTerminal) Start(argv []string, env map[string]string, dir string) {
 		// A real terminal does not set TMUX, the outer server does: it is unset first and set
 		// again only when env asks for it.
 		"new-session", "-d", "-x", strconv.Itoa(o.columns), "-y", strconv.Itoa(o.rows), "-s", "outer",
-		"-c", dir, "env", "-u", "TMUX",
+		"-c", literal(dir), "env", "-u", "TMUX",
 	}
 	for name, value := range env {
-		args = append(args, name+"="+value)
+		args = append(args, literal(name+"="+value))
 	}
-	args = append(args, argv...)
+	for _, word := range argv {
+		args = append(args, literal(word))
+	}
 	// In the same command list as new-session, so the pipe is in place before the first output.
 	// dd writes each read as it comes; uutils' cat (0.8.0, Ubuntu 26.04) holds the last one back
 	// until the next arrives, and the log misses what the program wrote last.
 	args = append(args, ";", "pipe-pane", "-O", "-t", outerPane, "dd bs=65536 2>/dev/null >> '"+o.outputFile()+"'")
 	o.tmux(args...)
 	o.started = true
+}
+
+// literal is word as the outer tmux takes it back from its command line, as cld's own tmux does
+// (see literal in internal/session): tmux ends a command at a word that ends in ";", and turns a
+// "\;" at the end of a word into ";".
+func literal(word string) string {
+	if before, found := strings.CutSuffix(word, ";"); found {
+		return before + `\;`
+	}
+	return word
 }
 
 func (o *tmuxTerminal) outputFile() string {
