@@ -893,7 +893,7 @@ func TestServerExitingWhileAsked(t *testing.T) {
 	fake := map[string]string{
 		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
-		"CLD_FAKE_TMUX_SESSIONS": "cld-a\tdetached\t0\t/w",
+		"CLD_FAKE_TMUX_SESSIONS": "cld-a\tdetached\t0\t100\t/w",
 		"CLD_FAKE_TMUX_EXITED":   "cld-b",
 	}
 	for _, test := range []struct {
@@ -1139,7 +1139,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		// sessions is what the fake tmux lists.
 		sessions string
 	}{
-		{[]string{"list"}, "cld-x\tdetached\t0\t/w"},
+		{[]string{"list"}, "cld-x\tdetached\t0\t100\t/w"},
 		{[]string{"help"}, ""},
 		{[]string{"help", "new"}, ""},
 		{[]string{"new", "-h"}, ""},

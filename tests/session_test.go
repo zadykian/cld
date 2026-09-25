@@ -2193,7 +2193,7 @@ func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldLookup {
 	hold := filepath.Join(s.Root, "hold-"+name)
 	s.WriteFile(hold, "")
 	t.Cleanup(func() { _ = os.Remove(hold) })
-	return heldLookup{hold: hold, env: wrapTmux(t, s, "case \"$*\" in *'#{==:#{session_name},cld-"+name+"} -F #{session_name}')\n"+
+	return heldLookup{hold: hold, env: wrapTmux(t, s, "case \"$*\" in *'#{==:#{session_name},cld-"+name+"} -F #{session_name} #{W:#{P:#{pane_pid} }}')\n"+
 		"\techo $$ >>'"+hold+".lookups'\n"+
 		"\techo $$ >'"+hold+".held'\n"+
 		"\twhile [ -e '"+hold+"' ]; do sleep 0.05; done ;;\n"+
