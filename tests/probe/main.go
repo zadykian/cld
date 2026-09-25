@@ -25,8 +25,8 @@
 // it cannot start.
 //
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
-// $CLD_FAKE_TMUX_VERSION, list-sessions lists no session, and any other invocation is recorded in
-// $CLD_PROBE_DIR/tmux.json.
+// $CLD_FAKE_TMUX_VERSION, list-sessions prints $CLD_FAKE_TMUX_SESSIONS - no session unless a test
+// sets it - and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json.
 package main
 
 import (
@@ -78,6 +78,9 @@ func fakeTmux() error {
 		return nil
 	}
 	if slices.Contains(os.Args[1:], "list-sessions") {
+		if sessions := os.Getenv("CLD_FAKE_TMUX_SESSIONS"); sessions != "" {
+			fmt.Println(sessions)
+		}
 		return nil
 	}
 	return writeRecord(filepath.Join(os.Getenv("CLD_PROBE_DIR"), "tmux.json"))
