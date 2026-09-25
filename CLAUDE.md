@@ -20,22 +20,22 @@ cd tests && go test -count=1 -run 'TestList$' .   # a single test
 cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata/help from cld
 make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
-make docker-check                       # same as CI: tmux 3.3a (debian:bookworm), tmux + jediterm
-make docker-check BASE=ubuntu:24.04     # tmux 3.4; debian:trixie has 3.5a
-make docker-check BASE=debian:trixie TMUX_VERSION=3.7c   # tmux built from source
+make docker-check                       # same as CI: tmux 3.7c built from source, tmux + jediterm
+make docker-image TMUX_VERSION=X        # an image with another tmux release, to try it by hand
 make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH, linux/darwin x amd64/arm64, + cld.sha256
 make install PREFIX=DIR                 # build cld for the host into DIR/bin (VERSION stamps it)
 ```
 
-Native runs need Go, tmux, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`) runs the Docker
-image on tmux 3.3a, 3.4, 3.5a and 3.7c, and `make check` on macOS with Homebrew tmux. Pushing a
-tag `vX.Y.Z` runs the checks and publishes a release: a binary per platform and `cld.sha256`.
+Native runs need Go, tmux 3.7 or newer, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`)
+runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, and `make check` on macOS with
+Homebrew tmux. Pushing a tag `vX.Y.Z` runs the checks and publishes a release: a binary per
+platform and `cld.sha256`.
 
 ## Constraints on cld
 
-- Must run on **tmux 3.3 or newer**; behaviour differs by tmux version (e.g. `remain-on-exit
-  failed` only from 3.5, because 3.3/3.4 crash over a dead pane that had focus reporting on).
-  Version gating is done from `tmux -V` at startup.
+- Requires **tmux 3.7 or newer**, the release the tests run on (3.7c, pinned in
+  `tests/Dockerfile` and the `Makefile`); there is no behaviour per tmux version. The check reads
+  `tmux -V` at startup. Raising the minimum is one change: the pin, the check, the docs.
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new` and `join` end in

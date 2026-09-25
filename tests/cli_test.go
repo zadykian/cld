@@ -381,18 +381,23 @@ func TestIgnoresRelativePathEntries(t *testing.T) {
 	}
 }
 
-func TestRequiresTmux33(t *testing.T) {
+// cld requires the tmux its tests run on, 3.7. A letter, a bug-fix release, is not compared;
+// development builds are read from what follows "next-", and pass without a version.
+func TestRequiresTmux(t *testing.T) {
 	t.Parallel()
 	for version, accepted := range map[string]bool{
-		"tmux 3.3a":     true,
-		"tmux 3.4":      true,
+		"tmux 3.7":      true,
+		"tmux 3.7c":     true,
 		"tmux 3.10":     true,
 		"tmux 4.0":      true,
-		"tmux next-3.6": true,
+		"tmux next-3.9": true,
+		"tmux 3.8-rc2":  true,
 		"tmux master":   true,
-		"tmux 3.2a":     false,
+		"tmux 3.6b":     false,
+		"tmux 3.5a":     false,
+		"tmux 3.3a":     false,
 		"tmux 2.9a":     false,
-		"tmux next-3.2": false,
+		"tmux next-3.6": false,
 	} {
 		t.Run(version, func(t *testing.T) {
 			t.Parallel()
@@ -406,7 +411,7 @@ func TestRequiresTmux33(t *testing.T) {
 			if accepted && (result.Code != 0 || !started) {
 				t.Errorf("rejected: exit %d, stderr %q", result.Code, result.Stderr)
 			}
-			if want := "cld: tmux 3.3 or newer is required, found '" + version + "'\n"; !accepted &&
+			if want := "cld: tmux 3.7 or newer is required, found '" + version + "'\n"; !accepted &&
 				(result.Code != 1 || result.Stderr != want || started) {
 				t.Errorf("accepted: exit %d, stderr %q, tmux started: %v", result.Code, result.Stderr, started)
 			}
@@ -424,34 +429,26 @@ const endHint = "display-message -d 0 'claude exited with " +
 // arguments as separate words, the mark, and what goes on claude's window. The fake tmux records
 // it, and the environment it gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX
 // where TMUX was set (see TestNestsOnADeadPanesPty); a PS1, which the script's bash dropped,
-// passes too (decision 11 in docs/design.md). Below tmux 3.5 remain-on-exit stays off.
+// passes too (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
-		version, remain string
-		worktree        bool
-	}{
-		{"tmux 3.4", "off", false},
-		{"tmux 3.4", "off", true},
-		{"tmux 3.7c", "failed", false},
-		{"tmux 3.7c", "failed", true},
-	} {
+	for _, worktree := range []bool{false, true} {
 		args := []string{"new", "-n", "x"}
 		claude := []string{"claude", "--name", "cld-x", "--settings", remoteControl}
-		if test.worktree {
+		if worktree {
 			args = append(args, "-w")
 			claude = []string{"claude", "--name", "cld-x", "--settings",
 				`{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`, "--worktree", "x"}
 		}
-		t.Run(test.version+" "+strings.Join(args, " "), func(t *testing.T) {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			if test.worktree {
+			if worktree {
 				gitInit(t, s.Work)
 			}
 			given := map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
-				"CLD_FAKE_TMUX_VERSION": test.version,
+				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
 				"TERMINAL_EMULATOR":     "JetBrains-JediTerm",
 				"TMUX":                  filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
 				"PS1":                   `\u@\h$ `,
@@ -469,7 +466,7 @@ func TestNewTmuxCommand(t *testing.T) {
 			want = append(want, claude...)
 			want = append(want, ";",
 				"set", "-F", "-t", "=cld-x:", "@cld", "#{session_id}", ";",
-				"set", "-w", "-t", "=cld-x:", "remain-on-exit", test.remain, ";",
+				"set", "-w", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
 				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint+`"`)
 			record := s.FakeTmuxRecord()

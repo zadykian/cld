@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -109,20 +108,13 @@ func (o *tmuxTerminal) Keys(keys ...string) {
 }
 
 // Paste goes through a paste buffer: paste-buffer -p brackets the text only if the program asked
-// for bracketed paste, and turns line feeds into carriage returns, as terminals do. Since tmux 3.7
-// it also writes control characters as ^X unless given -S, which a terminal does not do.
+// for bracketed paste, and turns line feeds into carriage returns, as terminals do. -S keeps it
+// from writing control characters as ^X, which tmux 3.7 does and a terminal does not.
 func (o *tmuxTerminal) Paste(text string) {
 	o.t.Helper()
 	o.tmux("set-buffer", "-b", "paste", "--", text)
-	args := []string{"paste-buffer", "-p", "-d", "-b", "paste", "-t", outerPane}
-	if pasteRaw.MatchString(o.tmux("list-commands", "paste-buffer")) {
-		args = append(args, "-S")
-	}
-	o.tmux(args...)
+	o.tmux("paste-buffer", "-p", "-S", "-d", "-b", "paste", "-t", outerPane)
 }
-
-// pasteRaw matches the usage of a paste-buffer that knows -S.
-var pasteRaw = regexp.MustCompile(`\[-[a-zA-Z]*S[a-zA-Z]*\]`)
 
 func (o *tmuxTerminal) send(input string) {
 	o.t.Helper()

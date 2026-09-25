@@ -73,8 +73,8 @@ func commandLine(typed string, printed *error) *cobra.Command {
 "claude --name cld-NAME" with Remote Control on. cld sees only the sessions it
 started; tmux -L cld ls lists every session on its server.
 
-Detach with C-q d; C-q C-q sends C-q to claude. With tmux 3.5 or newer, a
-session whose claude fails stays, showing why, until cld kill ends it.`,
+Detach with C-q d; C-q C-q sends C-q to claude. A session whose claude fails
+stays, showing why, until cld kill ends it.`,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
