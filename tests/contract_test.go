@@ -249,6 +249,66 @@ func TestContractClaudeExit(t *testing.T) {
 	})
 }
 
+// C10: the session list reads the terminal's own keys, not tmux's: Down and Enter join the second
+// session, with the terminal handed to tmux as it was before the list, which a detach shows; Esc
+// leaves the terminal as it was. (Whether a JetBrains IDE passes Esc on to its terminal depends on
+// its keymap, which the driver cannot see; Ctrl+C also leaves.)
+func TestContractList(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		t.Run("join", func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			detachedSessions(t, s, "a", "b")
+			term := terminal.New(t, name, s)
+			list := startList(t, s, term, listScript, nil)
+			waitScreen(t, term, listHints)
+			if selected := selectedRow(term); selected != "a" {
+				t.Errorf("row %q selected, want a", selected)
+			}
+			term.Keys("Down")
+			sandbox.WaitFor(t, 10*time.Second, "the selection to move to b", func() bool { return selectedRow(term) == "b" })
+			term.Keys("Enter")
+			waitScreen(t, term, "probe --name cld-b")
+			if title := term.Title(); title != "✳ cld-b" {
+				t.Errorf("terminal title %q, want %q", title, "✳ cld-b")
+			}
+			term.Keys("C-q", "d")
+			if code := list.code(t); code != "0" {
+				t.Errorf("exit %s, want 0", code)
+			}
+			list.checkRestored(t, term)
+		})
+		t.Run("leave", func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			detachedSessions(t, s, "a", "b")
+			term := terminal.New(t, name, s)
+			list := startList(t, s, term, listScript, nil)
+			waitScreen(t, term, listHints)
+			if modes := term.Modes(); !modes.AltScreen || modes.Cursor {
+				t.Errorf("modes while the list is open %+v, want the alternate screen and the cursor hidden", modes)
+			}
+			term.Keys("Escape")
+			if code := list.code(t); code != "0" {
+				t.Errorf("exit %s, want 0", code)
+			}
+			list.checkRestored(t, term)
+		})
+	})
+}
+
+// selectedRow is the name on the row the list marks as selected, or "" when it marks none.
+func selectedRow(term terminal.Terminal) string {
+	for _, line := range strings.Split(term.Screen(), "\n") {
+		if row, marked := strings.CutPrefix(line, "> "); marked {
+			if fields := strings.Fields(row); len(fields) > 0 {
+				return fields[0]
+			}
+		}
+	}
+	return ""
+}
+
 // modifiedKeysOn reports whether the last modifyOtherKeys sequence in a terminal's output turns
 // modified keys on (CSI > 4 ; 1 m or CSI > 4 ; 2 m) rather than off (CSI > 4 m).
 func modifiedKeysOn(output []byte) bool {

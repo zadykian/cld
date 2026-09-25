@@ -1,6 +1,7 @@
 // Command cld runs Claude Code in named sessions on a private tmux server, so a conversation can
 // be detached and rejoined from any terminal. The command line is here; how cld uses tmux, and
-// why, is in internal/session.
+// why, is in internal/session, and the interactive list, cld list on a terminal, in
+// internal/picker.
 package main
 
 import (
