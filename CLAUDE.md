@@ -94,6 +94,17 @@ changes are made together across the code (`internal/session`'s package comment,
 the usage text in `cmd/cld/usage.go`), `README.md` and `docs/design.md`, with tests. When a change
 rests on observed tmux or claude behaviour, record the probe and the versions in Findings.
 
-Commit messages: a short imperative subject in sentence case, then a bullet list saying what was
-wrong or missing, what changed, which tmux/claude versions it was checked on, and what the tests
-cover.
+Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
+a header `type(scope): description`, then a body, then optional footers, each separated by a blank
+line.
+
+- **type**: `feat` for a new feature, `fix` for a bug fix; otherwise `build`, `chore`, `ci`,
+  `docs`, `perf`, `refactor`, `style` or `test`.
+- **scope** (optional): the part of the project changed, e.g. `cli` (`cmd/cld`), `session`
+  (`internal/session`), `tests`, `jediterm`, `docs`.
+- **description**: short and imperative, lower case, no trailing period, e.g.
+  `fix(session): read the pty name without tty's newline`.
+- **body**: a bullet list saying what was wrong or missing, what changed, which tmux/claude
+  versions it was checked on, and what the tests cover.
+- **breaking changes**: `!` before the colon (`feat(cli)!: ...`) and a `BREAKING CHANGE:` footer
+  describing what users must change.
