@@ -1,8 +1,11 @@
 package tests
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -100,6 +103,30 @@ func TestRejectsInvalidNames(t *testing.T) {
 	}
 }
 
+// Names are ASCII whatever the locale: under en_US.UTF-8, glibc's bash took é, ß or ① for a
+// letter or a digit in [A-Za-z0-9], and cld's shell script took names with them (see Findings in
+// docs/design.md).
+func TestNamesAreASCII(t *testing.T) {
+	t.Parallel()
+	locale := map[string]string{"LC_ALL": "en_US.UTF-8"}
+	for _, name := range []string{"café", "ß", "①", "٣"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			if result, want := s.RunCld(locale, "new", "-n", name), "cld: invalid session name '"+name+"' (see cld help)\n"; result.Code != 2 || result.Stderr != want {
+				t.Errorf("new -n %s: exit %d, stderr %q, want exit 2, stderr %q", name, result.Code, result.Stderr, want)
+			}
+			// No legacy hint either: NAME is no session name.
+			if result, want := s.RunCld(locale, name), "cld: unknown command '"+name+"' (see cld help)\n"; result.Code != 2 || result.Stderr != want {
+				t.Errorf("%s: exit %d, stderr %q, want exit 2, stderr %q", name, result.Code, result.Stderr, want)
+			}
+			if sessions := s.Sessions(); len(sessions) != 0 {
+				t.Errorf("sessions %q, want none", sessions)
+			}
+		})
+	}
+}
+
 // Arguments are read left to right, and the first wrong one decides the message: an option after
 // an argument is not read, and -- ends nothing. help and version are named as typed.
 func TestRejectsUnexpectedArguments(t *testing.T) {
@@ -127,6 +154,8 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"new", "review", "-n"}, "cld: new: unexpected argument 'review' (see cld help)\n"},
 		{[]string{"new", "review", "-h"}, "cld: new: unexpected argument 'review' (see cld help)\n"},
 		{[]string{"join", "-w", "-h"}, "cld: join: unexpected argument '-w' (see cld help)\n"},
+		// An empty argument is one too (cld's shell script took it for none).
+		{[]string{"list", ""}, "cld: list: unexpected argument '' (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -147,14 +176,14 @@ func TestRequiresTools(t *testing.T) {
 		present []string
 		want    string
 	}{
-		{[]string{"new"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
-		{[]string{"new"}, []string{"bash", "env", "tmux"}, "cld: claude is not installed\n"},
-		{[]string{"new", "-w"}, []string{"bash", "env", "tmux", "claude"}, "cld: git is not installed\n"},
-		{[]string{"join"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
-		{[]string{"join"}, []string{"bash", "env", "tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
-		{[]string{"kill"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
-		{[]string{"kill"}, []string{"bash", "env", "tmux"}, "cld: no session 'main' (see cld list)\n"},
-		{[]string{"list"}, []string{"bash", "env", "claude"}, "cld: tmux is not installed\n"},
+		{[]string{"new"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"new"}, []string{"tmux"}, "cld: claude is not installed\n"},
+		{[]string{"new", "-w"}, []string{"tmux", "claude"}, "cld: git is not installed\n"},
+		{[]string{"join"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"join"}, []string{"tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
+		{[]string{"kill"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"kill"}, []string{"tmux"}, "cld: no session 'main' (see cld list)\n"},
+		{[]string{"list"}, []string{"claude"}, "cld: tmux is not installed\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {
 			t.Parallel()
@@ -164,6 +193,43 @@ func TestRequiresTools(t *testing.T) {
 				t.Errorf("exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, test.want)
 			}
 		})
+	}
+}
+
+// cld runs no program from a relative PATH entry, "." or an empty one: a tool found only there
+// is not installed, and one that an absolute entry after it also has runs from that entry. The
+// working directory has a tmux and a git of its own, which fail, saying so, if run.
+func TestIgnoresRelativePathEntries(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args    []string
+		present []string
+		code    int
+		want    string
+	}{
+		{[]string{"join"}, nil, 1, "cld: tmux is not installed\n"},
+		{[]string{"join"}, []string{"tmux"}, 1, "cld: no session 'main'; create it with cld new -n main\n"},
+		{[]string{"new", "-w"}, []string{"tmux", "claude"}, 1, "cld: git is not installed\n"},
+		// tmux and git, run from the absolute entry, find no session and the repository.
+		{[]string{"new", "-w"}, []string{"tmux", "claude", "git"}, 0, ""},
+	} {
+		for _, relative := range []string{".", ""} {
+			t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ",")+" after '"+relative+"'", func(t *testing.T) {
+				t.Parallel()
+				s := sandbox.New(t)
+				gitInit(t, s.Work)
+				for _, name := range []string{"tmux", "git"} {
+					script := "#!/bin/sh\necho \"relative " + name + " ran\" >&2\nexit 99\n"
+					if err := os.WriteFile(filepath.Join(s.Work, name), []byte(script), 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				path := relative + string(os.PathListSeparator) + s.Tools(test.present...)
+				if result := s.RunCld(map[string]string{"PATH": path}, test.args...); result.Code != test.code || result.Stderr != test.want {
+					t.Errorf("PATH %s: exit %d, stderr %q, want exit %d, stderr %q", path, result.Code, result.Stderr, test.code, test.want)
+				}
+			})
+		}
 	}
 }
 
@@ -184,7 +250,7 @@ func TestRequiresTmux33(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
 			result := s.RunCld(map[string]string{
-				"PATH":                  s.Tools("bash", "env", "tmux", "claude"),
+				"PATH":                  s.Tools("tmux", "claude"),
 				"CLD_FAKE_TMUX_VERSION": version,
 			}, "new")
 			_, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json"))
@@ -208,8 +274,9 @@ const endHint = "display-message -d 0 'claude exited with " +
 
 // new hands over to tmux with this command, word for word: the server options, claude and its
 // arguments as separate words, the mark, and what goes on claude's window. The fake tmux records
-// it, and the environment it gets: without TERMINAL_EMULATOR, and with an empty TMUX where TMUX
-// was set (see TestNestsOnADeadPanesPty). Below tmux 3.5 remain-on-exit stays off.
+// it, and the environment it gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX
+// where TMUX was set (see TestNestsOnADeadPanesPty); a PS1, which the script's bash dropped,
+// passes too (decision 11 in docs/design.md). Below tmux 3.5 remain-on-exit stays off.
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -234,12 +301,14 @@ func TestNewTmuxCommand(t *testing.T) {
 			if test.worktree {
 				gitInit(t, s.Work)
 			}
-			result := s.RunCld(map[string]string{
+			given := map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": test.version,
 				"TERMINAL_EMULATOR":     "JetBrains-JediTerm",
 				"TMUX":                  filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
-			}, args...)
+				"PS1":                   `\u@\h$ `,
+			}
+			result := s.RunCld(given, args...)
 			if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
@@ -259,12 +328,7 @@ func TestNewTmuxCommand(t *testing.T) {
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 			}
-			if value, found := record.Env["TERMINAL_EMULATOR"]; found {
-				t.Errorf("tmux gets TERMINAL_EMULATOR=%s", value)
-			}
-			if value, found := record.Env["TMUX"]; !found || value != "" {
-				t.Errorf("tmux gets TMUX %q (set: %v), want it set and empty", value, found)
-			}
+			checkEnv(t, record.Env, passedOn(s, given, "TERMINAL_EMULATOR"))
 			if record.Cwd != s.Work {
 				t.Errorf("tmux runs in %s, want %s", record.Cwd, s.Work)
 			}
@@ -273,8 +337,9 @@ func TestNewTmuxCommand(t *testing.T) {
 }
 
 // join hands over to tmux with this command, word for word, and with the environment it got but
-// for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which only new leaves out. The fake
-// tmux finds session x among cld's, then records the command.
+// for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which only new leaves out, and a
+// PS1, which the script's bash dropped. The fake tmux finds session x among cld's, then records
+// the command.
 func TestJoinTmuxCommand(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -286,6 +351,7 @@ func TestJoinTmuxCommand(t *testing.T) {
 		"TERM_PROGRAM":           "iTerm.app",
 		"LC_TERMINAL":            "iTerm2",
 		"TMUX":                   filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
+		"PS1":                    `\u@\h$ `,
 	}
 	result := s.RunCld(given, "join", "-n", "x")
 	if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
@@ -295,17 +361,38 @@ func TestJoinTmuxCommand(t *testing.T) {
 	if want := []string{"-L", "cld", "attach-session", "-d", "-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint}; !slices.Equal(record.Argv, want) {
 		t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 	}
-	for _, name := range []string{"TERMINAL_EMULATOR", "TERM_PROGRAM", "LC_TERMINAL", "LANG", "TERM"} {
-		want, isGiven := given[name]
-		if !isGiven {
-			want = s.Env[name]
-		}
-		if value, found := record.Env[name]; !found || value != want {
-			t.Errorf("tmux gets %s %q (set: %v), want %q", name, value, found, want)
+	checkEnv(t, record.Env, passedOn(s, given))
+}
+
+// passedOn is the environment cld runs in with extra, as cld hands it on to tmux: without the
+// variables named in dropped, and with an empty TMUX where TMUX was set.
+func passedOn(s *sandbox.Sandbox, extra map[string]string, dropped ...string) map[string]string {
+	env := map[string]string{}
+	for _, variable := range s.Environ(extra) {
+		name, value, _ := strings.Cut(variable, "=")
+		env[name] = value
+	}
+	for _, name := range dropped {
+		delete(env, name)
+	}
+	if _, set := env["TMUX"]; set {
+		env["TMUX"] = ""
+	}
+	return env
+}
+
+// checkEnv reports each variable of the environment tmux got that is not as in want.
+func checkEnv(t *testing.T, got, want map[string]string) {
+	t.Helper()
+	for name, value := range want {
+		if gotValue, found := got[name]; !found || gotValue != value {
+			t.Errorf("tmux gets %s %q (set: %v), want %q", name, gotValue, found, value)
 		}
 	}
-	if value, found := record.Env["TMUX"]; !found || value != "" {
-		t.Errorf("tmux gets TMUX %q (set: %v), want it set and empty", value, found)
+	for name, value := range got {
+		if _, wanted := want[name]; !wanted {
+			t.Errorf("tmux gets %s=%q, want it unset", name, value)
+		}
 	}
 }
 
@@ -344,6 +431,224 @@ func TestPassesTmuxFailuresThrough(t *testing.T) {
 			result := s.RunCld(map[string]string{"PATH": fake + string(os.PathListSeparator) + s.Env["PATH"]}, test.args...)
 			if result.Code != test.code || result.Stderr != test.stderr || result.Stdout != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stderr %q", result.Code, result.Stdout, result.Stderr, test.code, test.stderr)
+			}
+		})
+	}
+}
+
+// A tmux the system cannot run at all ends cld with the status a shell gives, after cld's own
+// message: 127 when the system reports no such file - here the interpreter the #! line names -
+// and 126 otherwise - here a text file without #!, which bash ran as a script, and a file
+// without the execute permission, which cld, like bash, takes when the PATH has no executable
+// tmux. So does a tmux that stops being runnable once it has answered tmux -V and the session
+// lookup: new and join cannot hand over to it, and kill cannot end the session with it. A lookup
+// that cannot run, once tmux -V has answered, ends cld with status 1 and the same message, as
+// the script's lookups ended it with bash's.
+func TestCannotRunTmux(t *testing.T) {
+	t.Parallel()
+	const title = "\x1b]0;\u2733 cld-x\x07"
+	for _, broken := range []struct {
+		what, content string
+		mode          os.FileMode
+		code          int
+		reason        string
+	}{
+		{"a missing interpreter", "#!/nonexistent/interpreter\n", 0o755, 127, "no such file or directory"},
+		{"no #!", "echo tmux 3.7c\n", 0o755, 126, "exec format error"},
+		{"no execute permission", "#!/bin/sh\necho tmux 3.7c\n", 0o644, 126, "permission denied"},
+	} {
+		for _, test := range []struct {
+			args []string
+			// answers is what tmux runs before it cannot: nothing, or a script that answers tmux
+			// -V and, if it is not -V, the lookup.
+			answers string
+			// lookup is whether the command that cannot run is a session lookup.
+			lookup bool
+			stdout string
+		}{
+			{[]string{"list"}, "", false, ""},
+			{[]string{"join"}, "", false, ""},
+			{[]string{"kill"}, "", false, ""},
+			{[]string{"list"}, "echo 'tmux 3.7c'", true, ""},
+			{[]string{"join", "-n", "x"}, "echo 'tmux 3.7c'", true, ""},
+			{[]string{"kill", "-n", "x"}, "echo 'tmux 3.7c'", true, ""},
+			{[]string{"new", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac`, false, title},
+			{[]string{"join", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld`, false, title},
+			{[]string{"kill", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld`, false, ""},
+		} {
+			stage := "at once"
+			if test.answers != "" {
+				stage = "after the lookup"
+				if test.lookup {
+					stage = "after -V"
+				}
+			}
+			t.Run(strings.Join(test.args, " ")+", "+stage+", "+broken.what, func(t *testing.T) {
+				t.Parallel()
+				s := sandbox.New(t)
+				fake := filepath.Join(s.Root, "fake")
+				if err := os.Mkdir(fake, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				tmux := filepath.Join(fake, "tmux")
+				if test.answers == "" {
+					if err := os.WriteFile(tmux, []byte(broken.content), broken.mode); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					// The script answers, then moves the file that cannot run over itself.
+					if err := os.WriteFile(tmux+".broken", []byte(broken.content), broken.mode); err != nil {
+						t.Fatal(err)
+					}
+					script := "#!/bin/sh\n" + test.answers + "\nmv -f '" + tmux + ".broken' '" + tmux + "'\n"
+					if err := os.WriteFile(tmux, []byte(script), 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// No other tmux on the PATH, so that cld takes one without the execute permission.
+				path := fake + string(os.PathListSeparator) + s.Tools("claude", "mv")
+				result := s.RunCld(map[string]string{"PATH": path}, test.args...)
+				code := broken.code
+				if test.lookup {
+					code = 1
+				}
+				want := "cld: cannot run " + tmux + ": " + broken.reason + "\n"
+				if result.Code != code || result.Stderr != want || result.Stdout != test.stdout {
+					t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q",
+						result.Code, result.Stdout, result.Stderr, code, test.stdout, want)
+				}
+			})
+		}
+	}
+}
+
+// A claude or git on the PATH without the execute permission, where the PATH has no executable
+// one, is found all the same, as bash's search found it: new goes on and hands tmux the claude it
+// cannot run, as the script did, and git cannot say that the directory is in a repository. A
+// tool without the execute permission before an executable one does not hide it.
+func TestToolsWithoutExecutePermission(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		// denied are the tools without the execute permission, in a PATH entry before present.
+		denied, present []string
+		code            int
+		stderr          string
+	}{
+		{[]string{"new", "-n", "x"}, []string{"claude"}, []string{"tmux"}, 0, ""},
+		{[]string{"new", "-n", "x", "-w"}, []string{"git"}, []string{"tmux", "claude"}, 1,
+			"cld: --worktree needs a git repository, and WORK is not in one\n"},
+		{[]string{"new", "-n", "x", "-w"}, []string{"git"}, []string{"tmux", "claude", "git"}, 0, ""},
+		{[]string{"new", "-n", "x"}, []string{"tmux", "claude"}, []string{"tmux", "claude"}, 0, ""},
+	} {
+		t.Run(strings.Join(test.args, " ")+", "+strings.Join(test.denied, ",")+" denied, "+strings.Join(test.present, ",")+" present", func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			gitInit(t, s.Work)
+			denied := filepath.Join(s.Root, "denied")
+			if err := os.Mkdir(denied, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range test.denied {
+				script := "#!/bin/sh\necho \"" + name + " without the execute permission ran\" >&2\nexit 99\n"
+				if err := os.WriteFile(filepath.Join(denied, name), []byte(script), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			result := s.RunCld(map[string]string{
+				"PATH":                  denied + string(os.PathListSeparator) + s.Tools(test.present...),
+				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+			}, test.args...)
+			stdout, stderr := "", strings.ReplaceAll(test.stderr, "WORK", s.Work)
+			if test.code == 0 {
+				stdout = "\x1b]0;\u2733 cld-x\x07"
+			}
+			if result.Code != test.code || result.Stdout != stdout || result.Stderr != stderr {
+				t.Fatalf("exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q",
+					result.Code, result.Stdout, result.Stderr, test.code, stdout, stderr)
+			}
+			_, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json"))
+			if handedOver := err == nil; handedOver != (test.code == 0) {
+				t.Errorf("cld handed over to tmux: %v, want %v", handedOver, test.code == 0)
+			}
+		})
+	}
+}
+
+// A write to stdout that fails ends cld with status 1, as the script's printf and cat failing
+// under set -e did, so that output cut short does not pass for whole: list, the usage and the
+// version, and new and join, which then do not hand over to tmux. stdout is open for reading
+// only here, so that every write to it fails.
+func TestFailedWriteEndsCld(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		// sessions is what the fake tmux lists.
+		sessions string
+	}{
+		{[]string{"list"}, "cld-a\tdetached\t/w"},
+		{[]string{"help"}, ""},
+		{[]string{"join", "-h"}, ""},
+		{[]string{"version"}, ""},
+		{[]string{"new", "-n", "x"}, ""},
+		{[]string{"join", "-n", "x"}, "cld"},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			stdout, err := os.Open(os.DevNull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stdout.Close()
+			cmd := exec.Command(sandbox.Cld, test.args...)
+			cmd.Env = s.Environ(map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": test.sessions,
+			})
+			cmd.Dir = s.Work
+			var stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = stdout, &stderr
+			_ = cmd.Run()
+			if code, want := cmd.ProcessState.ExitCode(), "cld: write error: bad file descriptor\n"; code != 1 || stderr.String() != want {
+				t.Errorf("exit %d, stderr %q, want exit 1, stderr %q", code, stderr.String(), want)
+			}
+			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
+				t.Error("cld handed over to tmux")
+			}
+		})
+	}
+}
+
+// new refuses a working directory that no longer exists, with or without -w: the script went on
+// with the PWD it got, and tmux started claude in the home directory instead. On Linux only: what
+// macOS's getcwd does in a removed directory has not been checked.
+func TestNewRefusesARemovedDirectory(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("getcwd in a removed directory is checked on Linux only")
+	}
+	for _, args := range [][]string{{"new", "-n", "x"}, {"new", "-n", "x", "-w"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			gitInit(t, s.Work)
+			// sh makes the directory, moves into it and removes it, then runs cld there.
+			script := `mkdir "$1" && cd "$1" && rmdir "$1" && shift && exec "$0" "$@"`
+			cmd := exec.Command("/bin/sh", append([]string{"-c", script, sandbox.Cld, filepath.Join(s.Work, "removed")}, args...)...)
+			cmd.Env = s.Environ(map[string]string{
+				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+			})
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			_ = cmd.Run()
+			if code, want := cmd.ProcessState.ExitCode(), "cld: the current directory no longer exists\n"; code != 1 || stderr.String() != want || stdout.Len() != 0 {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", code, stdout.String(), stderr.String(), want)
+			}
+			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
+				t.Error("cld handed over to tmux")
 			}
 		})
 	}

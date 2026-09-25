@@ -7,17 +7,20 @@ BASE ?= debian:bookworm
 TMUX_VERSION ?=
 DOCKER_TERMINALS ?= tmux,jediterm
 IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))$(if $(TMUX_VERSION),-tmux-$(TMUX_VERSION))
-# The version make dist stamps into the script.
+# The version make dist and make install stamp into cld.
 VERSION ?= dev
+# The platforms make dist builds cld for, as dist/cld-OS-ARCH.
+PLATFORMS = linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+BUILD = CGO_ENABLED=0 go build -trimpath -ldflags '-X main.version=$(VERSION)'
 
 .PHONY: check lint test docker-image docker-test docker-check dist install uninstall
 
 check: lint test
 
 lint:
-	shellcheck bin/cld tests/jediterm/fetch-deps
-	shfmt -d -i 4 bin/cld tests/jediterm/fetch-deps
-	@test -z "$$(gofmt -l tests)" || { gofmt -d tests; exit 1; }
+	shellcheck tests/jediterm/fetch-deps
+	shfmt -d -i 4 tests/jediterm/fetch-deps
+	@test -z "$$(gofmt -l .)" || { gofmt -d .; exit 1; }
 	go vet ./...
 
 test:
@@ -36,15 +39,17 @@ docker-test:
 docker-check: docker-image
 	@$(MAKE) --no-print-directory docker-test
 
+# With cgo off every platform cross-compiles without a C toolchain, into a static binary on Linux.
 dist:
-	mkdir -p dist
-	sed 's/^CLD_VERSION=dev$$/CLD_VERSION=$(VERSION)/' bin/cld > dist/cld
-	chmod 755 dist/cld
-	cd dist && { sha256sum cld 2>/dev/null || shasum -a 256 cld; } > cld.sha256
+	rm -rf dist && mkdir dist
+	set -e; for platform in $(PLATFORMS); do \
+		GOOS=$${platform%/*} GOARCH=$${platform#*/} $(BUILD) -o dist/cld-$${platform%/*}-$${platform#*/} ./cmd/cld; \
+	done
+	cd dist && { sha256sum cld-* 2>/dev/null || shasum -a 256 cld-*; } > cld.sha256
 
 install:
 	install -d "$(PREFIX)/bin"
-	install -m 755 bin/cld "$(PREFIX)/bin/cld"
+	$(BUILD) -o "$(PREFIX)/bin/cld" ./cmd/cld
 
 uninstall:
 	rm -f "$(PREFIX)/bin/cld"

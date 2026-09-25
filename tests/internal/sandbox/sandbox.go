@@ -19,20 +19,12 @@ import (
 )
 
 var (
-	// Repo is the root of the repository.
-	Repo = func() string {
-		_, file, _, _ := runtime.Caller(0)
-		return filepath.Join(filepath.Dir(file), "..", "..", "..")
-	}()
-	// Cld is the script under test.
-	Cld = filepath.Join(Repo, "bin", "cld")
+	// Cld is the cld binary under test; built by TestMain.
+	Cld string
 	// ProbeBin is the directory holding the probe installed as "claude"; set by TestMain.
 	ProbeBin string
 	// FakeTmux is the probe installed as "tmux"; set by TestMain.
 	FakeTmux string
-	// Bash, when set through CLD_BASH, runs cld under that bash instead of the one on PATH,
-	// e.g. macOS's /bin/bash 3.2.
-	Bash = os.Getenv("CLD_BASH")
 )
 
 // Record is what the probe writes about a process it stands in for.
@@ -115,9 +107,6 @@ func (s *Sandbox) Environ(extra map[string]string) []string {
 
 // CldArgv is the command line that runs cld with args.
 func (s *Sandbox) CldArgv(args ...string) []string {
-	if Bash != "" {
-		return append([]string{Bash, Cld}, args...)
-	}
 	return append([]string{Cld}, args...)
 }
 

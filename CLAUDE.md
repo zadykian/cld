@@ -5,35 +5,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 `cld` runs Claude Code in named sessions on a private tmux server (`tmux -L cld -f /dev/null`), so
-a conversation can be detached and rejoined from any terminal. The whole product is one bash
-script, `bin/cld`; everything else is its test harness (Go, under `tests/`), docs and CI.
+a conversation can be detached and rejoined from any terminal. The product is a Go program on
+cobra: `cmd/cld` is the command line (commands, argument errors, usage text), `internal/session`
+the tmux side, and `internal/fail` carries exit statuses up to `main`. Everything else is its test
+harness (Go, under `tests/`), docs and CI.
 
 ## Commands
 
 ```sh
 make check                              # lint + test, natively (baseline terminal only)
-make lint                               # shellcheck, shfmt -i 4, gofmt, go vet
+make lint                               # gofmt, go vet; shellcheck, shfmt -i 4 on fetch-deps
 make test                               # cd tests && go test -count=1 ./...
 cd tests && go test -count=1 -run 'TestList$' .   # a single test
-CLD_BASH=/bin/bash make test            # run cld under a specific bash (CI: macOS bash 3.2)
 make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
 make docker-check                       # same as CI: tmux 3.3a (debian:bookworm), tmux + jediterm
 make docker-check BASE=ubuntu:24.04     # tmux 3.4; debian:trixie has 3.5a
 make docker-check BASE=debian:trixie TMUX_VERSION=3.7c   # tmux built from source
-make dist VERSION=X.Y.Z                 # dist/cld with CLD_VERSION stamped in, plus cld.sha256
+make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH, linux/darwin x amd64/arm64, + cld.sha256
+make install PREFIX=DIR                 # build cld for the host into DIR/bin (VERSION stamps it)
 ```
 
 Native runs need Go, tmux, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`) runs the Docker
-image on tmux 3.3a, 3.4, 3.5a and 3.7c, and `make check` on macOS with Homebrew tmux and
-`/bin/bash` 3.2. Pushing a tag `vX.Y.Z` runs the checks and publishes a release.
+image on tmux 3.3a, 3.4, 3.5a and 3.7c, and `make check` on macOS with Homebrew tmux. Pushing a
+tag `vX.Y.Z` runs the checks and publishes a release: a binary per platform and `cld.sha256`.
 
-## Constraints on `bin/cld`
+## Constraints on cld
 
-- Must run on **bash 3.2** (macOS) and **tmux 3.3 or newer**; behaviour differs by tmux version
-  (e.g. `remain-on-exit failed` only from 3.5, because 3.3/3.4 crash over a dead pane that had
-  focus reporting on). Version gating is done from `tmux -V` at startup.
-- Formatting is `shfmt -i 4`; ShellCheck must pass.
+- Must run on **tmux 3.3 or newer**; behaviour differs by tmux version (e.g. `remain-on-exit
+  failed` only from 3.5, because 3.3/3.4 crash over a dead pane that had focus reporting on).
+  Version gating is done from `tmux -V` at startup.
+- Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
+  `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
+- Only `main` exits: errors carry their exit status up (`internal/fail`); `new` and `join` end in
+  `syscall.Exec` of tmux. cobra's defaults are overridden to keep cld's command line - the
+  first argument checked before cobra, options read up to the first argument, one usage text,
+  no completion command (see docs/design.md, Implementation notes).
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`), never sanitised.
@@ -45,20 +52,21 @@ image on tmux 3.3a, 3.4, 3.5a and 3.7c, and `make check` on macOS with Homebrew 
   reach cld's server, which is why the mark exists.
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
   window, not the server, so sessions cld did not start behave as plain tmux would.
-- `TERMINAL_EMULATOR` is stripped (`env -u`) from the server's environment; claude trusts it over
-  `TERM_PROGRAM=tmux`.
+- `TERMINAL_EMULATOR` is removed from the environment `new` execs tmux with, so from the server's;
+  claude trusts it over `TERM_PROGRAM=tmux`.
 
-The long comment at the top of `bin/cld` explains why each tmux option is set; keep it accurate
+The package comment of `internal/session` explains why each tmux option is set; keep it accurate
 when changing options.
 
 ## Test architecture (`tests/`)
 
-Tests run the real `bin/cld` against real tmux; only `claude` is faked. Read the package doc
-comments at the top of each file for details.
+Tests build cld (`cmd/cld`) and run it against real tmux; only `claude` is faked. Read the
+package doc comments at the top of each file for details.
 
-- `main_test.go` — `TestMain` builds `probe/` into a temp dir as `claude` (and symlinks it as a
-  fake `tmux` for version/tool checks), and compiles the JediTerm driver when `CLD_TERMINALS`
-  includes `jediterm`. `forEachTerminal` runs a body as a parallel subtest per terminal.
+- `main_test.go` — `TestMain` builds cld and `probe/` into a temp dir, the probe as `claude` (and
+  symlinks it as a fake `tmux` for version/tool checks and the commands `new` and `join` exec),
+  and compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`. `forEachTerminal`
+  runs a body as a parallel subtest per terminal.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).
@@ -82,9 +90,9 @@ comments at the top of each file for details.
 
 `docs/design.md` is the project's record of tmux/claude behaviour: **Findings** (probed behaviour,
 with the tmux versions checked), **Decisions** (numbered) and **Implementation notes**. Behaviour
-changes are made together across `bin/cld` (header comment, inline comments, `usage`), `README.md`
-and `docs/design.md`, with tests. When a change rests on observed tmux or claude behaviour, record
-the probe and the versions in Findings.
+changes are made together across the code (`internal/session`'s package comment, inline comments,
+the usage text in `cmd/cld/usage.go`), `README.md` and `docs/design.md`, with tests. When a change
+rests on observed tmux or claude behaviour, record the probe and the versions in Findings.
 
 Commit messages: a short imperative subject in sentence case, then a bullet list saying what was
 wrong or missing, what changed, which tmux/claude versions it was checked on, and what the tests

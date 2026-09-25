@@ -54,30 +54,42 @@ cld() {
 | `new-session ... \; set -F -t =NAME: @cld '#{session_id}' \; set -w -t =NAME: remain-on-exit failed ...` (tmux 3.3a to 3.7c) | what follows `new-session` takes effect before tmux sees the new pane's program exit, however soon: the mark is there as the session is, and the window's `remain-on-exit` and `pane-died` hook keep and report a pane whose program exits at once. When `new-session` fails (`duplicate session`) tmux skips the rest, so the other session stays unmarked. `set -t =NAME`, like any command that takes a pane, finds nothing: `=NAME:` names the session |
 | `#{@cld}` in a format (tmux 3.3a, 3.7c) | tmux looks a user option up in the server's options, then the pane's, the window's and the global window options, and only then the session's and the global session options: a `@cld 1` set with `-s`, `-g` or `-w` counted for sessions that had none, and a window's `@cld 0` hid a session that had one. Compared with the session's id, a flag set anywhere makes no session cld's; one on the server or a window still hides one |
 | how `claude` 2.1.282 resolves `remoteControlAtStartup` (read from its bundle, not run: a live check would connect the session to claude.ai) | the first of the policy settings, the `--settings` (flag) settings and the user settings that has it wins, over the old global-config key; a `false` in the project's `.claude/settings.json` or `settings.local.json` beats all of them, and a `true` there is ignored with a warning. `/config`'s "Enable Remote Control for all sessions" writes the user setting, so `--settings` overrides it either way |
+| the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
+| the script's name check and `list`'s columns under `en_US.UTF-8`, `C.UTF-8` and `C` (bash 5.3.9, glibc 2.43; bash 3.2 on macOS not checked) | `[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]` follows the locale's collation: under `en_US.UTF-8` it matched `é`, `ñ`, `ß`, `Ä`, `ǅ`, `①` and `٣`, so `cld new -n café` made `cld-café`, which `tmux -L cld kill-session -t =cld-café` ends (tmux 3.7c); under `C.UTF-8` and `C` it matched ASCII only. `${#name}` counts characters under a UTF-8 locale and bytes under `C`; `printf '%-*s'` pads by bytes under all three, so `é` took three columns of a four-column NAME |
+| where bash itself stepped in for the script (bash 5.3.9 on Ubuntu 26.04 unless noted; tmux 3.7c) | a write to stdout that failed (`/dev/full`, or a descriptor open for reading) ended the script under `set -e` with status 1 and bash's message (`printf: write error: No space left on device`, `cat: -: ...` for the usage), and `new` and `join` did not get as far as their `exec` of tmux; `printf` and `cat` failed the same way under 5.2.15 and 3.2.57. A write to a pipe whose reader had gone ended it by SIGPIPE (the usage with status 141, `cat`'s, under `set -e`), and when it was started with SIGPIPE ignored - from a script under `trap '' PIPE`, say - with status 1 and `printf: write error: Broken pipe` (`cat: -: Broken pipe` for the usage). A tmux that could not run at all ended it with 127 when there was no such file, and 126 for a file the system refuses (`Exec format error`); for a `#!` naming a missing interpreter, 127 with Debian's 5.2.15 and 5.2.37 and Ubuntu's 5.2.21, 126 with 5.3.9 and 3.2.57 as released. A text file without `#!` bash ran as a script. A tmux on the `PATH` without the execute permission, with no executable one on it, bash found all the same - its search takes the first file of that name where none is executable, for `command -v` too - and ran, ending with `Permission denied` and 126; a `claude` like that let `new` go on and hand it to tmux, and a `git` like that made `new -w` say the directory was in no git repository. A tmux that stopped being runnable once it had answered `tmux -V` ended the script from a session lookup (`list-sessions`) with its `die 1`, status 1 and bash's message, and from `kill-session` or the `exec` with 127 or 126. With `PATH` unset bash searched a default path built into it, which differs by build: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` (Ubuntu's 5.2.21 and 5.3.9), `/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:.` (Debian's 5.2.15 and 5.2.37), `/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin:.` (3.2.57 as released); macOS's `/bin/bash` was not checked. Started in a directory since removed, bash warned `shell-init: error retrieving current directory: ...` and kept the `PWD` it got: `new` passed that path to tmux with `-c`, and tmux started claude in the home directory (with Debian's 5.2.37); `new -w` said the directory was in no git repository |
 | `TMUX_TMPDIR` under a deep directory | `error connecting to ... (File name too long)`: the socket path hits the ~108-byte `sun_path` limit, so test sandboxes need short socket directories |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
 
 - `cld` changes nothing in the calling shell (no `cd`, no `export`), so it does not need to be a
-  shell function. It becomes an executable `bin/cld` that ends in `exec tmux ...`: testable in
-  isolation, versioned, installable.
-- Tagged GitHub releases (`vX.Y.Z`) publish the script, with its version stamped in, plus a
-  SHA-256 checksum. The install one-liner downloads `releases/latest/download/cld` into
-  `~/.local/bin`; `make install PREFIX=...` does the same from a clone.
-- A Homebrew tap is possible later; a `curl | bash` installer is not needed for a single file.
+  shell function. It became an executable: testable in isolation, versioned, installable. Up to
+  0.3.0 that was a bash script, `bin/cld`, ending in `exec tmux ...`; since then it is a Go
+  program (see 11), built per platform, whose `new` and `join` replace themselves with tmux the
+  same way (`execve`).
+- Tagged GitHub releases (`vX.Y.Z`) publish a binary per platform, `cld-OS-ARCH` for Linux and
+  macOS on amd64 and arm64, with the version stamped in, plus `cld.sha256`, which lists their
+  SHA-256 checksums. The install one-liner picks the binary from `uname` and downloads it into
+  `~/.local/bin`; `make install PREFIX=...` builds cld for the host from a clone, with Go. The
+  releases of the script published `cld`; that download fails once a Go release is the latest.
+- The binaries are built with cgo off, on the Linux runner: the Linux ones are static, the
+  darwin ones link only system libraries (`libSystem`, `libresolv`), and Go's linker signs the
+  darwin/arm64 one ad hoc, which Apple silicon requires. They are not notarized.
+- A Homebrew tap is possible later; a `curl | bash` installer is not needed for one binary, which
+  the one-liner picks from `uname`.
 
 ## Testing
 
 ### Layers
 
-1. **Static**: ShellCheck and shfmt.
+1. **Static**: gofmt and go vet; ShellCheck and shfmt for `tests/jediterm/fetch-deps`, the one
+   shell script left.
 2. **Behaviour against real tmux**: tmux is local and cheap, so it is not faked. Only `claude` is
    replaced, by a *probe* that behaves like claude towards the terminal (the modes above), logs
    its argv, cwd, environment and raw input bytes, and emits OSC sequences on request.
 3. **Terminal contract**: the same checks run against several *outer terminals* through drivers.
 
-Isolation needs no seams in the script: `TMUX_TMPDIR` moves the `-L cld` socket into a sandbox,
+Isolation needs no seams in the program: `TMUX_TMPDIR` moves the `-L cld` socket into a sandbox,
 `HOME` points at a temporary directory, `TMUX` is unset, and the probe is first on `PATH`.
 `cld new` and `cld join` attach, so they need a pty; a terminal driver provides one.
 
@@ -199,6 +211,74 @@ Every Linux job runs the same Docker image a developer runs locally.
    keeps Remote Control off under an org policy or a project that sets the key to `false` (see
    Findings), and `cld` leaves those alone. With `-w` the worktree setting goes into the same JSON:
    one `--settings` rather than two, whose merging claude does not document.
+11. Go and cobra (#20): cld is a Go program built on [cobra](https://github.com/spf13/cobra) and
+    pflag, a port of the bash script `bin/cld` as 0.3.0 had it. One language for cld and its
+    tests, no bash 3.2 to write for, cobra's shell completion to build on, and key input with
+    timeouts under a second; the cost is a binary per platform, and Go to build from a clone. The
+    commands, messages, exit statuses and output stay, and so do the tmux commands and the
+    environment tmux gets, but for these differences:
+    1. the spellings pflag accepts: `-nNAME`, `-n=NAME`, short options combined (`-wn NAME`,
+       `-wh`, `-hx`) and a value for a boolean option (`--worktree=true`, `--help=false`,
+       `-h=false`), where a later `--help=false` takes back an earlier `-h`. The script refused
+       each as an unexpected argument;
+    2. where no test pins the message, an unexpected argument is quoted as pflag reports it, which
+       can be less than was typed: `-x` for `-wx`, `--foo` for `--foo=bar`, and `--worktree=VALUE`
+       for a `-w=VALUE` that is not a boolean;
+    3. an argument starting with `-test.` is skipped: pflag leaves it to `go test`;
+    4. an empty argument to `list`, `help` or `version` is refused as unexpected; the script took
+       it for the end of the arguments (`cld list '' x` listed);
+    5. cld looks for `tmux`, `claude` and `git` in the absolute `PATH` entries only, and runs
+       `tmux`, `git` and `tty` from there: one found only through a relative entry (`.`, or an
+       empty one) counts as not installed, and one that both have runs from the absolute entry,
+       where bash ran the first it found. Go's `exec.LookPath` refuses a match in a relative
+       entry but stops at it, so cld skips those entries itself. With `PATH` unset cld finds
+       none of them, where bash searched a default path built into it, which differs by build
+       (see Findings). Within the absolute entries cld searches as bash did: the first
+       executable file of that name or, where none is executable, the first file of that name,
+       which then cannot run - such a tmux ends cld with 126 (see 9), such a claude fails in its
+       pane, and such a git leaves `new -w` saying the directory is in no git repository, as
+       with the script;
+    6. tmux gets the environment cld got, but for `TERMINAL_EMULATOR`, which `new` removes, and
+       `TMUX`, emptied (see decision 2). bash had also changed it on the way (see Findings): it
+       set `PWD` and `SHLVL` and dropped `_`; dropped an exported `PS1` and `PS2`, and `OLDPWD`
+       (3.2 always, 5.x when it names no directory); put its own values in its variables that
+       came in exported - `IFS`, `OPTIND`, `OPTERR`, `BASH`, `BASH_VERSION`, `SHELLOPTS` with
+       the script's `errexit`, `nounset` and `pipefail`, and with 5.x `BASHOPTS`, `LINENO`,
+       `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME` - or dropped them (`RANDOM`, `PPID`,
+       `COMP_WORDBREAKS` and the like); and rewrote exported functions. cld hands on all of
+       these as it got them, so claude sees them as the cld that started the server got them: no
+       `SHLVL` where it saw `SHLVL=0`, and that cld's `_` where it saw none;
+    7. `list` pads a name by its characters: bash took the column's width in characters under a
+       UTF-8 locale and in bytes under another (`C`, say), and `printf` padded by bytes (see
+       Findings), so a name with non-ASCII letters could come out short of its column. Such
+       names came from 8, or from a session renamed by hand; their columns now line up;
+    8. names are ASCII, as decision 1 has them, whatever the locale: bash's `[A-Za-z0-9]` followed
+       the locale's collation, so under `en_US.UTF-8` and the like (glibc; see Findings) the
+       script also took letters and digits such as `é`, `ß`, `①` and `٣`, and made sessions such
+       as `cld-café`. cld lists such a session but refuses its name to `join` and `kill`, and
+       gives no legacy hint for it; `tmux -L cld kill-session -t =cld-café` ends it;
+    9. where bash itself stepped in (see Findings), cld keeps the exit status but not bash's
+       words. A write to stdout that fails - `list`, `help` and `version`, and the title `new`
+       and `join` print - ends cld with status 1, without handing over to tmux:
+       `cld: write error: REASON`. A write to a pipe whose reader has gone ends cld by SIGPIPE,
+       as it ended the script - also when cld was started with SIGPIPE ignored, where the script
+       ended with status 1 and bash's write error: Go's runtime handles SIGPIPE itself, and does
+       not tell one ignored at startup from the default. A tmux the system cannot run at all
+       ends cld with 127 when the system reports no such file, a missing `#!` interpreter
+       included, as bash 5.2 had it, and with 126 otherwise: `cld: cannot run PATH: REASON`. A
+       tmux that is a text file without `#!`, which bash ran as a script, is one that cannot run
+       (126), as is one without the execute permission (see 5). A tmux that stops being runnable
+       once it has answered `tmux -V` ends cld from a session lookup with status 1 and that
+       message, as the script's lookups ended it with bash's;
+    10. `new` in a directory that has been removed refuses, with `cld: the current directory no
+        longer exists`, where the script went on and tmux started claude in the home directory
+        (see Findings); the other commands no longer print bash's warning there.
+
+    Settled with it: the port landed before the tmux and claude guards (#21) and a server per
+    session (#22), so both follow in Go; `help`, `-h` and `--help` print the one usage text there
+    was, rather than cobra's help per command; the spellings in 1 are accepted rather than refused
+    before pflag sees them; and releases publish plain binaries and one `cld.sha256`, rather than
+    archives, so installing stays one `curl` and a `chmod`.
 
 ## Implementation notes
 
@@ -223,6 +303,38 @@ Where the implementation departs from the plan above:
 - `capture-pane -e` emits an SGR change at the next cell that differs, which moves between
   redraws and sizes (a colour reset can land before or after a line break); the reattach test
   compares cells - characters and attributes - rather than the captured sequences.
+- The Go port (decision 11) is `cmd/cld`, the command line, and `internal/session`, the tmux
+  side, whose package comment is the script's header comment. Errors carry an exit status up to
+  `main` (`internal/fail`), the only place that exits; `new` and `join` end in `syscall.Exec` of
+  tmux, and a tmux command that fails (`tmux -V`, `kill-session`) ends cld with its status after
+  its own message; one that cannot run ends it with 127 or 126, as `syscall.Exec` failing does.
+  A session lookup (`list-sessions`) that fails ends cld with status 1 and what tmux said, or
+  the same `cannot run` message, as the script's `die 1` did.
+  cld's own output goes through `fail.Print`, which turns a failed write into an error; cobra's
+  help function returns nothing, so what it printed reaches `main` through a variable. Reading
+  the sessions is one function returning rows, which `list` lays out.
+- cobra's defaults give way to cld's command line (cobra 1.10.2, pflag 1.0.9):
+  - the first argument is checked before cobra sees it: cobra takes an unknown command for an
+    argument of the root, skips options before the command (`cld -n x new` would run `new`),
+    and answers its hidden `__complete` and `__completeNoDesc`. `CompletionOptions` turns its
+    `completion` command off;
+  - `SilenceErrors` and `SilenceUsage`: cobra would print `Error: MESSAGE` and the usage;
+  - `SetInterspersed(false)` on every command: pflag reads options up to the first argument,
+    where it would pass over arguments and read every option first (`cld join a -x` would name
+    `-x`). Each command's `Args` refuses that argument, and a `--` (`ArgsLenAtDash`), which
+    pflag would drop;
+  - a `FlagErrorFunc` turns pflag's typed errors (`NotExistError`, `ValueRequiredError`,
+    `InvalidValueError`, `InvalidSyntaxError`) into cld's messages, and shows the help when `-h`
+    or `--help` came before the error: cobra looks at `-h` only once every option has parsed;
+  - `SetHelpCommand` replaces cobra's `help [command]` with a `help` that takes no argument, and
+    one help function prints the usage text for `help`, `-h` and `--help` on every command;
+  - `Version` stays unset, so there is no `--version` or `-v` flag: `version` is a command, and
+    `-V` and `--version` its aliases.
+- Go has no `ttyname` on Linux or macOS without cgo: cld runs `tty` with its own stdin, as the
+  script's `$(tty)` did, to compare its terminal with the live panes', and drops the newline
+  after the name, which uutils' `tty` (0.8.0, Ubuntu 26.04) does not print.
+- claude's `--settings` are marshalled from a struct, its fields in the order the script wrote
+  them, which gives the same bytes.
 
 ## What the tests found
 
@@ -252,14 +364,15 @@ tmux 3.3a to 3.7c:
 
 The `VT10x` in Findings came from the probing shell, which carried
 `TERMINAL_EMULATOR=JetBrains-JediTerm`: claude's `--debug` log read `extendedKeys=no (env:
-terminal=pycharm, no answer)` - the leak `env -u` guards against. From a clean environment the
+terminal=pycharm, no answer)` - the leak `new` guards against by leaving `TERMINAL_EMULATOR` out
+of the environment it runs tmux with. From a clean environment the
 real claude 2.1.281 put the pane in key mode `Ext 2`, and Shift+Enter inserted a newline (checked
 by hand in a nested tmux).
 
 ## Status
 
 - Baseline and JediTerm contracts run on tmux 3.3a, 3.4, 3.5a and 3.7c (Linux, Docker; 3.7c built
-  from source), and the baseline on Homebrew's tmux under macOS's bash 3.2.
+  from source), and the baseline on Homebrew's tmux on macOS.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not
