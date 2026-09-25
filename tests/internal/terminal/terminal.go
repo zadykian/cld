@@ -9,6 +9,7 @@ package terminal
 
 import (
 	"testing"
+	"time"
 
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
@@ -27,6 +28,10 @@ type Terminal interface {
 	Start(argv []string, env map[string]string, dir string)
 	// Keys types the keys one after another, as a user would.
 	Keys(keys ...string)
+	// Hold types key as a key held down: once, again after delay, and then repeats times more, one
+	// every interval, as the terminal repeats it. The terminal times the keys itself, so that the
+	// test, held up, does not space them out; Hold returns once it has typed them all.
+	Hold(key string, delay, interval time.Duration, repeats int)
 	// Paste pastes text the way the terminal's own paste command does.
 	Paste(text string)
 	WheelUp()
@@ -80,6 +85,11 @@ func (u unsupported) Name() string { return u.name }
 func (u unsupported) WheelUp() {
 	u.t.Helper()
 	u.t.Skipf("%s: cannot inject mouse wheel events", u.name)
+}
+
+func (u unsupported) Hold(string, time.Duration, time.Duration, int) {
+	u.t.Helper()
+	u.t.Skipf("%s: cannot time a key held down", u.name)
 }
 
 func (u unsupported) Focus(bool) {

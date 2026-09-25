@@ -115,11 +115,29 @@ func (o *tmuxTerminal) Keys(keys ...string) {
 
 func (o *tmuxTerminal) key(key string) {
 	o.t.Helper()
+	o.tmux(typeKey(key)...)
+}
+
+// typeKey is the tmux command that types key.
+func typeKey(key string) []string {
 	if input, found := xtermInput[key]; found {
-		o.send(input)
-	} else {
-		o.tmux("send-keys", "-t", outerPane, key)
+		return typeRaw(input)
 	}
+	return []string{"send-keys", "-t", outerPane, key}
+}
+
+// Hold types the keys in one command list, which the outer server runs while the test waits for
+// it: run-shell -d with no command only waits, and the list goes on once it has (tmux 3.7c). A
+// tmux client run for each key would space them out by the time it takes to start, a tenth of a
+// second or more, and far more under load.
+func (o *tmuxTerminal) Hold(key string, delay, interval time.Duration, repeats int) {
+	o.t.Helper()
+	args, wait := typeKey(key), delay
+	for range repeats {
+		args = append(args, ";", "run-shell", "-d", strconv.FormatFloat(wait.Seconds(), 'f', -1, 64), ";")
+		args, wait = append(args, typeKey(key)...), interval
+	}
+	o.tmux(args...)
 }
 
 // Paste goes through a paste buffer: paste-buffer -p brackets the text only if the program asked
@@ -133,11 +151,16 @@ func (o *tmuxTerminal) Paste(text string) {
 
 func (o *tmuxTerminal) send(input string) {
 	o.t.Helper()
+	o.tmux(typeRaw(input)...)
+}
+
+// typeRaw is the tmux command that types input as raw bytes.
+func typeRaw(input string) []string {
 	args := []string{"send-keys", "-t", outerPane, "-H"}
 	for _, b := range []byte(input) {
 		args = append(args, hex.EncodeToString([]byte{b}))
 	}
-	o.tmux(args...)
+	return args
 }
 
 func (o *tmuxTerminal) WheelUp() {

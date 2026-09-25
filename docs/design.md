@@ -731,7 +731,11 @@ Where the implementation departs from the plan above:
   GNU's and uutils' alike.
 - The baseline terminal types `S-Up` (`CSI 1;2A`), `M-j` (ESC j), `M-Escape` (ESC ESC) and `M-Up`
   (ESC ESC [ A) as raw bytes, and freezes (`Freeze`) by stopping the outer tmux server with SIGSTOP:
-  it then neither reads the pane nor answers it, until the test thaws it.
+  it then neither reads the pane nor answers it, until the test thaws it. It types a key held down
+  (`Hold`) in one command list, `send-keys` and `run-shell -d` with no command, which only waits,
+  in turn: the outer server times the repeats, each within a millisecond of its time on tmux 3.7c,
+  where `Keys` starts a tmux client for each key - 150 ms apiece natively, which under heavy load
+  now and then left a second between two keys.
 - The stop cases run `cld list` as a job of an interactive `sh` (`sh -i`), which has job control,
   goes on with its script when the job stops and puts it back with `fg` once the test says so;
   before `fg` the script puts its own mode back, as bash does when it takes the terminal back and
