@@ -752,9 +752,7 @@ func TestCannotRunDocker(t *testing.T) {
 				t.Fatal(err)
 			}
 			docker := filepath.Join(fake, "docker")
-			if err := os.WriteFile(docker, []byte(broken.content), broken.mode); err != nil {
-				t.Fatal(err)
-			}
+			s.WriteProgram(docker, broken.content, broken.mode)
 			result := s.RunCld(map[string]string{"PATH": fake}, "setup", "telemetry", "--remote", "https://otel.example.com:4317")
 			if want := "cld: cannot run " + docker + ": " + broken.reason + "\n"; result.Code != broken.code || result.Stderr != want || result.Stdout != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stderr %q", result.Code, result.Stdout, result.Stderr, broken.code, want)
@@ -974,8 +972,8 @@ func TestRequiresClaudeVersion(t *testing.T) {
 				if err := os.Symlink(target, claude); err != nil {
 					t.Fatal(err)
 				}
-			} else if err := os.WriteFile(claude, []byte(test.script), 0o755); err != nil {
-				t.Fatal(err)
+			} else {
+				s.WriteProgram(claude, test.script, 0o755)
 			}
 			result := s.RunCld(map[string]string{"PATH": tools, "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new")
 			want := strings.ReplaceAll(test.want, "CLAUDE", claude)
@@ -1011,9 +1009,7 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 			tools := s.Tools("tmux", "sleep")
 			behind := filepath.Join(s.Root, "behind")
 			script := "#!/bin/sh\nsleep 60 &\necho $! >'" + behind + "'\n" + test.script + "\n"
-			if err := os.WriteFile(filepath.Join(tools, "claude"), []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			s.WriteProgram(filepath.Join(tools, "claude"), script, 0o755)
 			t.Cleanup(func() {
 				if pid, err := os.ReadFile(behind); err == nil {
 					_ = exec.Command("kill", strings.TrimSpace(string(pid))).Run()
@@ -1102,9 +1098,7 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 			tools := s.Tools("tmux")
 			ran := filepath.Join(s.Root, "claude ran")
 			script := "#!/bin/sh\necho \"$*\" >'" + ran + "'\necho '2.1.231 (Claude Code)'\n"
-			if err := os.WriteFile(filepath.Join(tools, "claude"), []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			s.WriteProgram(filepath.Join(tools, "claude"), script, 0o755)
 			result := s.RunCld(map[string]string{
 				"PATH":                   tools,
 				"CLD_FAKE_TMUX_VERSION":  test.tmuxVersion,
@@ -1146,9 +1140,7 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 			s := sandbox.New(t)
 			tools := s.Tools("tmux")
 			script := "#!/bin/sh\nif [ -f .claude-version ]; then read -r v <.claude-version; echo \"$v\"; else echo '" + test.global + "'; fi\n"
-			if err := os.WriteFile(filepath.Join(tools, "claude"), []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			s.WriteProgram(filepath.Join(tools, "claude"), script, 0o755)
 			if err := os.WriteFile(filepath.Join(s.Work, ".claude-version"), []byte(test.pinned+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -1207,9 +1199,7 @@ func TestCompletionSkipsChecks(t *testing.T) {
 				env["CLD_FAKE_TMUX_VERSION"] = "tmux 3.2a"
 				env["CLD_FAKE_TMUX_SESSIONS"] = "cld-x\tdetached\t0\t100\t/w"
 			default:
-				if err := os.WriteFile(filepath.Join(env["PATH"], "tmux"), []byte(test.script), test.mode); err != nil {
-					t.Fatal(err)
-				}
+				s.WriteProgram(filepath.Join(env["PATH"], "tmux"), test.script, test.mode)
 			}
 			if test.script == "unreadable" {
 				s.WriteFile(s.SocketDir(), "")
@@ -1437,9 +1427,7 @@ func TestPassesTmuxFailuresThrough(t *testing.T) {
 			if err := os.Mkdir(fake, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(fake, "tmux"), []byte("#!/bin/sh\n"+test.script+"\n"), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			s.WriteProgram(filepath.Join(fake, "tmux"), "#!/bin/sh\n"+test.script+"\n", 0o755)
 			result := s.RunCld(map[string]string{"PATH": fake + string(os.PathListSeparator) + s.Env["PATH"]}, test.args...)
 			if result.Code != test.code || result.Stderr != test.stderr || result.Stdout != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stderr %q", result.Code, result.Stdout, result.Stderr, test.code, test.stderr)
@@ -1506,18 +1494,12 @@ func TestCannotRunTmux(t *testing.T) {
 				}
 				tmux := filepath.Join(fake, "tmux")
 				if test.answers == "" {
-					if err := os.WriteFile(tmux, []byte(broken.content), broken.mode); err != nil {
-						t.Fatal(err)
-					}
+					s.WriteProgram(tmux, broken.content, broken.mode)
 				} else {
 					// The script answers, then moves the file that cannot run over itself.
-					if err := os.WriteFile(tmux+".broken", []byte(broken.content), broken.mode); err != nil {
-						t.Fatal(err)
-					}
+					s.WriteProgram(tmux+".broken", broken.content, broken.mode)
 					script := "#!/bin/sh\n" + test.answers + "\nmv -f '" + tmux + ".broken' '" + tmux + "'\n"
-					if err := os.WriteFile(tmux, []byte(script), 0o755); err != nil {
-						t.Fatal(err)
-					}
+					s.WriteProgram(tmux, script, 0o755)
 				}
 				// No other tmux on the PATH, so that cld takes one without the execute permission.
 				path := fake + string(os.PathListSeparator) + s.Tools("claude", "mv")
