@@ -125,7 +125,9 @@ cld() {
    shell script left.
 2. **Behaviour against real tmux**: tmux is local and cheap, so it is not faked. Only `claude` is
    replaced, by a *probe* that behaves like claude towards the terminal (the modes above), logs
-   its argv, cwd, environment and raw input bytes, and emits OSC sequences on request.
+   its argv, cwd, environment and raw input bytes, and emits OSC sequences on request; and
+   `docker`, for `setup telemetry`, by the same probe, which records the calls and fakes their
+   results.
 3. **Terminal contract**: the same checks run against several *outer terminals* through drivers.
 
 Isolation needs no seams in the program: `TMUX_TMPDIR` moves cld's sockets (`-L cld-NAME`) into

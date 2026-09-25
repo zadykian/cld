@@ -36,6 +36,30 @@
 // while it asks - and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json. With
 // $CLD_FAKE_TMUX_REAL, the path of a real tmux, it fakes list-sessions only, and runs that tmux
 // for the rest.
+//
+// Invoked as "docker", it fakes the docker calls of cld setup telemetry and appends each, with
+// its environment, to $CLD_PROBE_DIR/docker.jsonl, a line of JSON per call. It keeps the one
+// container, cld-telemetry, in $CLD_PROBE_DIR/docker.container ("STATUS PORT [RESTARTS]", empty
+// for none), which starts as $CLD_FAKE_DOCKER_CONTAINER - none unless a test sets it:
+//
+//	container inspect  prints "STATUS RESTARTS PORT", RESTARTS 0 unless given, or that there is
+//	                   no such container, exit 1
+//	rm -f              removes it, or says there is none, exit 0 (as Docker 29.6.0)
+//	run -d             starts it, with the port of its label cld.port, as
+//	                   $CLD_FAKE_DOCKER_STARTED, "STATUS [RESTARTS]" (default "running"); records
+//	                   whether that port is free on 127.0.0.1, as the collector needs it. A
+//	                   container started running takes connections on that port, as the
+//	                   collector's receiver, until rm -f or the end of the test (see receiver) -
+//	                   unless $CLD_FAKE_DOCKER_LISTEN is "no", or something else has the port. With
+//	                   $CLD_FAKE_DOCKER_WRITE, "FILE" and a newline, then the rest, it writes the
+//	                   rest to FILE, as another program may while the collector starts
+//	logs               prints $CLD_FAKE_DOCKER_LOGS on stderr, by default the collector's line
+//	                   saying it is ready
+//	update             takes the container's restart policy: prints its name, as Docker does
+//	run --rm           the collector's validate: succeeds, printing nothing
+//
+// $CLD_FAKE_DOCKER_FAIL=WORD[=STATUS] makes any call with the argument WORD fail instead, with
+// status STATUS (default 1), saying so.
 package main
 
 import (
@@ -43,6 +67,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,6 +77,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -70,9 +97,14 @@ const modes = "\x1b[?1049h" + // alternate screen
 
 func main() {
 	var err error
-	if filepath.Base(os.Args[0]) == "tmux" {
+	switch filepath.Base(os.Args[0]) {
+	case "tmux":
 		err = fakeTmux()
-	} else {
+	case "docker":
+		err = fakeDocker()
+	case "receiver":
+		err = receiver()
+	default:
 		err = claude()
 	}
 	if err != nil {
@@ -105,6 +137,243 @@ func fakeTmux() error {
 		return syscall.Exec(real, append([]string{"tmux"}, os.Args[1:]...), os.Environ())
 	}
 	return writeRecord(filepath.Join(os.Getenv("CLD_PROBE_DIR"), "tmux.json"))
+}
+
+// DockerCall is a line of docker.jsonl: a call of the fake docker.
+type DockerCall struct {
+	Argv []string          `json:"argv"`
+	Env  map[string]string `json:"env"`
+	// PortFree is, for run -d, whether the port of its label was free.
+	PortFree *bool `json:"portFree,omitempty"`
+}
+
+// readyLog is what the collector 0.161.0 logs once it runs, less the fields after it.
+const readyLog = "2026-09-25T14:52:07.911Z\tinfo\tservice@v0.161.0/service.go:256\tEverything is ready. Begin running and processing data.\n"
+
+func fakeDocker() error {
+	dir := os.Getenv("CLD_PROBE_DIR")
+	args := os.Args[1:]
+	call := DockerCall{Argv: args, Env: map[string]string{}}
+	for _, variable := range os.Environ() {
+		name, value, _ := strings.Cut(variable, "=")
+		call.Env[name] = value
+	}
+	statePath := filepath.Join(dir, "docker.container")
+	state, err := os.ReadFile(statePath)
+	if os.IsNotExist(err) {
+		state, err = []byte(os.Getenv("CLD_FAKE_DOCKER_CONTAINER")), nil
+	}
+	if err != nil {
+		return err
+	}
+	status, port, restarts := "", "", "0"
+	if fields := strings.Fields(string(state)); len(fields) > 0 {
+		status = fields[0]
+		if len(fields) > 1 {
+			port = fields[1]
+		}
+		if len(fields) > 2 {
+			restarts = fields[2]
+		}
+	}
+	name := ""
+	if len(args) > 0 {
+		name = args[len(args)-1]
+	}
+	var out func() error
+	fail, failStatus, _ := strings.Cut(os.Getenv("CLD_FAKE_DOCKER_FAIL"), "=")
+	switch {
+	case len(args) == 0:
+		out = func() error { return nil }
+	case fail != "" && slices.Contains(args, fail):
+		out = func() error {
+			fmt.Fprintf(os.Stderr, "fake docker: %s failed\n", strings.Join(args, " "))
+			code, err := strconv.Atoi(failStatus)
+			if err != nil {
+				code = 1
+			}
+			os.Exit(code)
+			return nil
+		}
+	case len(args) > 1 && args[0] == "container" && args[1] == "inspect":
+		out = func() error {
+			if status == "" {
+				fmt.Fprintf(os.Stderr, "Error response from daemon: No such container: %s\n", name)
+				os.Exit(1)
+			}
+			fmt.Printf("%s %s %s\n", status, restarts, port)
+			return nil
+		}
+	case args[0] == "rm":
+		out = func() error {
+			if status == "" {
+				fmt.Fprintf(os.Stderr, "Error response from daemon: No such container: %s\n", name)
+				return nil
+			}
+			fmt.Println(name)
+			if err := stopReceiver(dir); err != nil {
+				return err
+			}
+			return os.WriteFile(statePath, nil, 0o644)
+		}
+	case args[0] == "run" && slices.Contains(args, "-d"):
+		for i, arg := range args {
+			if arg == "--label" && i+1 < len(args) {
+				port, _ = strings.CutPrefix(args[i+1], "cld.port=")
+			}
+		}
+		listener, err := net.Listen("tcp4", "127.0.0.1:"+port)
+		free := err == nil
+		if free {
+			_ = listener.Close()
+		}
+		call.PortFree = &free
+		out = func() error {
+			fmt.Println("0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0")
+			if write, set := os.LookupEnv("CLD_FAKE_DOCKER_WRITE"); set {
+				file, content, _ := strings.Cut(write, "\n")
+				if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+					return err
+				}
+			}
+			started := strings.Fields(os.Getenv("CLD_FAKE_DOCKER_STARTED"))
+			if len(started) == 0 {
+				started = []string{"running"}
+			}
+			if err := os.WriteFile(statePath, []byte(strings.Join(slices.Insert(started, 1, port), " ")), 0o644); err != nil {
+				return err
+			}
+			if started[0] != "running" || !free || os.Getenv("CLD_FAKE_DOCKER_LISTEN") == "no" {
+				return nil
+			}
+			return startReceiver(dir, port)
+		}
+	case args[0] == "update":
+		out = func() error {
+			if status == "" {
+				fmt.Fprintf(os.Stderr, "Error response from daemon: No such container: %s\n", name)
+				os.Exit(1)
+			}
+			fmt.Println(name)
+			return nil
+		}
+	case args[0] == "logs":
+		out = func() error {
+			logs, set := os.LookupEnv("CLD_FAKE_DOCKER_LOGS")
+			if !set {
+				logs = readyLog
+			}
+			fmt.Fprint(os.Stderr, logs)
+			return nil
+		}
+	default:
+		out = func() error { return nil }
+	}
+	data, err := json.Marshal(call)
+	if err != nil {
+		return err
+	}
+	calls, err := os.OpenFile(filepath.Join(dir, "docker.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := calls.Write(append(data, '\n')); err != nil {
+		return err
+	}
+	if err := calls.Close(); err != nil {
+		return err
+	}
+	return out()
+}
+
+// receiverFile is the file in $CLD_PROBE_DIR that holds the port of a receiver the fake docker
+// started, while it runs (see receiver).
+const receiverFile = "docker.receiver"
+
+// startReceiver starts the probe as the receiver of the collector on 127.0.0.1:port (see
+// receiver), and returns once the receiver listens there, or has found the port taken.
+func startReceiver(dir, port string) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	started, done, err := os.Pipe()
+	if err != nil {
+		return err
+	}
+	defer started.Close()
+	cmd := exec.Command(executable, port, filepath.Join(dir, receiverFile))
+	cmd.Args[0] = "receiver"
+	cmd.ExtraFiles = []*os.File{done}
+	// A session of its own, with none of the pipes cld reads docker's output from: cld, and the
+	// test, go on without it.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	err = cmd.Start()
+	_ = done.Close()
+	if err != nil {
+		return err
+	}
+	_ = cmd.Process.Release()
+	_, err = io.ReadAll(started) // Up to the receiver's closing its end.
+	return err
+}
+
+// receiver stands in for the receiver of a collector that the fake docker started: it listens on
+// 127.0.0.1:PORT and takes connections, closing each, while the file FILE, which it writes with
+// the port, exists - the fake's rm -f removes it, and the end of the test the whole sandbox. It
+// closes descriptor 3 once it listens, or has found the port taken; a collector that cannot have
+// the port does not get ready, and nor does this one.
+func receiver() error {
+	port, file := os.Args[1], os.Args[2]
+	listener, err := net.Listen("tcp4", "127.0.0.1:"+port)
+	if err == nil {
+		err = os.WriteFile(file, []byte(port), 0o644)
+	}
+	_ = os.NewFile(3, "started").Close()
+	if err != nil {
+		return err
+	}
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	// No longer than go test's own limit, should a test end without removing its sandbox.
+	for deadline := time.Now().Add(10 * time.Minute); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(file); err != nil {
+			break
+		}
+	}
+	return listener.Close()
+}
+
+// stopReceiver stops the receiver of the container, if one runs (see receiver), and returns once
+// its port is free, as docker rm -f returns once the collector is gone.
+func stopReceiver(dir string) error {
+	file := filepath.Join(dir, receiverFile)
+	port, err := os.ReadFile(file)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err == nil {
+		err = os.Remove(file)
+	}
+	if err != nil {
+		return err
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		listener, err := net.Listen("tcp4", "127.0.0.1:"+string(port))
+		if err == nil {
+			return listener.Close()
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the receiver on port %s did not stop: %v", port, err)
+		}
+	}
 }
 
 func claude() error {

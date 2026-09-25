@@ -1,5 +1,6 @@
 // Package tests holds cld's tests. They build cld and run it against real tmux servers, one
-// private world per test (see internal/sandbox), with a probe in claude's place (see probe).
+// private world per test (see internal/sandbox), with a probe in claude's place and in docker's
+// (see probe).
 //
 // CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"):
 // tmux, jediterm (needs a JDK and CLD_JEDITERM_LIB, see jediterm/fetch-deps).
@@ -45,6 +46,10 @@ func setup(dir string) error {
 	}
 	sandbox.ProbeBin = filepath.Join(dir, "probe")
 	if err := run("go", "build", "-o", filepath.Join(sandbox.ProbeBin, "claude"), "./probe"); err != nil {
+		return err
+	}
+	// The fake docker is on every sandbox's PATH, before the real one: no test reaches Docker.
+	if err := os.Symlink("claude", filepath.Join(sandbox.ProbeBin, "docker")); err != nil {
 		return err
 	}
 	sandbox.FakeTmux = filepath.Join(dir, "fake", "tmux")

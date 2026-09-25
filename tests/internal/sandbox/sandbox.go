@@ -22,7 +22,8 @@ import (
 var (
 	// Cld is the cld binary under test; built by TestMain.
 	Cld string
-	// ProbeBin is the directory holding the probe installed as "claude"; set by TestMain.
+	// ProbeBin is the directory holding the probe installed as "claude", and as "docker", the
+	// fake docker (see DockerCalls); set by TestMain.
 	ProbeBin string
 	// FakeTmux is the probe installed as "tmux"; set by TestMain.
 	FakeTmux string
@@ -148,7 +149,8 @@ func (s *Sandbox) RunCldIn(dir string, extra map[string]string, args ...string) 
 }
 
 // Tools creates a directory holding only the named tools, for a PATH that lacks the others.
-// "tmux" is the fake tmux and "claude" the probe; any other name links the real tool.
+// "tmux" is the fake tmux, "claude" the probe and "docker" the fake docker; any other name links
+// the real tool.
 func (s *Sandbox) Tools(names ...string) string {
 	s.t.Helper()
 	dir, err := os.MkdirTemp(s.Root, "tools.")
@@ -158,8 +160,8 @@ func (s *Sandbox) Tools(names ...string) string {
 	for _, name := range names {
 		target := FakeTmux
 		switch name {
-		case "claude":
-			target = filepath.Join(ProbeBin, "claude")
+		case "claude", "docker":
+			target = filepath.Join(ProbeBin, name)
 		case "tmux":
 		default:
 			if target, err = exec.LookPath(name); err != nil {
@@ -296,6 +298,49 @@ func (s *Sandbox) FakeTmuxRecord() Record {
 	var record Record
 	readJSON(s.t, filepath.Join(s.ProbeDir, "tmux.json"), &record)
 	return record
+}
+
+// DockerCall is a call of the fake docker, as it records it.
+type DockerCall struct {
+	Argv []string          `json:"argv"`
+	Env  map[string]string `json:"env"`
+	// PortFree is, for run -d, whether the port of its label cld.port was free on 127.0.0.1.
+	PortFree *bool `json:"portFree,omitempty"`
+}
+
+// DockerCalls are the calls of the fake docker so far, oldest first.
+func (s *Sandbox) DockerCalls() []DockerCall {
+	s.t.Helper()
+	data, err := os.ReadFile(filepath.Join(s.ProbeDir, "docker.jsonl"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	var calls []DockerCall
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		var call DockerCall
+		if err := json.Unmarshal([]byte(line), &call); err != nil {
+			s.t.Fatalf("docker.jsonl: %v", err)
+		}
+		calls = append(calls, call)
+	}
+	return calls
+}
+
+// DockerContainer is the fake docker's container, as a call left it: "STATUS PORT [RESTARTS]",
+// or "" for none. It is "untouched" while no call has changed the one the test gave the fake.
+func (s *Sandbox) DockerContainer() string {
+	s.t.Helper()
+	data, err := os.ReadFile(filepath.Join(s.ProbeDir, "docker.container"))
+	if errors.Is(err, os.ErrNotExist) {
+		return "untouched"
+	}
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return string(data)
 }
 
 // Probe is one run of the probe as claude, seen through the files it writes.
