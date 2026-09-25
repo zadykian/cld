@@ -8,8 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 (`tmux -L cld-NAME -f /dev/null`), so a conversation can be detached and rejoined from any
 terminal. The product is a Go program on cobra: `cmd/cld` is the command line (commands, their
 help texts, argument errors), `internal/session` the tmux side, `internal/picker` the interactive
-`cld list` on a terminal, and `internal/fail` carries exit statuses up to `main`. Everything else
-is its test harness (Go, under `tests/`), docs and CI.
+`cld list` on a terminal, `internal/tool` finds the programs cld runs on the `PATH` (and ends cld
+as a shell would when one cannot run), and `internal/fail` carries exit statuses up to `main`.
+Everything else is its test harness (Go, under `tests/`), docs and CI.
 
 ## Commands
 
