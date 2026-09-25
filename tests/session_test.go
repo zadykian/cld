@@ -91,9 +91,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(test.script), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			s.WriteProgram(filepath.Join(dir, "claude"), test.script, 0o755)
 			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "new")
 			probe := s.WaitProbes(1)[0]
 			if want := []string{"--name", "cld-main", "--settings", remoteControl}; !slices.Equal(probe.Argv, want) {
@@ -3234,10 +3232,7 @@ func wrapTmux(t *testing.T, s *sandbox.Sandbox, script string) map[string]string
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.WriteFile(filepath.Join(bin, "tmux"), "#!/bin/sh\n"+script+"exec '"+tmux+"' \"$@\"\n")
-	if err := os.Chmod(filepath.Join(bin, "tmux"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	s.WriteProgram(filepath.Join(bin, "tmux"), "#!/bin/sh\n"+script+"exec '"+tmux+"' \"$@\"\n", 0o755)
 	return map[string]string{"PATH": bin + string(os.PathListSeparator) + s.Env["PATH"]}
 }
 

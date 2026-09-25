@@ -265,6 +265,20 @@ func (s *Sandbox) WriteFile(path, content string) {
 	}
 }
 
+// WriteProgram writes a program for cld to run, with the permissions mode, or fails the test. It
+// holds syscall.ForkLock for reading as it does, as creating a file descriptor should: a process
+// that another test forks meanwhile would inherit the file open for writing until it runs its own
+// program, and running this one would fail then with ETXTBSY, "text file busy" (golang/go#22315).
+func (s *Sandbox) WriteProgram(path, content string, mode os.FileMode) {
+	s.t.Helper()
+	syscall.ForkLock.RLock()
+	err := os.WriteFile(path, []byte(content), mode)
+	syscall.ForkLock.RUnlock()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+}
+
 // Probes lists the probes started so far, oldest first.
 func (s *Sandbox) Probes() []*Probe {
 	s.t.Helper()
