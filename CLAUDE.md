@@ -7,8 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `cld` runs Claude Code in named sessions, each on a private tmux server of its own
 (`tmux -L cld-NAME -f /dev/null`), so a conversation can be detached and rejoined from any
 terminal. The product is a Go program on cobra: `cmd/cld` is the command line (commands, their
-help texts, argument errors), `internal/session` the tmux side, and `internal/fail` carries exit
-statuses up to `main`. Everything else is its test harness (Go, under `tests/`), docs and CI.
+help texts, argument errors), `internal/session` the tmux side, `internal/picker` the interactive
+`cld list` on a terminal, and `internal/fail` carries exit statuses up to `main`. Everything else
+is its test harness (Go, under `tests/`), docs and CI.
 
 ## Commands
 
@@ -42,11 +43,12 @@ platform and `cld.sha256`.
   to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
-- Only `main` exits: errors carry their exit status up (`internal/fail`); `new` and `join` end in
-  `syscall.Exec` of tmux. cobra's defaults are overridden to keep cld's command line - the
-  first argument checked before cobra, options read up to the first argument, a `help [COMMAND]`
-  that refuses anything but one of cld's commands, the help printed through `fail.Print` with
-  the commands unsorted, no completion command (see docs/design.md, Implementation notes).
+- Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `join` and the
+  list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep cld's
+  command line - the first argument checked before cobra, options read up to the first argument,
+  a `help [COMMAND]` that refuses anything but one of cld's commands, the help printed through
+  `fail.Print` with the commands unsorted, no completion command (see docs/design.md,
+  Implementation notes).
 - The help is cobra's, generated with its default templates from each command's `Use`, `Short`
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
   nothing: break the texts by hand within 80 columns, which `TestHelpText` checks.
@@ -99,8 +101,9 @@ package doc comments at the top of each file for details.
   (an outer tmux server provides the pty; input as raw xterm bytes via `send-keys -H`) and
   `jediterm.go`, which talks line-by-line to `jediterm/JediTermDriver.java` (headless JediTerm
   3.76, pinned in `jediterm/deps.txt`). A terminal that cannot do something skips with a reason.
-- `contract_test.go` — the terminal contract (C1–C9 in `docs/design.md`: title, client features,
-  Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, paste, claude exiting), run per terminal.
+- `contract_test.go` — the terminal contract (C1–C10 in `docs/design.md`: title, client features,
+  Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, paste, claude exiting, the session
+  list's keys), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour; `cli_test.go` — argument parsing,
   errors, tool/version checks, and the help, compared byte for byte with `testdata/help`.
@@ -109,10 +112,11 @@ package doc comments at the top of each file for details.
 
 `docs/design.md` is the project's record of tmux/claude behaviour: **Findings** (probed behaviour,
 with the tmux versions checked), **Decisions** (numbered) and **Implementation notes**. Behaviour
-changes are made together across the code (`internal/session`'s package comment, inline comments,
-the commands' `Short`, `Long` and option usages in `cmd/cld`, which the help is generated from,
-and `tests/testdata/help`), `README.md` and `docs/design.md`, with tests. When a change rests on
-observed tmux or claude behaviour, record the probe and the versions in Findings.
+changes are made together across the code (`internal/session`'s and `internal/picker`'s package
+comments, inline comments, the commands' `Short`, `Long` and option usages in `cmd/cld`, which the
+help is generated from, and `tests/testdata/help`), `README.md` and `docs/design.md`, with tests.
+When a change rests on observed tmux or claude behaviour, record the probe and the versions in
+Findings.
 
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
 a header `type(scope): description`, then a body, then optional footers, each separated by a blank

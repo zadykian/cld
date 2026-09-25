@@ -1,5 +1,9 @@
 list the sessions cld started: name, whether a terminal is attached (or claude
-exited), and the directory claude is in
+exited), and the directory claude is in.
+
+On a terminal, pick one to join: Up and Down select a session, Enter joins it
+as cld join does, and Esc or C-c leaves, printing the list. cld list | cat
+prints the list only.
 
 Usage:
   cld list [flags]

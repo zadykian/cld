@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/picker"
 	"github.com/zadykian/cld/internal/session"
 )
 
@@ -147,19 +149,38 @@ and what claude started through tmux ends too`,
 		return tmux.Kill(suffix)
 	}
 
+	// list is interactive on a terminal it can draw on, other than a pane of one of cld's servers,
+	// where join would refuse the session picked; with no sessions there is nothing to pick.
+	// Leaving it prints the table, from the sessions it last read.
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "list the sessions cld started",
+		Short: "list the sessions cld started; on a terminal, pick one to join",
 		Long: `list the sessions cld started: name, whether a terminal is attached (or claude
-exited), and the directory claude is in`,
+exited), and the directory claude is in.
+
+On a terminal, pick one to join: Up and Down select a session, Enter joins it
+as cld join does, and Esc or C-c leaves, printing the list. cld list | cat
+prints the list only.`,
 		RunE: func(*cobra.Command, []string) error {
 			tmux, err := session.Check()
 			if err != nil {
 				return err
 			}
-			sessions, err := tmux.Sessions()
+			sessions, err := tmux.Sessions(context.Background())
 			if err != nil {
 				return err
+			}
+			if len(sessions) > 0 && picker.Available() {
+				if _, own := tmux.OwnPane(); !own {
+					picked, last, err := picker.Run(joining{tmux}, sessions)
+					if err != nil {
+						return err
+					}
+					if picked != "" {
+						return tmux.Attach(picked)
+					}
+					sessions = last
+				}
 			}
 			return fail.Print(table(sessions))
 		},
@@ -237,6 +258,21 @@ func sessionName(name string) (string, error) {
 		return "", &fail.Error{Status: 2, Message: fmt.Sprintf("invalid session name '%s'", name), Advice: " (see cld help)"}
 	}
 	return name, nil
+}
+
+// joining is what the interactive list joins through: join's checks, which Enter makes while
+// the list is open - the name, then the lookup - and the sessions to list.
+type joining struct{ tmux *session.Tmux }
+
+func (j joining) Sessions(ctx context.Context) ([]session.Session, error) {
+	return j.tmux.Sessions(ctx)
+}
+
+func (j joining) Joinable(ctx context.Context, name string) error {
+	if _, err := sessionName(name); err != nil {
+		return err
+	}
+	return j.tmux.Joinable(ctx, name)
 }
 
 // noArguments refuses the first argument left after a command's options, or a "--" among them:

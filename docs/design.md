@@ -71,6 +71,14 @@ cld() {
 | `list-sessions` on a server that exits as it asks - its last session ends, or `kill-server` runs (tmux 3.3a, 3.4, 3.5a, 3.7c; servers started and ended in a loop beside a loop of `cld list`, for 15 s) | the client connects, and the server closes the connection without an answer: tmux fails with `server exited unexpectedly`, status 1 (`CLIENT_EXIT_LOST_SERVER` in tmux's `client.c`). Until `list` passed over it, it failed so in 24 of 173 runs (3.3a), 46 of 294 (3.4), 19 of 310 (3.5a) and 6 of 147 (3.7c); since, in none of 311, 224, 368 and 381. A client that the server tells it is shutting down exits with no output and status 0 instead (read from `client.c`, not seen) |
 | the socket of `tmux -L NAME` (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux never removes it: not when the server exits with its last session, not on `kill-server`, not on SIGKILL. `list-sessions` on such a stale socket fails with `no server running on DIR/NAME`, on a name never used with `error connecting to DIR/NAME (No such file or directory)`, both with status 1; `new-session` on a stale socket starts a fresh server there. The socket is in `tmux-UID` under `TMUX_TMPDIR`, or under `/tmp` where `TMUX_TMPDIR` is unset, empty or names nothing that exists; tmux resolves a symlink in it. A socket path of 107 bytes works on Linux, one of 108 fails with `File name too long`. Where `tmux-UID` is a file, not a directory, every command fails with `DIR/tmux-UID is not a directory`, status 1 |
 | what a server per session costs (tmux 3.3a, 3.4, 3.5a, 3.7c, in Docker, on a host busy with other builds) | 3.8 MB (3.3a) to 5.1 MB (3.5a) resident per server, the same with 10 sessions on it, next to about 400 MB for claude; one `list-sessions` took 6-12 ms, and one per socket over 36 sockets, 16 of them stale, 136-282 ms. #22's plan measured 3-6 ms and 115-170 ms on an idle machine (3.3a, 3.7c) |
+| a program's rows in the main screen of a 40-column pane that narrows to 20 (tmux 3.3a, 3.7c) | tmux reflows them: three 39-character rows under two short lines became six lines, and the two lines above them and the first half of the first row went into the history; a cursor left at the start of the first row ended at the top left of the screen, on that row's second half. A program that redraws its lines in place, relative to where it left the cursor, then draws over the wrong lines, and can recover only by clearing the screen, and what the shell showed above it with it |
+| a tmux client starting on a terminal (`tty_start_tty` in `tty.c`, read in tmux 3.3a, 3.4 and 3.7c) | tmux sets the terminal's mode and then calls `tcflush(TCOFLUSH)`, which throws away output the terminal has not read yet. What the list wrote last before it became `tmux attach-session` - leaving the alternate screen, the cursor shown, the title - was lost now and then under load (tmux 3.3a and 3.4 in Docker, `TestListJoin`'s enter case and C10's join): the tab kept its old title. A stopped (SIGSTOP) outer tmux did not lose it (3.7c, Linux 7.0), so it takes a loaded machine too. A terminal answers primary device attributes (DA1, `CSI c`) once it has read what came before: tmux with `CSI ? 1 ; 2 c` (3.3a; 3.7c built with sixel `CSI ? 1 ; 2 ; 4 c`), JediTerm 3.76 with `CSI ? 6 c` |
+| a DA1 answer later than the list's wait for it, the list having become `tmux attach-session` (tmux 3.7c; the terminal frozen for 1.5 s against a one-second wait) | tmux asks for DA1 itself as it starts and takes the first answer for its own; the next, its own, reached claude's pane as keys (`CSI ? 1 ; 2 c` in the probe's input). Answered in time, the probe read no answer. Other versions were not checked |
+| SIGTSTP in a Go program that has had it through `os/signal` (Go 1.27.1, Linux 7.0) | after `signal.Stop` or `signal.Reset`, `kill -TSTP` of the process did nothing: `sigdisable` leaves Go's handler in place for any signal that `sigInstallGoHandler` accepts, and the handler drops a `_SigNotify` signal that no channel wants. Never notified, SIGTSTP keeps its default action, since `initsig` skips `_SigDefault` signals. `kill(getpid(), SIGSTOP)` returned before the process stopped, under dash with `set -m`, and it stopped soon after; the SIGCONT of `fg` then reached `os/signal` |
+| a job of a `sh -c` script under `set -m` that stops, and a background one that ends: macOS's `sh`, bash 3.2.57 as Apple builds it (read in its source, tag `bash-144`; seen on the CI's macOS 26 arm64 runner; run on Linux as GNU bash 3.2.57 with Apple's change to `jobs.c`), GNU bash 3.2.57 and 5.3.9, dash 0.5.12 | Apple's bash asks `waitpid` to report a stopped child (`WUNTRACED`) only when the shell is interactive, where GNU's asks whenever job control is on: in a script, `set -m` puts the job in a process group of its own, in the foreground, but once the job stops the shell goes on waiting for it to end, and never runs the rest of its script. With `-i` it goes on, `$?` 128 and the signal's number, as the others do in a script. bash 3.2.57, Apple's and GNU's, also reports a background job's end on stderr in a script while job control is on (`[1]+  Done ...`), which 5.3.9 and dash do not; with job control off again (`set +m`) once the job has started, it does not |
+| a `list-sessions` client that connects as the server exits with its last session: `new-session -d`, `kill-session`, then `list-sessions -f`, 400 times (tmux 3.3a, 3.4, 3.7c) | the client printed `no server running on ...`, but for `server exited unexpectedly`, failing, in one round on 3.4 and one on 3.7c, and nothing in one on 3.3a and one on 3.7c. cld took the first for no session and reported the second as an error, `cld join` as the list's footer; since 13 it takes both for no server (see the row on a server that exits as it is asked). `TestListJoin`'s last-row case waits for the server to have exited before Enter |
+| a directory whose name holds control characters (0x01, ESC), in `#{pane_current_path}` of `list-sessions -F` and `list-panes -F` (tmux 3.3a, 3.4, 3.5a, 3.7c), for a client under `LANG=C.UTF-8` and `LANG=C` | 3.3a and 3.7c write the characters as they are to a UTF-8 client - under `C.UTF-8`, or with `-u` - and each as `_` under `C` without `-u`; 3.4 and 3.5a write them as octal escapes, `\001` and `\033`, under either, with `-u` or not |
+| hint strings in Claude Code 2.1.282 (read from its bundle, not run) | hints are lower case, but for Enter and Esc in some, joined by ` · ` and drawn dim: `↑/↓ to navigate · enter to resume as a background session`, `↑/↓ to navigate · Esc to cancel`, and a list of hints beside `ctrl+x to ...` and `to go back` that ends in `esc to quit` or `esc to close · esc again quits`. Where each shows was not observed |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
@@ -119,6 +127,7 @@ a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the prob
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
 | C9 | claude exiting ends its session, and its server unless tmux sessions claude made keep it running; the terminal is left clean. A claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
+| C10 | the session list (`cld list` on a terminal) reads the terminal's own keys: Down and Enter join the second session, which shows, with the title `✳ cld-NAME`; Esc leaves the terminal as it was: the main screen, no mouse reporting, the cursor visible and the same `stty -g` | terminal |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
@@ -175,14 +184,16 @@ The Linux job runs the same Docker image a developer runs locally.
    and a dead pane's name comes back with the next pty opened (see Findings), so `cld` looks at
    the live panes itself and gives its client an empty `TMUX`, which tmux's check skips. Since 13
    it looks only when the socket `TMUX` names is one of cld's, `cld-NAME`, and asks that server.
+   `list` prints its table there rather than the interactive list, whose Enter would be refused
+   (see 14).
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
    fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
    `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME`. Commands address sessions as
    `=cld-NAME`, since tmux would otherwise take `cld-rev` for `cld-review`. `list` shows the
    directory claude is in now (`pane_current_path`), not the one its session started in, and
-   nothing at all when no server runs. `kill` ends a session with `kill-session`: claude gets
-   SIGHUP, as when its terminal closes (since 13, `kill-session` and then `kill-server` in one
-   tmux command, with the same SIGHUP).
+   nothing at all when no server runs; on a terminal it lets you pick a session and join it (see
+   14). `kill` ends a session with `kill-session`: claude gets SIGHUP, as when its terminal closes
+   (since 13, `kill-session` and then `kill-server` in one tmux command, with the same SIGHUP).
 4. Worktrees: `new -w` passes `--worktree NAME` to claude instead of running `git worktree add`.
    claude then applies what it applies to every worktree it makes - `.worktreeinclude`,
    `worktree.baseRef`, `WorktreeCreate` hooks - reopens an existing one, and one repository keeps
@@ -498,6 +509,122 @@ The Linux job runs the same Docker image a developer runs locally.
     say whose session's server it is; the terminal of any other tmux nests without a check. The
     options stay as they were, the fixed `terminal-features[100]` index too: `new` sets them on a
     fresh server, but two `cld new -n NAME` at once can both set them on one.
+14. The session list (#23): on a terminal, `cld list` shows the sessions to pick one and join it, as
+    Claude Code's agent view (`claude agents`, a research preview whose keys may change) lists its
+    background sessions: `↑`/`↓` move between rows, Enter attaches, Esc leaves. Its footer follows
+    Claude Code's hints (see Findings): `↑/↓ to navigate · enter to join · esc to quit`, dim, under
+    the rows after a blank line; on a row with a terminal attached - an exited one too - `enter to
+    join` reads `enter to join and detach its terminal`. The first row is selected, marked `>` and
+    in inverse video; `↑`/`↓` stop at the first and the last row, Enter joins, and Esc and Ctrl+C
+    leave with status 0 - one Ctrl+C, since the list has no input to clear. Other keys, letters
+    included, do nothing: agent view binds none, and its `→` pairs with a `←` to come back, which a
+    cld session does not offer. Keys with Alt do nothing either: terminals send them as Esc and the
+    key, so Esc followed within the wait for a lone Esc by another key is that key with Alt - but
+    for a second Esc, which stands alone unless a sequence follows it (Alt+Up as ESC ESC [ A, as
+    rxvt sends it). A message - why Enter could not join - takes the hints' place until the next
+    key. Settled with it:
+    1. when: the list is interactive when stdin and stdout are terminals, `TERM` is set and not
+       `dumb`, which cannot move the cursor, and cld is in the terminal's foreground (its process
+       group is the terminal's, `TIOCGPGRP`); otherwise `cld list` prints the table, byte for byte
+       as before - to a pipe or a file (`cld list | cat`, `$(cld list)` in a script), for a
+       completion, and in the background (`cld list &`), where setting the terminal up would stop
+       the job (SIGTTOU). A look now costs an Esc, and `cld list | cat` still prints and returns.
+       A script that leaves `cld list` the terminal, as one run from a shell does unless it
+       redirects the output, gets the list too and waits for a key: it pipes the output for the
+       table. A flag (`list -i`) would cost the list's main use an option; a bare `cld` opening it
+       would reverse decision 3;
+    2. where: on the alternate screen, from its top line, redrawn whole after each key and on
+       SIGWINCH - once for the bytes of a key, and once for keys that come together, pasted say -
+       each line cleared before it is drawn. Every line is cut at the terminal's width, counted in
+       cells - two for a wide character, one for an ambiguous one such as `↑`, `·` or `é` - so that
+       none wraps; a control character in a name or a directory shows as `?`. The rows scroll to
+       keep the selection in view. Leaving brings the shell's screen back; Esc and Ctrl+C then print
+       the table from the rows the list last read, so the scrollback holds what `cld list` printed
+       before, and Enter prints nothing more. Drawing in place below the prompt would take only the
+       lines it needs, but a terminal that reflows its lines as it narrows - tmux does (see
+       Findings) - breaks the redraw, and recovering means clearing what the shell showed;
+    3. in a live pane of one of cld's servers, where join refuses to attach (see 2), `list` prints
+       the table, as before, rather than a list whose Enter would be refused;
+    4. with no sessions, or no server, `cld list` prints nothing and exits 0, on a terminal too:
+       the list opens only with something to pick. Once its last row has gone, it shows `no
+       sessions` under its header, over `esc to quit`, and leaving prints nothing;
+    5. rows behave as with `cld join -n NAME`: Enter on a row with a terminal attached detaches that
+       terminal, which the footer says first - an exited row's too, whose STATE reads `exited`
+       whether a terminal is attached or not - and on an exited row joins and shows claude's last
+       words with the hint - joining is how claude's message is read. Asking again, or refusing an
+       exited row, would protect nothing: a detach ends nothing;
+    6. the list reads the sessions when it opens and after its own actions - a failed Enter here -
+       never on a timer or on a key, so a row does not change under a key; each read asks every
+       server in turn, as `list` does (see 13.1). A stale row costs at most a message, detaching a
+       terminal the list did not show, or joining a session made again under the same name, which
+       `cld join -n NAME` would join too. After a read the selection stays on its session or, once
+       that is gone, goes to the next row the list showed that is still there - the one that took
+       its place - or else to the one above. Leaving and running `cld list` again shows what changed
+       elsewhere;
+    7. Go (see 11) on `golang.org/x/term`, which the module already required for the probe:
+       `MakeRaw`, which clears `ISIG` so that Ctrl+C arrives as the byte 0x03, `GetSize` and
+       `Restore`. The list reads a byte at a time, and only once there is one: reads block, so a
+       goroutine waits in `select` (`golang.org/x/sys/unix`; macOS's `poll` does not support
+       terminals) and the list reads, so that nothing reads the keys after its last one - they stay
+       for the shell after Esc and Ctrl+C, and for tmux after Enter (but see below). A timer tells
+       a lone Esc (0x1b) from the start of an arrow's `ESC [ A`: 100 ms, to cover a sequence split
+       between two reads (over ssh, say; not observed). The list accepts `ESC O A` and `ESC O B`
+       too, which the arrows send once a program has turned application cursor keys on and left
+       them so; it sets neither mode. Cells are counted with `golang.org/x/text/width`: East Asian
+       Wide and Fullwidth take two, combining marks and format characters none, the rest -
+       ambiguous ones included - one. `go-runewidth` (0.0.23) takes ambiguous characters for two
+       under a CJK locale, unless `RUNEWIDTH_EASTASIAN` says otherwise, and brings `uax29`. Bubble
+       Tea (2.0.10) would parse the keys and redraw for cld, but requires 17 modules, 8 of them
+       directly.
+
+    Enter runs join's own steps, split in two (`Joinable` and `Attach` in `internal/session`):
+    join's checks - the name, then the lookup - while the list still owns the terminal, in raw mode,
+    then the terminal put back, then the rest of join - an empty `TMUX`, the title and
+    `attach-session -d` with the hint for an exited claude. Putting the terminal back waits for it
+    to have read the list's last output: tmux throws away what the terminal has not read yet as its
+    client starts (see Findings), which lost the main screen, the cursor and the title under load.
+    Still in raw mode, the list leaves the alternate screen, shows the cursor, writes the title and
+    asks the terminal for its primary device attributes (DA1, `CSI c`), which a terminal answers
+    once it has read what came before; on the answer, or after five seconds without one, it restores
+    the terminal's mode and `Attach` goes on, writing the title again. Keys typed with Enter, before
+    the answer, are read and dropped; those after it reach claude. So does an answer later than the
+    wait: tmux asks the same question as it starts and takes the first answer for its own (see
+    Findings). Every terminal the list runs on answers, so the wait is long enough for the round
+    trip of a slow link, and only a terminal that does not answer waits it out. `cld join` and
+    `cld new` write the title just before tmux starts too, but after no screen of the list's; they
+    do not wait. The lookup, and the read of the sessions after one that fails, run beside the list,
+    which goes on taking keys and signals: Esc, Ctrl+C, SIGTERM, SIGHUP, SIGINT and SIGQUIT leave at
+    once, killing the lookup's tmux and waiting for it, and other keys do nothing until it ends - a
+    server that hangs does not hold the list, as it would not hold `cld join`, which Ctrl+C ends
+    outside raw mode. A signal that comes before cld becomes tmux ends it with 128 and the signal's
+    number, joining nothing. One that comes during the lookup ends it at once, and the tab keeps its
+    title - unless `os/signal`, which passes a signal on some time after Go's runtime took it,
+    passes it on only once the lookup has ended: then, as for a signal during the wait for the
+    terminal's answer, the tab has the session's title, which has to come before the question. The
+    list lets go of the signals only once the terminal is back: a signal then either reaches it by
+    the time `signal.Stop` returns, where the list looks for one a last time, or ends cld by its
+    default action, as it would without the list (`os/signal`, read in Go 1.27.1). The list shows a
+    check that fails in its footer without the advice meant for the command line (`no session 'b'`,
+    `session 'b' has ended, but its tmux server still runs`), reads the sessions again and stays
+    open; `cld join` prints the same errors with it, as before. A session that ends between the
+    lookup and the attach fails in tmux, as it does for `cld join`. The cursor is hidden while the
+    list is open, and the main screen, the cursor and the terminal's mode come back on every way
+    out: Esc, Ctrl+C, Enter before the handover to tmux, an error, and SIGTERM, SIGHUP, SIGINT and
+    SIGQUIT, which end cld with 128 and the signal's number - SIGQUIT's own action, a dump of Go's
+    goroutines, would leave the terminal as the list had it. Keys typed once the footer shows are
+    neither echoed nor held for a line: raw mode comes before the first frame. Ctrl+Z and Ctrl+\ are
+    keys in raw mode, which do nothing; SIGTSTP and SIGSTOP come from outside, and the list does as
+    less and vim do. SIGTSTP puts the terminal back and stops cld, and SIGCONT, after any stop, has
+    the list take the terminal again - raw mode, the alternate screen - and draw it all: SIGSTOP
+    leaves the list on the screen, where the shell writes, and bash puts its own mode back as it
+    takes the terminal. Go drops SIGTSTP once `os/signal` has had it (see Findings), so cld stops
+    itself with SIGSTOP - the shell reports that signal - and waits for the SIGCONT, since the stop
+    comes some time after `kill` returns. SIGTSTP stops nothing in an orphaned process group, where
+    nothing in the session would have it go on: cld goes on at once where its process group is its
+    session leader's - a pane's program, or a job of a shell without job control - which only a
+    shell with job control takes a job out of. A SIGTSTP during the handover stops cld once the
+    terminal is back, before it becomes tmux. In the background, after `bg`, taking the terminal
+    again stops cld (SIGTTOU) until `fg`.
 
 ## Implementation notes
 
@@ -571,7 +698,7 @@ Where the implementation departs from the plan above:
   `server exited unexpectedly` (the server exited while tmux asked it); any other error connecting,
   `File name too long` above all, ends cld with tmux's message. `Sessions` reads the socket
   directory with `os.ReadDir`, which sorts by name, and takes from each server's answer only a line
-  for the session named like the server. `ownPane` asks the server `TMUX` names with `-S` and that
+  for the session named like the server. `OwnPane` asks the server `TMUX` names with `-S` and that
   path, whatever `TMUX_TMPDIR` is now. In the tests, `Sandbox.Tmux` takes the server to run against;
   `Sessions` and `Clients` go over every socket `cld-*`, and `Sessions` names a session that is not
   on the server named like it `SERVER/SESSION`, so that one on the wrong server shows. The fake tmux
@@ -580,6 +707,15 @@ Where the implementation departs from the plan above:
   `CLD_FAKE_TMUX_EXITED` names, and with `CLD_FAKE_TMUX_REAL` runs a real tmux for all but
   `list-sessions`, so that a second `cld new` can reach a running server as the one of two at once
   that loses the race does.
+- The session list (decision 14) is `internal/picker`; `cmd/cld` decides when it runs and hands
+  it join's checks. A `fail.Error` keeps the advice for the command line (`Advice`, such as
+  ` (see cld help)`) apart from its `Message`: `main` prints both, the list's footer the message.
+  The list's lookups run tmux with the terminal, in raw mode, as their stdin; `list-sessions`
+  leaves its mode alone (`TestListJoin`'s gone case reads it with `stty -a`).
+- The baseline terminal types the list's keys by name with `send-keys`, which sends, on tmux
+  3.7c: `Up` ESC [ A, `Down` ESC [ B, `Escape` 0x1b, `Enter` 0x0d and `C-c` 0x03, and after the
+  program in the pane has sent CSI ?1h (application cursor keys) ESC O A and ESC O B for `Up` and
+  `Down`.
 - `Modes` tells whether the cursor is visible: in the baseline terminal the outer pane's
   `#{cursor_flag}`, 1, and 0 after CSI ?25l (tmux 3.7c); in JediTerm what its display's
   `setCursorVisible` last received - the emulator's `CursorVisible` mode (DECTCEM) calls it -
@@ -596,6 +732,34 @@ Where the implementation departs from the plan above:
 - The baseline terminal types `S-Up` (`CSI 1;2A`), `M-j` (ESC j), `M-Escape` (ESC ESC) and `M-Up`
   (ESC ESC [ A) as raw bytes, and freezes (`Freeze`) by stopping the outer tmux server with SIGSTOP:
   it then neither reads the pane nor answers it, until the test thaws it.
+- The stop cases run `cld list` as a job of an interactive `sh` (`sh -i`), which has job control,
+  goes on with its script when the job stops and puts it back with `fg` once the test says so;
+  before `fg` the script puts its own mode back, as bash does when it takes the terminal back and
+  dash does not. It is interactive for macOS's `sh`, which under `set -m` in a script never hears
+  that the job stopped (see Findings); there, bash has put its own mode back by the time the script
+  reads it, so only dash, on Linux, checks the mode cld leaves while stopped. The background case
+  turns job control on for `&` and off again (`set +m`), so that bash 3.2 does not report the
+  job's end on the screen. Without job control, cld runs in the process group of the pane's
+  program, the session leader. Tests that need to know the list has taken a key that changes
+  nothing on the screen count its frames in the output log: each starts with `CSI 1;1H`.
+- Tests that need cld's exit status or the terminal's mode run `cld list` under `sh`, which writes
+  them - `$?`, `stty -g` before and after cld, and `tty` - to files, and then sleeps: once the
+  outer pane's program exits, tmux writes `Pane is dead` onto the screen the tests read. The
+  terminal's screen and its output log trail cld's exit status - the log more, through a pipe to
+  `dd` - so the tests wait for what they expect there rather than read it once.
+- `TestListJoin`'s busy-terminal case checks that Enter does not hand the terminal over before the
+  terminal has answered, and that the answer does not reach claude: a tmux first on the `PATH` holds
+  Enter's lookup while the test freezes the baseline terminal, and once the lookup is let go cld's
+  process has not become tmux (`/proc/PID/comm`, which a tmux client may set to `tmux: client`, or
+  `ps -o comm=`) a second and a half later, when the test thaws the terminal; claude's probe then
+  reads a key typed after the join, and no answer before it. For a terminal that does not answer,
+  the test thaws it only once cld has become tmux, five seconds after the lookup at the earliest.
+  Frozen after Enter instead, a terminal that had not stopped yet answered in time now and then
+  under load. Freezing the terminal does not make it lose the title (see Findings), so the case
+  checks the wait and the answer rather than the title; the enter case checks that the main screen,
+  the cursor, the title and the question reach the terminal in that order, in one piece, from its
+  output log. The same held lookup lets the tests signal cld, or press Esc or Ctrl+C, while the
+  lookup runs, and check that its tmux is gone by the time cld has exited.
 
 ## What the tests found
 
