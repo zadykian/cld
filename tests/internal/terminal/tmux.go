@@ -87,7 +87,7 @@ func (o *tmuxTerminal) Start(argv []string, env map[string]string, dir string) {
 		// A real terminal does not set TMUX, the outer server does: it is unset first and set
 		// again only when env asks for it.
 		"new-session", "-d", "-x", strconv.Itoa(o.columns), "-y", strconv.Itoa(o.rows), "-s", "outer",
-		"-c", literal(dir), "env", "-u", "TMUX",
+		"-c", literal(unexpanded(dir)), "env", "-u", "TMUX",
 	}
 	for name, value := range env {
 		args = append(args, literal(name+"="+value))
@@ -111,6 +111,13 @@ func literal(word string) string {
 		return before + `\;`
 	}
 	return word
+}
+
+// unexpanded is text as a tmux format that expands to text itself, as for cld's own tmux (see
+// unexpanded in internal/session): the outer tmux expands new-session's -c as a format too, in
+// which "##" is a "#".
+func unexpanded(text string) string {
+	return strings.ReplaceAll(text, "#", "##")
 }
 
 func (o *tmuxTerminal) outputFile() string {

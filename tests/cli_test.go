@@ -830,11 +830,12 @@ const endHint = "display-message -d 0 'claude exited with " +
 // separate words, and what goes on claude's window. resume's claude gets new's arguments, never
 // -w's, then --resume. A word ending in ";", which tmux would take for the end of its command,
 // goes with a "\" before the ";", which tmux drops: SESSION, or the directory cld runs in. The
-// fake tmux, which finds no server running for the session, records it, and the environment it
-// gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX where TMUX was set - join's
-// client needs it (see TestNestsOnADeadPanesPty), and with it tmux still takes new's terminal for
-// UTF-8 (see TestNestsInsideAnotherTmux); a PS1, which the script's bash dropped, passes too
-// (decision 11 in docs/design.md).
+// directory goes with every "#" doubled, since tmux expands -c as a format, in which "##" is a
+// "#". The fake tmux, which finds no server running for the session, records the command, and
+// the environment it gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX where TMUX
+// was set - join's client needs it (see TestNestsOnADeadPanesPty), and with it tmux still takes
+// new's terminal for UTF-8 (see TestNestsInsideAnotherTmux); a PS1, which the script's bash
+// dropped, passes too (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -856,6 +857,9 @@ func TestNewTmuxCommand(t *testing.T) {
 		{[]string{"new", "-n", "x", "-w"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "x"}},
 		{[]string{"resume", "-n", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
 		{[]string{"new", "-n", "x"}, `w\;`, `w\\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-n", "x"}, "C#S", "C##S", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-n", "x", "-w"}, "x#(touch ran)", "x##(touch ran)", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "x"}},
+		{[]string{"resume", "-n", "x"}, "#{session_name}#;", `##{session_name}##\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
 	} {
 		args, dir, c, claude := command.args, command.dir, command.c, command.claude
 		name := strings.Join(args, " ")
