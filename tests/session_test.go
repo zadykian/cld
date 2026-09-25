@@ -33,6 +33,9 @@ func TestSessionNames(t *testing.T) {
 		{[]string{"new", "-n", "review"}, "cld-review"},
 		{[]string{"new", "--name", "Fix_42-b"}, "cld-Fix_42-b"},
 		{[]string{"new", "--name=x"}, "cld-x"},
+		// The spellings of pflag, which reads the options.
+		{[]string{"new", "-ny"}, "cld-y"},
+		{[]string{"new", "-n=z"}, "cld-z"},
 	} {
 		t.Run(test.session, func(t *testing.T) {
 			t.Parallel()
@@ -65,6 +68,7 @@ func TestNewWorktree(t *testing.T) {
 		{[]string{"new", "-w"}, []string{"--name", "cld-main", "--settings", fromHead, "--worktree", "main"}},
 		{[]string{"new", "-n", "feat", "--worktree"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
 		{[]string{"new", "-w", "--name=feat"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
+		{[]string{"new", "-wn", "feat"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -189,6 +193,15 @@ func TestList(t *testing.T) {
 	notUTF8 := map[string]string{"LC_ALL": "", "LC_CTYPE": "", "LANG": "C"}
 	if result := s.RunCld(notUTF8, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("LANG=C: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
+	}
+	// A name is padded by its characters, whatever the locale: 11 of them take 11 columns in
+	// 14 bytes. A session renamed by hand keeps its mark, which holds its id.
+	s.MustTmux("rename-session", "-t", "=cld-long_name-1", "cld-lóng_námé-1")
+	want = strings.Replace(want, "long_name-1", "lóng_námé-1", 1)
+	for _, env := range []map[string]string{nil, notUTF8} {
+		if result := s.RunCld(env, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+			t.Errorf("renamed, %v: exit %d, stderr %q, stdout\n%s\nwant\n%s", env, result.Code, result.Stderr, result.Stdout, want)
+		}
 	}
 }
 
@@ -617,8 +630,9 @@ func TestRepeatedRunsDoNotStackOptions(t *testing.T) {
 }
 
 // claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux, and the server keeps the environment of
-// the client that started it: without cld's env -u, a server started from a JetBrains terminal
-// would hand TERMINAL_EMULATOR to every later session, attached from anywhere.
+// the client that started it: unless cld left TERMINAL_EMULATOR out of the environment it runs
+// tmux with, a server started from a JetBrains terminal would hand it to every later session,
+// attached from anywhere.
 func TestClaudeNeverSeesTerminalEmulator(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -732,7 +746,7 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 }
 
 // keepsFailedSessions reports whether cld keeps a failed claude's session with the tmux under
-// test: from 3.5 on, and in development builds (see bin/cld).
+// test: from 3.5 on, and in development builds (see Check in internal/session).
 func keepsFailedSessions(t *testing.T) bool {
 	t.Helper()
 	out, err := exec.Command("tmux", "-V").Output()

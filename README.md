@@ -18,19 +18,26 @@ cld kill -n review  # end the session and its claude
 ## Install
 
 ```sh
-mkdir -p ~/.local/bin && curl -fsSL https://github.com/zadykian/cld/releases/latest/download/cld -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld
+os=$(uname -s | tr '[:upper:]' '[:lower:]') arch=$(uname -m); case $arch in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; esac
+mkdir -p ~/.local/bin && curl -fsSL "https://github.com/zadykian/cld/releases/latest/download/cld-$os-$arch" -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld
 ```
 
-`~/.local/bin` has to be on your `PATH`. Each release also publishes `cld.sha256`. From a clone,
-`make install` does the same (`make install PREFIX=/usr/local` for another prefix).
+`~/.local/bin` has to be on your `PATH`. Each release publishes cld for Linux and macOS, on amd64
+(x86_64) and arm64, and `cld.sha256`, which lists their checksums. From a clone, `make install`
+builds cld and installs it there (`make install PREFIX=/usr/local` for another prefix); it needs
+Go 1.26 or newer.
 
-Requirements: bash (3.2 or newer), tmux 3.3 or newer, and `claude` on the `PATH`; git for
-`cld new --worktree`.
+Requirements: tmux 3.3 or newer, and `claude` on the `PATH`; git for `cld new --worktree`.
+
+cld 0.3.0 and earlier were a bash script, downloaded from `releases/latest/download/cld`. Later
+releases publish a binary per platform instead, so that download fails once one of them is the
+latest; an installed script keeps working until you update it with the lines above or
+`make install`.
 
 ## Usage
 
 Session `NAME` is the tmux session `cld-NAME`, running `claude --name cld-NAME`. A name consists
-of letters, digits, `_` and `-`; without `-n` it is `main`.
+of ASCII letters, digits, `_` and `-`; without `-n` it is `main`.
 
 Each session starts with [Remote Control](https://code.claude.com/docs/en/remote-control) on, so
 you can also continue it from claude.ai or the Claude app: `cld new` passes claude
@@ -75,6 +82,10 @@ Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it no
 the two commands. cld 0.2.0 and earlier did not mark their sessions, so later versions do not see
 the sessions they started: end them before upgrading, or afterwards find them with
 `tmux -L cld ls` and end them with `tmux -L cld kill-session -t =cld-NAME`.
+
+Under a locale such as `en_US.UTF-8`, cld 0.3.0 also took names with non-ASCII letters or
+digits, such as `café`; later versions list such a session but cannot join or kill it. End it
+with `tmux -L cld kill-session -t =cld-NAME`.
 
 ### Worktrees
 
@@ -130,7 +141,7 @@ problem:
 |---|---|---|
 | Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
 | Working copy | the directory you run it in, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
-| Needs | bash and tmux 3.3 or newer; a git repository for `-w` | a git repository |
+| Needs | tmux 3.3 or newer; a git repository for `-w` | a git repository |
 | Coming back | `cld join -n NAME` attaches to the session | not documented |
 | tmux server and options | a private server that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
@@ -163,16 +174,20 @@ make docker-check BASE=debian:trixie TMUX_VERSION=3.7c   # a tmux release built 
 
 Natively, `make check` needs Go, tmux, ShellCheck and shfmt, and runs the baseline terminal only.
 For JediTerm add a JDK, fetch its jars once with `tests/jediterm/fetch-deps tests/jediterm/lib`
-and run `make check TERMINALS=tmux,jediterm`. `CLD_BASH=/bin/bash make test` runs cld under a
-specific bash.
+and run `make check TERMINALS=tmux,jediterm`.
+
+cld is a Go program on [cobra](https://github.com/spf13/cobra): the command line is in `cmd/cld`,
+how it uses tmux - and why - in `internal/session`.
 
 How the tests work - the probe that stands in for claude, the sandboxes, the terminal drivers - is
 described in [docs/design.md](docs/design.md) and at the top of each package under `tests/`.
 
 ## Releasing
 
-Pushing a tag `vX.Y.Z` runs the checks and publishes a GitHub release with `cld`, its version set
-to `X.Y.Z`, and `cld.sha256`.
+Pushing a tag `vX.Y.Z` runs the checks and publishes a GitHub release with cld built for each
+platform - `cld-linux-amd64`, `cld-linux-arm64`, `cld-darwin-amd64` and `cld-darwin-arm64`, their
+version set to `X.Y.Z` - and `cld.sha256`, which lists them. `make dist VERSION=X.Y.Z` builds the
+same into `dist/`.
 
 ## License
 

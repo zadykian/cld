@@ -1,9 +1,8 @@
-// Package tests holds cld's tests. They run cld against real tmux servers, one private world per
-// test (see internal/sandbox), with a probe in claude's place (see probe).
+// Package tests holds cld's tests. They build cld and run it against real tmux servers, one
+// private world per test (see internal/sandbox), with a probe in claude's place (see probe).
 //
 // CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"):
 // tmux, jediterm (needs a JDK and CLD_JEDITERM_LIB, see jediterm/fetch-deps).
-// CLD_BASH runs cld under a specific bash.
 package tests
 
 import (
@@ -36,6 +35,10 @@ func TestMain(m *testing.M) {
 }
 
 func setup(dir string) error {
+	sandbox.Cld = filepath.Join(dir, "cld")
+	if err := run("go", "build", "-o", sandbox.Cld, "github.com/zadykian/cld/cmd/cld"); err != nil {
+		return err
+	}
 	sandbox.ProbeBin = filepath.Join(dir, "probe")
 	if err := run("go", "build", "-o", filepath.Join(sandbox.ProbeBin, "claude"), "./probe"); err != nil {
 		return err
