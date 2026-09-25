@@ -23,7 +23,7 @@ func main() {
 	switch {
 	case err == nil:
 	case errors.As(err, &failure):
-		fmt.Fprintf(os.Stderr, "cld: %s\n", failure.Message)
+		fmt.Fprintf(os.Stderr, "cld: %s%s\n", failure.Message, failure.Advice)
 		os.Exit(failure.Status)
 	case errors.As(err, &status):
 		os.Exit(int(status))

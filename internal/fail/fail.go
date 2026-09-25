@@ -10,13 +10,16 @@ import (
 	"strconv"
 )
 
-// Error ends cld with Status, after "cld: Message" on stderr.
+// Error ends cld with Status, after "cld: Message" on stderr, followed by Advice: what to do
+// about it on cld's command line, such as " (see cld help)", kept apart for a caller that shows
+// the message elsewhere - the session list's footer.
 type Error struct {
 	Status  int
 	Message string
+	Advice  string
 }
 
-func (e *Error) Error() string { return e.Message }
+func (e *Error) Error() string { return e.Message + e.Advice }
 
 // Usage is a mistake on cld's command line: exit status 2.
 func Usage(message string) error { return &Error{Status: 2, Message: message} }
