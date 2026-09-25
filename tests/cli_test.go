@@ -557,20 +557,22 @@ func TestRequiresTmux(t *testing.T) {
 	}
 }
 
-// new and resume require claude 2.1.222, the first release that does what cld passes and relies
-// on, comparing the numbers claude --version starts with as numbers: 2.1.30 is older. Output that
-// does not start with a version passes. An older claude is refused before tmux starts. The probe
-// answers --version without leaving a record of a claude: the fake tmux starts none.
+// new and resume require claude 2.1.232, the first release that does what cld passes and relies
+// on, resume included, comparing the numbers claude --version starts with as numbers: 2.1.30 is
+// older. Output that does not start with a version passes. An older claude - 2.1.222, the minimum
+// before resume, too - is refused before tmux starts. The probe answers --version without leaving
+// a record of a claude: the fake tmux starts none.
 func TestRequiresClaude(t *testing.T) {
 	t.Parallel()
 	for version, accepted := range map[string]bool{
-		"2.1.222 (Claude Code)":   true,
+		"2.1.232 (Claude Code)":   true,
 		"2.1.282 (Claude Code)":   true,
 		"2.2.0 (Claude Code)":     true,
 		"2.10.0 (Claude Code)":    true,
 		"3.0.0 (Claude Code)":     true,
 		"Claude Code, version 42": true,
-		"2.1.221 (Claude Code)":   false,
+		"2.1.231 (Claude Code)":   false,
+		"2.1.222 (Claude Code)":   false,
 		"2.1.30 (Claude Code)":    false,
 		"2.0.999 (Claude Code)":   false,
 		"1.9.9 (Claude Code)":     false,
@@ -589,7 +591,7 @@ func TestRequiresClaude(t *testing.T) {
 				if accepted && (result.Code != 0 || !started) {
 					t.Errorf("rejected: exit %d, stderr %q", result.Code, result.Stderr)
 				}
-				if want := "cld: claude 2.1.222 or newer is required, found '" + version + "'\n"; !accepted &&
+				if want := "cld: claude 2.1.232 or newer is required, found '" + version + "'\n"; !accepted &&
 					(result.Code != 1 || result.Stderr != want || result.Stdout != "" || started) {
 					t.Errorf("accepted: exit %d, stdout %q, stderr %q, tmux started: %v", result.Code, result.Stdout, result.Stderr, started)
 				}
@@ -609,7 +611,7 @@ func TestRequiresClaude(t *testing.T) {
 // checked as any other claude (see TestStartsTheClaudeItChecks).
 func TestRequiresClaudeVersion(t *testing.T) {
 	t.Parallel()
-	const required = "cld: claude 2.1.222 or newer is required, but "
+	const required = "cld: claude 2.1.232 or newer is required, but "
 	for _, test := range []struct {
 		name, script string
 		code         int
@@ -622,7 +624,7 @@ func TestRequiresClaudeVersion(t *testing.T) {
 			required + "claude --version exited with status 3: partial\nclaude: cannot load\n", false},
 		{"signal", "#!/bin/sh\nkill -TERM $$\n", 1, required + "claude --version exited with signal 15\n", false},
 		{"missing interpreter", "#!/nonexistent/interpreter\n", 127, "cld: cannot run CLAUDE: no such file or directory\n", false},
-		{"no #!", "echo '2.1.100 (Claude Code)'\n", 1, "cld: claude 2.1.222 or newer is required, found '2.1.100 (Claude Code)'\n", false},
+		{"no #!", "echo '2.1.100 (Claude Code)'\n", 1, "cld: claude 2.1.232 or newer is required, found '2.1.100 (Claude Code)'\n", false},
 		{"no #!, status 3", "echo 'claude: cannot load' >&2\nexit 3\n", 1,
 			required + "claude --version exited with status 3: claude: cannot load\n", false},
 		// A binary the system will not execute - an ELF header with nothing after it, as of one
@@ -671,9 +673,9 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 		stderr       string
 	}{
 		{"accepted", "echo '2.1.300 (Claude Code)'", 0, ""},
-		{"too old", "echo '2.1.100 (Claude Code)'", 1, "cld: claude 2.1.222 or newer is required, found '2.1.100 (Claude Code)'\n"},
+		{"too old", "echo '2.1.100 (Claude Code)'", 1, "cld: claude 2.1.232 or newer is required, found '2.1.100 (Claude Code)'\n"},
 		{"failing", "echo 'claude: cannot load' >&2; exit 3", 1,
-			"cld: claude 2.1.222 or newer is required, but claude --version exited with status 3: claude: cannot load\n"},
+			"cld: claude 2.1.232 or newer is required, but claude --version exited with status 3: claude: cannot load\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -729,12 +731,12 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		// ran is whether claude --version runs.
 		ran bool
 	}{
-		{[]string{"new"}, "tmux 3.7c", "", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
-		{[]string{"new"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
+		{[]string{"new"}, "tmux 3.7c", "", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"new"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
 		{[]string{"new", "-w"}, "tmux 3.7c", "", 1, "cld: git is not installed\n", false},
 		{[]string{"new"}, "tmux 3.6b", "", 1, "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
-		{[]string{"resume"}, "tmux 3.7c", "", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
-		{[]string{"resume", "-n", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'\n", true},
+		{[]string{"resume"}, "tmux 3.7c", "", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"resume", "-n", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
 		{[]string{"resume"}, "tmux 3.6b", "", 1, "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
 		{[]string{"join"}, "tmux 3.7c", "", 1, "cld: no session 'main'; create it with cld new -n main\n", false},
 		{[]string{"kill"}, "tmux 3.7c", "", 1, "cld: no session 'main' (see cld list)\n", false},
@@ -749,7 +751,7 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 			s := sandbox.New(t)
 			tools := s.Tools("tmux")
 			ran := filepath.Join(s.Root, "claude ran")
-			script := "#!/bin/sh\necho \"$*\" >'" + ran + "'\necho '2.1.221 (Claude Code)'\n"
+			script := "#!/bin/sh\necho \"$*\" >'" + ran + "'\necho '2.1.231 (Claude Code)'\n"
 			if err := os.WriteFile(filepath.Join(tools, "claude"), []byte(script), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -809,7 +811,7 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 				}
 				return
 			}
-			if want := "cld: claude 2.1.222 or newer is required, found '" + test.pinned + "'\n"; result.Code != 1 || result.Stdout != "" || result.Stderr != want {
+			if want := "cld: claude 2.1.232 or newer is required, found '" + test.pinned + "'\n"; result.Code != 1 || result.Stdout != "" || result.Stderr != want {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
 			}
 			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {

@@ -226,7 +226,7 @@ The Linux job runs the same Docker image a developer runs locally.
    `resume` refuse the name, pointing at `kill`, rather than replacing the session unseen. The
    option and the hook go to claude's window only (see 9 and 13).
 6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
-   Claude Code 2.1.222 or newer, the first release that does what cld passes and relies on. Both
+   Claude Code 2.1.232 or newer, the first release that does what cld passes and relies on. Both
    are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
    for every command but `help` and `version`, and refuses an older tmux with
    `cld: tmux 3.7 or newer is required, found 'tmux 3.6b'` and status 1.
@@ -260,8 +260,8 @@ The Linux job runs the same Docker image a developer runs locally.
      instead - the tools, then `tmux -V` - so that cld runs claude only once those cheap checks
      pass, and a missing tool or a tmux too old is reported before a claude too old. `join`, `kill`
      and `list` never start claude and do not check it. cld compares the `X.Y.Z` the output starts
-     with as numbers (2.1.30 is older than 2.1.222) and refuses an older claude with
-     `cld: claude 2.1.222 or newer is required, found '2.1.221 (Claude Code)'` and status 1. It does
+     with as numbers (2.1.30 is older than 2.1.232) and refuses an older claude with
+     `cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'` and status 1. It does
      not say how to update, which depends on how claude was installed; the README does.
    - `claude --version` runs the claude that tmux then starts, as tmux starts it: the `claude` that
      cld finds in the absolute `PATH` entries (11.5), by its path, with no input, in the current
@@ -293,14 +293,19 @@ The Linux job runs the same Docker image a developer runs locally.
      tmux does (11.9), with `cld: cannot run PATH: REASON` and 127 or 126, since its version is not
      what is wrong. Where the script would have handed such a claude to tmux, which failed in its
      pane (see 11.5), `new` now stops in the terminal.
-   - Why 2.1.222: the tests never run the real claude, so there is no tested version to require;
+   - Why 2.1.232: the tests never run the real claude, so there is no tested version to require;
      the minimum is the first release that takes what cld passes and does what it relies on. What
      it passes came earlier - `--worktree` in 2.1.49, `--name` in 2.1.76, `remoteControlAtStartup`
      in the settings in 2.1.119, `worktree.baseRef` in 2.1.133 - but only from 2.1.222 does a
      project's `false` keep Remote Control off despite cld's `--settings`, as 10 and the README
-     promise (see Findings). 2.1.133 would have needed that promise qualified; 2.1.281, the version
-     probed, would refuse the stable channel (2.1.274), which runs about a week behind. The exit
-     status of `/exit` and the key mode, recorded for 2.1.281, were not checked on older releases.
+     promise (see Findings), and #21 set the minimum there. `resume` (16) relies on behaviour
+     documented up to 2.1.232 - the search for a session ID across projects in 2.1.223, and
+     variants for live names and Remote Control staying with the claude that has it in 2.1.232
+     (16.7) - so the minimum rose to 2.1.232 with it (#26), rather than the README saying which
+     of `resume`'s behaviours need a newer claude than cld accepts. 2.1.133 would have needed the
+     Remote Control promise qualified; 2.1.281, the version probed, would refuse the stable
+     channel (2.1.274), which runs about a week behind and passes 2.1.232. The exit status of
+     `/exit` and the key mode, recorded for 2.1.281, were not checked on older releases.
      The minimum rises when cld starts to pass a flag, or to rely on behaviour, that needs a newer
      claude, and only once the stable channel has that release. An upper bound, or an exact match,
      would break cld every few days: npm published 2.1.280 to 2.1.282 on 22 to 24 September 2026.
@@ -324,9 +329,9 @@ The Linux job runs the same Docker image a developer runs locally.
    does not keep the settings it was started with, and Claude Code's docs say to pass them again.
    Flag settings outrank the user's, so this holds whatever `/config` says; claude still keeps
    Remote Control off under an org policy or a project that sets the key to `false` (see
-   Findings; from 2.1.222, the minimum in 6), and `cld` leaves those alone. With `-w` the worktree
-   setting goes into the same JSON: one `--settings` rather than two, whose merging claude does
-   not document.
+   Findings; from 2.1.222, older than the minimum in 6), and `cld` leaves those alone. With `-w`
+   the worktree setting goes into the same JSON: one `--settings` rather than two, whose merging
+   claude does not document.
 11. Go and cobra (#20): cld is a Go program built on [cobra](https://github.com/spf13/cobra) and
     pflag, a port of the bash script `bin/cld` as 0.3.0 had it. One language for cld and its
     tests, no bash 3.2 to write for, cobra's shell completion to build on, and key input with
@@ -762,7 +767,9 @@ The Linux job runs the same Docker image a developer runs locally.
        (2.0.64), `--name` (2.1.76), the transcript following claude into a worktree (2.1.198),
        the search for a session ID across projects (2.1.223), and variants for live names and
        Remote Control staying with the claude that has it (both 2.1.232). `resume` checks
-       claude's version as `new` does, against the same minimum (6).
+       claude's version as `new` does, and the minimum (6) rose to 2.1.232 with `resume`, so
+       every claude that passes the check has all of it: the README need not say which of it
+       needs a newer claude.
     8. tmux ends a command at an argv word ending in `;` (see Findings), and SESSION can end in
        one, as can the directory `new` and `resume` give tmux with `-c`: each of cld's words that
        does goes to tmux with a `\` before the `;`, which tmux drops. tmux then expands `-c` as a

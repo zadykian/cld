@@ -112,7 +112,7 @@ type Tmux struct {
 // raised by hand (see docs/design.md, decision 6).
 var (
 	minTmux   = version{3, 7}
-	minClaude = version{2, 1, 222}
+	minClaude = version{2, 1, 232}
 )
 
 // tmuxVersion and claudeVersion match the start of a version that tmux -V and claude --version
