@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -32,9 +33,16 @@ type tmuxTerminal struct {
 const outerPane = "outer:0.0"
 
 // Input an xterm-compatible terminal sends; the outer tmux types it as raw bytes because its own
-// key names and focus reporting differ between versions and need an attached client.
+// key names and focus reporting differ between versions and need an attached client. A key with
+// Alt comes as Esc and the key, as xterm sends it with metaSendsEscape - Alt+Esc as Esc twice at
+// once; Alt+Up as the terminals that send Alt that way for any key send it (rxvt), where xterm
+// sends CSI 1;3A.
 var xtermInput = map[string]string{
 	"S-Enter":   "\x1b[13;2u",
+	"S-Up":      "\x1b[1;2A",
+	"M-j":       "\x1bj",
+	"M-Escape":  "\x1b\x1b",
+	"M-Up":      "\x1b\x1b[A",
 	"focus-in":  "\x1b[I",
 	"focus-out": "\x1b[O",
 	"wheel-up":  "\x1b[<64;10;10M",
@@ -86,7 +94,9 @@ func (o *tmuxTerminal) Start(argv []string, env map[string]string, dir string) {
 	}
 	args = append(args, argv...)
 	// In the same command list as new-session, so the pipe is in place before the first output.
-	args = append(args, ";", "pipe-pane", "-O", "-t", outerPane, "cat >> '"+o.outputFile()+"'")
+	// dd writes each read as it comes; uutils' cat (0.8.0, Ubuntu 26.04) holds the last one back
+	// until the next arrives, and the log misses what the program wrote last.
+	args = append(args, ";", "pipe-pane", "-O", "-t", outerPane, "dd bs=65536 2>/dev/null >> '"+o.outputFile()+"'")
 	o.tmux(args...)
 	o.started = true
 }
@@ -98,12 +108,17 @@ func (o *tmuxTerminal) outputFile() string {
 func (o *tmuxTerminal) Keys(keys ...string) {
 	o.t.Helper()
 	for _, key := range keys {
-		if input, found := xtermInput[key]; found {
-			o.send(input)
-		} else {
-			o.tmux("send-keys", "-t", outerPane, key)
-		}
+		o.key(key)
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func (o *tmuxTerminal) key(key string) {
+	o.t.Helper()
+	if input, found := xtermInput[key]; found {
+		o.send(input)
+	} else {
+		o.tmux("send-keys", "-t", outerPane, key)
 	}
 }
 
@@ -148,6 +163,22 @@ func (o *tmuxTerminal) Resize(columns, rows int) {
 	o.tmux("resize-window", "-t", "outer", "-x", strconv.Itoa(columns), "-y", strconv.Itoa(rows))
 }
 
+// Freeze stops the outer tmux server with SIGSTOP: it then reads nothing from the pane and
+// answers nothing. The server goes on when thaw is called, or when the test ends.
+func (o *tmuxTerminal) Freeze() (thaw func()) {
+	o.t.Helper()
+	pid, err := strconv.Atoi(o.format("#{pid}"))
+	if err != nil {
+		o.t.Fatal(err)
+	}
+	if err := syscall.Kill(pid, syscall.SIGSTOP); err != nil {
+		o.t.Fatal(err)
+	}
+	thaw = func() { _ = syscall.Kill(pid, syscall.SIGCONT) }
+	o.t.Cleanup(thaw)
+	return thaw
+}
+
 func (o *tmuxTerminal) Title() string {
 	o.t.Helper()
 	return o.format("#{pane_title}")
@@ -174,8 +205,8 @@ func (o *tmuxTerminal) Output() []byte {
 
 func (o *tmuxTerminal) Modes() Modes {
 	o.t.Helper()
-	flags := strings.Fields(o.format("#{alternate_on} #{mouse_any_flag}"))
-	return Modes{AltScreen: flags[0] == "1", Mouse: flags[1] == "1"}
+	flags := strings.Fields(o.format("#{alternate_on} #{mouse_any_flag} #{cursor_flag}"))
+	return Modes{AltScreen: flags[0] == "1", Mouse: flags[1] == "1", Cursor: flags[2] == "1"}
 }
 
 func (o *tmuxTerminal) Clipboard() string {

@@ -47,7 +47,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * "unsupported":true when JediTerm cannot do what was asked. Commands:
  * <pre>
  * start DIR ESC_CR ARGV...  run ARGV in DIR; ESC_CR=1 makes Shift+Enter send ESC CR
- * keys KEY                  type a key named the tmux way: Enter, S-Enter, C-q, or one character
+ * keys KEY                  type a key named the tmux way: Enter, S-Enter, Up, Down, Escape, C-q,
+ *                           or one character
  * paste BASE64              paste the text, the way JediTerm's UI does
  * wheel-up                  scroll the mouse wheel up over the screen
  * focus                     unsupported: the emulator ignores focus reporting
@@ -60,6 +61,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 public final class JediTermDriver {
   private static final int COLUMNS = 120;
   private static final int ROWS = 40;
+  /** The key char of a key that types no character, as java.awt.event.KeyEvent has it. */
+  private static final char CHAR_UNDEFINED = '\uffff';
 
   private final Display display = new Display();
   private final StyleState style = new StyleState();
@@ -127,7 +130,8 @@ public final class JediTermDriver {
         return quote(buffer.getScreenLines());
       case "modes":
         return "{\"alt_screen\":" + buffer.isUsingAlternateBuffer() +
-               ",\"mouse\":" + (display.mouseMode != MouseMode.MOUSE_REPORTING_NONE) + "}";
+               ",\"mouse\":" + (display.mouseMode != MouseMode.MOUSE_REPORTING_NONE) +
+               ",\"cursor\":" + display.cursorVisible + "}";
       case "running":
         return String.valueOf(process != null && process.isAlive());
       case "output":
@@ -188,12 +192,24 @@ public final class JediTermDriver {
     connector.write(text);
   }
 
-  /** Types a key the way JediTerm's UI does: a key-pressed event, or key-typed for a character. */
+  /**
+   * Types a key the way JediTerm's UI does: a key-pressed event, or key-typed for a character.
+   * The arrows have codes of their own, which JediTerm's encoder turns into ANSI or application
+   * cursor sequences as the program asked. Its encoder has no code for Escape: JediTerm passes a
+   * pressed key without one on when its key char is a control character, as for a Ctrl+letter.
+   */
   private byte[] encode(String key) {
     KeyInputEvent event;
     if (key.equals("Enter") || key.equals("S-Enter")) {
       int modifiers = key.equals("S-Enter") ? InputEvent.SHIFT_DOWN_MASK : 0;
       event = new KeyInputEvent(KeyInputEvent.Type.PRESSED, KeyEvent.VK_ENTER, '\n', modifiers);
+    }
+    else if (key.equals("Up") || key.equals("Down")) {
+      int code = key.equals("Up") ? KeyEvent.VK_UP : KeyEvent.VK_DOWN;
+      event = new KeyInputEvent(KeyInputEvent.Type.PRESSED, code, CHAR_UNDEFINED, 0);
+    }
+    else if (key.equals("Escape")) {
+      event = new KeyInputEvent(KeyInputEvent.Type.PRESSED, KeyEvent.VK_ESCAPE, '\u001b', 0);
     }
     else if (key.length() == 3 && key.startsWith("C-")) {
       char letter = Character.toUpperCase(key.charAt(2));
@@ -236,12 +252,13 @@ public final class JediTermDriver {
     volatile String title = "";
     volatile MouseMode mouseMode = MouseMode.MOUSE_REPORTING_NONE;
     volatile boolean bracketedPaste;
+    volatile boolean cursorVisible = true;
 
     @Override public void setCursor(int x, int y) { }
     @Override public void setCursorShape(CursorShape cursorShape) { }
     @Override public void beep() { }
     @Override public void scrollArea(int scrollRegionTop, int scrollRegionSize, int dy) { }
-    @Override public void setCursorVisible(boolean isCursorVisible) { }
+    @Override public void setCursorVisible(boolean isCursorVisible) { cursorVisible = isCursorVisible; }
     @Override public void useAlternateScreenBuffer(boolean useAlternateScreenBuffer) { }
     @Override public String getWindowTitle() { return title; }
     @Override public void setWindowTitle(String windowTitle) { title = windowTitle; }

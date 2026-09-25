@@ -1,6 +1,8 @@
 // Package terminal drives the outer terminals cld runs in, behind one interface.
 //
-// Keys are named the way tmux names them: "Enter", "S-Enter", "C-q", "C-b", or one character.
+// Keys are named the way tmux names them: "Enter", "S-Enter", "Up", "Down", "Escape", "C-q",
+// "C-b", or one character. The baseline terminal also types "S-Up", "M-j" and "M-Escape" as xterm
+// sends them, and "M-Up" as rxvt does (see xtermInput).
 // Methods fail the test on errors; a terminal that cannot do something skips the test instead,
 // giving the reason.
 package terminal
@@ -14,7 +16,8 @@ import (
 // Modes is terminal state a program may leave behind when it exits.
 type Modes struct {
 	AltScreen bool `json:"alt_screen"`
-	Mouse     bool `json:"mouse"` // any mouse reporting
+	Mouse     bool `json:"mouse"`  // any mouse reporting
+	Cursor    bool `json:"cursor"` // the cursor is visible
 }
 
 // Terminal is an outer terminal: a pty and whatever emulates the screen and keyboard around it.
@@ -30,6 +33,9 @@ type Terminal interface {
 	Focus(focused bool)
 	// Resize sets the size in cells; called before Start, the size the terminal starts with.
 	Resize(columns, rows int)
+	// Freeze stops the terminal, as a busy one, until thaw is called: it neither reads what the
+	// program writes nor answers it until then.
+	Freeze() (thaw func())
 	// Title is the window or tab title the terminal shows.
 	Title() string
 	// Screen is the visible text.
@@ -84,6 +90,12 @@ func (u unsupported) Focus(bool) {
 func (u unsupported) Resize(int, int) {
 	u.t.Helper()
 	u.t.Skipf("%s: cannot resize", u.name)
+}
+
+func (u unsupported) Freeze() func() {
+	u.t.Helper()
+	u.t.Skipf("%s: cannot freeze", u.name)
+	return nil
 }
 
 func (u unsupported) Styled() string {

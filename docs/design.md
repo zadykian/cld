@@ -580,6 +580,22 @@ Where the implementation departs from the plan above:
   `CLD_FAKE_TMUX_EXITED` names, and with `CLD_FAKE_TMUX_REAL` runs a real tmux for all but
   `list-sessions`, so that a second `cld new` can reach a running server as the one of two at once
   that loses the race does.
+- `Modes` tells whether the cursor is visible: in the baseline terminal the outer pane's
+  `#{cursor_flag}`, 1, and 0 after CSI ?25l (tmux 3.7c); in JediTerm what its display's
+  `setCursorVisible` last received - the emulator's `CursorVisible` mode (DECTCEM) calls it -
+  starting as visible.
+- The JediTerm driver types `Up` and `Down` as key-pressed events of `VK_UP` and `VK_DOWN`, which
+  JediTerm's encoder turns into ANSI or application cursor sequences as the program asked, and
+  `Escape` as a key-pressed `VK_ESCAPE` with the key char ESC: the encoder has no code for Escape
+  (jediterm-core 3.76, read with `javap`), and JediTerm's key processing passes a pressed key
+  without one on when its key char is a control character, as it does for a Ctrl+letter.
+- The baseline terminal logs the pane's output with `dd bs=65536` rather than `cat`: uutils'
+  `cat` (0.8.0, Ubuntu 26.04) held the last read back until the next one came, so the log missed
+  what a program wrote last, where GNU's `cat` (9.1) did not; `dd` writes each read as it comes,
+  GNU's and uutils' alike.
+- The baseline terminal types `S-Up` (`CSI 1;2A`), `M-j` (ESC j), `M-Escape` (ESC ESC) and `M-Up`
+  (ESC ESC [ A) as raw bytes, and freezes (`Freeze`) by stopping the outer tmux server with SIGSTOP:
+  it then neither reads the pane nor answers it, until the test thaws it.
 
 ## What the tests found
 
