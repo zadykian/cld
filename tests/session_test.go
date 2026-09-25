@@ -659,13 +659,14 @@ func TestNestsOnADeadPanesPty(t *testing.T) {
 	dead := s.Format("dead", "#{pane_tty}")
 
 	// A pane of another tmux: the terminal writes down its pty, runs new and, once detached, join.
+	// printf ends the line: uutils' tty (0.8.0) prints the name without a newline.
 	env := map[string]string{"TMUX": filepath.Join(s.Root, "elsewhere", "default") + ",1,0"}
 	for name, value := range s.Env {
 		env[name] = value
 	}
 	ttyFile := filepath.Join(s.Root, "tty")
 	term := terminal.New(t, "tmux", s)
-	term.Start(append([]string{"sh", "-c", `tty >"$0" && "$@" new && exec "$@" join`, ttyFile}, s.CldArgv()...), env, s.Work)
+	term.Start(append([]string{"sh", "-c", `tty=$(tty) && printf '%s\n' "$tty" >"$0" && "$@" new && exec "$@" join`, ttyFile}, s.CldArgv()...), env, s.Work)
 	var tty []byte
 	sandbox.WaitFor(t, 10*time.Second, "the terminal's pty", func() bool {
 		tty, _ = os.ReadFile(ttyFile)
