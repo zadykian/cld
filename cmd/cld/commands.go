@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/picker"
+	"github.com/zadykian/cld/internal/project"
 	"github.com/zadykian/cld/internal/session"
 	"github.com/zadykian/cld/internal/telemetry"
 )
@@ -93,14 +95,15 @@ func noFiles(text string) string {
 }
 
 // setupCommand checks the argument after setup before cobra sees it, as run checks the first: it
-// names setup's command, telemetry, or is -h or --help, setup's help. cobra would run telemetry
-// for cld setup --local URL telemetry, taking --local for an option of setup's.
+// names one of setup's commands, project or telemetry, or is -h or --help, setup's help. cobra
+// would run telemetry for cld setup --local URL telemetry, taking --local for an option of
+// setup's.
 func setupCommand(args []string) error {
-	const hint = "cld setup telemetry runs a collector for claude's telemetry (see cld help)"
+	const hint = "cld setup project or cld setup telemetry (see cld help)"
 	switch {
 	case len(args) == 0 || args[0] == "":
 		return fail.Usage("setup: missing command: " + hint)
-	case args[0] == "telemetry" || args[0] == "-h" || args[0] == "--help":
+	case args[0] == "project" || args[0] == "telemetry" || args[0] == "-h" || args[0] == "--help":
 		return nil
 	}
 	return fail.Usage(fmt.Sprintf("setup: unknown command '%s': %s", args[0], hint))
@@ -124,7 +127,8 @@ func setupCommand(args []string) error {
 //
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
 // on every TAB. join -n offers the sessions list shows (see sessionNames), help the commands (see
-// commandNames), and nothing offers file names, as no argument of cld's is a file.
+// commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers file
+// names, as no argument of cld's is a file.
 func commandLine(typed string, out io.Writer) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
@@ -290,10 +294,11 @@ list. cld list | cat prints the list only.`,
 	// own; run has made sure that one of them follows it, or -h or --help.
 	setup := &cobra.Command{
 		Use:   "setup",
-		Short: "set up what claude runs with: so far, its telemetry",
+		Short: "set up claude's settings in a project, or its telemetry",
 	}
+	projectCommand := setupProject(typed + " project")
 	telemetryCommand := setupTelemetry(typed + " telemetry")
-	setup.AddCommand(telemetryCommand)
+	setup.AddCommand(projectCommand, telemetryCommand)
 
 	// cobra would add "[flags]" at the end of help's usage line, after COMMAND, where cld reads no
 	// options. cobra's own help command completes COMMAND, and so does cld's.
@@ -315,7 +320,7 @@ list. cld list | cat prints the list only.`,
 		},
 	}
 
-	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, setup, telemetryCommand, help, versionCommand} {
+	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, setup, projectCommand, telemetryCommand, help, versionCommand} {
 		// cobra adds -h and --help only where a command has no "help" option of its own.
 		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
 		if command == root {
@@ -394,6 +399,55 @@ where its script goes and what it needs.`
 		command.Flags().SetInterspersed(false)
 		command.SetFlagErrorFunc(flagError(name))
 	}
+}
+
+// setupProject is cld setup project, named in its messages as typed. --mcp takes the MCP servers
+// as a list, given again or separated by commas; each is written once, in project.Servers' order,
+// whatever the order given.
+func setupProject(typed string) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "project [--mcp SERVER]",
+		Short: "set claude up in the project in the current directory",
+		Long: `set claude up in the project in the current directory, as cld's own repository
+has it: .claude/settings.json holds the settings the project shares through
+git - what claude may do without asking, and a few settings more - and
+.claude/settings.local.json, holding its $schema alone, is for your own.
+.gitignore gets /.claude/* and !/.claude/settings.json: git ignores what claude
+keeps in .claude, but for the shared settings. With --mcp, cld adds MCP servers
+to .mcp.json, and the settings enable them and let claude use them.
+
+Where the files exist, cld adds what they lack: it sets its settings, adds its
+permissions and servers, and keeps everything else - settings.local.json whole.
+Then, in a git work tree, it checks that git does not ignore the settings.`,
+		Args: noArguments(typed),
+	}
+	command.SetFlagErrorFunc(flagError(typed))
+	mcp := command.Flags().StringArray("mcp", nil, "an MCP `SERVER` for claude in the project: goland or rider,\n"+
+		"the IDE's own server at its port 64422 or 64482 on\n"+
+		"127.0.0.1, or jbcontext, JetBrains Context's code search;\n"+
+		"give --mcp again, or separate them with commas")
+	command.RunE = func(*cobra.Command, []string) error {
+		chosen := map[string]bool{}
+		for _, list := range *mcp {
+			for _, name := range strings.Split(list, ",") {
+				if !slices.ContainsFunc(project.Servers, func(s project.Server) bool { return s.Name == name }) {
+					return fail.Usage(fmt.Sprintf("invalid MCP server '%s' for --mcp: goland, jbcontext or rider (see cld help)", name))
+				}
+				chosen[name] = true
+			}
+		}
+		var servers []project.Server
+		for _, s := range project.Servers {
+			if chosen[s.Name] {
+				servers = append(servers, s)
+			}
+		}
+		return project.Setup(servers)
+	}
+	if err := command.RegisterFlagCompletionFunc("mcp", serverNames); err != nil {
+		panic(err)
+	}
+	return command
 }
 
 // setupTelemetry is cld setup telemetry, named in its messages as typed. On a system other than
@@ -498,6 +552,23 @@ func sessionNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completio
 	for _, s := range sessions {
 		if strings.HasPrefix(s.Name, typed) {
 			names = append(names, cobra.CompletionWithDesc(s.Name, s.State))
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+// serverNames completes the SERVER of setup project --mcp: the servers it takes that start with
+// what was typed, each described. After a comma it completes the last of the list, offering the
+// servers the list does not have yet after the ones it has.
+func serverNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	before, last := "", typed
+	if comma := strings.LastIndexByte(typed, ','); comma >= 0 {
+		before, last = typed[:comma+1], typed[comma+1:]
+	}
+	var names []cobra.Completion
+	for _, s := range project.Servers {
+		if strings.HasPrefix(s.Name, last) && !slices.Contains(strings.Split(before, ","), s.Name) {
+			names = append(names, cobra.CompletionWithDesc(before+s.Name, s.Description))
 		}
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp

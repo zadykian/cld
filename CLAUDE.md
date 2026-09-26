@@ -8,12 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 (`tmux -L cld-NAME -f /dev/null`), so a conversation can be detached and rejoined from any
 terminal. The product is a Go program on cobra: `cmd/cld` is the command line (commands, their
 help texts, argument errors), `internal/session` the tmux side, `internal/picker` the interactive
-`cld list` on a terminal, `internal/telemetry` `cld setup telemetry` (a local OpenTelemetry
-Collector in Docker, and claude's settings pointed at it), `internal/configfile` edits claude's
-settings in place, `internal/tool` finds the programs cld
-runs on the `PATH` (and ends cld as a shell would when one cannot run), and `internal/fail`
-carries exit statuses up to `main`. Everything else is its test harness (Go, under `tests/`), docs
-and CI.
+`cld list` on a terminal, `internal/project` `cld setup project` (a project's
+`.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json` and `.gitignore`),
+`internal/telemetry` `cld setup telemetry` (a local OpenTelemetry Collector in Docker, and
+claude's settings pointed at it), `internal/configfile` edits the files the two write in place,
+`internal/tool` finds the programs cld runs on the `PATH` (and ends cld as a shell would when one
+cannot run), and `internal/fail` carries exit statuses up to `main`. Everything else is its test
+harness (Go, under `tests/`), docs and CI.
 
 ## Commands
 
@@ -44,8 +45,8 @@ platform and `cld.sha256`.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
   run the real claude): they run `claude --version` before starting that claude; `join`, `kill`,
-  `list`, `setup telemetry` and completion do not. Re-derive the minimum when cld starts to pass
-  or rely on something newer (docs/design.md, decision 6).
+  `list`, `setup project`, `setup telemetry` and completion do not. Re-derive the minimum when
+  cld starts to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
@@ -59,10 +60,11 @@ platform and `cld.sha256`.
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
   nothing: break the texts by hand within 80 columns, which `TestHelpText` checks.
 - Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the names
-  `list` shows, read as `list` reads them, `help` the commands it takes, `setup telemetry` among
-  them, nothing offers file names (`--collector-config`'s `FILE` neither), and completion makes
-  none of the startup checks, `setup telemetry`'s included, and never starts the interactive list
-  (decisions 17 and 18 in docs/design.md). The `Short`s are also what `cld <TAB>` shows.
+  `list` shows, read as `list` reads them, `help` the commands it takes, `setup project` and
+  `setup telemetry` among them, `setup project --mcp` its MCP servers, nothing offers file names
+  (`--collector-config`'s `FILE` neither), and completion makes none of the startup checks,
+  `setup telemetry`'s included, and never starts the interactive list (decisions 17 to 19 in
+  docs/design.md). The `Short`s are also what `cld <TAB>` shows.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
@@ -91,13 +93,20 @@ platform and `cld.sha256`.
   Outside the tests - whose fake docker comes first on the `PATH` - run it only with `HOME` and
   `CLAUDE_CONFIG_DIR` pointing at a scratch directory. The collector image is pinned
   (`otel/opentelemetry-collector:0.161.0`) and bumped deliberately.
+- `setup project` writes in the current directory, as this repository has them: `--mcp goland`
+  writes its `.claude/settings.json` and `.mcp.json` byte for byte, which `project_test.go`
+  checks, so change those files and `internal/project` together. It edits files that exist in
+  place and removes nothing; `.claude/settings.local.json` is only created. In a git work tree it
+  then checks with `git check-ignore` that git does not ignore `.claude/settings.json`
+  (decision 19).
 - `setup` has commands of its own: `run` checks the argument after it before cobra, as it checks
-  the first, and `help` takes `setup telemetry`. Its checks (Linux, docker) stay in its `Args`
-  and `RunE`, never in a root hook, so completion (`__complete setup ...`), which `run` lets
-  through, runs none of them.
+  the first, and `help` takes `setup project` and `setup telemetry`. Their checks (Linux, docker)
+  stay in their `Args` and `RunE`, never in a root hook, so completion (`__complete setup ...`),
+  which `run` lets through, runs none of them.
 
-The package comments of `internal/session` and `internal/telemetry` explain why each tmux option
-is set and each step of `setup telemetry` is taken; keep them accurate when changing either.
+The package comments of `internal/session`, `internal/telemetry` and `internal/project` explain
+why each tmux option is set and each step of `setup telemetry` and `setup project` is taken; keep
+them accurate when changing any of them.
 
 ## Test architecture (`tests/`)
 
@@ -140,7 +149,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
   byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures
-  (Linux only; macOS checks the refusal).
+  (Linux only; macOS checks the refusal); `project_test.go` — `setup project` against the real
+  git: the files as the repository has them, edits of files that exist, `.gitignore`'s lines,
+  patterns that ignore the settings all the same, refusals.
 
 ## Documentation conventions
 

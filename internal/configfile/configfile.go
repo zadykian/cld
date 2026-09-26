@@ -1,10 +1,12 @@
-// Package configfile reads and writes the files cld edits for claude: its user settings, whose env
-// setup telemetry edits. An edit keeps what cld does not change.
+// Package configfile reads and writes the files cld edits for claude and for git: claude's user
+// settings (setup telemetry), and a project's settings, .mcp.json and .gitignore (setup project).
+// An edit keeps what cld does not change.
 //
 // A JSON file is read with json.Decoder's tokens into the members of its top-level object, in the
 // file's order, their values as the file has them, byte for byte, and written back in that order,
 // one member a line, in the file's indentation, which a file Claude Code writes keeps as it was.
-// An object cld changes inside it is written the same way (see JSON.Object). A key given twice:
+// An object or array cld changes inside it is written the same way (see JSON.Object and
+// JSON.Array), and a value cld adds in that indentation (see JSON.Value). A key given twice:
 // claude reads its files with JSON.parse, which keeps the last, so cld edits the last (see Last).
 //
 // A file is written to a temporary file beside it, with its mode, and renamed over it, so that
@@ -21,6 +23,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -156,36 +159,65 @@ func ReadJSON(path string) (*JSON, error) {
 	return j, nil
 }
 
-// ErrNotObject is what Object says of JSON that is some other value.
-var ErrNotObject = errors.New("it is not an object")
+// ErrNotObject and ErrNotArray are what Object and Array say of JSON that is some other value.
+var (
+	ErrNotObject = errors.New("it is not an object")
+	ErrNotArray  = errors.New("it is not an array")
+)
 
 // Object reads data, a JSON object and nothing more, into its members in order.
 func Object(data []byte) ([]Member, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if token, err := decoder.Token(); err != nil {
-		return nil, err
-	} else if token != json.Delim('{') {
-		return nil, ErrNotObject
-	}
 	var members []Member
-	for decoder.More() {
+	err := container(data, '{', "object", ErrNotObject, func(decoder *json.Decoder) error {
 		token, err := decoder.Token()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {
-			return nil, err
+			return err
 		}
 		members = append(members, Member{Key: token.(string), Value: value})
+		return nil
+	})
+	return members, err
+}
+
+// Array reads data, a JSON array and nothing more, into its elements in order, as data has them.
+func Array(data []byte) ([]json.RawMessage, error) {
+	var elements []json.RawMessage
+	err := container(data, '[', "array", ErrNotArray, func(decoder *json.Decoder) error {
+		var element json.RawMessage
+		if err := decoder.Decode(&element); err != nil {
+			return err
+		}
+		elements = append(elements, element)
+		return nil
+	})
+	return elements, err
+}
+
+// container reads data, an object or array - what - that opens with open, and nothing more,
+// calling each for each of its members or elements; other JSON is notOpen.
+func container(data []byte, open json.Delim, what string, notOpen error, each func(*json.Decoder) error) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if token, err := decoder.Token(); err != nil {
+		return err
+	} else if token != open {
+		return notOpen
+	}
+	for decoder.More() {
+		if err := each(decoder); err != nil {
+			return err
+		}
 	}
 	if _, err := decoder.Token(); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := decoder.Token(); err != io.EOF {
-		return nil, errors.New("more follows the object")
+		return errors.New("more follows the " + what)
 	}
-	return members, nil
+	return nil
 }
 
 // invalid says what is wrong with data, which Object refused with err, and where. What
@@ -240,6 +272,13 @@ func String(s string) json.RawMessage {
 	return bytes.TrimRight(b.Bytes(), "\n")
 }
 
+// Same is whether a and b are the same JSON value, however written: 1.0 is 1, and the members of
+// an object may come in any order.
+func Same(a, b []byte) bool {
+	var x, y any
+	return json.Unmarshal(a, &x) == nil && json.Unmarshal(b, &y) == nil && reflect.DeepEqual(x, y)
+}
+
 // Encode is the file's members as the file holds them, ending with a newline.
 func (j *JSON) Encode() []byte {
 	return append(j.Object(j.Members, 0), '\n')
@@ -269,5 +308,34 @@ func (j *JSON) Object(members []Member, depth int) json.RawMessage {
 		b.WriteByte('\n')
 	}
 	b.WriteString(strings.Repeat(j.indent, depth) + "}")
+	return b.Bytes()
+}
+
+// Array is an array of elements as the file holds it, depth levels deep, as for Object.
+func (j *JSON) Array(elements []json.RawMessage, depth int) json.RawMessage {
+	if len(elements) == 0 {
+		return json.RawMessage("[]")
+	}
+	var b bytes.Buffer
+	b.WriteString("[\n")
+	for i, element := range elements {
+		b.WriteString(strings.Repeat(j.indent, depth+1))
+		b.Write(element)
+		if i < len(elements)-1 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteString(strings.Repeat(j.indent, depth) + "]")
+	return b.Bytes()
+}
+
+// Value is value, valid JSON of cld's, as the file holds it depth levels deep, as for Object:
+// every object and array in it has a member or element a line.
+func (j *JSON) Value(value []byte, depth int) json.RawMessage {
+	var b bytes.Buffer
+	if err := json.Indent(&b, value, strings.Repeat(j.indent, depth), j.indent); err != nil {
+		panic("cld's own JSON is not valid: " + string(value))
+	}
 	return b.Bytes()
 }
