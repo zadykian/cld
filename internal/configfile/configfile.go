@@ -188,14 +188,20 @@ func Object(data []byte) ([]Member, error) {
 	return members, nil
 }
 
-// invalid says what is wrong with data, which Object refused with err, and where.
+// invalid says what is wrong with data, which Object refused with err, and where. What
+// json.Decoder says differs between Go releases - Go 1.26 gives a bare EOF for an object cut
+// short, and the offset of a syntax error before the white space ahead of it - so a syntax error
+// is told as json.Unmarshal tells it, which Go 1.26 and 1.27 do alike.
 func invalid(data []byte, err error) string {
-	var syntax *json.SyntaxError
-	if errors.As(err, &syntax) {
-		return fmt.Sprintf("line %d: %v", bytes.Count(data[:syntax.Offset], []byte("\n"))+1, err)
-	}
-	if errors.Is(err, io.EOF) {
+	if len(bytes.TrimSpace(data)) == 0 {
 		return "it is empty"
+	}
+	var syntax *json.SyntaxError
+	if errors.As(err, &syntax) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		var value any
+		if errors.As(json.Unmarshal(data, &value), &syntax) {
+			return fmt.Sprintf("line %d: %v", bytes.Count(data[:syntax.Offset], []byte("\n"))+1, syntax)
+		}
 	}
 	return err.Error()
 }
