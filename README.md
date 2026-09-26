@@ -14,6 +14,7 @@ cld join -n review    # attach to it again, from this terminal or another one
 cld list              # pick a session with the arrow keys: Enter joins it, Ctrl+X twice kills it
 cld kill -n review    # end the session and its claude
 cld resume -n review  # create "cld-review" again, with claude resuming its conversation
+cld setup project --mcp goland   # claude's project settings, with GoLand's MCP server
 cld setup telemetry --local http://127.0.0.1:4319   # claude's telemetry to the IDE (Linux)
 ```
 
@@ -30,7 +31,8 @@ builds cld and installs it there (`make install PREFIX=/usr/local` for another p
 Go 1.26 or newer.
 
 Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
-for `cld new --worktree`; Docker, on Linux, for `cld setup telemetry`.
+for `cld new --worktree`; Docker, on Linux, for `cld setup telemetry`. `cld setup project` needs
+neither tmux nor claude.
 
 Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a - which cld
 refuses, naming the version it found. [Homebrew](https://formulae.brew.sh/formula/tmux) has tmux
@@ -62,9 +64,10 @@ latest; an installed script keeps working until you update it with the lines abo
 
 `cld completion SHELL` prints a completion script for bash, zsh or fish. With it loaded,
 `cld join -n <TAB>` offers the sessions `cld list` shows, each with its state - `attached`,
-`detached` or `exited` - and TAB also completes the commands and their options. cld offers no
-file names (but see bash 3.2 below), not even for `cld setup telemetry --collector-config FILE`,
-and neither `cld new -n`, `cld resume -n`, `cld resume`'s `SESSION` nor the URLs and port of
+`detached` or `exited` - and TAB also completes the commands and their options, and the MCP
+servers of `cld setup project --mcp`, the next one after a comma. cld offers no file names (but
+see bash 3.2 below), not even for `cld setup telemetry --collector-config FILE`, and neither
+`cld new -n`, `cld resume -n`, `cld resume`'s `SESSION` nor the URLs and port of
 `cld setup telemetry` offer anything. The script runs `cld` on every TAB, so the names are
 always current: it asks each session's tmux server, as `cld list` does, but never opens the
 interactive list. `cld completion SHELL --help` says where the script goes; in short:
@@ -143,6 +146,7 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session and its tmux server; claude exits as when its terminal closes, and what claude started through tmux ends too |
 | `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in. On a terminal, pick a session with the arrow keys and press Enter to join it, or Ctrl+X twice to kill it (see below); `cld list \| cat` prints the table |
+| `cld setup project [--mcp SERVER]` | write claude's project settings in the current directory, `.claude/settings.json` and `.claude/settings.local.json`, have git ignore `.claude` but for the settings, and with `--mcp` add MCP servers - `goland`, `jbcontext`, `rider` - to `.mcp.json` (see [Project settings](#project-settings)) |
 | `cld setup telemetry [--local URL] [--remote URL] [--port PORT] [--collector-config FILE]` | run a local OpenTelemetry collector for claude's telemetry and point claude's settings at it (see [Telemetry](#telemetry)); needs Docker, Linux only |
 | `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish`, with which `cld join -n` completes the names `cld list` shows (see [Shell completion](#shell-completion)) |
 | `cld help [COMMAND]` | show the help of cld, or of one command: its options and their defaults. `cld -h` and `cld COMMAND -h` (or `--help`) do the same |
@@ -287,6 +291,53 @@ claude makes a worktree only in a directory whose workspace trust you have accep
 (or `cld new`) there once first; otherwise claude says so and exits, and the session stays open
 with the message (see Usage). `cld` itself checks that the current directory is in a git
 repository.
+
+### Project settings
+
+`cld setup project` sets claude up in the project in the current directory, as cld's own
+repository has it, and `--mcp` adds MCP servers:
+
+```sh
+cld setup project --mcp goland,jbcontext   # or --mcp goland --mcp jbcontext
+```
+
+- `.claude/settings.json`, the settings the project shares through git: `$schema`, the
+  permissions in `permissions.allow` - reading, editing and writing files, web search and fetch,
+  and shell commands such as `ls`, `grep`, `git`, `go`, `dotnet`, `make`, `docker build` and
+  `gh pr view`, without asking - and `autoUpdatesChannel`, `plansDirectory`, `autoMemoryEnabled`,
+  `theme` and `autoCompactEnabled`, with the values of cld's own `.claude/settings.json`.
+- `.claude/settings.local.json`, for your own settings, which git ignores: holding its `$schema`
+  alone, and left as it is once anything is there.
+- `.gitignore`: `/.claude/*`, then `!/.claude/settings.json`, so that git ignores what claude
+  keeps in `.claude` - the local settings, plans, worktrees - but for the shared settings.
+- With `--mcp`, each server's entry in `.mcp.json`, and in `.claude/settings.json` its name in
+  `enabledMcpjsonServers`, which approves it for claude, and `mcp__NAME` in `permissions.allow`,
+  which lets claude use its tools without asking:
+
+  | `--mcp` | Server |
+  |---|---|
+  | `goland` | GoLand's own MCP server, `http://127.0.0.1:64422/stream` |
+  | `rider` | Rider's own MCP server, `http://127.0.0.1:64482/stream` |
+  | `jbcontext` | JetBrains Context's semantic code search, `jbcontext mcp` over stdio; also allows `Bash(jbcontext:*)`, for its `jbcontext search` |
+
+  Turn the IDE's server on in Settings › Tools › MCP Server (2025.2 or newer). The ports are
+  fixed: an IDE takes the first free port from 64342 up, so check that yours has the one above
+  ("Copy HTTP Stream Config" shows it). claude asks nothing about a server the settings approve,
+  once you have accepted the folder's workspace trust.
+
+Where the files exist, cld adds what they lack and keeps everything else: it sets the keys above
+where their values differ, adds the entries `permissions.allow` and `enabledMcpjsonServers` lack
+after theirs, replaces a server's entry in `.mcp.json` that differs from its own, whole, and
+appends the `.gitignore` lines that are missing - `.claude/*` and `!.claude/settings.json`, without
+the leading slash, count as there. Keys, entries and servers of your own stay, in their order and
+indentation; cld removes nothing, so a server given before stays too. Running it again changes
+nothing. It reads every file before it writes any, so a file it cannot edit - not valid JSON, say -
+stops it with nothing changed; and it prints what it created, updated or left as it was.
+
+In a git work tree cld then asks git whether it still ignores `.claude/settings.json`: a pattern
+such as `.claude/` keeps git out of the whole directory, where no exception reaches, and so can
+`*.json`, or git's own excludes. cld names the pattern and where it is, and exits with status 1;
+remove it, and run `cld setup project` again.
 
 ### Telemetry
 
@@ -436,7 +487,8 @@ and run `make check TERMINALS=tmux,jediterm`.
 
 cld is a Go program on [cobra](https://github.com/spf13/cobra): the command line is in `cmd/cld`,
 how it uses tmux - and why - in `internal/session`, the interactive `cld list` in
-`internal/picker`, and `cld setup telemetry` in `internal/telemetry`.
+`internal/picker`, `cld setup project` in `internal/project`, and `cld setup telemetry` in
+`internal/telemetry`; both edit the files they write through `internal/configfile`.
 
 How the tests work - the probe that stands in for claude, the sandboxes, the terminal drivers - is
 described in [docs/design.md](docs/design.md) and at the top of each package under `tests/`.

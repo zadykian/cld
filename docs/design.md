@@ -109,10 +109,14 @@ cld() {
 | a collector whose `--local` endpoint is its own receiver (`cld setup telemetry --local http://127.0.0.1:P --port P` before cld refused it), with the debug exporter added to its metrics pipeline, after `telemetrygen` sent it one metric | the debug exporter counted 1 batch after 2 s and 107 after 5 s, still growing, and `docker stats` showed the collector at 146% CPU: it sends what it receives back to itself, without end |
 | where a Go program (Go 1.27.1, Ubuntu 26.04 with systemd-resolved) connects, dialling port P with a listener on `127.0.0.1:P` alone | `127.0.0.1`, `0.0.0.0`, `::`, `::ffff:127.0.0.1`, `localhost` and `foo.localhost` reach the listener; `::1` and `127.0.0.2` are refused |
 | `docker rm -f` on a missing container | prints `Error response from daemon: No such container: NAME`, exit 0; `docker container inspect` prints the same, exit 1 |
+| `encoding/json` on a settings file that is not valid JSON (Go 1.26.0 and 1.27.1) | `json.Decoder`, which cld reads the file with, gives a bare `EOF` for an object cut short (`{`) in 1.26, `unexpected end of JSON input` in 1.27; and the offset of a syntax error before the white space ahead of it in 1.26 - `line 3` for a `}` at the start of line 4 - and after the character in 1.27. `json.Unmarshal` gives the same `*json.SyntaxError`, offset included, in both. `go.mod` asks for Go 1.26, which the macOS job of CI builds with; the Linux image has 1.27 |
 | `docker pause` on the collector | `docker container inspect` says `paused`, and the receiver keeps its port: listening on `127.0.0.1:PORT` fails with `EADDRINUSE`, and the kernel accepts a connection there, with nothing to answer it. `docker rm -f` removes the paused container, and frees the port |
 | a variable in `docker`'s environment passed on with `docker run -e NAME` (Linux 7.0, 4 KiB pages) | `NAME=VALUE` can be 131071 bytes long - Linux's `MAX_ARG_STRLEN`, 32 pages, less the NUL that ends it - and reaches the collector: with `CLD_TELEMETRY_EXTRA=` and 131051 bytes, `docker run -e CLD_TELEMETRY_EXTRA IMAGE --version` ran, and `cld setup telemetry` with a `--collector-config` of that length started the collector; with one byte more, `docker` could not start: `Argument list too long` (`E2BIG`). A NUL byte cannot be in a variable at all: Go's `exec` refuses such an environment |
 | DNS in a container on the default bridge | a name the host resolves through its own DNS (systemd-resolved) resolves the same in the container |
 | `cld setup telemetry --local http://127.0.0.1:4319 --remote http://127.0.0.1:4320`, with a collector with the debug exporter on each of those ports standing in for the plugin and a team's collector, and `telemetrygen` sending a span, a metric and a log to the port cld chose | the local one got all three, the remote one the metric only. A rerun kept the port; a second source with a key the exporter does not know was refused by `validate`, and the collector kept running with the settings unchanged; one that moved the receiver onto a taken port made cld report the collector stopped, with its log, within 2.4 s, and leave it `exited` (after one more restart Docker had scheduled) where it had restarted again and again, and a rerun without it recovered on the same port; one that set the collector's log level to `warn` left its log empty, and cld found it ready by its port within 1.5 s, the span reaching the local one. Checked again once cld waited for the port alone, with collectors of the debug exporter on two other ports: the same three signals and the metric, cld done within 1.2 s, `validate` included; with the collector paused, a rerun kept its port, and so did `--port` with that port, where cld had given the new collector another port; a second source that moved the receiver to another port made cld say after 10 s that the collector took no connections on its port, naming it, below the end of the log, with the ready line, and leave the settings - or say that its log was empty, with the level at `warn` too - and a rerun without it recovered on the same port |
+| `/.claude/*`, then `!/.claude/settings.json`, in `.gitignore` (git 2.53.0 on Ubuntu 26.04; the tests' cases also on git 2.47.3, in the image `tests/Dockerfile` builds) | git ignores `.claude/settings.local.json` and would add `.claude/settings.json`; `.claude/*` and `!.claude/settings.json`, without the leading slash, do the same. A `.claude/` before them in `.gitignore`, or a `.claude` in `.git/info/exclude`, keeps git out of the directory, and the settings stay ignored whatever follows; `*.json` after them ignores the settings again. git reads a line without the carriage return of a CRLF and without trailing spaces, but a trailing tab stays in the pattern: `!/.claude/settings.json` and a tab excepts nothing. `git check-ignore -v PATH` names the last pattern that matches, an exception too, with exit status 0 either way, as `SOURCE:LINE:PATTERN`, a tab, `PATH`; `-q` without `-v` exits 1 for a path an exception keeps. `-z` needs `--stdin` (`fatal: -z only makes sense with --stdin`), and then ends `SOURCE`, `LINE`, `PATTERN` and `PATH` each with a NUL. Outside a work tree it exits 128: `fatal: not a git repository` |
+| `claude mcp list` (2.1.283, Linux, a scratch `CLAUDE_CONFIG_DIR`) in a project that `cld setup project --mcp goland,jbcontext,rider` wrote, GoLand and Rider 2026.2 running with their MCP servers on 64422 and 64482 | claude lists the three from `.mcp.json` - `claude mcp get jbcontext` names its scope `Project config (shared via .mcp.json)` - as `Pending approval (run claude to approve)` while the folder's workspace trust is not accepted; once it is, all three are `Connected`. Trusted, but without `enabledMcpjsonServers` in `.claude/settings.json`, they stay `Pending approval` |
+| the port of a JetBrains IDE's MCP server (read in JetBrains' Rider docs and in guides to the server, not probed) | the server built into the IDE (2025.2 and newer; Settings › Tools › MCP Server) takes the first free port from 64342 as the IDE starts; "Copy HTTP Stream Config" there gives its URL, `http://127.0.0.1:PORT/stream` for streamable HTTP. The maintainer's GoLand has 64422, Rider 64482 |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
@@ -262,9 +266,9 @@ The Linux job runs the same Docker image a developer runs locally.
 6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
    Claude Code 2.1.232 or newer, the first release that does what cld passes and relies on. Both
    are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
-   for every command but `help`, `version`, completion (17.4) and `setup telemetry`, which runs
-   no tmux (18), and refuses an older tmux with `cld: tmux 3.7 or newer is required, found
-   'tmux 3.6b'` and status 1.
+   for every command but `help`, `version`, completion (17.4), `setup telemetry` and `setup
+   project`, which run no tmux (18, 19), and refuses an older tmux with `cld: tmux 3.7 or newer
+   is required, found 'tmux 3.6b'` and status 1.
    - It reads `tmux -V`: the major and minor version, after `next-` for a development build
      (`next-3.9` is 3.9, `3.8-rc2` 3.8); a version without them (`master`) passes. Letters mark
      bug-fix releases and are not compared, so 3.7 to 3.7c all pass, and there is no upper bound.
@@ -294,7 +298,8 @@ The Linux job runs the same Docker image a developer runs locally.
      placed it right after the lookup of `claude`; it comes after the checks every command makes
      instead - the tools, then `tmux -V` - so that cld runs claude only once those cheap checks
      pass, and a missing tool or a tmux too old is reported before a claude too old. `join`, `kill`,
-     `list`, completion (17.4) and `setup telemetry` (18) never start claude and do not check it.
+     `list`, completion (17.4), `setup telemetry` (18) and `setup project` (19) never start claude
+     and do not check it.
      cld compares the `X.Y.Z` the output starts with as numbers (2.1.30 is older than 2.1.232) and
      refuses an older claude with `cld: claude 2.1.232 or newer is required, found
      '2.1.231 (Claude Code)'` and status 1. It does not say how to update, which depends on how
@@ -841,7 +846,8 @@ The Linux job runs the same Docker image a developer runs locally.
        `matcher-list`, fish's fuzzy matching). `-n NAME`, `--name NAME`, `--name=NAME` and
        `-n=NAME` complete; `-nNAME` does not (see Findings).
     3. Only `join -n` offers session names, and `help` the commands it takes (see 12.2), with
-       their `Short`s, as cobra's help command does. `new -n` offers none: it refuses a name a
+       their `Short`s, as cobra's help command does; since 19, `setup project --mcp` offers the MCP
+       servers it takes (19.8). `new -n` offers none: it refuses a name a
        session holds, and cld keeps no record of the sessions that are gone. Nor does
        `resume -n`, for the same reason, or `resume`'s SESSION (16): offering the conversations
        claude keeps would mean reading its transcripts, which cld does not (16.4). `kill -n`
@@ -980,28 +986,107 @@ The Linux job runs the same Docker image a developer runs locally.
        drop; and the collector's own metrics are off, since with host networking their server
        takes `localhost:8888` and the collector exits when another collector has it;
     8. `setup` is cld's first command with commands of its own, as `completion` (17) is cobra's.
-       `run` checks its first argument before cobra, as it checks cld's: `telemetry`, or `-h` or
-       `--help`, setup's help; cobra would run `telemetry` for `cld setup --local URL telemetry`,
-       taking `--local` for an option of setup's. `help setup telemetry` shows telemetry's help:
-       `help`'s `COMMAND` may be followed by one of that command's own (see 12.2), as with
-       cobra's help command - so `help completion bash` now shows what `completion bash --help`
-       shows (17.5), where `help` refused it. Error messages keep `(see cld help)` (12.3). The
-       usage line, `cld setup telemetry [--local URL] [--remote URL] [flags]`, folds `--port` and
-       `--collector-config` into `[flags]`: with them it would be 90 columns, past the 80 of 12.1;
+       `run` checks its first argument before cobra, as it checks cld's: `telemetry` - since 19,
+       `project` too - or `-h` or `--help`, setup's help; cobra would run `telemetry` for `cld setup
+       --local URL telemetry`, taking `--local` for an option of setup's. `help setup telemetry`
+       shows telemetry's help: `help`'s `COMMAND` may be followed by one of that command's own (see
+       12.2), as with cobra's help command - so `help completion bash` now shows what `completion
+       bash --help` shows (17.5), where `help` refused it. Error messages keep `(see cld help)`
+       (12.3). The usage line, `cld setup telemetry [--local URL] [--remote URL] [flags]`, folds
+       `--port` and `--collector-config` into `[flags]`: with them it would be 90 columns, past the
+       80 of 12.1;
     9. completion (17) takes `setup` as it takes cld's other commands: `cld <TAB>` offers it with
        its `Short`, after `list` and before `completion`, which cobra adds after the commands cld
-       adds; `cld setup <TAB>` offers `telemetry`, and `cld setup telemetry --<TAB>` its options;
-       `help <TAB>` offers `setup`, and `help setup <TAB>` `telemetry`, as `help` takes them
-       (17.3). `run`'s check of the argument after `setup` applies where `setup` runs, not to
-       `__complete setup ...`, and setup's checks are `setup telemetry`'s own - Linux in its
-       `Args`, `docker` in its `RunE` - as the check of claude is `new`'s and `resume`'s (17.4),
-       not a root hook's, which completion would run: completion runs no `docker`. Nothing
-       completes the URLs, the port or `--collector-config`'s `FILE`, the one argument of cld's
-       that is a file: no argument offers file names (17.3), a gap left for later;
+       adds; `cld setup <TAB>` offers `telemetry` (and since 19 `project` before it), and `cld setup
+       telemetry --<TAB>` its options; `help <TAB>` offers `setup`, and `help setup <TAB>`
+       `telemetry`, as `help` takes them (17.3). `run`'s check of the argument after `setup` applies
+       where `setup` runs, not to `__complete setup ...`, and setup's checks are `setup telemetry`'s
+       own - Linux in its `Args`, `docker` in its `RunE` - as the check of claude is `new`'s and
+       `resume`'s (17.4), not a root hook's, which completion would run: completion runs no
+       `docker`. Nothing completes the URLs, the port or `--collector-config`'s `FILE`, the one
+       argument of cld's that is a file: no argument offers file names (17.3), a gap left for later;
     10. the image, `otel/opentelemetry-collector:0.161.0`, is pinned and bumped deliberately, as
         JediTerm is (7). Out of scope: other systems, a header option, turning it off (removing
         the container and cld's keys), overriding the image, and the plugin's port, which is set
         in the IDE.
+
+19. Project settings: `cld setup project [--mcp SERVER]` sets claude up in the project in the
+    current directory, as cld's own repository has it: `.claude/settings.json`, the settings the
+    project shares through git - `$schema`, cld's `permissions.allow`, and `autoUpdatesChannel`,
+    `plansDirectory`, `autoMemoryEnabled`, `theme` and `autoCompactEnabled` - an empty
+    `.claude/settings.local.json`, holding its `$schema` alone, and `/.claude/*` and
+    `!/.claude/settings.json` in `.gitignore`, so that git ignores what claude keeps in `.claude`
+    but for the shared settings. `--mcp` adds MCP servers: `goland`, `jbcontext` and `rider`.
+    Settled with it:
+    1. the settings are those of this repository's `.claude/settings.json`: `--mcp goland` writes
+       it byte for byte, and its `.mcp.json`, which the tests check, so a change to either goes
+       with one to `internal/project`. They are Go data there - the allow list and the other keys
+       - rather than an embedded copy of the file, so that each server's entries go where the
+       file has goland's. They include the maintainer's tools (`dotnet`, `go`, `make`,
+       `docker build`, `gh pr merge`) and `theme`, which are nobody else's defaults: a project
+       edits them afterwards, and cld adds them back only when it runs there again, since it never
+       removes anything (see 4);
+    2. `--mcp SERVER`, given again or separated by commas (`--mcp goland,jbcontext`), takes
+       `goland`, `jbcontext` or `rider`; any other name, the empty one included (`--mcp goland,`),
+       is a usage error. Each server is written once, in that order, whatever the order given. A
+       server is its entry in `.mcp.json`, its name in `enabledMcpjsonServers`, without which
+       claude asks before it starts the server (see Findings), and `mcp__NAME` in
+       `permissions.allow`, which Claude Code's docs have match every tool of the server, so that
+       claude uses them without asking (not probed); `jbcontext` also
+       allows `Bash(jbcontext:*)`, since its hooks and instructions have claude run
+       `jbcontext search`. `goland` and `rider` are the servers built into the IDEs, over
+       streamable HTTP at `http://127.0.0.1:64422/stream` and `http://127.0.0.1:64482/stream`,
+       the ports of the maintainer's IDEs, which are no defaults - an IDE takes the first free port
+       from 64342 (see Findings) - so the README says how to check one's own. `jbcontext` is
+       `jbcontext mcp` over stdio, looked up on the `PATH` by claude, as JetBrains Context's
+       `jbcontext setup-agent` configures it for a user. Not taken: an option for the ports; the
+       servers as arguments (`cld setup project goland`), which cld's commands take as options
+       elsewhere too;
+    3. the project is the current directory, where `cld new` starts claude, which reads its
+       `.claude/settings.json` and `.mcp.json` there; it need not be a git repository, and in a
+       subdirectory of one `.gitignore` is that directory's, its patterns anchored there;
+    4. files that exist are edited in place, through `internal/configfile`, which `setup
+       telemetry` uses for its settings (18.6): cld sets its keys - the last of a key given twice,
+       which claude reads - where their values differ, however they are written (`1.0` is `1`, an
+       object's members in any order); adds the entries `permissions.allow` and
+       `enabledMcpjsonServers` lack, after theirs; replaces a server's entry in `.mcp.json` that
+       differs, whole, since a merge would keep a stdio server's old `args` beside `mcp`, or a
+       `command` beside a `url`; and keeps everything else: other keys, entries and servers,
+       `permissions.deny`, their order, indentation and values, byte for byte, and the file's
+       mode and a symbolic link to it. It removes nothing: a server given before stays when it is
+       not given again. `.claude/settings.local.json`, someone's own, is only made, where nothing
+       is - a symbolic link to no file counts as something. What is missing is created, `.claude`
+       included, 0644 and 0755 less the umask. Running it again changes nothing;
+    5. `.gitignore` gets `/.claude/*` and then `!/.claude/settings.json`, where they are not there
+       as git reads them (see Findings): without the leading slash, which a pattern with a slash
+       before its end does not need, and with a carriage return or trailing spaces, but not a tab;
+       the exception counts only after the last line that ignores `.claude/*`, where it wins. What
+       is missing goes at the end, in the file's line endings. `/.claude/*`, not `.claude/`: git
+       does not look into a directory it ignores, so no exception would reach the settings;
+    6. the order catches a mistake before anything changes: every file is read and edited first -
+       one that is not valid JSON, whose `permissions` or `mcpServers` is no object, or whose
+       `permissions.allow` or `enabledMcpjsonServers` is no array, stops cld with status 1, as does
+       a `.gitignore` it cannot read - then each file that changes is written, in the order
+       `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json`, `.gitignore`; a write
+       that fails ends cld naming the files written before it. `.mcp.json` is read only with
+       `--mcp`. The report has a line a file: created, updated with what changed - the keys, as
+       `permissions.allow` or `mcpServers.rider`, or the lines added - or left as it was;
+    7. in a git work tree cld then asks git whether it ignores `.claude/settings.json` all the
+       same (`git check-ignore -v -z --stdin`): a `.claude/` or `.claude` elsewhere - before cld's
+       lines, in `.git/info/exclude` or git's other excludes - keeps git out of the directory, and
+       a `*.json` after them ignores the file again. It says so after the report, naming the
+       pattern, its file and its line, and exits with status 1; it does not edit patterns it did
+       not write. Without git, outside a work tree or when git fails, it does not ask. git is
+       looked for as tmux is (11.5);
+    8. it runs neither tmux nor claude, so neither check of 6 applies to it, and it works on macOS
+       as on Linux. `run` takes `project` after `setup` as it takes `telemetry` (18.8), `help setup
+       project` shows its help, and setup's `Short` names both. Completion offers `project`
+       before `telemetry` after `setup`, and after `--mcp` the servers that start with what was
+       typed, each described by its URL or command; after a comma, the servers the list does not
+       have yet, the list before them.
+
+    Out of scope: removing what cld wrote, other servers, ports other than the maintainer's, and
+    settings per kind of project.
 
 ## Implementation notes
 
@@ -1203,7 +1288,17 @@ Where the implementation departs from the plan above:
   strings quoted as JSON strings are, which YAML reads the same (`[::1]:4317` would otherwise be
   a list). docker's failures are told apart by what it prints and its status: `No such
   container` from `inspect` means none, and `docker run` exits with 125 when docker fails and
-  with the collector's status otherwise.
+  with the collector's status otherwise. The file's side of the edit - reading and writing it,
+  its mode and a symbolic link kept, and a JSON file's members, with an object or array that
+  changes written one member or element a line in the file's indentation - is
+  `internal/configfile`, and only the env keys are `internal/telemetry`'s, so that other commands
+  can edit claude's files the same way: `setup project` (19) does, adding its values indented
+  with `json.Indent`.
+- `setup project` (decision 19) is `internal/project`. Its tests run the real git, which checks
+  what the `.gitignore` cld writes does (`git status --ignored`), and compare what `--mcp goland`
+  writes with the repository's own `.claude/settings.json` and `.mcp.json`, which they read from
+  the directory above `tests`. The write that fails, of `.gitignore` after the settings, comes
+  from a symbolic link to a file whose path is 4095 bytes long, as for `setup telemetry`.
 - The tests fake docker with the probe, which TestMain links as `docker` next to `claude`, so
   every sandbox finds it before the real one. It records each call, with its environment, in
   `docker.jsonl`, keeps the one container's state in a file (`inspect`, `rm -f` and `run -d` read
@@ -1267,6 +1362,9 @@ by hand in a nested tmux).
   it was checked by hand against the real collector image (see Findings), with collectors of the
   debug exporter in the plugin's place: the plugin itself, and claude sending through the
   collector, are still to check.
+- `setup project` was checked by hand with git 2.53.0 and `claude mcp list` 2.1.283 (see
+  Findings); a claude session calling the servers' tools, and the IDEs' ports on another machine,
+  were not.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

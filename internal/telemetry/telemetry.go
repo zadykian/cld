@@ -286,7 +286,7 @@ func Setup(o Options) error {
 	}
 
 	// Report.
-	return fail.Print(report(port, o, s.path, changes))
+	return fail.Print(report(port, o, s.Path, changes))
 }
 
 // extraConfig reads the --collector-config file at path into the variable that takes it to the

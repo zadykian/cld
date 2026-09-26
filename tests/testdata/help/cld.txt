@@ -15,7 +15,7 @@ Available Commands:
   join        attach to session NAME, detaching any other terminal from it
   kill        end session NAME and its tmux server
   list        list the sessions cld started; on a terminal, join or kill one
-  setup       set up what claude runs with: so far, its telemetry
+  setup       set up claude's settings in a project, or its telemetry
   completion  print the completion script for a shell
   help        show this help, or the help of COMMAND
   version     show the version

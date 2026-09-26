@@ -1,6 +1,6 @@
-// Package tool finds the programs cld runs - tmux, claude, git and tty for the sessions, docker
-// for setup telemetry - on the PATH, and says how cld ends when the system cannot run one, as a
-// shell would.
+// Package tool finds the programs cld runs - tmux, claude, git and tty for the sessions, git for
+// setup project, docker for setup telemetry - on the PATH, and says how cld ends when the system
+// cannot run one, as a shell would.
 package tool
 
 import (

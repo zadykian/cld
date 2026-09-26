@@ -1,9 +1,10 @@
-set up what claude runs with: so far, its telemetry
+set up claude's settings in a project, or its telemetry
 
 Usage:
   cld setup [command]
 
 Available Commands:
+  project     set claude up in the project in the current directory
   telemetry   send claude's telemetry through a local OpenTelemetry collector
 
 Flags:
