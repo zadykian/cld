@@ -1,0 +1,18 @@
+print the completion script for a shell, one of the commands below. With it,
+cld join -n completes the names cld list shows. The help of each command says
+where its script goes and what it needs.
+
+Usage:
+  cld completion [flags]
+  cld completion [command]
+
+Available Commands:
+  bash        print the completion script for bash
+  zsh         print the completion script for zsh
+  fish        print the completion script for fish
+  powershell  print the completion script for powershell
+
+Flags:
+  -h, --help   help for completion
+
+Use "cld completion [command] --help" for more information about a command.

@@ -24,7 +24,7 @@ import (
 var update = flag.Bool("update", false, "rewrite the help in testdata/help from what cld help prints")
 
 // helpTopics are what cld help takes, "" for none, in the order the help lists them.
-var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "help", "version"}
+var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "completion", "help", "version"}
 
 // goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
 // testdata/help/COMMAND.txt for cld help COMMAND.
@@ -125,7 +125,7 @@ func optionsAfterArguments(help string) []string {
 
 // help, -h and --help print the help of cld, or of the command they are given to: the command
 // after them, or the one before -h. -h before a wrong argument shows the help too, since
-// arguments are read left to right.
+// arguments are read left to right. completion alone shows its help, as cobra's does.
 func TestHelp(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -159,6 +159,12 @@ func TestHelp(t *testing.T) {
 		{[]string{"kill", "-h", "a"}, "kill"},
 		{[]string{"help", "-h", "nope"}, "help"},
 		{[]string{"help", "--help", "-x"}, "help"},
+		{[]string{"completion"}, "completion"},
+		{[]string{"completion", "--help"}, "completion"},
+		{[]string{"-h", "completion"}, "completion"},
+		{[]string{"completion", "-h", "tcsh"}, "completion"},
+		{[]string{"completion", "-h", "--help=x"}, "completion"},
+		{[]string{"completion", "--help", "-h=no"}, "completion"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -184,6 +190,99 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+// completion SHELL prints cobra's completion script for SHELL, which asks cld __complete what to
+// offer on every TAB, or __completeNoDesc with --no-descriptions. Its help is cobra's, which says
+// where the script goes and what it needs; -h and --help are cld's, and win over a wrong value
+// for either after them. completion alone shows its help, as in testdata/help. None of them needs
+// tmux or claude.
+func TestCompletionScripts(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	none := map[string]string{"PATH": s.Tools()}
+	for _, test := range []struct{ shell, start, setup string }{
+		{"bash", "# bash completion V2 for cld ", "This script depends on the 'bash-completion' package."},
+		{"zsh", "#compdef cld\n", "autoload -U compinit; compinit"},
+		{"fish", "# fish completion for cld ", "cld completion fish > ~/.config/fish/completions/cld.fish"},
+	} {
+		for _, args := range [][]string{{"completion", test.shell}, {"completion", test.shell, "--no-descriptions"}} {
+			result := s.RunCld(none, args...)
+			noDescriptions := len(args) == 3
+			if result.Code != 0 || !strings.HasPrefix(result.Stdout, test.start) || result.Stderr != "" ||
+				strings.Contains(result.Stdout, " __completeNoDesc ") != noDescriptions {
+				t.Errorf("cld %q: exit %d, stderr %q, stdout\n%.300s", args, result.Code, result.Stderr, result.Stdout)
+			}
+		}
+		for _, args := range [][]string{{"completion", test.shell, "--help"}, {"completion", test.shell, "-h", "-x"},
+			{"completion", test.shell, "-h", "--help=x"}, {"completion", test.shell, "--help", "-h=no"}} {
+			result := s.RunCld(none, args...)
+			if help := "Generate the autocompletion script for the " + test.shell + " shell.\n"; result.Code != 0 ||
+				!strings.HasPrefix(result.Stdout, help) || !strings.Contains(result.Stdout, test.setup) || result.Stderr != "" {
+				t.Errorf("cld %q: exit %d, stderr %q, stdout\n%s", args, result.Code, result.Stderr, result.Stdout)
+			}
+		}
+	}
+	want, err := os.ReadFile(goldenHelp("completion"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := s.RunCld(none, "completion"); result.Code != 0 || result.Stdout != string(want) || result.Stderr != "" {
+		t.Errorf("cld completion: exit %d, stderr %q, stdout\n%s\nwant exit 0, stdout as in %s", result.Code, result.Stderr, result.Stdout, goldenHelp("completion"))
+	}
+}
+
+// __complete offers the commands, completion among them, and the commands help takes, each with
+// its description; the options; and no file names where nothing is offered (":4",
+// ShellCompDirectiveNoFileComp, which cobra reports on stderr), the root's default for an
+// argument with nothing to complete. Without the word to complete it fails, as cld's other
+// command-line mistakes do.
+func TestCompleteCommands(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	none := map[string]string{"PATH": s.Tools()}
+	commands := "new\tcreate session NAME in the current directory and attach to it\n" +
+		"resume\tcreate session NAME with claude resuming its conversation\n" +
+		"join\tattach to session NAME, detaching any other terminal from it\n" +
+		"kill\tend session NAME and its tmux server\n" +
+		"list\tlist the sessions cld started; on a terminal, join or kill one\n" +
+		"version\tshow the version\n" +
+		"completion\tprint the completion script for a shell\n" +
+		"help\tshow this help, or the help of COMMAND\n"
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"__complete", ""}, commands + ":4\n"},
+		{[]string{"__complete", "c"}, "completion\tprint the completion script for a shell\n:4\n"},
+		{[]string{"__complete", "help", ""}, commands + ":4\n"},
+		{[]string{"__complete", "help", "j"}, "join\tattach to session NAME, detaching any other terminal from it\n:4\n"},
+		{[]string{"__complete", "help", "x"}, ":4\n"},
+		{[]string{"__complete", "help", "new", ""}, ":4\n"},
+		{[]string{"__complete", "completion", ""}, "bash\tprint the completion script for bash\n" +
+			"zsh\tprint the completion script for zsh\n" +
+			"fish\tprint the completion script for fish\n" +
+			"powershell\tprint the completion script for powershell\n" +
+			":4\n"},
+		{[]string{"__complete", "completion", "bash", ""}, ":4\n"},
+		// cobra describes an option by the first line of its usage, backquotes included.
+		{[]string{"__complete", "join", "-"}, "--help\thelp for join\n-h\thelp for join\n" +
+			"--name\tthe session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n" +
+			"-n\tthe session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n:4\n"},
+		{[]string{"__complete", "new", "-n", ""}, ":4\n"},
+		{[]string{"__complete", "list", ""}, ":4\n"},
+	} {
+		result := s.RunCld(none, test.args...)
+		if stderr := "Completion ended with directive: ShellCompDirectiveNoFileComp\n"; result.Code != 0 || result.Stdout != test.want || result.Stderr != stderr {
+			t.Errorf("cld %q: exit %d, stderr %q, stdout\n%s\nwant exit 0, stderr %q, stdout\n%s", test.args, result.Code, result.Stderr, result.Stdout, stderr, test.want)
+		}
+	}
+	for _, command := range []string{"__complete", "__completeNoDesc"} {
+		result := s.RunCld(none, command)
+		if want := "cld: " + command + ": missing the word to complete (see cld help)\n"; result.Code != 2 || result.Stderr != want || result.Stdout != "" {
+			t.Errorf("cld %s: exit %d, stdout %q, stderr %q, want exit 2, stderr %q", command, result.Code, result.Stdout, result.Stderr, want)
+		}
+	}
+}
+
 func TestRequiresCommand(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -200,7 +299,7 @@ func TestRequiresCommand(t *testing.T) {
 
 // "cld NAME" created or attached to session NAME before cld had commands; it now fails, naming
 // the commands that do either. The first argument is the command, whatever follows: an option
-// before it is no command either. -v, completion and __complete are commands only elsewhere.
+// before it is no command either. -v is a command only elsewhere.
 func TestRejectsUnknownCommands(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -211,9 +310,6 @@ func TestRejectsUnknownCommands(t *testing.T) {
 		{[]string{"-x"}, "cld: unknown command '-x' (see cld help)\n"},
 		{[]string{"a.b"}, "cld: unknown command 'a.b' (see cld help)\n"},
 		{[]string{"-v"}, "cld: unknown command '-v' (see cld help)\n"},
-		{[]string{"completion", "bash"}, "cld: unknown command 'completion'; for session completion: cld new -n completion, cld join -n completion\n"},
-		{[]string{"__complete", "new", "-n", ""}, "cld: unknown command '__complete' (see cld help)\n"},
-		{[]string{"__completeNoDesc", "join", ""}, "cld: unknown command '__completeNoDesc' (see cld help)\n"},
 		{[]string{"-n", "x", "new"}, "cld: unknown command '-n' (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
@@ -378,9 +474,10 @@ func TestUnreadableSocketDirectory(t *testing.T) {
 }
 
 // Arguments are read left to right, and the first wrong one decides the message: an option after
-// an argument is not read, and -- ends nothing. help and version are named as typed. help takes
-// one argument, a command of cld's; resume takes one, SESSION, after its options: never empty,
-// never one claude would take for an option, and nothing after it.
+// an argument is not read, and -- ends nothing. help and version are named as typed, completion's
+// commands with their SHELL. help takes one argument, a command of cld's; resume takes one,
+// SESSION, after its options: never empty, never one claude would take for an option, and nothing
+// after it; and completion none but a SHELL, as its command.
 func TestRejectsUnexpectedArguments(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -427,6 +524,16 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"resume", "x", "--"}, "cld: resume: unexpected argument '--' (see cld help)\n"},
 		{[]string{"resume", "-n", "x", ""}, "cld: resume: unexpected argument '' (see cld help)\n"},
 		{[]string{"resume", "-"}, "cld: resume: unexpected argument '-' (see cld help)\n"},
+		// cobra would show its help and exit 0 for an unknown shell, fail with exit status 1 for
+		// an argument after it, and read an option after an argument.
+		{[]string{"completion", "tcsh"}, "cld: completion: unknown shell 'tcsh' (see cld help)\n"},
+		{[]string{"completion", ""}, "cld: completion: unknown shell '' (see cld help)\n"},
+		{[]string{"completion", "bash", "x"}, "cld: completion bash: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"completion", "zsh", "x", "--bogus"}, "cld: completion zsh: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"completion", "fish", "-x"}, "cld: completion fish: unexpected argument '-x' (see cld help)\n"},
+		{[]string{"completion", "--no-descriptions", "bash"}, "cld: completion: unexpected argument '--no-descriptions' (see cld help)\n"},
+		{[]string{"completion", "--", "bash"}, "cld: completion: unexpected argument '--' (see cld help)\n"},
+		{[]string{"completion", "bash", "--"}, "cld: completion bash: unexpected argument '--' (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -712,14 +819,17 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 	}
 }
 
-// new and resume run claude, join, kill and list never do: with a claude too old for new and
-// resume, which records that it ran, the others do as they do with any other. new and resume run
-// claude --version last among the checks they make before tmux - what is not installed, and
-// tmux's version, which every command checks, come first - and before the session lookup: with
-// session main found (sessions "cld"), a check that came later would say the session exists,
-// after a list-panes the fake tmux records. The fake tmux lists the sessions that sessions names,
-// none if it is empty. That it comes before the check for cld's own pane as well, which needs a
-// terminal, TestRefusesToNestInItsOwnPane pins.
+// new and resume run claude; join, kill and list never do, and neither does completion -
+// __complete and __completeNoDesc - which makes no check at all (see TestCompletionSkipsChecks),
+// for new's and resume's arguments too and with a tmux the check refuses: with a claude too old
+// for new and resume, which records that it ran, the others do as they do with any other. new and
+// resume run claude --version last among the checks they make before tmux - what is not
+// installed, and tmux's version, which join, kill and list check too, come first - and before the
+// session lookup: with session main found (sessions "cld-main"), a check that came later would
+// say the session exists, after a list-panes the fake tmux records. The fake tmux lists the
+// sessions that sessions names, none if it is empty, and completion finds them through a socket
+// cld-main. That it comes before the check for cld's own pane as well, which needs a terminal,
+// TestRefusesToNestInItsOwnPane pins.
 func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -727,20 +837,27 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		tmuxVersion string
 		sessions    string
 		code        int
+		stdout      string
 		stderr      string
 		// ran is whether claude --version runs.
 		ran bool
 	}{
-		{[]string{"new"}, "tmux 3.7c", "", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
-		{[]string{"new"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
-		{[]string{"new", "-w"}, "tmux 3.7c", "", 1, "cld: git is not installed\n", false},
-		{[]string{"new"}, "tmux 3.6b", "", 1, "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
-		{[]string{"resume"}, "tmux 3.7c", "", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
-		{[]string{"resume", "-n", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
-		{[]string{"resume"}, "tmux 3.6b", "", 1, "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
-		{[]string{"join"}, "tmux 3.7c", "", 1, "cld: no session 'main'; create it with cld new -n main\n", false},
-		{[]string{"kill"}, "tmux 3.7c", "", 1, "cld: no session 'main' (see cld list)\n", false},
-		{[]string{"list"}, "tmux 3.7c", "", 0, "", false},
+		{[]string{"new"}, "tmux 3.7c", "", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"new"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"new", "-w"}, "tmux 3.7c", "", 1, "", "cld: git is not installed\n", false},
+		{[]string{"new"}, "tmux 3.6b", "", 1, "", "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
+		{[]string{"resume"}, "tmux 3.7c", "", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"resume", "-n", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"resume"}, "tmux 3.6b", "", 1, "", "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
+		{[]string{"join"}, "tmux 3.7c", "", 1, "", "cld: no session 'main'; create it with cld new -n main\n", false},
+		{[]string{"kill"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
+		{[]string{"list"}, "tmux 3.7c", "", 0, "", "", false},
+		{[]string{"__complete", "new", "-n", ""}, "tmux 3.6b", "", 0, ":4\n",
+			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
+		{[]string{"__complete", "resume", "-n", ""}, "tmux 3.6b", "", 0, ":4\n",
+			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
+		{[]string{"__completeNoDesc", "join", "-n", ""}, "tmux 3.6b", "cld-main\tdetached\t0\t100\t/w", 0, "main\n:4\n",
+			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 	} {
 		name := strings.Join(test.args, " ") + ", " + test.tmuxVersion
 		if test.sessions != "" {
@@ -749,6 +866,9 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
+			if test.sessions != "" {
+				socket(t, s, "cld-main")
+			}
 			tools := s.Tools("tmux")
 			ran := filepath.Join(s.Root, "claude ran")
 			script := "#!/bin/sh\necho \"$*\" >'" + ran + "'\necho '2.1.231 (Claude Code)'\n"
@@ -760,8 +880,9 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 				"CLD_FAKE_TMUX_VERSION":  test.tmuxVersion,
 				"CLD_FAKE_TMUX_SESSIONS": test.sessions,
 			}, test.args...)
-			if result.Code != test.code || result.Stdout != "" || result.Stderr != test.stderr {
-				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stderr %q", result.Code, result.Stdout, result.Stderr, test.code, test.stderr)
+			if result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.stderr {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q",
+					result.Code, result.Stdout, result.Stderr, test.code, test.stdout, test.stderr)
 			}
 			args, err := os.ReadFile(ran)
 			if test.ran && string(args) != "--version\n" {
@@ -816,6 +937,61 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
 				t.Error("tmux started")
+			}
+		})
+	}
+}
+
+// Completion makes none of the checks the other commands make before they run tmux, where they
+// would end cld with status 1 and nothing on stdout: with a tmux whose version they refuse, join
+// -n offers what that tmux lists. With no tmux, one that fails or cannot run, or a socket
+// directory it cannot read, it offers no names, and no file names, and exits 0; what went wrong
+// goes to stderr, which the completion scripts discard. The tmux is asked through a socket cld-x,
+// as list asks it. That it never runs claude, whose version new and resume check,
+// TestOnlyNewAndResumeRunClaude pins.
+func TestCompletionSkipsChecks(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		what string
+		// script is the tmux on the PATH, with mode; none without one, the fake tmux when "fake",
+		// and the fake tmux with a file where the socket directory would be when "unreadable".
+		script string
+		mode   os.FileMode
+		stdout string
+		stderr string
+	}{
+		{"a tmux the check refuses", "fake", 0, "x\tdetached\n:4\n", ""},
+		{"no tmux", "", 0, ":4\n", "tmux is not installed"},
+		{"a tmux that fails", "#!/bin/sh\necho 'tmux: broken' >&2\nexit 3\n", 0o755, ":4\n", "tmux: broken"},
+		{"a tmux that cannot run", "#!/bin/sh\necho 'tmux 3.7c'\n", 0o644, ":4\n", "permission denied"},
+		{"a socket directory it cannot read", "unreadable", 0, ":4\n", "cannot read"},
+	} {
+		t.Run(test.what, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			env := map[string]string{"PATH": s.Tools()}
+			switch test.script {
+			case "":
+			case "fake", "unreadable":
+				env["PATH"] = s.Tools("tmux")
+				env["CLD_FAKE_TMUX_VERSION"] = "tmux 3.2a"
+				env["CLD_FAKE_TMUX_SESSIONS"] = "cld-x\tdetached\t0\t100\t/w"
+			default:
+				if err := os.WriteFile(filepath.Join(env["PATH"], "tmux"), []byte(test.script), test.mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.script == "unreadable" {
+				s.WriteFile(s.SocketDir(), "")
+			} else {
+				socket(t, s, "cld-x")
+			}
+			result := s.RunCld(env, "__complete", "join", "-n", "")
+			if result.Code != 0 || result.Stdout != test.stdout || !strings.Contains(result.Stderr, test.stderr) {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q, stderr with %q", result.Code, result.Stdout, result.Stderr, test.stdout, test.stderr)
+			}
+			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
+				t.Error("cld ran tmux for more than its list of sessions")
 			}
 		})
 	}
@@ -1187,8 +1363,9 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 
 // A write to stdout that fails ends cld with status 1, as the script's printf and cat failing
 // under set -e did, so that output cut short does not pass for whole: list, the help - from help
-// and from -h - and the version, and new, resume and join, which then do not hand over to tmux.
-// stdout is open for reading only here, so that every write to it fails; list finds session x
+// and from -h - and the version, and new, resume and join, which then do not hand over to tmux;
+// and the completion scripts and the answers to __complete, which cobra prints for cld. stdout is
+// open for reading only here, so that every write to it fails; list and __complete find session x
 // through a socket cld-x.
 func TestFailedWriteEndsCld(t *testing.T) {
 	t.Parallel()
@@ -1196,17 +1373,23 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		args []string
 		// sessions is what the fake tmux lists.
 		sessions string
+		// before is what cobra writes to stderr first.
+		before string
 	}{
-		{[]string{"list"}, "cld-x\tdetached\t0\t100\t/w"},
-		{[]string{"help"}, ""},
-		{[]string{"help", "new"}, ""},
-		{[]string{"new", "-h"}, ""},
-		{[]string{"join", "-h"}, ""},
-		{[]string{"kill", "-h", "-x"}, ""},
-		{[]string{"version"}, ""},
-		{[]string{"new", "-n", "x"}, ""},
-		{[]string{"resume", "-n", "x"}, ""},
-		{[]string{"join", "-n", "x"}, "cld-x"},
+		{[]string{"list"}, "cld-x\tdetached\t0\t100\t/w", ""},
+		{[]string{"help"}, "", ""},
+		{[]string{"help", "new"}, "", ""},
+		{[]string{"new", "-h"}, "", ""},
+		{[]string{"join", "-h"}, "", ""},
+		{[]string{"kill", "-h", "-x"}, "", ""},
+		{[]string{"version"}, "", ""},
+		{[]string{"new", "-n", "x"}, "", ""},
+		{[]string{"resume", "-n", "x"}, "", ""},
+		{[]string{"join", "-n", "x"}, "cld-x", ""},
+		{[]string{"completion", "bash"}, "", ""},
+		{[]string{"completion", "zsh", "--help"}, "", ""},
+		{[]string{"completion"}, "", ""},
+		{[]string{"__complete", "join", "-n", ""}, "cld-x\tdetached\t0\t100\t/w", "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -1227,13 +1410,43 @@ func TestFailedWriteEndsCld(t *testing.T) {
 			var stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = stdout, &stderr
 			_ = cmd.Run()
-			if code, want := cmd.ProcessState.ExitCode(), "cld: write error: bad file descriptor\n"; code != 1 || stderr.String() != want {
+			if code, want := cmd.ProcessState.ExitCode(), test.before+"cld: write error: bad file descriptor\n"; code != 1 || stderr.String() != want {
 				t.Errorf("exit %d, stderr %q, want exit 1, stderr %q", code, stderr.String(), want)
 			}
 			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
 				t.Error("cld handed over to tmux")
 			}
 		})
+	}
+}
+
+// With nothing to print, cld writes nothing, since even an empty write to a stdout that cannot
+// take one fails: kill, which prints nothing, ends the session and exits 0 with stdout open for
+// reading only, where it would fail with status 1 once the session was gone.
+func TestNothingToPrintWritesNothing(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	stdout, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdout.Close()
+	cmd := exec.Command(sandbox.Cld, "kill", "-n", "a")
+	// The fake tmux finds session a on its server, then records the kill.
+	cmd.Env = s.Environ(map[string]string{
+		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+		"CLD_FAKE_TMUX_SESSIONS": "cld-a",
+	})
+	cmd.Dir = s.Work
+	var stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = stdout, &stderr
+	_ = cmd.Run()
+	if code := cmd.ProcessState.ExitCode(); code != 0 || stderr.Len() != 0 {
+		t.Errorf("exit %d, stderr %q, want exit 0, no stderr", code, stderr.String())
+	}
+	if argv, want := s.FakeTmuxRecord().Argv, []string{"-L", "cld-a", "kill-session", "-t", "=cld-a", ";", "kill-server"}; !slices.Equal(argv, want) {
+		t.Errorf("tmux arguments\n%q\nwant\n%q", argv, want)
 	}
 }
 

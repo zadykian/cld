@@ -39,20 +39,24 @@ platform and `cld.sha256`.
   `tmux -V` at startup. Raising the minimum is one change: the pin, the check, the docs.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
-  run the real claude): they run `claude --version` before starting that claude; `join`, `kill`
-  and `list` do not. Re-derive the minimum when cld starts to pass or rely on something newer
-  (docs/design.md, decision 6).
+  run the real claude): they run `claude --version` before starting that claude; `join`, `kill`,
+  `list` and completion do not. Re-derive the minimum when cld starts to pass or rely on
+  something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
   and the list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep
   cld's command line - the first argument checked before cobra, options read up to the first
-  argument, a `help [COMMAND]` that refuses anything but one of cld's commands, the help printed
-  through `fail.Print` with the commands unsorted, no completion command (see docs/design.md,
+  argument, a `help [COMMAND]` that refuses anything but one of cld's commands, the help and
+  cobra's other output printed through `fail.Print`, the commands unsorted (see docs/design.md,
   Implementation notes).
 - The help is cobra's, generated with its default templates from each command's `Use`, `Short`
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
   nothing: break the texts by hand within 80 columns, which `TestHelpText` checks.
+- Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the names
+  `list` shows, read as `list` reads them, `help` the commands, nothing offers file names, and
+  completion makes none of the startup checks and never starts the interactive list (decision 17
+  in docs/design.md). The `Short`s are also what `cld <TAB>` shows.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
@@ -109,8 +113,9 @@ package doc comments at the top of each file for details.
   Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, paste, claude exiting, the session
   list's keys), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
-- `session_test.go` — session lifecycle and server behaviour; `cli_test.go` — argument parsing,
-  errors, tool/version checks, and the help, compared byte for byte with `testdata/help`.
+- `session_test.go` — session lifecycle and server behaviour, and the names completion offers;
+  `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
+  byte with `testdata/help`, and the completion scripts.
 
 ## Documentation conventions
 

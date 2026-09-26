@@ -87,6 +87,11 @@ cld() {
 | Ctrl+X in Claude Code's agent view (`claude agents`): [its docs](https://code.claude.com/docs/en/agent-view), read 2026-09-25, and the hints of 2.1.282, read from its bundle, not run | the docs: `Ctrl+X` "Stop the session; press again within two seconds to delete it", and "Press `Esc` to dismiss the confirmation without deleting"; the second press deletes even when the stop failed. A deleted session leaves the list, its transcript stays for `claude --resume`, and agent view removes a worktree Claude created for it, uncommitted changes included - but keeps the worktree and the session when another session uses or has locked it, or it has commits Claude Code cannot confirm are saved elsewhere. The hints: `ctrl+x to stop` or `ctrl+x to delete` among a selected row's hints; `stopped · ctrl+x again to delete · esc to keep` and `ctrl+x again to delete · esc to keep` dim, as other hints; `stopped · ctrl+x again to delete` and `ctrl+x again to delete` in the error colour. Which shows when was not observed |
 | a directory whose name holds control characters (0x01, ESC), in `#{pane_current_path}` of `list-sessions -F` and `list-panes -F` (tmux 3.3a, 3.4, 3.5a, 3.7c), for a client under `LANG=C.UTF-8` and `LANG=C` | 3.3a and 3.7c write the characters as they are to a UTF-8 client - under `C.UTF-8`, or with `-u` - and each as `_` under `C` without `-u`; 3.4 and 3.5a write them as octal escapes, `\001` and `\033`, under either, with `-u` or not |
 | hint strings in Claude Code 2.1.282 (read from its bundle, not run) | hints are lower case, but for Enter and Esc in some, joined by ` · ` and drawn dim: `↑/↓ to navigate · enter to resume as a background session`, `↑/↓ to navigate · Esc to cancel`, and a list of hints beside `ctrl+x to ...` and `to go back` that ends in `esc to quit` or `esc to close · esc again quits`. Where each shows was not observed |
+| cobra 1.10.2's `__complete`, which its completion scripts run on every TAB (read from the source; run with cld, and with a test program for the root hook) | cobra hands a flag's completion function the text after `-n `, `--name ` and `--name=`, and after pflag's `-n=`; a word such as `-nre`, which starts with `-` and has no `=`, it takes for an option name being typed, and offers the options that start with it: none. It prints what the function returns as it is - unfiltered and in the function's order, a tab before each description - one per line, then `:N`, the directive; `__completeNoDesc` and `CLD_COMPLETION_DESCRIPTIONS=0` (`PROGRAM_COMPLETION_DESCRIPTIONS`, else `COBRA_COMPLETION_DESCRIPTIONS`) drop the descriptions. An argument with no completion function gets `CompletionOptions`' default directive, `ShellCompDirectiveDefault` unless the program sets one: `:0`, on which the shell offers file names. A command line cobra cannot read before the word - an unknown command, an option the command does not have - gets `:0` whatever the default, with the error on stderr. A root `PersistentPreRunE` runs before `__complete` and gets the command that runs: `__complete`, also when called as `__completeNoDesc` (only `CalledAs` tells them apart), and `bash` for `completion bash`; one that fails leaves stdout empty and exits 1, which the bash script takes for `:0`. A help function set on the root is inherited by `completion` and its subcommands. `completion`, which cobra cannot run, shows its help and exits 0 for an argument that names no shell; `completion bash x` fails with status 1 and `unknown command "x" for "cld completion bash"`. Command names come in the order of the command's `Commands()`, each described by its `Short`, and cobra's own `help` command completes the same names; an option is described by its usage as written, cut at the first newline, backquotes included. `__complete` drops the error of a write that fails, where the commands that print the scripts return it from `Execute`, as Go words it (`write /dev/stdout: bad file descriptor` for a stdout open for reading only). `__complete` with no word after it fails with `requires at least 1 arg(s), only received 0` and status 1 |
+| `cld join -n <TAB>` through cobra 1.10.2's bash script, typed into an interactive bash in a tmux pane (tmux 3.5a): bash 3.2.57 (the `bash:3.2` image) with bash-completion 1.3 built as Homebrew's formula builds it, and bash 5.2.37 with bash-completion 2.16 (Debian trixie) | with bash-completion, both list the names with their states on the second TAB - `bad (exited)  rev (attached)  review (detached)` - complete a prefix to the one name that starts with it, or to what all that do share (`--name=re` too), and list the commands and options with their descriptions. bash 5 adds a space after a completed name, and offers nothing where cld offers nothing (`-n x`, `new -n`). bash 3.2 has no `compopt`, so the script registers `complete -o default -o nospace` and cannot take `default` back: no space follows a completed name, and where cld offers nothing bash offers file names. `source <(cld completion bash)` loads nothing in bash 3.2. Without bash-completion, each TAB prints `_get_comp_words_by_ref: command not found` and bash offers file names. bash-completion 2.16 also loads the script from `~/.local/share/bash-completion/completions/cld` |
+| the same through cobra 1.10.2's zsh and fish scripts (zsh 5.9, `compinit` on, the script as `_cld` in a directory on `$fpath` (see the next row); fish 4.0.2, the script in `~/.config/fish/completions`; Debian trixie, tmux 3.5a) | both list the names with their states on the first TAB - zsh as `bad -- exited` and `review  rev -- detached`, one line per state; fish as `bad (exited)  rev (detached)  review (detached)` - and insert the first on the second. Both add a space after a completed name, offer nothing where cld offers nothing, and list the commands and options with their descriptions. fish still shows its autosuggestion for a word that starts like a file name in the directory - the rest of the name, in grey - which TAB does not insert |
+| where zsh 5.9 looks for `_cld` (Debian trixie, as an ordinary user without `sudo`; `cld join -n <TAB>` typed into an interactive zsh in a tmux pane, tmux 3.7c) | the user's `${fpath[1]}` is `/usr/local/share/zsh/site-functions`, owned by root with mode 755, so `cld completion zsh > "${fpath[1]}/_cld"`, the Linux line of cobra's help, fails with `permission denied`. With the script in `~/.zfunc/_cld` and `fpath=(~/.zfunc $fpath)` before `autoload -U compinit; compinit` in `~/.zshrc`, `$_comps[cld]` is `_cld` and the first TAB lists `bad -- exited`, `rev -- attached` and `review -- detached`; with the script written into that `${fpath[1]}` as root, the user's `compinit` loads it too |
+| how long `cld __complete join -n ''` takes, beside `cld list | cat` (tmux 3.7c, in the image `tests/Dockerfile` builds on `debian:trixie`, 8 CPUs, load about 2; natively too, with Ubuntu's tmux 3.7c snap) | in the image about 3 ms with no socket, 22 ms with four sessions and 147 ms over 36 sockets, 16 of them stale, where `cld list | cat` took 9, 27 and 152 ms: one `list-sessions` a socket, as `list` (13.1), and no `tmux -V`. Before a server per session (13) it was one `list-sessions` in all: about 5 ms with no server and 10 ms with four sessions. Natively, where each tmux client of the snap took about 150 ms to start, 6 ms with no socket and 625 ms with four sessions |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
@@ -106,6 +111,11 @@ cld() {
   darwin/arm64 one ad hoc, which Apple silicon requires. They are not notarized.
 - A Homebrew tap is possible later; a `curl | bash` installer is not needed for one binary, which
   the one-liner picks from `uname`.
+- Shell completion comes from the binary (see 17): `cld completion SHELL` prints the script, which
+  always matches the binary it came from. Releases publish no completion files, and
+  `make install` installs none; cobra's scripts ask `cld __complete` for everything at TAB time
+  and change only with cobra's templates. A Homebrew formula would generate them at install time
+  with `generate_completions_from_executable(bin/"cld", shell_parameter_format: :cobra)`.
 
 ## Testing
 
@@ -196,8 +206,9 @@ The Linux job runs the same Docker image a developer runs locally.
    would be refused (see 14).
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
    fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
-   `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME`. Commands address sessions as
-   `=cld-NAME`, since tmux would otherwise take `cld-rev` for `cld-review`. `list` shows the
+   `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME` (but for `cld completion`, a
+   command since 17). Commands address sessions as `=cld-NAME`, since tmux would otherwise take
+   `cld-rev` for `cld-review`. `list` shows the
    directory claude is in now (`pane_current_path`), not the one its session started in, and
    nothing at all when no server runs; on a terminal it lets you pick a session and join it (see
    14) or kill it (see 15). `kill` ends a session with `kill-session`: claude gets SIGHUP, as when
@@ -228,7 +239,7 @@ The Linux job runs the same Docker image a developer runs locally.
 6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
    Claude Code 2.1.232 or newer, the first release that does what cld passes and relies on. Both
    are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
-   for every command but `help` and `version`, and refuses an older tmux with
+   for every command but `help`, `version` and completion (17.4), and refuses an older tmux with
    `cld: tmux 3.7 or newer is required, found 'tmux 3.6b'` and status 1.
    - It reads `tmux -V`: the major and minor version, after `next-` for a development build
      (`next-3.9` is 3.9, `3.8-rc2` 3.8); a version without them (`master`) passes. Letters mark
@@ -258,11 +269,11 @@ The Linux job runs the same Docker image a developer runs locally.
      have found their tools and checked tmux's version, before any other tmux command. The issue
      placed it right after the lookup of `claude`; it comes after the checks every command makes
      instead - the tools, then `tmux -V` - so that cld runs claude only once those cheap checks
-     pass, and a missing tool or a tmux too old is reported before a claude too old. `join`, `kill`
-     and `list` never start claude and do not check it. cld compares the `X.Y.Z` the output starts
-     with as numbers (2.1.30 is older than 2.1.232) and refuses an older claude with
-     `cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'` and status 1. It does
-     not say how to update, which depends on how claude was installed; the README does.
+     pass, and a missing tool or a tmux too old is reported before a claude too old. `join`, `kill`,
+     `list` and completion (17.4) never start claude and do not check it. cld compares the `X.Y.Z`
+     the output starts with as numbers (2.1.30 is older than 2.1.232) and refuses an older claude
+     with `cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'` and status 1.
+     It does not say how to update, which depends on how claude was installed; the README does.
    - `claude --version` runs the claude that tmux then starts, as tmux starts it: the `claude` that
      cld finds in the absolute `PATH` entries (11.5), by its path, with no input, in the current
      directory. `new` and `resume` hand tmux that path rather than the word `claude`, so claude sees
@@ -417,14 +428,14 @@ The Linux job runs the same Docker image a developer runs locally.
     nobody saw, and the two could drift; now a command's text lives with the command, and
     `cld new -h` shows `new`'s options alone. Settled with it:
     1. cobra's default help and usage templates, with command sorting off, so the commands keep
-       their order: `new`, `resume`, `join`, `kill`, `list`, `help`, `version`. `Execute` moves
-       the help command after the others (see Findings), so cld moves `version` back after it
-       before it prints the help. An option's usage names its value in backquotes
-       (`-n, --name NAME`), and pflag shows `-n`'s default, `main`. cobra wraps nothing, so the
-       texts break their lines by hand, within 80 columns, which the test of the help's text holds
-       them to. A template of cld's own, in the usage text's layout, was the other way: closer to
-       what cld printed, but one more thing for cld to keep, where cobra's changes with cobra and
-       shows in that test;
+       their order: `new`, `resume`, `join`, `kill`, `list`, `help`, `version`, with `completion`
+       before `help` since 17. `Execute` moves the help command after the others (see Findings), so
+       cld moves `version` back after it before it prints the help. An option's usage names its
+       value in backquotes (`-n, --name NAME`), and pflag shows `-n`'s default, `main`. cobra wraps
+       nothing, so the texts break their lines by hand, within 80 columns, which the test of the
+       help's text holds them to. A template of cld's own, in the usage text's layout, was the
+       other way: closer to what cld printed, but one more thing for cld to keep, where cobra's
+       changes with cobra and shows in that test;
     2. `help [COMMAND]` shows the help of one of the commands the root's help lists. `-h` and
        `--help`, given first, are `help` spelled otherwise, so `cld -h new` shows `new`'s help. A
        `COMMAND` that is not one of those, the empty one included, and an argument after it are
@@ -432,7 +443,7 @@ The Linux job runs the same Docker image a developer runs locally.
        unexpected argument 'join' (see cld help)` - where cobra shows the root's usage for the
        one and passes over the other, exiting 0 (see Findings). cld's `help` is a command of its
        own, set with `SetHelpCommand`, so it lacks the `ValidArgsFunction` with which cobra's
-       completes command names after `help`: completion (#25) has to give it one. Keeping `help`
+       completes command names after `help`: completion gives it one (17.3). Keeping `help`
        without an argument was the other way; per-command help would then be only `-h`'s;
     3. error messages keep `(see cld help)`, rather than naming the command's help (`see cld
        help new`): no message changes;
@@ -784,6 +795,75 @@ The Linux job runs the same Docker image a developer runs locally.
        `resume` is the way back from a kill by mistake, `cld kill`'s or the list's: neither leaves
        a stopped session to come back to (15), but the conversation stays in claude's history, and
        `resume -n NAME`, run where the session ran (16.4), brings it back in a new session.
+17. Shell completion (#25): `cld completion SHELL` prints a completion script for bash, zsh or
+    fish, with which `cld join -n <TAB>` offers the names `cld list` shows.
+    1. It is cobra's: `completion SHELL` prints cobra's script (PowerShell's too, undocumented),
+       which asks `cld __complete`, or `__completeNoDesc`, what to offer on every TAB. The
+       scripts know nothing of cld's commands, change only with cobra's templates, and need no
+       copy per shell to keep in step; `__complete` is tested from Go without a shell. The
+       first-argument check lets `completion`, `__complete` and `__completeNoDesc` through, so
+       `cld completion` no longer gets the legacy hint of 3.
+    2. `join -n` offers every session `list` shows - `attached`, `detached` and `exited`, since
+       `join` takes each - read as `list` reads them (`Tmux.Sessions`: the server of each socket
+       `cld-NAME`, stale sockets included, 13.1), in its order, that of the names, and described
+       by its state: what `join` will do, take the session from another terminal or show why
+       claude exited. Every name `list` shows is one `join` takes: it reads no socket whose NAME
+       `join` would refuse, and shows neither a session renamed by hand nor the sessions of
+       0.3.0's shared server, `café` among them (13.4, 11.8), so completion checks no name
+       itself. cld keeps the names that start with what was typed, as cobra does for commands and
+       options, so that every shell offers the same names whatever its own matching (zsh's
+       `matcher-list`, fish's fuzzy matching). `-n NAME`, `--name NAME`, `--name=NAME` and
+       `-n=NAME` complete; `-nNAME` does not (see Findings).
+    3. Only `join -n` offers session names, and `help` the commands it takes (see 12.2), with
+       their `Short`s, as cobra's help command does. `new -n` offers none: it refuses a name a
+       session holds, and cld keeps no record of the sessions that are gone. Nor does
+       `resume -n`, for the same reason, or `resume`'s SESSION (16): offering the conversations
+       claude keeps would mean reading its transcripts, which cld does not (16.4). `kill -n`
+       offers none either, as the request named `join` only; it could take the same function
+       later. No argument offers file names, since none is a file: the root's default directive
+       is `ShellCompDirectiveNoFileComp`, and where cobra answers `ShellCompDirectiveDefault` all
+       the same - a command line it cannot read before the word, such as `cld joni -n <TAB>` -
+       cld turns its `:0` into `:4`. bash 3.2, without `compopt`, offers file names wherever cld
+       offers nothing (see Findings); the README says so.
+    4. Completion makes none of the startup checks (6): `new`, `resume`, `join`, `kill` and
+       `list` call them, and there is no root `PersistentPreRunE`. `cld completion SHELL` works
+       where neither tmux nor claude is installed, and `__complete` does not check tmux's
+       version, which would cost a `tmux -V` on every TAB: with a tmux the check refuses it
+       offers what that tmux lists, and `join` then refuses the tmux. So a TAB costs what
+       `cld list` costs but for that `tmux -V`: a read of the socket directory and one
+       `list-sessions` a socket (13.1; see Findings). It never runs claude, `claude --version`
+       included, which `new` and `resume` alone run as they start claude: completing their
+       arguments checks no claude either. It starts no server - `list-sessions` does not - and
+       never opens the session list (14): it reads the sessions itself rather than run `list`,
+       and a completion script runs it with stdout not a terminal anyway. With no server, no
+       tmux, a tmux that fails or cannot run, or a socket directory it cannot read (13.1), it
+       offers nothing and exits 0, and says what went wrong on stderr (`cobra.CompErrorln`),
+       which the scripts discard.
+    5. The help of `completion`'s commands is cobra's `Long`, which says where each script goes
+       and what it needs; `completion` alone shows its own help, as with cobra. The `Short`s, and
+       `completion`'s `Long`, are cld's, in the words of the other commands' help (12). They read
+       their arguments as cld's other commands do, with cld's `-h` and `--help`, cld's messages
+       and exit status 2: an unknown SHELL, an argument after it, an option after an argument and
+       one they do not have are refused, where cobra would show the help and exit 0, fail with
+       status 1, or read the option first. A typo such as `cld completion tcsh > FILE` would
+       otherwise fill FILE with the help and succeed.
+    6. What cobra prints - the help (12.5), the scripts, the answers to `__complete` - goes out
+       through `fail.Print`, so that a write that fails ends cld with status 1 and cld's message,
+       as with cld's own output: cobra's help function and `__complete` drop the error and would
+       exit 0, and the commands that print the scripts return it, in Go's words
+       (`write /dev/stdout: ...`). When cobra has printed nothing - for `kill`, say - nothing is
+       written, since even an empty write to a stdout that cannot take one fails. `__complete`
+       without the word to complete, which the scripts always pass, is a mistake on the command
+       line: status 2 and cld's message, where cobra fails with its own and status 1.
+    7. The scripts ship only through `cld completion SHELL`, not as release assets or files that
+       `make install` installs (see Distribution).
+    8. `cld -<TAB>` offers `-h` and `--help`, the root's options, but not `-V` and `--version`,
+       which only the first-argument check knows: making them the root's options would list them
+       in the root's help beside `version`, which names them. An option is described by the first
+       line of its usage, as cobra takes it, backquotes included (see Findings).
+
+    Out of scope: a positional `cld join NAME`, completing claude's conversation names (16.4), and
+    hints printed under the prompt (cobra's ActiveHelp).
 
 ## Implementation notes
 
@@ -819,15 +899,16 @@ Where the implementation departs from the plan above:
   failing does.
   A session lookup (`list-sessions`) that fails ends cld with status 1 and what tmux said, or
   the same `cannot run` message, as the script's `die 1` did.
-  cld's own output goes through `fail.Print`, which turns a failed write into an error, the help
-  too once cobra has rendered it into a buffer; cobra's help function returns nothing, so what
-  it printed for `-h` and `--help` reaches `main` through a variable. Reading the sessions is one
-  function returning rows, which `list` lays out.
+  cld's own output goes through `fail.Print`, which turns a failed write into an error. What
+  cobra prints - the help, the completion scripts and the answers to `__complete` (decision 17) -
+  goes to a buffer, the root's output, which `run` then prints with `fail.Print`: cobra's help
+  function and `__complete` drop the error of a write that fails. Reading the sessions is one
+  function returning rows, which `list` lays out and completion filters.
 - cobra's defaults give way to cld's command line (cobra 1.10.2, pflag 1.0.9):
   - the first argument is checked before cobra sees it: cobra takes an unknown command for an
-    argument of the root, skips options before the command (`cld -n x new` would run `new`),
-    and answers its hidden `__complete` and `__completeNoDesc`. `CompletionOptions` turns its
-    `completion` command off;
+    argument of the root, and skips options before the command (`cld -n x new` would run
+    `new`). `completion`, `__complete` and `__completeNoDesc` pass (decision 17), and a bare
+    `__complete` is refused there, where cobra's `Args` would refuse it with its own message;
   - `SilenceErrors` and `SilenceUsage`: cobra would print `Error: MESSAGE` and the usage;
   - `SetInterspersed(false)` on every command: pflag reads options up to the first argument,
     where it would pass over arguments and read every option first (`cld join a -x` would name
@@ -837,15 +918,29 @@ Where the implementation departs from the plan above:
     `InvalidValueError`, `InvalidSyntaxError`) into cld's messages, and shows the help when `-h`
     or `--help` came before the error: cobra looks at `-h` only once every option has parsed;
   - `SetHelpCommand` replaces cobra's `help [command]` with cld's `help [COMMAND]`, whose `Args`
-    refuses what cobra's passes over (decision 12), and a help function set on the root, which
-    every command inherits, renders cobra's default help into a buffer for `fail.Print`: it is
+    refuses what cobra's passes over (decision 12), and whose `ValidArgsFunction` completes
+    `COMMAND` as cobra's does (17.3). A help function set on the root, which every command
+    inherits, `completion`'s included, renders cobra's default help into the root's output: it is
     cobra's own help function, taken from the root before cld sets its own. Each command has
     `-h` and `--help` of its own (`helpOption`), worded as cobra words its own ("help for new");
     `cobra.EnableCommandSorting` is off, and the help function moves `version` back after
     `help`. `tests/testdata/help` holds the help of the root and of each command, which
     `TestHelpText` compares byte for byte and `-update` rewrites;
   - `Version` stays unset, so there is no `--version` or `-v` flag: `version` is a command, and
-    `-V` and `--version` its aliases.
+    `-V` and `--version` its aliases;
+  - cld makes cobra's `completion` command itself (`InitDefaultCompletionCmd`, which `Execute`
+    then leaves alone) to give it and its commands `-h` and `--help` (`helpOption`), `Args` and
+    a `FlagErrorFunc` of cld's, `SetInterspersed(false)`, and `Short`s in cld's words.
+    `completion` gets a `RunE` that returns `pflag.ErrHelp`: cobra shows the help of a command
+    it cannot run before it looks at the arguments. The root's output is set first, since each
+    shell's command writes its script to the output the root had when the command was made;
+  - `CompletionOptions.SetDefaultShellCompDirective(ShellCompDirectiveNoFileComp)`, which cobra
+    reports on stderr (`Completion ended with directive: ...`), and the last line of
+    `__complete`'s answer, the directive, is `:4` where cobra wrote `:0` all the same
+    (decision 17.3);
+  - `join`'s `name` option has a completion function (`RegisterFlagCompletionFunc`), which
+    reads the sessions as `list` does, with `Tmux.Sessions`, on a `Tmux` from `session.Find`:
+    tmux found on the `PATH`, and no other check. Walking the sockets needs only tmux's path.
 - Go has no `ttyname` on Linux or macOS without cgo: cld runs `tty` with its own stdin, as the
   script's `$(tty)` did, to compare its terminal with the live panes', and drops the newline
   after the name, which uutils' `tty` (0.8.0, Ubuntu 26.04) does not print.
