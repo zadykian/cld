@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -17,17 +18,19 @@ import (
 	"github.com/zadykian/cld/internal/session"
 )
 
-// commands maps each command, and each alias of one, to the command it runs.
+// commands maps each command, and each alias of one, to the command it runs: cld's, cobra's
+// completion, and the hidden commands through which cobra's completion scripts ask cld what to
+// offer, on every TAB.
 var commands = map[string]string{
-	"new": "new", "resume": "resume", "join": "join", "kill": "kill", "list": "list",
+	"new": "new", "resume": "resume", "join": "join", "kill": "kill", "list": "list", "completion": "completion",
 	"help": "help", "-h": "help", "--help": "help",
 	"version": "version", "-V": "version", "--version": "version",
+	cobra.ShellCompRequestCmd: cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd: cobra.ShellCompNoDescRequestCmd,
 }
 
 // run runs cld with the arguments args. The first is the command, which run checks before cobra
-// sees it: cobra would take an unknown one for an argument of cld itself, skip options before
-// the command (cld -n x new would run new -n x), and answer its own completion commands,
-// __complete and __completeNoDesc.
+// sees it: cobra would take an unknown one for an argument of cld itself, and skip options before
+// the command (cld -n x new would run new -n x).
 func run(args []string) error {
 	if len(args) == 0 || args[0] == "" {
 		return fail.Usage("missing command: cld new creates a session, cld join attaches to one (see cld help)")
@@ -41,33 +44,66 @@ func run(args []string) error {
 		}
 		return fail.Usage(fmt.Sprintf("unknown command '%s' (see cld help)", typed))
 	}
-	// cobra's help function returns nothing, and cobra ends -h and --help without an error: what
-	// printing the help returned comes back here.
-	var printed error
-	root := commandLine(typed, &printed)
+	completing := command == cobra.ShellCompRequestCmd || command == cobra.ShellCompNoDescRequestCmd
+	// The completion scripts always pass the word being completed, empty or not; without one,
+	// cobra would fail with a message of its own and status 1.
+	if completing && len(args) == 1 {
+		return fail.Usage(fmt.Sprintf("%s: missing the word to complete (see cld help)", typed))
+	}
+	// What cobra prints - the help, the completion scripts, the answers to __complete - goes to
+	// out, which cld then prints as its own output, so that a write that fails ends cld with
+	// status 1 and cld's message. cobra's help function and __complete drop the error, which would
+	// end cld with status 0, and the commands that print the scripts return it in Go's words
+	// ("write /dev/stdout: ..."). Nothing is written when there is nothing to print, as for kill,
+	// since even an empty write to a stdout that cannot take one fails.
+	var out bytes.Buffer
+	root := commandLine(typed, &out)
 	root.SetArgs(append([]string{command}, args[1:]...))
 	if err := root.Execute(); err != nil {
 		return err
 	}
-	return printed
+	if out.Len() == 0 {
+		return nil
+	}
+	text := out.String()
+	if completing {
+		text = noFiles(text)
+	}
+	return fail.Print(text)
+}
+
+// noFiles turns cobra's answer to __complete, text, into one that offers no file names where
+// cobra's lets the shell offer them: cobra answers ShellCompDirectiveDefault, ":0" on the last
+// line, where it cannot read the words before the one completed - an unknown command, an option
+// the command does not have - whatever the root's default directive. No argument of cld's is a
+// file there either.
+func noFiles(text string) string {
+	if rest, found := strings.CutSuffix(text, ":0\n"); found && (rest == "" || strings.HasSuffix(rest, "\n")) {
+		return fmt.Sprintf("%s:%d\n", rest, cobra.ShellCompDirectiveNoFileComp)
+	}
+	return text
 }
 
 // commandLine is cld's commands, for a command typed as typed: the messages name it that way,
-// "-V" for version, say. Printing the help for -h or --help sets printed.
+// "-V" for version, say. What cobra prints goes to out.
 //
 // The help is cobra's, from its default templates: each command's Use, and its Long or else its
 // Short, then its options with their usages, which name their value in backquotes (`NAME`). Its
 // text is here and nowhere else; cobra wraps none of it, so the lines break by hand, within 80
-// columns. help, -h and --help print it through fail.Print, and it lists the commands in the
-// order they are added here rather than by name.
+// columns. help, -h and --help print it to out, which run prints through fail.Print, and it lists
+// the commands in the order they are added here rather than by name.
 //
 // cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE".
-// help takes one of cld's commands at most, version is a command rather than cobra's --version
-// and -v, and there is no completion command. Every command reads its options up to the first
-// argument, which pflag would otherwise pass over, and takes no argument but help's COMMAND and
-// resume's SESSION: the first one left - after COMMAND or SESSION, the next - or a "--", which
+// help takes one of cld's commands at most, and version is a command rather than cobra's
+// --version and -v. Every command reads its options up to the first argument, which pflag would
+// otherwise pass over, and takes no argument but help's COMMAND, resume's SESSION and
+// completion's SHELL: the first one left - after COMMAND or SESSION, the next - or a "--", which
 // pflag would drop, is refused.
-func commandLine(typed string, printed *error) *cobra.Command {
+//
+// Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
+// on every TAB. join -n offers the sessions list shows (see sessionNames), help the commands, and
+// nothing offers file names, as no argument of cld's is a file.
+func commandLine(typed string, out io.Writer) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
 		Use: "cld",
@@ -78,10 +114,12 @@ What claude starts through tmux runs on that server too, and ends with it.
 
 Detach with C-q d; C-q C-q sends C-q to claude. A session whose claude fails
 stays, showing why, until cld kill ends it.`,
-		SilenceErrors:     true,
-		SilenceUsage:      true,
-		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
+	// Before completion is made: its commands write their scripts to the output the root has then.
+	root.SetOut(out)
+	root.CompletionOptions.SetDefaultShellCompDirective(cobra.ShellCompDirectiveNoFileComp)
 	root.SetFlagErrorFunc(flagError(typed))
 
 	newCommand := &cobra.Command{
@@ -106,7 +144,8 @@ stays, showing why, until cld kill ends it.`,
 		}
 		// new starts claude, so it checks claude's version too, as resume does: after the checks
 		// every command makes, so that cld runs claude only once the tools are found and tmux's
-		// version passes, and before any other tmux command. join, kill and list never run claude.
+		// version passes, and before any other tmux command. join, kill, list and completion never
+		// run claude.
 		claude, err := session.CheckClaude()
 		if err != nil {
 			return err
@@ -163,6 +202,9 @@ claude's picker. SESSION comes after the options and does not start with "-".`,
 			return err
 		}
 		return tmux.Join(suffix)
+	}
+	if err := join.RegisterFlagCompletionFunc("name", sessionNames); err != nil {
+		panic(err)
 	}
 
 	kill := &cobra.Command{
@@ -223,12 +265,12 @@ list. cld list | cat prints the list only.`,
 	}
 
 	// cobra would add "[flags]" at the end of help's usage line, after COMMAND, where cld reads no
-	// options. Unlike cobra's help command, cld's completes no command names after help
-	// (ValidArgsFunction): cld has no completion yet (#25).
+	// options. cobra's own help command completes COMMAND, and so does cld's.
 	help := &cobra.Command{
 		Use:                   "help [flags] [COMMAND]",
 		Short:                 "show this help, or the help of COMMAND",
 		Args:                  helpArguments(typed),
+		ValidArgsFunction:     commandNames,
 		DisableFlagsInUseLine: true,
 	}
 
@@ -255,30 +297,111 @@ list. cld list | cat prints the list only.`,
 	}
 	root.AddCommand(newCommand, resume, join, kill, list, versionCommand)
 	root.SetHelpCommand(help)
+	completionCommand(root)
 
-	// cobra's own help function, which cld's calls, writes the help to stdout and drops the error
-	// of a write that fails, which would end cld with status 0: the help goes to a buffer
-	// instead, which fail.Print prints.
+	// cobra's own help function, which cld's calls, writes the help to the command's output, out
+	// (see run). The help command is set with SetHelpCommand, so this one serves help as well as
+	// -h and --help, those of completion's commands included.
 	cobraHelp := root.HelpFunc()
-	printHelp := func(c *cobra.Command) error {
+	showHelp := func(c *cobra.Command) {
 		// Execute has moved the help command after the others as it ran: version goes back after
 		// it, where cld lists version.
 		root.RemoveCommand(versionCommand)
 		root.AddCommand(versionCommand)
-		var text bytes.Buffer
-		c.SetOut(&text)
 		cobraHelp(c, nil)
-		c.SetOut(nil)
-		return fail.Print(text.String())
 	}
-	root.SetHelpFunc(func(c *cobra.Command, _ []string) { *printed = printHelp(c) })
+	root.SetHelpFunc(func(c *cobra.Command, _ []string) { showHelp(c) })
 	help.RunE = func(_ *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			return printHelp(root)
+			showHelp(root)
+		} else {
+			showHelp(topic(root, args[0]))
 		}
-		return printHelp(topic(root, args[0]))
+		return nil
 	}
 	return root
+}
+
+// completionCommand adds cobra's completion command to root: completion SHELL prints the
+// completion script for SHELL, bash, zsh, fish or powershell, and its help, cobra's Long, says
+// where the script goes and what it needs; completion alone shows its help, as with cobra. The
+// short descriptions, which the help of completion and of cld list, are cld's. They read their
+// arguments as cld's commands do (see commandLine), with cld's -h and --help: an unknown SHELL,
+// an argument after it or an unknown option is refused, where cobra would show the help and exit
+// 0, fail with exit status 1, or take a later option first.
+func completionCommand(root *cobra.Command) {
+	root.InitDefaultCompletionCmd()
+	completion, _, err := root.Find([]string{"completion"})
+	if err != nil || completion == root {
+		panic("cobra made no completion command")
+	}
+	completion.Short = "print the completion script for a shell"
+	completion.Long = `print the completion script for a shell, one of the commands below. With it,
+cld join -n completes the names cld list shows. The help of each command says
+where its script goes and what it needs.`
+	for _, shell := range completion.Commands() {
+		shell.Short = "print the completion script for " + shell.Name()
+	}
+	// A command cobra cannot run shows its help before it looks at the arguments: completion runs,
+	// to show it once they are read.
+	completion.RunE = func(*cobra.Command, []string) error { return pflag.ErrHelp }
+	completion.Args = func(c *cobra.Command, args []string) error {
+		if c.ArgsLenAtDash() >= 0 {
+			return unexpected("completion", "--")
+		}
+		if len(args) > 0 {
+			return fail.Usage(fmt.Sprintf("completion: unknown shell '%s' (see cld help)", args[0]))
+		}
+		return nil
+	}
+	for _, command := range append([]*cobra.Command{completion}, completion.Commands()...) {
+		name := strings.TrimPrefix(command.CommandPath(), root.Name()+" ")
+		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
+		if command != completion {
+			command.Args = noArguments(name)
+		}
+		command.Flags().SetInterspersed(false)
+		command.SetFlagErrorFunc(flagError(name))
+	}
+}
+
+// sessionNames completes the NAME of join -n: the names of the sessions list shows that start with
+// what was typed, in list's order, each described by its state. Every one is a name join takes:
+// list reads only the socket of a valid NAME, and only session cld-NAME on it (see
+// session.Tmux.Sessions). It offers no file names, and it never fails: with no server there is
+// nothing to offer, and with no tmux, one that fails, or a socket directory it cannot read
+// neither, and cobra.CompErrorln says why on stderr, which the completion scripts discard.
+func sessionNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	var sessions []session.Session
+	tmux, err := session.Find()
+	if err == nil {
+		sessions, err = tmux.Sessions(context.Background())
+	}
+	if err != nil {
+		cobra.CompErrorln(err.Error())
+	}
+	var names []cobra.Completion
+	for _, s := range sessions {
+		if strings.HasPrefix(s.Name, typed) {
+			names = append(names, cobra.CompletionWithDesc(s.Name, s.State))
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+// commandNames completes help's COMMAND, as cobra's help command does its own: the commands help
+// takes (see topic) that start with what was typed, each described by its Short. Nothing follows
+// COMMAND.
+func commandNames(c *cobra.Command, args []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	var names []cobra.Completion
+	if len(args) == 0 {
+		for _, command := range c.Root().Commands() {
+			if topic(c.Root(), command.Name()) == command && strings.HasPrefix(command.Name(), typed) {
+				names = append(names, cobra.CompletionWithDesc(command.Name(), command.Short))
+			}
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 // nameUsage is -n and --name in the help of new, resume, join and kill.

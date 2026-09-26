@@ -674,6 +674,134 @@ func TestLeavesTheSharedServerAlone(t *testing.T) {
 	}
 }
 
+// join -n completes the names of the sessions list shows - attached, detached, or with claude
+// exited - that start with what was typed, in list's order, each with its state, and then offers
+// no file names (":4", ShellCompDirectiveNoFileComp). That is cobra's __complete, which the
+// completion scripts run on every TAB; it starts no server and no claude. As list does, it asks
+// the server of each socket for its own session, and leaves out the sessions cld did not start -
+// one that claude makes, on its own session's server under another name, one made there by hand,
+// and one on the server that cld 0.3.0 and earlier shared - a session renamed by hand, whose
+// server then runs without it, and a stale socket, whose server has died. new -n, resume -n and
+// resume's SESSION offer nothing, and neither do the other arguments, file names included.
+func TestCompleteNames(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	if result := s.RunCld(nil, "__complete", "join", "-n", ""); result.Code != 0 || result.Stdout != ":4\n" {
+		t.Errorf("without a server: exit %d, stdout %q, want exit 0, stdout %q", result.Code, result.Stdout, ":4\n")
+	}
+	if sessions := s.Sessions(); len(sessions) != 0 {
+		t.Errorf("sessions %q after completing without a server, want none", sessions)
+	}
+
+	startCld(t, s, "tmux", nil, "new", "-n", "rev")
+	rev := s.WaitProbes(1)[0]
+	waitClients(t, s, 1)
+	for i, name := range []string{"review", "cafe", "bad", "gone"} {
+		term := startCld(t, s, "tmux", nil, "new", "-n", name)
+		s.WaitProbes(2 + i)
+		waitClients(t, s, 2)
+		term.Keys("C-q", "d")
+		sandbox.WaitFor(t, 10*time.Second, "cld "+name+" to detach", func() bool { return !term.Running() })
+	}
+	for _, probe := range s.Probes() {
+		if probe.Argv[1] == "cld-bad" {
+			probe.Send("exit 1")
+		}
+	}
+	sandbox.WaitFor(t, 10*time.Second, "claude bad to exit", func() bool { return s.Format("cld-bad", "#{pane_dead}") == "1" })
+	// Renamed by hand, session cafe is no longer cld-cafe, which its server runs without.
+	s.MustTmux("cld-cafe", "rename-session", "-t", "=cld-cafe", "cld-café")
+	// A server that dies leaves its socket behind.
+	pid, err := strconv.Atoi(s.MustTmux("cld-gone", "list-sessions", "-F", "#{pid}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	sandbox.WaitFor(t, 10*time.Second, "server cld-gone to die", func() bool {
+		_, err := s.Tmux("cld-gone", "list-sessions")
+		return err != nil
+	})
+	if _, err := os.Stat(filepath.Join(s.SocketDir(), "cld-gone")); err != nil {
+		t.Fatalf("the dead server's socket: %v", err)
+	}
+	rev.Send("tmux new-session -d -s cld-inside sleep 600")
+	sandbox.WaitFor(t, 10*time.Second, "claude's tmux to make a session", func() bool {
+		return slices.Contains(s.Sessions(), "cld-rev/cld-inside")
+	})
+	s.MustTmux("cld-review", "new-session", "-d", "-s", "cld-by-hand", "sleep", "600")
+	s.MustTmux("cld", "-f", "/dev/null", "new-session", "-d", "-s", "cld-old", "sleep", "600")
+	want := []string{"cld-bad", "cld-cafe/cld-café", "cld-rev", "cld-rev/cld-inside", "cld-review", "cld-review/cld-by-hand"}
+	if sessions := s.Sessions(); !slices.Equal(sessions, want) {
+		t.Fatalf("sessions %q, want %q", sessions, want)
+	}
+	probes := len(s.Probes())
+
+	listed := []string{"bad", "rev", "review"}
+	names := []string{"bad\texited", "rev\tattached", "review\tdetached"}
+	result := s.RunCld(nil, "list")
+	var shown []string
+	for _, line := range strings.Split(strings.TrimSuffix(result.Stdout, "\n"), "\n")[1:] {
+		shown = append(shown, strings.Fields(line)[0])
+	}
+	if result.Code != 0 || !slices.Equal(shown, listed) {
+		t.Errorf("list: exit %d, names %q, want %q:\n%s", result.Code, shown, listed, result.Stdout)
+	}
+
+	// offered is what __complete prints for names, each one line, and then the directive.
+	offered := func(names ...string) string {
+		return strings.Join(append(names, ":4"), "\n") + "\n"
+	}
+	all := offered(names...)
+	var bare []string
+	for _, name := range names {
+		bare = append(bare, strings.Split(name, "\t")[0])
+	}
+	notUTF8 := map[string]string{"LC_ALL": "", "LC_CTYPE": "", "LANG": "C"}
+	for _, test := range []struct {
+		args []string
+		env  map[string]string
+		want string
+	}{
+		{[]string{"__complete", "join", "-n", ""}, nil, all},
+		{[]string{"__complete", "join", "--name", ""}, nil, all},
+		{[]string{"__complete", "join", "--name="}, nil, all},
+		{[]string{"__complete", "join", "-n", "re"}, nil, offered("rev\tattached", "review\tdetached")},
+		{[]string{"__complete", "join", "-n", "revi"}, nil, offered("review\tdetached")},
+		{[]string{"__complete", "join", "-n", "x"}, nil, offered()},
+		{[]string{"__complete", "join", "-n", "caf"}, nil, offered()},
+		{[]string{"__complete", "join", "-n", "g"}, nil, offered()},
+		{[]string{"__complete", "join", "-n", "in"}, nil, offered()},
+		{[]string{"__complete", "join", "-n", "b"}, nil, offered("bad\texited")},
+		{[]string{"__complete", "join", "-n", "o"}, nil, offered()},
+		// pflag's -n=NAME; in -nNAME cobra takes the word for options, and finds none.
+		{[]string{"__complete", "join", "-n=re"}, nil, offered("rev\tattached", "review\tdetached")},
+		{[]string{"__complete", "join", "-nre"}, nil, offered()},
+		{[]string{"__completeNoDesc", "join", "-n", ""}, nil, offered(bare...)},
+		{[]string{"__complete", "join", "-n", ""}, map[string]string{"CLD_COMPLETION_DESCRIPTIONS": "0"}, offered(bare...)},
+		{[]string{"__complete", "join", "-n", ""}, notUTF8, all},
+		{[]string{"__complete", "new", "-n", ""}, nil, offered()},
+		{[]string{"__complete", "resume", "-n", ""}, nil, offered()},
+		{[]string{"__complete", "resume", ""}, nil, offered()},
+		{[]string{"__complete", "resume", "-n", "rev", ""}, nil, offered()},
+		{[]string{"__complete", "kill", "-n", ""}, nil, offered()},
+		{[]string{"__complete", "join", ""}, nil, offered()},
+		{[]string{"__complete", "list", ""}, nil, offered()},
+		// cobra answers these with ShellCompDirectiveDefault, and the shell would offer files.
+		{[]string{"__complete", "joni", "-n", ""}, nil, offered()},
+		{[]string{"__complete", "join", "-x", "-n", ""}, nil, offered()},
+		{[]string{"__complete", "list", "-n", ""}, nil, offered()},
+	} {
+		if result := s.RunCld(test.env, test.args...); result.Code != 0 || result.Stdout != test.want {
+			t.Errorf("cld %q, %v: exit %d, stdout\n%s\nwant\n%s", test.args, test.env, result.Code, result.Stdout, test.want)
+		}
+	}
+	if count := len(s.Probes()); count != probes {
+		t.Errorf("%d claude processes after completing, want %d", count, probes)
+	}
+}
+
 func TestJoinDetachesOtherClient(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

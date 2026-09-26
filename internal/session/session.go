@@ -12,6 +12,8 @@
 // (see Tmux.Kill), and `cld list` shows the sessions, asking each server for its own (see
 // Tmux.Sessions) - on a terminal as a list to pick one from with the arrow keys, to join with
 // Enter, as join does, or to kill with Ctrl+X pressed twice, as kill does (see internal/picker).
+// The shell completion that `cld completion SHELL` prints reads the same sessions, where
+// `cld join -n` completes the names `cld list` shows.
 //
 // cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
 // Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
@@ -102,7 +104,8 @@ const MaxName = 64
 // them.
 func ValidName(name string) bool { return len(name) <= MaxName && validName.MatchString(name) }
 
-// Tmux is the tmux cld runs, found and checked by Check.
+// Tmux is the tmux cld runs: found on the PATH by Find, which is all completion needs to read the
+// sessions, and checked by Check, as every command needs before it runs tmux.
 type Tmux struct {
 	path string
 }
@@ -150,20 +153,29 @@ func (v version) String() string {
 	return strings.Join(numbers, ".")
 }
 
-// Check makes the checks every command makes before it runs tmux, in this order: tmux, then
-// each of tools, on the PATH (see lookPath), and tmux's version. A tmux -V that fails ends cld
-// with its status, after its own message (see exitStatus).
-func Check(tools ...string) (*Tmux, error) {
+// Find finds tmux on the PATH (see lookPath) and checks nothing else: completion reads the
+// sessions with it on every TAB, where Check would cost a tmux -V each time.
+func Find() (*Tmux, error) {
 	path, err := lookPath("tmux")
 	if err != nil {
 		return nil, fail.Runtime("tmux is not installed")
+	}
+	return &Tmux{path: path}, nil
+}
+
+// Check makes the checks every command makes before it runs tmux, in this order: tmux, then
+// each of tools, on the PATH (see lookPath), and tmux's version. A tmux -V that fails ends cld
+// with its status, after its own message (see exitStatus). Completion makes none of them.
+func Check(tools ...string) (*Tmux, error) {
+	t, err := Find()
+	if err != nil {
+		return nil, err
 	}
 	for _, name := range tools {
 		if _, err := lookPath(name); err != nil {
 			return nil, fail.Runtime(name + " is not installed")
 		}
 	}
-	t := &Tmux{path: path}
 	// Only the major and minor version count: a letter marks a bug-fix release, so 3.7 and 3.7c
 	// alike are 3.7. Development builds pass: "tmux next-3.9" reads as 3.9, "tmux 3.8-rc2" as
 	// 3.8, and "tmux master" has no version to compare.
@@ -616,8 +628,9 @@ type Session struct {
 // on a stale one says that no server is running, which Sessions passes over too, as it passes over
 // a server that exits while it asks, when a claude exits or a cld kill runs. cld removes none
 // either: tmux replaces a stale socket under a lock, which cld would not hold, so cld could
-// remove the socket of a server that a cld new had just started there. Once ctx is done, its tmux
-// is killed.
+// remove the socket of a server that a cld new had just started there. Sessions starts no server:
+// it is list's read of the sessions, and completion's, on every TAB. Once ctx is done, its tmux is
+// killed.
 func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 	dir := socketDir()
 	sockets, err := os.ReadDir(dir)

@@ -57,6 +57,68 @@ releases publish a binary per platform instead, so that download fails once one 
 latest; an installed script keeps working until you update it with the lines above or
 `make install`.
 
+### Shell completion
+
+`cld completion SHELL` prints a completion script for bash, zsh or fish. With it loaded,
+`cld join -n <TAB>` offers the sessions `cld list` shows, each with its state - `attached`,
+`detached` or `exited` - and TAB also completes the commands and their options. cld offers no
+file names, as no argument of cld's is a file (but see bash 3.2 below), and neither
+`cld new -n`, `cld resume -n` nor `cld resume`'s `SESSION` offers anything. The script runs
+`cld` on every TAB, so the names are always current: it asks each session's tmux server, as
+`cld list` does, but never opens the interactive list. `cld completion SHELL --help` says where
+the script goes; in short:
+
+- **bash** needs the bash-completion package. With bash-completion 2 (Linux, or Homebrew's
+  `bash-completion@2` for Homebrew's bash), put the script where it loads it when needed:
+
+  ```sh
+  mkdir -p ~/.local/share/bash-completion/completions
+  cld completion bash > ~/.local/share/bash-completion/completions/cld
+  ```
+
+  or, for every user, where it loads it at startup:
+
+  ```sh
+  cld completion bash | sudo tee /etc/bash_completion.d/cld > /dev/null
+  ```
+
+  For macOS's own `/bin/bash`, 3.2, install Homebrew's `bash-completion` (1.3: `bash-completion@2`
+  needs bash 4.2 or newer), add the line its caveats show to `~/.bash_profile`, and run
+  `cld completion bash > "$(brew --prefix)/etc/bash_completion.d/cld"`. bash 3.2 cannot load it
+  with `source <(cld completion bash)`, and it lacks `compopt`: no space follows a completed name,
+  and where cld offers nothing - no session starts with what you typed, or `cld new -n` - bash
+  offers file names instead. Without bash-completion, every TAB prints
+  `_get_comp_words_by_ref: command not found`.
+- **zsh** needs `compinit` and the script as `_cld` in a directory on `$fpath`. Put it in one of
+  your own:
+
+  ```sh
+  mkdir -p ~/.zfunc
+  cld completion zsh > ~/.zfunc/_cld
+  ```
+
+  and put that directory on `$fpath` before `compinit` runs, in `~/.zshrc`:
+
+  ```sh
+  fpath=(~/.zfunc $fpath)
+  autoload -U compinit; compinit
+  ```
+
+  or, for every user, in the first directory of zsh's own `$fpath` (on Debian
+  `/usr/local/share/zsh/site-functions`, which only root can write to):
+
+  ```sh
+  cld completion zsh | sudo tee "${fpath[1]}/_cld" > /dev/null
+  ```
+
+  On macOS, cobra's help puts it in Homebrew's directory:
+  `cld completion zsh > "$(brew --prefix)/share/zsh/site-functions/_cld"`.
+- **fish**: `cld completion fish > ~/.config/fish/completions/cld.fish`.
+
+Start a new shell for it to take effect. `cld completion SHELL --no-descriptions`, or
+`CLD_COMPLETION_DESCRIPTIONS=0` in the environment, leaves out the states and the other
+descriptions.
+
 ## Usage
 
 Session `NAME` is the tmux session `cld-NAME` on a tmux server of its own, also named `cld-NAME`
@@ -80,6 +142,7 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | `cld join [-n NAME]` | attach to the session; fails if it does not exist |
 | `cld kill [-n NAME]` | end the session and its tmux server; claude exits as when its terminal closes, and what claude started through tmux ends too |
 | `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in. On a terminal, pick a session with the arrow keys and press Enter to join it, or Ctrl+X twice to kill it (see below); `cld list \| cat` prints the table |
+| `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish`, with which `cld join -n` completes the names `cld list` shows (see [Shell completion](#shell-completion)) |
 | `cld help [COMMAND]` | show the help of cld, or of one command: its options and their defaults. `cld -h` and `cld COMMAND -h` (or `--help`) do the same |
 | `cld version` | show the version |
 
