@@ -9,7 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 terminal. The product is a Go program on cobra: `cmd/cld` is the command line (commands, their
 help texts, argument errors), `internal/session` the tmux side, `internal/picker` the interactive
 `cld list` on a terminal, `internal/telemetry` `cld setup telemetry` (a local OpenTelemetry
-Collector in Docker, and claude's settings pointed at it), `internal/tool` finds the programs cld
+Collector in Docker, and claude's settings pointed at it), `internal/configfile` edits claude's
+settings in place, `internal/tool` finds the programs cld
 runs on the `PATH` (and ends cld as a shell would when one cannot run), and `internal/fail`
 carries exit statuses up to `main`. Everything else is its test harness (Go, under `tests/`), docs
 and CI.

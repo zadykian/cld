@@ -1203,7 +1203,11 @@ Where the implementation departs from the plan above:
   strings quoted as JSON strings are, which YAML reads the same (`[::1]:4317` would otherwise be
   a list). docker's failures are told apart by what it prints and its status: `No such
   container` from `inspect` means none, and `docker run` exits with 125 when docker fails and
-  with the collector's status otherwise.
+  with the collector's status otherwise. The file's side of the edit - reading and writing it,
+  its mode and a symbolic link kept, and a JSON file's members, with an object that changes
+  written one member a line in the file's indentation - is `internal/configfile`, and only the
+  env keys are `internal/telemetry`'s, so that other commands can edit claude's files the same
+  way.
 - The tests fake docker with the probe, which TestMain links as `docker` next to `claude`, so
   every sandbox finds it before the real one. It records each call, with its environment, in
   `docker.jsonl`, keeps the one container's state in a file (`inspect`, `rm -f` and `run -d` read
