@@ -60,18 +60,21 @@ type Server struct {
 }
 
 // Servers are the MCP servers setup project takes, in the order it writes them: the servers
-// built into GoLand and Rider (2025.2 and newer, Settings | Tools | MCP Server), over streamable
-// HTTP at the ports they have in the maintainer's projects - an IDE takes the first free port from
-// 64342, so these are that setup's, not defaults - and JetBrains Context's, which its CLI serves
-// over stdio. jbcontext is allowed as a command too: its hooks and instructions have claude run
-// jbcontext search.
+// built into GoLand and Rider (Settings | Tools | MCP Server), over streamable HTTP, and JetBrains
+// Context's, which its CLI serves over stdio. jbcontext is allowed as a command too: its hooks and
+// instructions have claude run jbcontext search.
+//
+// .mcp.json is shared through git, and each developer's IDE listens on a port of its own: 64342
+// plus an offset per product by default - GoLand's 80, Rider's 140 in 2026.2 - or the one its
+// MCP Server settings give. So an IDE's port is a variable that claude expands as it reads the
+// file, GOLAND_MCP_PORT or RIDER_MCP_PORT, with the default after it for whoever sets none.
 var Servers = []Server{
-	{"goland", "GoLand's MCP server, http://127.0.0.1:64422/stream",
-		`{"type": "http", "url": "http://127.0.0.1:64422/stream"}`, []string{"mcp__goland"}},
+	{"goland", "GoLand's MCP server, port $GOLAND_MCP_PORT or 64422",
+		`{"type": "http", "url": "http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream"}`, []string{"mcp__goland"}},
 	{"jbcontext", "JetBrains Context's semantic code search, jbcontext mcp",
 		`{"type": "stdio", "command": "jbcontext", "args": ["mcp"]}`, []string{"Bash(jbcontext:*)", "mcp__jbcontext"}},
-	{"rider", "Rider's MCP server, http://127.0.0.1:64482/stream",
-		`{"type": "http", "url": "http://127.0.0.1:64482/stream"}`, []string{"mcp__rider"}},
+	{"rider", "Rider's MCP server, port $RIDER_MCP_PORT or 64482",
+		`{"type": "http", "url": "http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream"}`, []string{"mcp__rider"}},
 }
 
 // allow is what the settings let claude do without asking, as this repository's own

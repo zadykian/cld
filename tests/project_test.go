@@ -38,9 +38,9 @@ var (
 		"rider":     {"mcp__rider"},
 	}
 	mcpEntries = map[string]string{
-		"goland":    "    \"goland\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:64422/stream\"\n    }",
+		"goland":    "    \"goland\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream\"\n    }",
 		"jbcontext": "    \"jbcontext\": {\n      \"type\": \"stdio\",\n      \"command\": \"jbcontext\",\n      \"args\": [\n        \"mcp\"\n      ]\n    }",
-		"rider":     "    \"rider\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:64482/stream\"\n    }",
+		"rider":     "    \"rider\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream\"\n    }",
 	}
 )
 
@@ -260,10 +260,11 @@ func TestSetupProject(t *testing.T) {
 
 // Files that exist: cld sets the keys it manages - the last of a key given twice, which claude
 // reads - adds the entries that permissions.allow and enabledMcpjsonServers lack after theirs,
-// replaces a server's entry that differs from its own, whole, and keeps everything else as the
-// file has it: its order, indentation and mode, the values it leaves - <, > and & in them - and
-// the other servers, a server written otherwise but the same included. settings.local.json is
-// left as it is, a symbolic link to no file included, and .gitignore gets the lines it lacks.
+// replaces a server's entry that differs from its own, whole - rider's here, with its port written
+// out and a header - and keeps everything else as the file has it: its order, indentation and mode,
+// the values it leaves - <, > and & in them - and the other servers, a server written otherwise but
+// the same included. settings.local.json is left as it is, a symbolic link to no file included, and
+// .gitignore gets the lines it lacks.
 func TestSetupProjectEditsFiles(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

@@ -423,9 +423,11 @@ Then, in a git work tree, it checks that git does not ignore the settings.`,
 	}
 	command.SetFlagErrorFunc(flagError(typed))
 	mcp := command.Flags().StringArray("mcp", nil, "an MCP `SERVER` for claude in the project: goland or rider,\n"+
-		"the IDE's own server at its port 64422 or 64482 on\n"+
-		"127.0.0.1, or jbcontext, JetBrains Context's code search;\n"+
-		"give --mcp again, or separate them with commas")
+		"the IDE's own server on 127.0.0.1, at the port in\n"+
+		"GOLAND_MCP_PORT or RIDER_MCP_PORT where claude runs, else\n"+
+		"the IDE's default, 64422 or 64482; or jbcontext, JetBrains\n"+
+		"Context's code search. Give --mcp again, or separate them\n"+
+		"with commas")
 	command.RunE = func(*cobra.Command, []string) error {
 		chosen := map[string]bool{}
 		for _, list := range *mcp {

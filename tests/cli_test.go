@@ -287,9 +287,9 @@ func TestCompleteCommands(t *testing.T) {
 		"help\tshow this help, or the help of COMMAND\n"
 	project := "project\tset claude up in the project in the current directory\n"
 	telemetry := "telemetry\tsend claude's telemetry through a local OpenTelemetry collector\n"
-	goland := "goland\tGoLand's MCP server, http://127.0.0.1:64422/stream\n"
+	goland := "goland\tGoLand's MCP server, port $GOLAND_MCP_PORT or 64422\n"
 	jbcontext := "jbcontext\tJetBrains Context's semantic code search, jbcontext mcp\n"
-	rider := "rider\tRider's MCP server, http://127.0.0.1:64482/stream\n"
+	rider := "rider\tRider's MCP server, port $RIDER_MCP_PORT or 64482\n"
 	shells := "bash\tprint the completion script for bash\n" +
 		"zsh\tprint the completion script for zsh\n" +
 		"fish\tprint the completion script for fish\n" +
@@ -1119,7 +1119,7 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		{[]string{"setup", "project"}, "tmux 3.6b", "", 0,
 			"Created .claude/settings.json\nCreated .claude/settings.local.json\nCreated .gitignore\n", "", false},
 		{[]string{"__complete", "setup", "project", "--mcp", "r"}, "tmux 3.6b", "", 0,
-			"rider\tRider's MCP server, http://127.0.0.1:64482/stream\n:4\n",
+			"rider\tRider's MCP server, port $RIDER_MCP_PORT or 64482\n:4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 	} {
 		name := strings.Join(test.args, " ") + ", " + test.tmuxVersion

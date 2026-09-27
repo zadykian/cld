@@ -16,6 +16,8 @@ Usage:
 Flags:
   -h, --help         help for project
       --mcp SERVER   an MCP SERVER for claude in the project: goland or rider,
-                     the IDE's own server at its port 64422 or 64482 on
-                     127.0.0.1, or jbcontext, JetBrains Context's code search;
-                     give --mcp again, or separate them with commas
+                     the IDE's own server on 127.0.0.1, at the port in
+                     GOLAND_MCP_PORT or RIDER_MCP_PORT where claude runs, else
+                     the IDE's default, 64422 or 64482; or jbcontext, JetBrains
+                     Context's code search. Give --mcp again, or separate them
+                     with commas

@@ -316,20 +316,28 @@ cld setup project --mcp goland,jbcontext   # or --mcp goland --mcp jbcontext
 
   | `--mcp` | Server |
   |---|---|
-  | `goland` | GoLand's own MCP server, `http://127.0.0.1:64422/stream` |
-  | `rider` | Rider's own MCP server, `http://127.0.0.1:64482/stream` |
+  | `goland` | GoLand's own MCP server, `http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream` |
+  | `rider` | Rider's own MCP server, `http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream` |
   | `jbcontext` | JetBrains Context's semantic code search, `jbcontext mcp` over stdio; also allows `Bash(jbcontext:*)`, for its `jbcontext search` |
 
-  Turn the IDE's server on in Settings › Tools › MCP Server (2025.2 or newer). The ports are
-  fixed: an IDE takes the first free port from 64342 up, so check that yours has the one above
-  ("Copy HTTP Stream Config" shows it). claude asks nothing about a server the settings approve,
-  once you have accepted the folder's workspace trust.
+  Turn the IDE's server on in Settings › Tools › MCP Server. claude asks nothing about a server
+  the settings approve, once you have accepted the folder's workspace trust.
+
+  `.mcp.json` is shared through git, and each developer's IDE listens on a port of its own, so
+  the port is a variable that claude expands as it reads the file, with the IDE's default after
+  it: 64342 plus an offset per product, 64422 for GoLand and 64482 for Rider (2026.2), unless the
+  IDE's MCP Server settings give another. Where yours listens elsewhere ("Copy HTTP Stream Config"
+  there shows its URL), set `GOLAND_MCP_PORT` or `RIDER_MCP_PORT` where claude runs: in your
+  shell's profile, or in the `env` of your own `~/.claude/settings.json`. Not in the project's
+  `.claude/settings.local.json`: claude 2.1.283 does not expand `.mcp.json` from it. The port is
+  your machine's, so one setting serves every project.
 
 Where the files exist, cld adds what they lack and keeps everything else: it sets the keys above
 where their values differ, adds the entries `permissions.allow` and `enabledMcpjsonServers` lack
-after theirs, replaces a server's entry in `.mcp.json` that differs from its own, whole, and
-appends the `.gitignore` lines that are missing - `.claude/*` and `!.claude/settings.json`, without
-the leading slash, count as there. Keys, entries and servers of your own stay, in their order and
+after theirs, replaces a server's entry in `.mcp.json` that differs from its own, whole, and appends
+the `.gitignore` lines that are missing - `.claude/*` and `!.claude/settings.json`, without the
+leading slash, count as there. An IDE server whose port `.mcp.json` has written out, as cld wrote it
+before, gets the variable. Keys, entries and servers of your own stay, in their order and
 indentation; cld removes nothing, so a server given before stays too. Running it again changes
 nothing. It reads every file before it writes any, so a file it cannot edit - not valid JSON, say -
 stops it with nothing changed; and it prints what it created, updated or left as it was.
