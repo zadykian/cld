@@ -3,10 +3,12 @@ claude, whose window takes the size of the terminal used last. With
 --detach-others, those terminals are detached.
 
 Usage:
-  cld join [-n NAME] [--detach-others] [flags]
+  cld join (-n NAME | -s SUFFIX) [--detach-others] [flags]
 
 Flags:
       --detach-others   detach any other terminal attached to the session
   -h, --help            help for join
   -n, --name NAME       session NAME: up to 64 letters, digits, "_" and "-",
-                        starting with a letter or digit (default "main")
+                        starting with a letter or digit
+  -s, --suffix SUFFIX   session REPO-SUFFIX, REPO being the name of the git
+                        repository here; SUFFIX alone outside one
