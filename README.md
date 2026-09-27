@@ -4,19 +4,9 @@
 
 Run [Claude Code](https://code.claude.com) in named sessions, each on a private tmux server of its
 own: detach, close the terminal, and reattach later - from the same terminal or another one -
-without losing the conversation.
-
-```
-cld new               # create the session "cld-main" in the current directory
-cld new -n review     # create the session "cld-review"
-cld new -n fix -w     # create "cld-fix", with claude in the git worktree "fix"
-cld join -n review    # attach to it again, from this terminal or another one
-cld list              # pick a session with the arrow keys: Enter joins it, Ctrl+X twice kills it
-cld kill -n review    # end the session and its claude
-cld resume -n review  # create "cld-review" again, with claude resuming its conversation
-cld setup project --mcp goland   # claude's project settings, with GoLand's MCP server
-cld setup telemetry --local http://127.0.0.1:4319   # claude's telemetry to the IDE (Linux)
-```
+without losing the conversation. The server ignores your `~/.tmux.conf` and is set up for claude:
+Shift+Enter, the mouse wheel, focus events, notifications and clipboard copies work, and the prefix
+is `C-q`, which claude leaves free.
 
 ## Install
 
@@ -25,131 +15,49 @@ os=$(uname -s | tr '[:upper:]' '[:lower:]') arch=$(uname -m); case $arch in x86_
 mkdir -p ~/.local/bin && curl -fsSL "https://github.com/zadykian/cld/releases/latest/download/cld-$os-$arch" -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld
 ```
 
-`~/.local/bin` has to be on your `PATH`. Each release publishes cld for Linux and macOS, on amd64
-(x86_64) and arm64, and `cld.sha256`, which lists their checksums. From a clone, `make install`
-builds cld and installs it there (`make install PREFIX=/usr/local` for another prefix); it needs
-Go 1.26 or newer.
+`~/.local/bin` has to be on your `PATH`. Releases publish cld for Linux and macOS on amd64 and
+arm64, with their checksums in `cld.sha256`. From a clone, `make install` builds cld into
+`~/.local/bin` (`PREFIX=/usr/local` for another prefix); it needs Go 1.26 or newer.
 
 Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
-for `cld new --worktree`; Docker, on Linux, for `cld setup telemetry`. `cld setup project` needs
-neither tmux nor claude.
+for `cld new -w`; Docker, on Linux, for `cld setup telemetry`.
 
-Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a - which cld
-refuses, naming the version it found. [Homebrew](https://formulae.brew.sh/formula/tmux) has tmux
-3.7 on macOS and Linux, as do Debian testing and unstable; or build a
-[tmux release](https://github.com/tmux/tmux/releases) from source. Or stay on cld 0.3.0, the
-last release that runs on tmux 3.3 to 3.6:
-
-```sh
-curl -fsSL https://github.com/zadykian/cld/releases/download/v0.3.0/cld -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld
-```
-
-After upgrading tmux, end the sessions started before (`cld list`, then `cld kill -n NAME`): cld
-checks the version of the `tmux` on the `PATH`, and each `cld new` or `cld resume` starts a server
-of its own with it, but a session's server keeps running the tmux that started it until the
-session ends.
-
-Before they start claude, `cld new` and `cld resume` run `claude --version` in the directory claude
-will start in and refuse an older claude, naming the version they found; a newer one always passes.
-They then start that same `claude`, by its path: cld skips relative `PATH` entries (`.`, or an
-empty one). Update claude the way you installed it: `claude update` for the native installer, or
-through Homebrew, npm or your system's package manager.
-
-cld 0.3.0 and earlier were a bash script, downloaded from `releases/latest/download/cld`. Later
-releases publish a binary per platform instead, so that download fails once one of them is the
-latest; an installed script keeps working until you update it with the lines above or
-`make install`.
+Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a.
+[Homebrew](https://formulae.brew.sh/formula/tmux) has 3.7 on macOS and Linux, as do Debian testing
+and unstable; or build a [tmux release](https://github.com/tmux/tmux/releases) from source. cld
+0.3.0 still runs on tmux 3.3 to 3.6: see [Upgrading](docs/guide.md#upgrading), which also covers
+upgrading tmux and cld.
 
 ### Shell completion
 
-`cld completion SHELL` prints a completion script for bash, zsh or fish. With it loaded,
-`cld join -n <TAB>` offers the sessions `cld list` shows, each with its state - `attached`,
-`detached` or `exited` - and TAB also completes the commands and their options, and the MCP
-servers of `cld setup project --mcp`, the next one after a comma. cld offers no file names (but
-see bash 3.2 below), not even for `cld setup telemetry --collector-config FILE`, and neither
-`cld new -n`, `cld resume -n`, `cld resume`'s `SESSION` nor the URLs and port of
-`cld setup telemetry` offer anything. The script runs `cld` on every TAB, so the names are
-always current: it asks each session's tmux server, as `cld list` does, but never opens the
-interactive list. `cld completion SHELL --help` says where the script goes; in short:
+`cld completion SHELL` prints a completion script for bash, zsh or fish: TAB then completes the
+commands and their options, the sessions of `cld join -n` and the servers of
+`cld setup project --mcp`. `cld completion SHELL --help` says where the script goes; for fish:
 
-- **bash** needs the bash-completion package. With bash-completion 2 (Linux, or Homebrew's
-  `bash-completion@2` for Homebrew's bash), put the script where it loads it when needed:
+```sh
+cld completion fish > ~/.config/fish/completions/cld.fish
+```
 
-  ```sh
-  mkdir -p ~/.local/share/bash-completion/completions
-  cld completion bash > ~/.local/share/bash-completion/completions/cld
-  ```
-
-  or, for every user, where it loads it at startup:
-
-  ```sh
-  cld completion bash | sudo tee /etc/bash_completion.d/cld > /dev/null
-  ```
-
-  For macOS's own `/bin/bash`, 3.2, install Homebrew's `bash-completion` (1.3: `bash-completion@2`
-  needs bash 4.2 or newer), add the line its caveats show to `~/.bash_profile`, and run
-  `cld completion bash > "$(brew --prefix)/etc/bash_completion.d/cld"`. bash 3.2 cannot load it
-  with `source <(cld completion bash)`, and it lacks `compopt`: no space follows a completed name,
-  and where cld offers nothing - no session starts with what you typed, or `cld new -n` - bash
-  offers file names instead. Without bash-completion, every TAB prints
-  `_get_comp_words_by_ref: command not found`.
-- **zsh** needs `compinit` and the script as `_cld` in a directory on `$fpath`. Put it in one of
-  your own:
-
-  ```sh
-  mkdir -p ~/.zfunc
-  cld completion zsh > ~/.zfunc/_cld
-  ```
-
-  and put that directory on `$fpath` before `compinit` runs, in `~/.zshrc`:
-
-  ```sh
-  fpath=(~/.zfunc $fpath)
-  autoload -U compinit; compinit
-  ```
-
-  or, for every user, in the first directory of zsh's own `$fpath` (on Debian
-  `/usr/local/share/zsh/site-functions`, which only root can write to):
-
-  ```sh
-  cld completion zsh | sudo tee "${fpath[1]}/_cld" > /dev/null
-  ```
-
-  On macOS, cobra's help puts it in Homebrew's directory:
-  `cld completion zsh > "$(brew --prefix)/share/zsh/site-functions/_cld"`.
-- **fish**: `cld completion fish > ~/.config/fish/completions/cld.fish`.
-
-Start a new shell for it to take effect. `cld completion SHELL --no-descriptions`, or
-`CLD_COMPLETION_DESCRIPTIONS=0` in the environment, leaves out the states and the other
-descriptions.
+The [guide](docs/guide.md#shell-completion) has bash and zsh, macOS's bash 3.2 included.
 
 ## Usage
 
-Session `NAME` is the tmux session `cld-NAME` on a tmux server of its own, also named `cld-NAME`
-(`tmux -L cld-NAME`), running `claude --name cld-NAME`. A name consists of up to 64 ASCII letters,
-digits, `_` and `-`; without `-n` it is `main`. Under a long `TMUX_TMPDIR` fewer fit: the path of
-the server's socket, `$TMUX_TMPDIR/tmux-UID/cld-NAME` with its symlinks resolved (on macOS `/tmp`
-is `/private/tmp`), has to stay within 103 bytes on macOS and 107 on Linux, and tmux otherwise
-fails with `File name too long`.
-
-Each session starts with [Remote Control](https://code.claude.com/docs/en/remote-control) on, so
-you can also continue it from claude.ai or the Claude app: `cld new` and `cld resume` pass claude
-`--settings '{"remoteControlAtStartup":true}'`, which overrides the "Enable Remote Control for all
-sessions" setting in `/config`. claude still keeps it off where your organisation's policy does,
-or where the project's `.claude/settings.json` or `.claude/settings.local.json` sets
-`remoteControlAtStartup` to `false`.
+Session `NAME` - `main` without `-n` - is the tmux session `cld-NAME` on a tmux server of its own,
+`tmux -L cld-NAME`, running `claude --name cld-NAME` with
+[Remote Control](https://code.claude.com/docs/en/remote-control) on, so that you can also continue
+it from claude.ai or the Claude app.
 
 | Command | Action |
 |---|---|
-| `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; fails if it exists. With `-w` (`--worktree`), claude works in the git worktree `NAME` (see below) |
-| `cld resume [-n NAME] [SESSION]` | create the session as `cld new` does, without `-w`, with claude resuming the conversation named `cld-NAME`, or `SESSION`, instead of starting one (see below) |
-| `cld join [-n NAME]` | attach to the session; fails if it does not exist |
-| `cld kill [-n NAME]` | end the session and its tmux server; claude exits as when its terminal closes, and what claude started through tmux ends too |
-| `cld list` | list the sessions cld started: name, whether a terminal is attached (or claude exited), and the directory claude is in. On a terminal, pick a session with the arrow keys and press Enter to join it, or Ctrl+X twice to kill it (see below); `cld list \| cat` prints the table |
-| `cld setup project [--mcp SERVER]` | write claude's project settings in the current directory, `.claude/settings.json` and `.claude/settings.local.json`, have git ignore `.claude` but for the settings, and with `--mcp` add MCP servers - `goland`, `jbcontext`, `rider` - to `.mcp.json` (see [Project settings](#project-settings)) |
-| `cld setup telemetry [--local URL] [--remote URL] [--port PORT] [--collector-config FILE]` | run a local OpenTelemetry collector for claude's telemetry and point claude's settings at it (see [Telemetry](#telemetry)); needs Docker, Linux only |
-| `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish`, with which `cld join -n` completes the names `cld list` shows (see [Shell completion](#shell-completion)) |
-| `cld help [COMMAND]` | show the help of cld, or of one command: its options and their defaults. `cld -h` and `cld COMMAND -h` (or `--help`) do the same |
+| `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `NAME` |
+| `cld resume [-n NAME] [SESSION]` | create the session with claude resuming the conversation `cld-NAME`, or `SESSION` |
+| `cld join [-n NAME]` | attach to the session, detaching any other terminal from it |
+| `cld kill [-n NAME]` | end the session, its claude and its tmux server |
+| `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
+| `cld setup project [--mcp SERVER]` | set claude up in the project in the current directory |
+| `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
+| `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish` |
+| `cld help [COMMAND]` | show the help of cld, or of a command; `-h` and `--help` do the same |
 | `cld version` | show the version |
 
 | Keys | Action |
@@ -157,311 +65,88 @@ or where the project's `.claude/settings.json` or `.claude/settings.local.json` 
 | `C-q d` | detach; claude keeps running |
 | `C-q C-q` | send `C-q` to claude |
 
-On a terminal, `cld list` shows the sessions full screen, the first one selected, with its keys
-at the bottom:
-
 | Keys in `cld list` | Action |
 |---|---|
 | `↑` / `↓` | select a session |
-| `Enter` | join it, as `cld join -n NAME` does: another terminal attached to it is detached |
-| `Ctrl+X` | ask to kill it: the bottom line asks for `Ctrl+X` again |
-| `Ctrl+X` again, within two seconds | kill it with its tmux server, as `cld kill -n NAME` does: claude exits, and a terminal attached to it is detached |
-| `Esc`, once `Ctrl+X` has asked | keep the session; the list stays open |
+| `Enter` | join it |
+| `Ctrl+X` twice within two seconds | kill it; `Esc` after the first keeps it |
 | `Esc`, `Ctrl+C` | leave, printing the table |
 
-After the first `Ctrl+X`, two seconds without the second one also keep the session, and any other
-key keeps it and then does what it does: an arrow moves the selection, `Enter` joins, `Ctrl+C`
-leaves. After a kill the list reads the sessions again and selects the row that took the killed
-one's place, or the one above it. `Ctrl+X` then does nothing until you have not pressed it for a
-second, or pressed another key: a key held down repeats, and the second `Ctrl+X` held a little too
-long would otherwise go on to kill the newly selected session, and the next. Like `cld kill`, the
-list leaves a `cld new -w` worktree where it is, and the conversation stays: after a kill by
-mistake, `cld resume -n NAME` brings it back (see Resuming a conversation).
-The state `attached` counts terminals only: someone on the session from claude.ai or the Claude
-app through Remote Control does not show, and a kill ends the session for them too.
-
-Other keys do nothing, keys with `Alt` among them: terminals send those as `Esc` and the key, so
-`Esc` followed at once by another key is that key with `Alt` - but for `Esc` itself: `Esc` twice,
-or `Alt+Esc`, leaves as `Esc` does.
-
-If the session has ended when you press Enter or the second `Ctrl+X`, the list says so at the
-bottom, reads the sessions again and stays open. The second `Ctrl+X` also ends nothing when the
-session was ended and made again under the same name since the list read it: its claude is another
-one. The list reads the sessions only then, after a kill and when it opens, so a session made or
-ended elsewhere shows once you leave and run `cld list` again. Where its output or input is not a
-terminal (`cld list | cat`, `$(cld list)`), `TERM` is unset or `dumb`, it runs in the background
-(`cld list &`), or in a pane of one of cld's tmux servers - claude's external editor, say -
-`cld list` prints the table and exits, as before; with no sessions it prints nothing. A script
-that leaves `cld list` the terminal gets the list and waits for a key: pipe it (`cld list | cat`)
-for the table.
-
-If claude exits with an error - it could not start, say, or found no conversation with the
-session ID `cld resume` gave it - its session stays open with claude's message on screen and a
-line on how to end it: `C-q d` detaches, `cld kill -n NAME` ends the session. `cld join -n NAME`
-shows the line again, also when claude exited with no terminal attached. `cld list` shows such a
-session as `exited`. Leaving claude the usual ways (`/exit`, `Ctrl+C` twice, `Ctrl+D` twice)
-closes the session.
-
-Joining from a second terminal detaches the first one; claude keeps running in its directory,
-wherever you join from.
-
-Each session has its tmux server to itself; `tmux -L cld-NAME ls` lists what runs on session
-`NAME`'s. Whatever claude runs - its Bash tool, a hook - reaches that server with a plain `tmux`,
-and a session made that way has another name there: `cld` sees only `cld-NAME`, and `cld kill`
-ends the others with the server. Each claude also gets the environment of the shell that ran
-`cld new` or `cld resume` - `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like. If
-claude exits while sessions it started through tmux keep its server running, `cld new`,
-`cld resume`, `cld join` and `cld kill` refuse the name and point at the server; end it with
-`tmux -L cld-NAME kill-server`. Where tmux's socket directory ignores case, as it does on macOS's
-default file system, names that differ only in case share one socket: while session `a` or its
-server runs, `cld new -n A`, `cld resume -n A`, `cld join -n A` and `cld kill -n A` refuse the
-name and say that it clashes with `a`.
-
-Before 0.2.0, `cld [NAME]` attached to the session, creating it if needed; it now fails and names
-the two commands.
-
-cld 0.3.0 and earlier ran every session on one tmux server, `tmux -L cld`, where later versions do
-not look: end those sessions before upgrading, or afterwards find them with `tmux -L cld ls` and
-end them with `tmux -L cld kill-session -t =cld-NAME`, or all of them with
-`tmux -L cld kill-server`. Under a locale such as `en_US.UTF-8`, cld 0.3.0 also took names with
-non-ASCII letters or digits, such as `café`, which later versions refuse.
+Leaving claude (`/exit`, `Ctrl+C` twice) ends its session. If claude exits with an error, the
+session stays with its message on screen, as `exited` in `cld list`, until `cld kill` ends it.
+The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
 ### Resuming a conversation
 
-A session's conversation outlives the session: after `cld kill` or `Ctrl+X` in `cld list`, a
-reboot or a crashed tmux server it stays in Claude Code's history, named `cld-NAME`, until Claude
-Code removes it (after 30 days by default). `cld resume -n NAME` brings it back - after a kill by
-mistake, say - in a new session `cld-NAME`, made as `cld new` makes it, with
-`claude --resume cld-NAME` in place of a new conversation:
-
-- run it where the conversation belongs: in its directory or, in a git repository, in any checkout
-  of it, where claude looks names up. A killed session no longer shows in `cld list`, and cld keeps
-  no record of where it ran. A session ID is found from any directory. claude looks in the history
-  of the shell's `CLAUDE_CONFIG_DIR`, if you set one: it gets the environment of the shell that
-  runs `cld resume` (see above);
-- when exactly one conversation there has the name, claude resumes it. Several can have it:
-  `/clear` keeps the name for the conversation it starts, and a later `cld new -n NAME` presumably
-  gives it to a new one as well (not checked yet). claude then opens its picker with the name as
-  the search term, which may not be an exact filter: for `cld-rev` it may list `cld-review` too
-  (not checked yet);
-- `cld resume -n NAME SESSION` resumes `SESSION` instead: whatever `claude --resume` takes - a
-  session ID, a name, a search term for the picker - such as a conversation cld did not start.
-  It comes after the options, and cannot start with `-`. claude gets `--name cld-NAME` here too,
-  as in every session of cld's: it is meant to give the conversation the session's name, for the
-  next `cld resume -n NAME` to find, but how claude applies it to a resumed conversation has not
-  been checked yet;
-- claude reports what it cannot find: for a session ID that matches no conversation it prints
-  `No conversation found with session ID: ...` and exits with an error, and the session stays
-  with the message, as for any failed claude (see above). cld does not read claude's
-  transcripts, whose format is internal to Claude Code.
-
-`cld resume` refuses a name that a session holds, as `cld new` does, a session whose claude exited
-included: end it with `cld kill -n NAME` first. It cannot tell whether the conversation is open
-elsewhere - in another cld session, or in a plain `claude --resume` in another terminal. Resuming
-it twice makes two claudes write to one transcript, their messages interleaved, as the
-[Claude Code docs](https://code.claude.com/docs/en/sessions) say. When the other claude has the
-conversation's Remote Control session, Claude Code leaves Remote Control off in the resumed one
-and says so (`Remote Control not started here`), until `/remote-control` moves it over; whether a
-cld session, which turns Remote Control on as it starts, records that session in its conversation
-has not been checked yet.
+A session's conversation outlives it: after `cld kill`, a reboot or a crash it stays in Claude
+Code's history as `cld-NAME`, and `cld resume -n NAME` resumes it in a new session. Run it in the
+conversation's directory, or anywhere in its git repository. `cld resume -n NAME SESSION` resumes
+another conversation: a session ID, a name, or a search term for claude's picker. Do not resume a
+conversation that is open elsewhere: two claudes would write to one transcript, their messages
+interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions) say. See the
+[guide](docs/guide.md#resuming-a-conversation) for what is not checked yet.
 
 ### Worktrees
 
-`cld new -n NAME -w` passes `--worktree NAME` to claude, which
-[creates the worktree](https://code.claude.com/docs/en/worktrees) `.claude/worktrees/NAME` of the
-repository on the branch `worktree-NAME`, or reopens it if it exists, and works there; `cld list`
-shows its directory. As with `claude --worktree`:
-
-- gitignored files listed in `.worktreeinclude` are copied into it;
-- when claude exits it asks whether to keep the worktree.
-
-A new worktree branches from your current `HEAD`, not from the remote's default branch as
-`claude --worktree` does by default: `cld` also puts `"worktree":{"baseRef":"head"}` in the
-settings it passes claude, which overrides the `worktree.baseRef` setting.
-
-`cld kill`, and `Ctrl+X` in `cld list`, leave the worktree where it is, and `cld new -n NAME -w`
-reopens it, with a new conversation. `cld resume -n NAME`, run in the repository, resumes the
-conversation instead, and claude takes it back to its worktree - or, if the worktree is gone,
-resumes where `cld resume` runs and says so; `cld resume` has no `-w`. A worktree claude makes
-during a resumed session - for a subagent, say - branches as your settings say, by default from
-the remote's default branch: `cld resume` does not pass `"worktree":{"baseRef":"head"}`, which
-would change conversations started without `-w` too.
-
-claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
-(or `cld new`) there once first; otherwise claude says so and exits, and the session stays open
-with the message (see Usage). `cld` itself checks that the current directory is in a git
-repository.
+`cld new -n NAME -w` runs `claude --worktree NAME`: claude
+[creates the git worktree](https://code.claude.com/docs/en/worktrees) `.claude/worktrees/NAME` on
+the branch `worktree-NAME` - from your current `HEAD` - or reopens it, and works there. `cld kill`
+leaves the worktree, and `cld resume -n NAME`, run in the repository, takes the conversation back
+to it. See the [guide](docs/guide.md#worktrees).
 
 ### Project settings
 
 `cld setup project` sets claude up in the project in the current directory, as cld's own
-repository has it, and `--mcp` adds MCP servers:
+repository has it: `.claude/settings.json` shares through git what claude may do without asking,
+and a few settings more; `.claude/settings.local.json` is for your own; and `.gitignore` keeps the
+rest of `.claude` out of git. `--mcp` adds MCP servers to `.mcp.json`, which claude may then use
+without asking:
 
 ```sh
 cld setup project --mcp goland,jbcontext   # or --mcp goland --mcp jbcontext
 ```
 
-- `.claude/settings.json`, the settings the project shares through git: `$schema`, the
-  permissions in `permissions.allow` - reading, editing and writing files, web search and fetch,
-  and shell commands such as `ls`, `grep`, `git`, `go`, `dotnet`, `make`, `docker build` and
-  `gh pr view`, without asking - and `autoUpdatesChannel`, `plansDirectory`, `autoMemoryEnabled`,
-  `theme` and `autoCompactEnabled`, with the values of cld's own `.claude/settings.json`.
-- `.claude/settings.local.json`, for your own settings, which git ignores: holding its `$schema`
-  alone, and left as it is once anything is there.
-- `.gitignore`: `/.claude/*`, then `!/.claude/settings.json`, so that git ignores what claude
-  keeps in `.claude` - the local settings, plans, worktrees - but for the shared settings.
-- With `--mcp`, each server's entry in `.mcp.json`, and in `.claude/settings.json` its name in
-  `enabledMcpjsonServers`, which approves it for claude, and `mcp__NAME` in `permissions.allow`,
-  which lets claude use its tools without asking:
+| `--mcp` | Server |
+|---|---|
+| `goland` | GoLand's own MCP server (Settings › Tools › MCP Server) |
+| `rider` | Rider's own MCP server (Settings › Tools › MCP Server) |
+| `jbcontext` | JetBrains Context's semantic code search, `jbcontext mcp` |
 
-  | `--mcp` | Server |
-  |---|---|
-  | `goland` | GoLand's own MCP server, `http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream` |
-  | `rider` | Rider's own MCP server, `http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream` |
-  | `jbcontext` | JetBrains Context's semantic code search, `jbcontext mcp` over stdio; also allows `Bash(jbcontext:*)`, for its `jbcontext search` |
-
-  Turn the IDE's server on in Settings › Tools › MCP Server. claude asks nothing about a server
-  the settings approve, once you have accepted the folder's workspace trust.
-
-  `.mcp.json` is shared through git, and each developer's IDE listens on a port of its own, so
-  the port is a variable that claude expands as it reads the file, with the IDE's default after
-  it: 64342 plus an offset per product, 64422 for GoLand and 64482 for Rider (2026.2), unless the
-  IDE's MCP Server settings give another. Where yours listens elsewhere ("Copy HTTP Stream Config"
-  there shows its URL), set `GOLAND_MCP_PORT` or `RIDER_MCP_PORT` where claude runs: in your
-  shell's profile, or in the `env` of your own `~/.claude/settings.json`. Not in the project's
-  `.claude/settings.local.json`: claude 2.1.283 does not expand `.mcp.json` from it. The port is
-  your machine's, so one setting serves every project.
-
-Where the files exist, cld adds what they lack and keeps everything else: it sets the keys above
-where their values differ, adds the entries `permissions.allow` and `enabledMcpjsonServers` lack
-after theirs, replaces a server's entry in `.mcp.json` that differs from its own, whole, and appends
-the `.gitignore` lines that are missing - `.claude/*` and `!.claude/settings.json`, without the
-leading slash, count as there. An IDE server whose port `.mcp.json` has written out, as cld wrote it
-before, gets the variable. Keys, entries and servers of your own stay, in their order and
-indentation; cld removes nothing, so a server given before stays too. Running it again changes
-nothing. It reads every file before it writes any, so a file it cannot edit - not valid JSON, say -
-stops it with nothing changed; and it prints what it created, updated or left as it was.
-
-In a git work tree cld then asks git whether it still ignores `.claude/settings.json`: a pattern
-such as `.claude/` keeps git out of the whole directory, where no exception reaches, and so can
-`*.json`, or git's own excludes. cld names the pattern and where it is, and exits with status 1;
-remove it, and run `cld setup project` again.
+An IDE's port comes from `GOLAND_MCP_PORT` or `RIDER_MCP_PORT` where claude runs, or else is the
+IDE's default. cld edits files that exist in place, adding what they lack and removing nothing, so
+running it again changes nothing. See the [guide](docs/guide.md#project-settings).
 
 ### Telemetry
 
 `cld setup telemetry` sends Claude Code's
 [telemetry](https://code.claude.com/docs/en/monitoring-usage) through an
-[OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) that runs locally, in Docker,
-as the container `cld-telemetry`, and points claude's user settings at it:
+[OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) that it runs in Docker, as the
+container `cld-telemetry`, and points claude's user settings at it:
 
 ```sh
 cld setup telemetry --local http://127.0.0.1:4319 --remote http://otel.example.com:4317
 ```
 
-- `--local URL` gets traces, metrics and logs: for instance the JetBrains OpenTelemetry plugin in
-  your IDE, with a fixed port (Settings › OpenTelemetry › Common, "Use fixed OTLP server port";
-  its port is random otherwise). claude then reports spans for model requests, tool calls, MCP
-  calls and hooks, per agent, which show where a long run spends its time; they name the Bash
-  commands and MCP tools claude runs, and only the local endpoint gets them.
-- `--remote URL` gets metrics only: a team's or company's collector, say. It keeps getting them
-  while the IDE is closed; the local endpoint's data is dropped after 30 s.
-
-Give either, or both. A URL is `http://HOST:PORT` (gRPC without TLS) or `https://HOST:PORT` (TLS),
-as `OTEL_EXPORTER_OTLP_ENDPOINT` takes it. claude can send each signal to one endpoint only; the
-collector is what sends metrics to two.
-
-The collector listens on `127.0.0.1`, on a port the kernel picks the first time and that later runs
-keep, so that claude sessions already running keep reaching it; `--port PORT` picks one yourself. A
-`--local` or `--remote` URL on `127.0.0.1`, `0.0.0.0` or `localhost` cannot have the collector's
-port, which would have it send to itself: give the port of the receiver. cld validates the
-collector's config before it replaces a running collector, waits for the new one to be ready, and
-only then writes `settings.json` (`$CLAUDE_CONFIG_DIR/settings.json`, by default
-`~/.claude/settings.json`): in its `env` it sets `CLAUDE_CODE_ENABLE_TELEMETRY`,
-`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_ENDPOINT`; with
-`--local` also `OTEL_TRACES_EXPORTER`, `OTEL_LOGS_EXPORTER`, `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`
-and `OTEL_LOG_TOOL_DETAILS`, which it removes without `--local`; and it removes the per-signal
-`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,PROTOCOL}`, which would bypass the collector.
-Every other key stays as it is, such as `OTEL_RESOURCE_ATTRIBUTES` or
-`OTEL_METRIC_EXPORT_INTERVAL`. claude reads its settings when a session starts: sessions running
-then keep theirs. Run `cld setup telemetry` again to change anything; it replaces the collector and
-rewrites the settings.
-
-`--collector-config FILE` is YAML that the collector merges over cld's config: maps merge, lists
-are replaced. cld's config names its parts: the receiver `otlp`, the exporters `otlp_grpc/local`
-and `otlp_grpc/remote`, and the pipelines `traces`, `metrics` and `logs`. An auth header for the
-remote endpoint, say:
-
-```yaml
-exporters:
-  otlp_grpc/remote:
-    headers:
-      authorization: Bearer <token>
-    compression: gzip
-```
-
-To add an exporter to a pipeline, repeat the pipeline's whole `exporters` list. cld reads the file
-when it runs and hands the container a copy, as it does its own config, in an environment
-variable: edits apply when you run setup again, and `docker inspect cld-telemetry` shows them,
-secrets included. Linux takes a variable of 32 pages at most, so the file can have 131051 bytes
-with 4 KiB pages.
-
-cld waits up to 10 s for the collector to take connections on its port, where claude will send,
-whatever its log says, and only then writes the settings: a config that moves the receiver to
-another port leaves them as they were. If the new collector stops first - it cannot have a port
-your config gives it, say - cld shows the end of its log; the stopped container stays, for
-`docker logs cld-telemetry`, but Docker no longer restarts it.
-
-The container runs with `--network host`, so that `127.0.0.1` in a URL is your machine; hence
-Linux only. It runs with `--restart unless-stopped`: Docker starts it again after a reboot, until
-you stop or remove it. To turn telemetry off, remove the container (`docker rm -f cld-telemetry`)
-and the keys above from `settings.json`.
-
-### Why a private tmux server per session
-
-`cld` runs tmux with `-L cld-NAME -f /dev/null`: a server for each session, shared with no other
-session and no other tmux you use. tmux starts a pane with the environment of the shell that
-started its server, apart from `PATH` and a few variables such as `SSH_AUTH_SOCK`; on a server of
-its own, each claude gets the environment of the shell that ran `cld new` or `cld resume`. What
-claude runs through tmux stays on its session's server. cld's options never touch any other tmux
-you use, and your `~/.tmux.conf` never touches claude:
-
-- `extended-keys on` lets modified keys such as Shift+Enter reach claude when it asks for them;
-- the `extkeys` terminal feature for `xterm*` terminals, as
-  [Claude Code's docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) recommend:
-  tmux asks the terminal for modified keys only when it knows the terminal supports them, and it
-  does not recognise every terminal that does;
-- `mouse on` and `focus-events on`: claude hints when either is off. With the mouse on, the wheel
-  over a program that draws in the main screen without the mouse - claude outside fullscreen, a
-  shell - scrolls the pane's history; claude's fullscreen transcript gets the wheel either way;
-- `allow-passthrough on`: claude wraps its notifications and clipboard copies (OSC 52) in tmux
-  passthrough;
-- `status off`: claude keeps the whole tab;
-- prefix `C-q`: claude binds `C-b` and nearly every other Ctrl key, but not `C-q`;
-- `remain-on-exit failed` on claude's window: a claude that exits with an error keeps its pane,
-  so its message stays readable;
-- the tab title is set to `✳ cld-NAME`, and tmux keeps claude's own title changes to its pane;
-- `TERMINAL_EMULATOR` is removed from the server's environment: claude trusts it over
-  `TERM_PROGRAM=tmux`, and a session created in a JetBrains terminal would otherwise behave as if
-  it ran in JediTerm, even when joined from iTerm2.
+`--local` gets traces, metrics and logs - the JetBrains OpenTelemetry plugin in your IDE, say -
+and `--remote` metrics only, such as a team's collector; give either, or both.
+`--collector-config FILE` merges your YAML over the collector's config, for headers or TLS. Linux
+only. See the [guide](docs/guide.md#telemetry), turning it off included.
 
 ## cld and `claude --tmux`
 
-Claude Code has its own tmux option, `claude --worktree [name] --tmux`. It solves a different
-problem:
+Claude Code has its own tmux option, `claude --worktree [name] --tmux`, for a different problem:
 
 | | `cld` | `claude --worktree --tmux` |
 |---|---|---|
 | Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
-| Working copy | the directory you run it in, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
-| Needs | tmux 3.7 or newer; a git repository for `-w` | a git repository |
-| Coming back | `cld join -n NAME` attaches to the session; once it has ended, `cld resume -n NAME` resumes its conversation in a new one | not documented |
-| tmux server and options | a private server per session that ignores `~/.tmux.conf` and sets what claude needs (see above) | not documented; for claude inside tmux, [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise adding passthrough and extended-keys settings to `~/.tmux.conf` |
-| iTerm2 | a regular tmux client | iTerm2 native panes when available; `--tmux=classic` for regular tmux |
+| Working copy | the current directory, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
+| Coming back | `cld join -n NAME`; once the session has ended, `cld resume -n NAME` | not documented |
+| tmux configuration | a private server per session that ignores `~/.tmux.conf` and sets what claude needs | not documented; [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise settings for `~/.tmux.conf` |
+| iTerm2 | a regular tmux client | native panes when available; `--tmux=classic` for regular tmux |
 
-The `claude --tmux` column is based on `claude --help` in Claude Code 2.1.281: the Claude Code docs
-do not describe the option yet.
-
-`cld new -n NAME -w` combines them: claude's own worktree, in a session of cld's.
+The `claude --tmux` column follows `claude --help` in Claude Code 2.1.281, as the docs do not
+describe the option yet. `cld new -n NAME -w` combines the two: claude's own worktree, in a session
+of cld's.
 
 ## Terminals
 
@@ -474,39 +159,20 @@ clipboard, paste, claude exiting, and the keys of the session list - against eac
 | JetBrains IDEs (JediTerm) | JediTerm's emulator, headless, typing through its own key handling | Shift+Enter arrives as ESC CR (the IDE's newline setting); no focus reports; no OSC 52 |
 | iTerm2 | not automated yet | |
 
-Whether a JetBrains IDE passes `Esc` and `Ctrl+X` on to its terminal depends on its keymap, which
-the tests cannot see; `Ctrl+C` also leaves the session list.
-
 ## Development
 
-The checks run in Docker, the same way as in CI:
-
 ```sh
-make docker-check    # tmux 3.7c, built from source on debian:trixie: baseline and JediTerm
+make docker-check                   # as CI: tmux 3.7c built from source, baseline and JediTerm
+make check                          # natively, baseline terminal only
+make check TERMINALS=tmux,jediterm  # natively, with JediTerm
 ```
 
-They run on one tmux, pinned and bumped by hand together with the minimum cld requires;
-`make docker-image TMUX_VERSION=X` builds an image with another release, to try it.
+Natively, the checks need Go, tmux 3.7 or newer, ShellCheck and shfmt; for JediTerm also a JDK, and
+its jars, fetched once with `tests/jediterm/fetch-deps tests/jediterm/lib`.
 
-Natively, `make check` needs Go, tmux 3.7 or newer, ShellCheck and shfmt, and runs the baseline
-terminal only.
-For JediTerm add a JDK, fetch its jars once with `tests/jediterm/fetch-deps tests/jediterm/lib`
-and run `make check TERMINALS=tmux,jediterm`.
-
-cld is a Go program on [cobra](https://github.com/spf13/cobra): the command line is in `cmd/cld`,
-how it uses tmux - and why - in `internal/session`, the interactive `cld list` in
-`internal/picker`, `cld setup project` in `internal/project`, and `cld setup telemetry` in
-`internal/telemetry`; both edit the files they write through `internal/configfile`.
-
-How the tests work - the probe that stands in for claude, the sandboxes, the terminal drivers - is
-described in [docs/design.md](docs/design.md) and at the top of each package under `tests/`.
-
-## Releasing
-
-Pushing a tag `vX.Y.Z` runs the checks and publishes a GitHub release with cld built for each
-platform - `cld-linux-amd64`, `cld-linux-arm64`, `cld-darwin-amd64` and `cld-darwin-arm64`, their
-version set to `X.Y.Z` - and `cld.sha256`, which lists them. `make dist VERSION=X.Y.Z` builds the
-same into `dist/`.
+[docs/design.md](docs/design.md) records the tmux and claude behaviour cld relies on, the decisions
+taken and how the tests work. Pushing a tag `vX.Y.Z` publishes a release with cld for each
+platform and `cld.sha256`; `make dist VERSION=X.Y.Z` builds the same into `dist/`.
 
 ## License
 

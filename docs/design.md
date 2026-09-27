@@ -2,6 +2,8 @@
 
 This document records the research behind turning `cld` - a tmux + Claude Code launcher that
 started life as a function in `~/.bashrc` - into a tested, distributable tool.
+What cld offers its users is described in the [README](../README.md) and the
+[user guide](guide.md).
 
 ## Starting point
 
@@ -291,9 +293,9 @@ The Linux job runs the same Docker image a developer runs locally.
      Since each session has a server of its own (13), `new` and `resume` start a fresh server with
      the tmux they checked, so after an upgrade only the sessions started before it stay on the
      older tmux, each until it ends; on one shared server, the sessions started while one of those
-     ran stayed there too. The gap is accepted, as it was with the 3.3 check, and the README says to
-     end the sessions started before upgrading tmux; reading the server's `#{version}` as well was
-     the alternative.
+     ran stayed there too. The gap is accepted, as it was with the 3.3 check, and the user guide
+     says to end the sessions started before upgrading tmux; reading the server's `#{version}` as
+     well was the alternative.
    - claude is checked where cld starts it: `new` and `resume` (16) run `claude --version` once they
      have found their tools and checked tmux's version, before any other tmux command. The issue
      placed it right after the lookup of `claude`; it comes after the checks every command makes
@@ -304,7 +306,7 @@ The Linux job runs the same Docker image a developer runs locally.
      cld compares the `X.Y.Z` the output starts with as numbers (2.1.30 is older than 2.1.232) and
      refuses an older claude with `cld: claude 2.1.232 or newer is required, found
      '2.1.231 (Claude Code)'` and status 1. It does not say how to update, which depends on how
-     claude was installed; the README does.
+     claude was installed; the user guide does.
    - `claude --version` runs the claude that tmux then starts, as tmux starts it: the `claude` that
      cld finds in the absolute `PATH` entries (11.5), by its path, with no input, in the current
      directory. `new` and `resume` hand tmux that path rather than the word `claude`, so claude sees
@@ -339,11 +341,11 @@ The Linux job runs the same Docker image a developer runs locally.
      the minimum is the first release that takes what cld passes and does what it relies on. What
      it passes came earlier - `--worktree` in 2.1.49, `--name` in 2.1.76, `remoteControlAtStartup`
      in the settings in 2.1.119, `worktree.baseRef` in 2.1.133 - but only from 2.1.222 does a
-     project's `false` keep Remote Control off despite cld's `--settings`, as 10 and the README
+     project's `false` keep Remote Control off despite cld's `--settings`, as 10 and the user guide
      promise (see Findings), and #21 set the minimum there. `resume` (16) relies on behaviour
      documented up to 2.1.232 - the search for a session ID across projects in 2.1.223, and
      variants for live names and Remote Control staying with the claude that has it in 2.1.232
-     (16.7) - so the minimum rose to 2.1.232 with it (#26), rather than the README saying which
+     (16.7) - so the minimum rose to 2.1.232 with it (#26), rather than the user guide saying which
      of `resume`'s behaviours need a newer claude than cld accepts. 2.1.133 would have needed the
      Remote Control promise qualified; 2.1.281, the version probed, would refuse the stable
      channel (2.1.274), which runs about a week behind and passes 2.1.232. The exit status of
@@ -534,7 +536,7 @@ The Linux job runs the same Docker image a developer runs locally.
        buffers are no longer shared between them; cld documented neither;
     4. `tmux -L cld ls` no longer shows every session: each is `tmux -L cld-NAME ls`. The sessions
        of cld 0.3.0 and earlier stay on the `-L cld` server, where cld does not look, not even for
-       a release: the README says to end them before upgrading, or afterwards with
+       a release: the user guide says to end them before upgrading, or afterwards with
        `tmux -L cld kill-session -t =cld-NAME`. `list` no longer shows the sessions with
        non-ASCII names that 0.3.0 made (11.7 and 11.8), nor a session renamed by hand, which is
        not the one its server is named after (11.7);
@@ -811,7 +813,7 @@ The Linux job runs the same Docker image a developer runs locally.
        the search for a session ID across projects (2.1.223), and variants for live names and
        Remote Control staying with the claude that has it (both 2.1.232). `resume` checks
        claude's version as `new` does, and the minimum (6) rose to 2.1.232 with `resume`, so
-       every claude that passes the check has all of it: the README need not say which of it
+       every claude that passes the check has all of it: the user guide need not say which of it
        needs a newer claude.
     8. tmux ends a command at an argv word ending in `;` (see Findings), and SESSION can end in
        one, as can the directory `new` and `resume` give tmux with `-c`: each of cld's words that
@@ -858,7 +860,7 @@ The Linux job runs the same Docker image a developer runs locally.
        default directive is `ShellCompDirectiveNoFileComp`, and where cobra answers
        `ShellCompDirectiveDefault` all the same - a command line it cannot read before the word,
        such as `cld joni -n <TAB>` - cld turns its `:0` into `:4`. bash 3.2, without `compopt`,
-       offers file names wherever cld offers nothing (see Findings); the README says so.
+       offers file names wherever cld offers nothing (see Findings); the user guide says so.
     4. Completion makes none of the startup checks (6): `new`, `resume`, `join`, `kill` and
        `list` call them, and there is no root `PersistentPreRunE`. `cld completion SHELL` works
        where neither tmux nor claude is installed, and `__complete` does not check tmux's
@@ -1391,5 +1393,5 @@ by hand in a nested tmux).
   what `cld list` shows; the directory another project's conversation resumes in by ID;
   `/resume cld-NAME` inside `cld new -n NAME`; and whether a session that turned Remote Control on
   at startup, as cld's do, records its Remote Control session in the conversation. Until then the
-  README and decision 16 go by Claude Code's docs, and by claude's `--help` and bundle (see
-  Findings), and the README says which of it is not checked.
+  user guide and decision 16 go by Claude Code's docs, and by claude's `--help` and bundle (see
+  Findings), and the user guide says which of it is not checked.
