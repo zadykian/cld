@@ -1422,6 +1422,13 @@ Where the implementation departs from the plan above:
 - `capture-pane -e` emits an SGR change at the next cell that differs, which moves between
   redraws and sizes (a colour reset can land before or after a line break); the reattach test
   compares cells - characters and attributes - rather than the captured sequences.
+- A stale socket that the real tmux reads is a socket nothing listens on (`staleSocket` in the
+  tests), not a plain file (`socket`, which only the fake tmux reads). tmux says no server is
+  running for either on Linux, whose `connect` refuses a connection to a file that is no socket
+  as it refuses one to a socket nothing listens on; macOS's reports the file as no socket
+  (`ENOTSOCK`), and tmux fails with that, so `cld new` without `-n` ended there on the macOS
+  runner, before its session (#51). A file of that name that is no socket is nothing tmux or cld
+  makes, and cld reports tmux's error for it, as `list` does (13.1).
 - The Go port (decision 11) is `cmd/cld`, the command line, and `internal/session`, the tmux
   side, whose package comment is the script's header comment. Errors carry an exit status up to
   `main` (`internal/fail`), the only place that exits; `new`, `resume` and `join` end in

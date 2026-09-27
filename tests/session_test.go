@@ -305,7 +305,7 @@ func TestDefaultNames(t *testing.T) {
 				s.MustTmux(name, "-f", "/dev/null", "new-session", "-d", "-s", "other", "sleep", "600")
 			}
 			for _, name := range test.stale {
-				socket(t, s, name)
+				staleSocket(t, s, name)
 			}
 			startCldIn(t, s, "tmux", dir, nil, "new")
 			s.WaitProbes(1)
