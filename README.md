@@ -58,7 +58,7 @@ it from claude.ai or the Claude app.
 |---|---|
 | `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `NAME` |
 | `cld resume [-n NAME] [SESSION]` | create the session with claude resuming the conversation `cld-NAME`, or `SESSION` |
-| `cld join [-n NAME]` | attach to the session, detaching any other terminal from it |
+| `cld join [-n NAME] [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
 | `cld kill [-n NAME]` | end the session, its claude and its tmux server |
 | `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
 | `cld setup project [--mcp SERVER]` | set claude up in the project in the current directory |

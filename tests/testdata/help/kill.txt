@@ -6,5 +6,5 @@ Usage:
 
 Flags:
   -h, --help        help for kill
-  -n, --name NAME   the session NAME: up to 64 letters, digits, "_" and "-",
+  -n, --name NAME   session NAME: up to 64 letters, digits, "_" and "-",
                     starting with a letter or digit (default "main")

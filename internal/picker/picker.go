@@ -11,10 +11,10 @@
 // Other keys do nothing, keys with Alt among them: terminals send those as Esc and the key, so
 // that Esc and a key typed within the wait for a lone Esc count as that key with Alt. The footer
 // under the rows says what the keys do, but for the arrows where the terminal is too narrow for
-// them all, and warns when Enter or the kill would detach a terminal attached to the session, one
-// whose claude has exited included; once the kill is armed, it asks for the second Ctrl+X
-// instead. A message, such as why Enter could not join, takes the place of its hints until the
-// next key.
+// them all. Enter joins beside a terminal attached to the session, as cld join does; once the
+// kill is armed, the footer asks for the second Ctrl+X instead, and warns when the kill would
+// detach such a terminal, one whose claude has exited included. A message, such as why Enter
+// could not join, takes the place of its hints until the next key.
 //
 // Enter looks the session up while the list still owns the terminal, in raw mode. When the
 // lookup fails, the list shows why, reads the sessions again and stays open; the selection stays
@@ -896,9 +896,9 @@ func (l *list) footer() string {
 	case l.armed:
 		hints = "ctrl+x again to kill" + detach + " · esc to keep"
 	case len(l.rows) > 0:
-		// The arrows' hint goes first where the terminal is short of cells for them all, as on
-		// a row with a terminal attached in 80 columns: the others then fit whole.
-		hints = "enter to join" + detach + " · ctrl+x to kill · " + hints
+		// The arrows' hint goes first where the terminal is short of cells for them all, 61
+		// columns or fewer: from 44 the others then fit whole.
+		hints = "enter to join · ctrl+x to kill · " + hints
 		if all := "↑/↓ to navigate · " + hints; cells(all) <= l.columns {
 			hints = all
 		}
