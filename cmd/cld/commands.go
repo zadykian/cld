@@ -234,11 +234,16 @@ claude's picker. SESSION comes after the options and does not start with "-".`,
 		return tmux.Resume(claude, suffix, conversation)
 	}
 
+	// join attaches beside the terminals on the session, which --detach-others detaches.
 	join := &cobra.Command{
-		Use:   "join [-n NAME]",
-		Short: "attach to session NAME, detaching any other terminal from it",
+		Use:   "join [-n NAME] [--detach-others]",
+		Short: "attach to session NAME",
+		Long: `attach to session NAME, beside any terminal attached to it already: each shows
+claude, whose window takes the size of the terminal used last. With
+--detach-others, those terminals are detached.`,
 	}
 	joinName := join.Flags().StringP("name", "n", "main", nameUsage)
+	detachOthers := join.Flags().Bool("detach-others", false, "detach any other terminal attached to the session")
 	join.RunE = func(*cobra.Command, []string) error {
 		suffix, err := sessionName(*joinName)
 		if err != nil {
@@ -248,7 +253,7 @@ claude's picker. SESSION comes after the options and does not start with "-".`,
 		if err != nil {
 			return err
 		}
-		return tmux.Join(suffix)
+		return tmux.Join(suffix, *detachOthers)
 	}
 	if err := join.RegisterFlagCompletionFunc("name", sessionNames); err != nil {
 		panic(err)
@@ -302,7 +307,7 @@ list. cld list | cat prints the list only.`,
 						return err
 					}
 					if picked != "" {
-						return tmux.Attach(picked)
+						return tmux.Attach(picked, false)
 					}
 					sessions = last
 				}
@@ -716,8 +721,9 @@ func commandNames(c *cobra.Command, args []string, typed string) ([]cobra.Comple
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// nameUsage is -n and --name in the help of new, resume, join and kill.
-const nameUsage = "the session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\nstarting with a letter or digit"
+// nameUsage is -n and --name in the help of new, resume, join and kill: its first line fits
+// beside join's --detach-others within 80 columns.
+const nameUsage = "session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\nstarting with a letter or digit"
 
 // sessionName is the NAME given with -n, checked once the options have been read: first its
 // length, whatever its characters, then its characters.

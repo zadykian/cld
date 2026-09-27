@@ -428,7 +428,8 @@ func TestKillRequiresSession(t *testing.T) {
 // name there, even named like a session of cld's: list leaves it out, join and kill act as for no
 // session, and new and resume make a session of that name on a server of its own. Beside one
 // whose name starts with claude's session's, as cld-a-x does with cld-a, cld still finds cld-a,
-// by its whole name: new and resume say that a exists, join attaches to it, and kill ends it.
+// by its whole name: new and resume say that a exists, join attaches to it, beside the terminal
+// there, and kill ends it.
 // kill ends the others with the server. What cld sets for a failed claude stays on claude's
 // window: a session claude makes whose program fails closes, as tmux would close it.
 func TestSeesOnlyItsOwnSessions(t *testing.T) {
@@ -463,7 +464,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 		}
 	}
 	second := startCld(t, s, "tmux", nil, "join", "-n", "a")
-	sandbox.WaitFor(t, 10*time.Second, "join -n a to detach the first client", func() bool { return !first.Running() })
+	waitClients(t, s, 2)
 	waitScreen(t, second, "probe --name cld-a")
 	for _, test := range []struct{ command, want string }{
 		{"join", "cld: no session 'inside'; create it with cld new -n inside\n"},
@@ -489,7 +490,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 	if result := s.RunCld(nil, "kill", "-n", "a"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
 		t.Errorf("kill -n a: exit %d, stdout %q, stderr %q, want exit 0 and no output", result.Code, result.Stdout, result.Stderr)
 	}
-	sandbox.WaitFor(t, 10*time.Second, "the cld joined to a to return", func() bool { return !second.Running() })
+	sandbox.WaitFor(t, 10*time.Second, "the clds attached to a to return", func() bool { return !first.Running() && !second.Running() })
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a-x", "cld-inside"}) {
 		t.Errorf("sessions %q after kill -n a, want [cld-a-x cld-inside]", sessions)
 	}
@@ -800,21 +801,41 @@ func TestCompleteNames(t *testing.T) {
 	}
 }
 
-func TestJoinDetachesOtherClient(t *testing.T) {
+// join attaches beside the terminal on the session, which stays attached to the same claude, and
+// C-q d there detaches that terminal alone; join --detach-others detaches every other terminal.
+func TestJoinBesideOtherClients(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	first := startCld(t, s, "tmux", nil, "new", "-n", "shared")
-	s.WaitProbes(1)
+	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 
 	second := startCld(t, s, "tmux", nil, "join", "-n", "shared")
-	sandbox.WaitFor(t, 10*time.Second, "the first client to be detached", func() bool { return !first.Running() })
+	waitClients(t, s, 2)
 	waitScreen(t, second, "probe --name cld-shared")
-	if !second.Running() {
-		t.Error("the second client is not attached")
+	if !first.Running() {
+		t.Error("the first client was detached")
 	}
-	if probes := s.Probes(); len(probes) != 1 {
-		t.Errorf("%d claude processes, want 1", len(probes))
+	mark := probe.Mark()
+	first.Keys("x")
+	probe.WaitInput(mark, "x")
+	third := startCld(t, s, "tmux", nil, "join", "-n", "shared")
+	waitClients(t, s, 3)
+	waitScreen(t, third, "probe --name cld-shared")
+	second.Keys("C-q", "d")
+	sandbox.WaitFor(t, 10*time.Second, "the second client to be detached", func() bool { return !second.Running() })
+	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-shared", "cld-shared"}) || !first.Running() || !third.Running() {
+		t.Errorf("clients attached to %q after C-q d, want the first and third, to cld-shared", clients)
+	}
+
+	fourth := startCld(t, s, "tmux", nil, "join", "-n", "shared", "--detach-others")
+	sandbox.WaitFor(t, 10*time.Second, "the other clients to be detached", func() bool { return !first.Running() && !third.Running() })
+	waitScreen(t, fourth, "probe --name cld-shared")
+	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-shared"}) || !fourth.Running() {
+		t.Errorf("clients attached to %q, want one, to cld-shared", clients)
+	}
+	if probes := s.Probes(); len(probes) != 1 || !probe.Alive() {
+		t.Errorf("%d claude processes, want the original one", len(probes))
 	}
 }
 
@@ -1289,11 +1310,10 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	}
 }
 
-// The footer of the interactive list, on a detached row and on an attached one, and once Ctrl+X
-// has armed the kill.
+// The footer of the interactive list, and once Ctrl+X has armed the kill, on a detached row and on
+// an attached one.
 const (
 	listHints         = "↑/↓ to navigate · enter to join · ctrl+x to kill · esc to quit"
-	listHintsAttached = "↑/↓ to navigate · enter to join and detach its terminal · ctrl+x to kill · esc to quit"
 	killArmed         = "ctrl+x again to kill · esc to keep"
 	killArmedAttached = "ctrl+x again to kill and detach its terminal · esc to keep"
 )
@@ -1411,7 +1431,8 @@ func TestListJoin(t *testing.T) {
 		waitScreen(t, term, "probe --name cld-a")
 	})
 
-	// An attached row joins too, detaching the other terminal, and the footer says so first.
+	// An attached row joins too, beside the other terminal, as cld join does, and the footer is
+	// the same.
 	t.Run("attached", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -1432,12 +1453,12 @@ func TestListJoin(t *testing.T) {
 			"  a     detached  "+s.Work,
 			"> b     attached  "+s.Work,
 			"",
-			listHintsAttached)
+			listHints)
 		term.Keys("Enter")
-		sandbox.WaitFor(t, 10*time.Second, "the other terminal to be detached", func() bool { return !other.Running() })
 		waitScreen(t, term, "probe --name cld-b")
-		if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b"}) {
-			t.Errorf("clients attached to %q, want one, to cld-b", clients)
+		waitClients(t, s, 2)
+		if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b", "cld-b"}) || !other.Running() {
+			t.Errorf("clients attached to %q, want two, to cld-b", clients)
 		}
 	})
 
@@ -1464,8 +1485,8 @@ func TestListJoin(t *testing.T) {
 		}
 	})
 
-	// A row reads exited once claude has, whether a terminal is attached or not; Enter detaches
-	// that terminal all the same, and the footer says so first.
+	// A row reads exited once claude has, whether a terminal is attached or not; Enter joins
+	// beside that terminal all the same.
 	t.Run("exited and attached", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -1492,12 +1513,12 @@ func TestListJoin(t *testing.T) {
 			"  a     detached  "+s.Work,
 			"> b     exited    "+s.Work,
 			"",
-			listHintsAttached)
+			listHints)
 		term.Keys("Enter")
-		sandbox.WaitFor(t, 10*time.Second, "the other terminal to be detached", func() bool { return !other.Running() })
 		waitScreen(t, term, "claude exited with status 1")
-		if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b"}) {
-			t.Errorf("clients attached to %q, want one, to cld-b", clients)
+		waitClients(t, s, 2)
+		if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b", "cld-b"}) || !other.Running() {
+			t.Errorf("clients attached to %q, want two, to cld-b", clients)
 		}
 	})
 
@@ -2077,7 +2098,7 @@ func TestListJoin(t *testing.T) {
 			prefix+shown,
 			cutTo("  b     detached  "+s.Work, 40),
 			"",
-			footerIn(listHintsAttached, 40))
+			footerIn(listHints, 40))
 		term.Keys("Down")
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
@@ -2289,7 +2310,7 @@ func TestListJoin(t *testing.T) {
 func TestListKill(t *testing.T) {
 	t.Parallel()
 	// A terminal attached to the session is detached and left clean, as by cld kill, and the
-	// footer says so first; the other sessions carry on.
+	// armed kill's footer says so first; the other sessions carry on.
 	t.Run("kill", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -2312,7 +2333,7 @@ func TestListKill(t *testing.T) {
 		}
 		waitScreen(t, term, listHints)
 		term.Keys("Down")
-		waitLines(t, term, append(rows, listHintsAttached)...)
+		waitLines(t, term, append(rows, listHints)...)
 		armThen(t, term, func() {
 			waitLines(t, term, append(rows, killArmedAttached)...)
 			if footer := cells(term.Styled())[5]; footer != "[intensity=2]"+killArmedAttached {
@@ -2659,7 +2680,7 @@ func TestListKill(t *testing.T) {
 		}
 		waitScreen(t, term, listHints)
 		term.Keys("Down")
-		waitLines(t, term, append(rows, listHintsAttached)...)
+		waitLines(t, term, append(rows, listHints)...)
 		armThen(t, term, func() { waitLines(t, term, append(rows, killArmedAttached)...) }, "C-x")
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
@@ -2969,9 +2990,10 @@ func TestListKill(t *testing.T) {
 		}
 	})
 
-	// With the kill's hint, the hints on a row with a terminal attached take 86 cells: in 80
-	// columns the arrows' hint goes, so that the others, esc to quit last, show whole.
-	t.Run("80 columns", func(t *testing.T) {
+	// The hints take 62 cells, on a row with a terminal attached as on another: in 61 columns the
+	// arrows' hint goes, so that the others, esc to quit last, show whole. The armed kill's on
+	// such a row, 58 cells, shows whole too.
+	t.Run("61 columns", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a")
@@ -2979,7 +3001,7 @@ func TestListKill(t *testing.T) {
 		waitClients(t, s, 1)
 		s.WaitProbes(2)
 		term := terminal.New(t, "tmux", s)
-		term.Resize(80, 24)
+		term.Resize(61, 24)
 		term.Start(s.CldArgv("list"), s.Env, s.Work)
 		rows := func(selected string) []string {
 			lines := []string{"  NAME  STATE     DIRECTORY"}
@@ -2988,13 +3010,14 @@ func TestListKill(t *testing.T) {
 				if row[:1] == selected {
 					marker = ">"
 				}
-				lines = append(lines, cutTo(marker+" "+row+s.Work, 80))
+				lines = append(lines, cutTo(marker+" "+row+s.Work, 61))
 			}
 			return append(lines, "")
 		}
-		waitLines(t, term, append(rows("a"), listHints)...)
+		hints := "enter to join · ctrl+x to kill · esc to quit"
+		waitLines(t, term, append(rows("a"), hints)...)
 		term.Keys("Down")
-		waitLines(t, term, append(rows("b"), "enter to join and detach its terminal · ctrl+x to kill · esc to quit")...)
+		waitLines(t, term, append(rows("b"), hints)...)
 		term.Keys("C-x")
 		waitLines(t, term, append(rows("b"), killArmedAttached)...)
 	})

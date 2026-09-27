@@ -51,6 +51,7 @@ rows that name none were probed against tmux 3.6.
 | how the real `claude` 2.1.281 exits | status 0 for `/exit`, `Ctrl+C` twice and `Ctrl+D` twice; so `remain-on-exit failed` keeps only the sessions of a claude that failed |
 | `remain-on-exit-format` (tmux 3.3a, 3.7c) | a non-empty format scrolls the dead pane up a line to write itself at the bottom, so a short error on the top line goes out of sight; `#{session_name}` is empty in it, `#{window_name}` is not. An empty format writes nothing and scrolls nothing. `#{pane_dead_signal}` is a number on Linux and a name (`term`) where the C library has `sys_signame`, as on macOS (tmux 3.7c) |
 | `display-message` from the `pane-died` hook (tmux 3.5a, 3.7c) | with no terminal on the dead pane's window it goes to another session's terminal, the one used last; with no terminal attached at all tmux keeps it, as it keeps errors in its configuration, and shows it as `(null):0: claude exited with ...` in view-mode over the next session a terminal attaches to - any session, a new one too - whose claude then gets no keys until `q`. Under `if -F '#{window_active_clients}'` it reaches only a terminal on that window. After `attach-session` in the same command list, `display-message` reaches the attaching terminal, on its message line |
+| several terminals on one session: `attach-session` without `-d` from two panes of an outer tmux, 100x30 and 80x20, on a server started with `-f /dev/null` and cld's `pane-died` hook (tmux 3.7c) | both stay attached, and `#{session_attached}` is 2. `window-size` is `latest`: the window takes the size of the terminal a key came from last, and a larger terminal shows it inside a border, the rest of its screen filled with `·`. The hook's `display-message`, under `if -F '#{window_active_clients}'`, reaches one terminal, the one used last, not the one attached last; after `attach-session` in the same command list, it reaches the attaching one. `C-q d` detaches only the terminal it is typed in; `kill-session` then `kill-server` ends every one with `[exited]`, its client exiting with status 0 |
 | a dead pane that had focus reporting (`?1004h`) on, client attached | tmux 3.3a crashes on `kill-session` and on detach; 3.4 on detach and on a focus change of the terminal - both with every session on the server. 3.5a and 3.7c survive keys, wheel, clicks, paste, focus changes, resize, detach, reattach, the terminal closing and `kill-session`; `kill-pane` is safe in all four |
 | `cld list` where `LC_ALL`, `LC_CTYPE` and `LANG` do not name UTF-8 - unset or `C`, as over ssh, in containers and cron (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux writes a command's output to such a client with `_` for each character it cannot print: the tabs, so a session showed as `demo_detached_/tmp` under NAME with STATE and DIRECTORY empty, and a directory's non-ASCII letters (`/tmp/café` became `/tmp/caf_`). `tmux -u` marks the client UTF-8, and the output arrives as it is. The other output cld reads - the session's name, `cld-NAME`, and the pids of its panes from its session lookup, `list-panes`' `0` or `1` - is printable ASCII and passes unchanged |
 | `cld` inside another tmux (`$TMUX` set) | nesting works: the private socket is a different server, and tmux refuses a client with `$TMUX` set only when its tty has the name of one of the server's own panes - but see the next row |
@@ -593,8 +594,8 @@ The Linux job runs the same Docker image a developer runs locally.
     background sessions: `↑`/`↓` move between rows, Enter attaches, Esc leaves. Its footer follows
     Claude Code's hints (see Findings): `↑/↓ to navigate · enter to join · esc to quit` - with
     `ctrl+x to kill` before `esc to quit` since the kill (see 15) - dim, under the rows after a
-    blank line; on a row with a terminal attached - an exited one too - `enter to join` reads
-    `enter to join and detach its terminal`. The first row is selected, marked `>` and
+    blank line; until 23, on a row with a terminal attached - an exited one too - `enter to join`
+    read `enter to join and detach its terminal`. The first row is selected, marked `>` and
     in inverse video; `↑`/`↓` stop at the first and the last row, Enter joins, and Esc and Ctrl+C
     leave with status 0 - one Ctrl+C, since the list has no input to clear; once Ctrl+X has armed a
     kill, Esc only disarms it (see 15). Other keys, letters included, do nothing: agent view binds
@@ -629,19 +630,20 @@ The Linux job runs the same Docker image a developer runs locally.
     4. with no sessions, or no server, `cld list` prints nothing and exits 0, on a terminal too:
        the list opens only with something to pick. Once its last row has gone, it shows `no
        sessions` under its header, over `esc to quit`, and leaving prints nothing;
-    5. rows behave as with `cld join -n NAME`: Enter on a row with a terminal attached detaches that
-       terminal, which the footer says first - an exited row's too, whose STATE reads `exited`
-       whether a terminal is attached or not - and on an exited row joins and shows claude's last
-       words with the hint - joining is how claude's message is read. Asking again, or refusing an
-       exited row, would protect nothing: a detach ends nothing;
+    5. rows behave as with `cld join -n NAME`: Enter on a row with a terminal attached joins beside
+       that terminal - an exited row's too, whose STATE reads `exited` whether a terminal is
+       attached or not; until 23 it detached that terminal, which the footer said first - and on an
+       exited row joins and shows claude's last words with the hint - joining is how claude's
+       message is read. Asking again, or refusing an exited row, would protect nothing: joining
+       ends nothing;
     6. the list reads the sessions when it opens and after its own actions - a failed Enter here,
        and a kill (see 15) - never on a timer or on a key, so a row does not change under a key;
        each read asks every server in turn, as `list` does (see 13.1). A stale row costs at most a
-       message, detaching a terminal the list did not show, or joining a session made again under
-       the same name, which `cld join -n NAME` would join too. After a read the selection stays on
-       its session or, once that is gone, goes to the next row the list showed that is still there -
-       the one that took its place - or else to the one above. Leaving and running `cld list` again
-       shows what changed elsewhere;
+       message, a kill detaching a terminal the list did not show, or joining a session made again
+       under the same name, which `cld join -n NAME` would join too. After a read the selection
+       stays on its session or, once that is gone, goes to the next row the list showed that is
+       still there - the one that took its place - or else to the one above. Leaving and running
+       `cld list` again shows what changed elsewhere;
     7. Go (see 11) on `golang.org/x/term`, which the module already required for the probe:
        `MakeRaw`, which clears `ISIG` so that Ctrl+C arrives as the byte 0x03, `GetSize` and
        `Restore`. The list reads a byte at a time, and only once there is one: reads block, so a
@@ -661,7 +663,7 @@ The Linux job runs the same Docker image a developer runs locally.
     Enter runs join's own steps, split in two (`Joinable` and `Attach` in `internal/session`):
     join's checks - the name, then the lookup - while the list still owns the terminal, in raw mode,
     then the terminal put back, then the rest of join - an empty `TMUX`, the title and
-    `attach-session -d` with the hint for an exited claude. Putting the terminal back waits for it
+    `attach-session` with the hint for an exited claude. Putting the terminal back waits for it
     to have read the list's last output: tmux throws away what the terminal has not read yet as its
     client starts (see Findings), which lost the main screen, the cursor and the title under load.
     Still in raw mode, the list leaves the alternate screen, shows the cursor, writes the title and
@@ -716,11 +718,11 @@ The Linux job runs the same Docker image a developer runs locally.
     `claude --resume`. Settled with it:
     1. confirming: the second press, as agent view asks for one before a row leaves its list. On a
        selected row the footer's hints read `↑/↓ to navigate · enter to join · ctrl+x to kill · esc
-       to quit` (62 cells, 86 on an attached row); once armed, `ctrl+x again to kill · esc to keep`,
-       or `ctrl+x again to kill and detach its terminal · esc to keep` on a row with a terminal
-       attached, an exited one too - dim, as agent view draws its own. Where the hints do not all
-       fit, `↑/↓ to navigate`, which the arrows need least, goes first: in 80 columns an attached
-       row's then take 68 cells, and `esc to quit` shows whole rather than cut to `esc t`. A
+       to quit` (62 cells; 86 on an attached row until 23); once armed, `ctrl+x again to kill · esc
+       to keep`, or `ctrl+x again to kill and detach its terminal · esc to keep` on a row with a
+       terminal attached, an exited one too - dim, as agent view draws its own. Where the hints do
+       not all fit, `↑/↓ to navigate`, which the arrows need least, goes first: in 61 columns the
+       rest then take 44 cells, and `esc to quit` shows whole rather than cut to `esc to qui`. A
        terminal narrower still cuts the rest at its edge, as every line. Esc and the two seconds
        running out disarm it and do nothing more; any other key disarms it and then does what it
        does: an arrow moves the selection, Enter joins, Ctrl+C leaves. A key that has begun holds
@@ -857,14 +859,14 @@ The Linux job runs the same Docker image a developer runs locally.
     2. `join -n` offers every session `list` shows - `attached`, `detached` and `exited`, since
        `join` takes each - read as `list` reads them (`Tmux.Sessions`: the server of each socket
        `cld-NAME`, stale sockets included, 13.1), in its order, that of the names, and described
-       by its state: what `join` will do, take the session from another terminal or show why
-       claude exited. Every name `list` shows is one `join` takes: it reads no socket whose NAME
-       `join` would refuse, and shows neither a session renamed by hand nor the sessions of
-       0.3.0's shared server, `café` among them (13.4, 11.8), so completion checks no name
-       itself. cld keeps the names that start with what was typed, as cobra does for commands and
-       options, so that every shell offers the same names whatever its own matching (zsh's
-       `matcher-list`, fish's fuzzy matching). `-n NAME`, `--name NAME`, `--name=NAME` and
-       `-n=NAME` complete; `-nNAME` does not (see Findings).
+       by its state: what `join` will do, attach beside another terminal - take the session from
+       it, until 23 - or show why claude exited. Every name `list` shows is one `join` takes: it
+       reads no socket whose NAME `join` would refuse, and shows neither a session renamed by hand
+       nor the sessions of 0.3.0's shared server, `café` among them (13.4, 11.8), so completion
+       checks no name itself. cld keeps the names that start with what was typed, as cobra does
+       for commands and options, so that every shell offers the same names whatever its own
+       matching (zsh's `matcher-list`, fish's fuzzy matching). `-n NAME`, `--name NAME`,
+       `--name=NAME` and `-n=NAME` complete; `-nNAME` does not (see Findings).
     3. Only `join -n` offers session names, and `help` the commands it takes (see 12.2), with
        their `Short`s, as cobra's help command does; since 19, `setup project --mcp` offers the MCP
        servers it takes (19.8). `new -n` offers none: it refuses a name a
@@ -1273,6 +1275,37 @@ The Linux job runs the same Docker image a developer runs locally.
     bash-completion 1's directory, which is in Homebrew's prefix, shared by every user; checking
     that `~/.bashrc` loads bash-completion; removing what cld wrote; and `install.sh` writing the
     scripts anew.
+
+23. Joining beside other terminals: `cld join` attaches to the session beside any terminal attached
+    to it already, and `cld join --detach-others` detaches those, as every `join` did before
+    (`attach-session -d` since 0.2.0, the script's `new-session -AD` before it). Moving from one
+    terminal to another works either way, but only a join that leaves the others attached lets two
+    terminals show one claude - a laptop's and a desktop's, say - and a `cld join` typed in the
+    wrong tab, or run from a script, no longer takes a session from whoever is on it. Settled with
+    it:
+    1. the option is long only, `--detach-others`, as the maintainer named it; `-d`, tmux's own
+       letter, stays free. Its column in `join`'s help moves the usages to the 25th column, where
+       the first line of `-n`'s, which `new`, `resume`, `join` and `kill` share, took 81 columns:
+       it lost its "the" (12.1);
+    2. tmux sizes claude's window to the terminal used last (`window-size latest`, tmux's default,
+       which the private server keeps): claude redraws as the terminals take turns, and a larger
+       terminal shows the rest of its screen dotted (see Findings). cld sets no `window-size`;
+    3. the list's Enter joins as `cld join` does, beside the other terminals (14.5), and its footer
+       no longer warns on an attached row but for the armed kill, which still ends that terminal
+       (15.1). The list has no key for `--detach-others`: `C-q d` in the other terminal, or
+       `cld join --detach-others` from the shell, takes a session over;
+    4. `C-q d` detaches only the terminal it is typed in, and `cld kill` ends every terminal on the
+       session, each with `[exited]` and status 0 (see Findings). The `pane-died` hint reaches the
+       terminal used last, not every one on the window (5); a terminal that joins later gets it
+       from `join`, as before. `list` shows such a session `attached`: STATE says whether a
+       terminal is, not how many;
+    5. the tests: a join beside a terminal, both attached, keys from the first reaching claude,
+       `C-q d` in one leaving the others attached, and `--detach-others` detaching them all;
+       join's tmux command with the option and without; the list joining an attached row and an
+       exited one beside their terminals, with the same footer as on a detached row.
+
+    Out of scope: a key in the list that joins as `--detach-others` does, a short option, and
+    showing in `list` how many terminals are attached.
 
 ## Implementation notes
 

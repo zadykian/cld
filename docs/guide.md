@@ -32,7 +32,10 @@ install it as `cld`, executable, in a directory on your `PATH`.
 - Whatever claude runs - its Bash tool, a hook - reaches the session's server with a plain `tmux`,
   and `tmux -L cld-NAME ls` lists what runs there. cld sees only `cld-NAME`; `cld kill` ends the
   rest with the server.
-- Joining from a second terminal detaches the first; claude keeps running in its directory.
+- Joining from a second terminal leaves the first attached: both show the same claude, and keys
+  from either reach it. The window takes the size of the terminal you used last, and a larger one
+  shows the rest of its screen dotted. `cld join --detach-others` detaches the other terminals
+  instead; claude keeps running in its directory either way.
 - Remote Control is turned on over the "Enable Remote Control for all sessions" setting in
   `/config`. It stays off where your organisation's policy does, or where the project's
   `.claude/settings.json` or `.claude/settings.local.json` sets `remoteControlAtStartup` to
@@ -41,7 +44,7 @@ install it as `cld`, executable, in a directory on your `PATH`.
 ## The session list
 
 On a terminal, `cld list` shows the sessions full screen, the first one selected. `Enter` joins
-the selected one as `cld join` does, detaching another terminal from it; `Ctrl+X` twice kills it as
+the selected one as `cld join` does, beside any other terminal on it; `Ctrl+X` twice kills it as
 `cld kill` does. After the first `Ctrl+X`, `Esc` keeps the session and the list open; so do two
 seconds without the second `Ctrl+X`, and any other key, which then does what it does. A `Ctrl+X`
 held down does not go on to kill the next session.
@@ -249,6 +252,9 @@ cld removes nothing: to undo it, delete the script, and for zsh the lines in `.z
   [install command](../README.md#install) again, with the same `CLD_INSTALL_DIR` if you gave one -
   it also takes `CLD_VERSION` for another release. A cld built from source, whose version is
   `dev`, is not updated.
+- **`cld join` and other terminals.** cld 0.7.0 and earlier detached any other terminal from the
+  session on `cld join`, and on `Enter` in `cld list`; both now leave it attached. Use
+  `cld join --detach-others` to take the session over as before.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill -n NAME`): each
   session's server keeps running the tmux that started it until the session ends.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from

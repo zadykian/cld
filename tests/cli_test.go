@@ -302,7 +302,7 @@ func TestCompleteCommands(t *testing.T) {
 	none := map[string]string{"PATH": s.Tools()}
 	commands := "new\tcreate session NAME in the current directory and attach to it\n" +
 		"resume\tcreate session NAME with claude resuming its conversation\n" +
-		"join\tattach to session NAME, detaching any other terminal from it\n" +
+		"join\tattach to session NAME\n" +
 		"kill\tend session NAME and its tmux server\n" +
 		"list\tlist the sessions cld started; on a terminal, join or kill one\n" +
 		"setup\tset up claude in a project, its telemetry, or shell completion\n" +
@@ -330,7 +330,7 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", ""}, commands + ":4\n"},
 		{[]string{"__complete", "c"}, "completion\tprint the completion script for a shell\n:4\n"},
 		{[]string{"__complete", "help", ""}, commands + ":4\n"},
-		{[]string{"__complete", "help", "j"}, "join\tattach to session NAME, detaching any other terminal from it\n:4\n"},
+		{[]string{"__complete", "help", "j"}, "join\tattach to session NAME\n:4\n"},
 		{[]string{"__complete", "help", "x"}, ":4\n"},
 		{[]string{"__complete", "help", "new", ""}, ":4\n"},
 		// After a command with commands of its own, help takes one of those, and nothing after it.
@@ -370,9 +370,10 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", "setup", "telemetry", "--remote", "https://otel.example.com:4317", ""}, ":4\n"},
 		{[]string{"__complete", "completion", "bash", ""}, ":4\n"},
 		// cobra describes an option by the first line of its usage, backquotes included.
-		{[]string{"__complete", "join", "-"}, "--help\thelp for join\n-h\thelp for join\n" +
-			"--name\tthe session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n" +
-			"-n\tthe session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n:4\n"},
+		{[]string{"__complete", "join", "-"}, "--detach-others\tdetach any other terminal attached to the session\n" +
+			"--help\thelp for join\n-h\thelp for join\n" +
+			"--name\tsession `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n" +
+			"-n\tsession `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n:4\n"},
 		{[]string{"__complete", "new", "-n", ""}, ":4\n"},
 		{[]string{"__complete", "list", ""}, ":4\n"},
 	} {
@@ -628,6 +629,10 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"new", "review", "-n"}, "cld: new: unexpected argument 'review' (see cld help)\n"},
 		{[]string{"new", "review", "-h"}, "cld: new: unexpected argument 'review' (see cld help)\n"},
 		{[]string{"join", "-w", "-h"}, "cld: join: unexpected argument '-w' (see cld help)\n"},
+		{[]string{"join", "-d"}, "cld: join: unexpected argument '-d' (see cld help)\n"},
+		{[]string{"join", "--detach-others=maybe"}, "cld: join: unexpected argument '--detach-others=maybe' (see cld help)\n"},
+		{[]string{"join", "--detach-others", "a"}, "cld: join: unexpected argument 'a' (see cld help)\n"},
+		{[]string{"new", "--detach-others"}, "cld: new: unexpected argument '--detach-others' (see cld help)\n"},
 		// An empty argument is one too (cld's shell script took it for none).
 		{[]string{"list", ""}, "cld: list: unexpected argument '' (see cld help)\n"},
 		{[]string{"resume", "-w"}, "cld: resume: unexpected argument '-w' (see cld help)\n"},
@@ -1406,32 +1411,48 @@ func TestNewTmuxCommand(t *testing.T) {
 	}
 }
 
-// join hands over to tmux with this command, word for word, and with the environment it got but
-// for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which only new and resume leave
-// out, and a PS1, which the script's bash dropped. The fake tmux finds session x on its server,
-// then records the command.
+// join hands over to tmux with this command, word for word - attach-session with -d only for
+// --detach-others - and with the environment it got but for an empty TMUX where TMUX was set:
+// TERMINAL_EMULATOR too, which only new and resume leave out, and a PS1, which the script's bash
+// dropped. The fake tmux finds session x on its server, then records the command.
 func TestJoinTmuxCommand(t *testing.T) {
 	t.Parallel()
-	s := sandbox.New(t)
-	given := map[string]string{
-		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
-		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
-		"CLD_FAKE_TMUX_SESSIONS": "cld-x",
-		"TERMINAL_EMULATOR":      "JetBrains-JediTerm",
-		"TERM_PROGRAM":           "iTerm.app",
-		"LC_TERMINAL":            "iTerm2",
-		"TMUX":                   filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
-		"PS1":                    `\u@\h$ `,
+	for _, command := range []struct {
+		args []string
+		// attach is attach-session and its options, as tmux gets them
+		attach []string
+	}{
+		{[]string{"join", "-n", "x"}, []string{"attach-session"}},
+		{[]string{"join", "-n", "x", "--detach-others"}, []string{"attach-session", "-d"}},
+		{[]string{"join", "--detach-others", "-n", "x"}, []string{"attach-session", "-d"}},
+		{[]string{"join", "-n", "x", "--detach-others=false"}, []string{"attach-session"}},
+	} {
+		args, attach := command.args, command.attach
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			given := map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": "cld-x",
+				"TERMINAL_EMULATOR":      "JetBrains-JediTerm",
+				"TERM_PROGRAM":           "iTerm.app",
+				"LC_TERMINAL":            "iTerm2",
+				"TMUX":                   filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
+				"PS1":                    `\u@\h$ `,
+			}
+			result := s.RunCld(given, args...)
+			if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
+			}
+			record := s.FakeTmuxRecord()
+			want := slices.Concat([]string{"-L", "cld-x"}, attach, []string{"-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint})
+			if !slices.Equal(record.Argv, want) {
+				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
+			}
+			checkEnv(t, record.Env, passedOn(s, given))
+		})
 	}
-	result := s.RunCld(given, "join", "-n", "x")
-	if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
-		t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
-	}
-	record := s.FakeTmuxRecord()
-	if want := []string{"-L", "cld-x", "attach-session", "-d", "-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint}; !slices.Equal(record.Argv, want) {
-		t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
-	}
-	checkEnv(t, record.Env, passedOn(s, given))
 }
 
 // A server can exit while cld asks it - its claude exits, a cld kill runs - and tmux then says that

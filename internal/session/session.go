@@ -49,19 +49,21 @@
 //     top out of sight; the pane-died hook shows how to end the session on the message line
 //     instead, until a key is pressed. It names the session through its one window, named NAME:
 //     the hook's formats know the pane and its window, not the session. The hook shows it only to
-//     a terminal on that window: tmux would show it on the terminal of another session on the
-//     server - one claude made - or with none attached keep it and show it in view-mode over the
-//     session a terminal attaches to next, which then takes no keys until q; join shows it
-//     instead. These go to claude's window only, not the server, so that the sessions claude
-//     makes there close as tmux would close them (see Tmux.create)
+//     a terminal on that window - of several, the one used last: tmux would show it on the
+//     terminal of another session on the server - one claude made - or with none attached keep it
+//     and show it in view-mode over the session a terminal attaches to next, which then takes no
+//     keys until q; join shows it instead. These go to claude's window only, not the server, so
+//     that the sessions claude makes there close as tmux would close them (see Tmux.create)
 //
-// join attaches with -d, detaching other clients. tmux keeps claude's title changes to the pane
-// (set-titles is off), so the tab keeps the session name. claude trusts TERMINAL_EMULATOR over
-// TERM_PROGRAM=tmux, and its environment comes from the client that started its server: a
-// session created in the JetBrains terminal would keep its claude, and whatever claude starts
-// through tmux, acting as if in JediTerm (extended keys off, so Shift+Enter submits) even when
-// joined from iTerm2 - hence new and resume leave TERMINAL_EMULATOR out of the environment they
-// run tmux with.
+// join attaches beside any other terminal on the session, which stays attached: the window takes
+// the size of the terminal used last (window-size latest), and a larger one shows the rest of its
+// screen dotted. With --detach-others it attaches with -d, detaching the others. tmux keeps
+// claude's title changes to the pane (set-titles is off), so the tab keeps the session name.
+// claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux, and its environment comes from the
+// client that started its server: a session created in the JetBrains terminal would keep its
+// claude, and whatever claude starts through tmux, acting as if in JediTerm (extended keys off, so
+// Shift+Enter submits) even when joined from iTerm2 - hence new and resume leave
+// TERMINAL_EMULATOR out of the environment they run tmux with.
 package session
 
 import (
@@ -484,17 +486,18 @@ func unexpanded(text string) string {
 	return strings.ReplaceAll(text, "#", "##")
 }
 
-// Join becomes a tmux client attached to session cld-SUFFIX, detaching any other. It returns
-// only when it does not get as far. Joinable and Attach are its steps after the terminal's check,
-// for a caller that has to look the session up before it hands the terminal over.
-func (t *Tmux) Join(suffix string) error {
+// Join becomes a tmux client attached to session cld-SUFFIX, beside any other or, with
+// detachOthers, detaching them. It returns only when it does not get as far. Joinable and Attach
+// are its steps after the terminal's check, for a caller that has to look the session up before it
+// hands the terminal over.
+func (t *Tmux) Join(suffix string, detachOthers bool) error {
 	if err := t.readyClient(); err != nil {
 		return err
 	}
 	if err := t.Joinable(context.Background(), suffix); err != nil {
 		return err
 	}
-	return t.Attach(suffix)
+	return t.Attach(suffix, detachOthers)
 }
 
 // Joinable is join's lookup: nil when session cld-SUFFIX is on its server, and otherwise why join
@@ -516,8 +519,9 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 
 // Attach is the rest of join, for a session Joinable found, from a terminal that is not a live
 // pane of one of cld's servers (see OwnPane): it becomes a tmux client attached to session
-// cld-SUFFIX, detaching any other. It returns only when it does not get as far.
-func (t *Tmux) Attach(suffix string) error {
+// cld-SUFFIX, beside any other or, with detachOthers, detaching them. It returns only when it does
+// not get as far.
+func (t *Tmux) Attach(suffix string, detachOthers bool) error {
 	if err := emptyTMUX(); err != nil {
 		return err
 	}
@@ -525,9 +529,12 @@ func (t *Tmux) Attach(suffix string) error {
 	if err := output.Print(Title(suffix)); err != nil {
 		return err
 	}
+	attach := []string{"tmux", "-L", name, "attach-session"}
+	if detachOthers {
+		attach = append(attach, "-d")
+	}
 	// After attach-session in one command list, the hint goes to this terminal, attached by then.
-	return t.become([]string{"tmux", "-L", name, "attach-session", "-d", "-t", "=" + name, ";",
-		"if", "-F", "#{pane_dead}", hint}, os.Environ())
+	return t.become(append(attach, "-t", "="+name, ";", "if", "-F", "#{pane_dead}", hint), os.Environ())
 }
 
 // Kill ends session cld-SUFFIX with its server, for cld kill: End, whatever its panes' pids, with
