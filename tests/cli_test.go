@@ -574,33 +574,46 @@ func TestNameOptions(t *testing.T) {
 	}
 }
 
-// A NAME that -s or new's default makes from the name of the repository has at most 64
-// characters too: past them it is refused, with exit status 1 - the repository decides it, not
-// the command line alone - pointing at -n NAME. The fake tmux finds no server, and gets a NAME of
-// 64 characters.
-func TestLongRepositoryName(t *testing.T) {
+// A NAME that -s or new's default makes from the name of the repository, or outside one of the
+// directory, has at most 64 characters too: past them it is refused, with exit status 1 - that
+// name decides it, not the command line alone - pointing at -n NAME. The fake tmux finds no
+// server, and gets a NAME of 64 characters.
+func TestLongPrefix(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		// length is that of the repository's name
-		length int
-		args   []string
-		suffix string
-		ok     bool
+		// length is that of the name of the repository, or where repository is false of the
+		// directory, in no repository
+		length     int
+		repository bool
+		args       []string
+		suffix     string
+		ok         bool
 	}{
-		{62, []string{"new"}, "-0", true},
-		{63, []string{"new"}, "-0", false},
-		{63, []string{"resume", "SESSION"}, "-0", false},
-		{60, []string{"new", "-s", "abc"}, "-abc", true},
-		{60, []string{"new", "-s", "abcd"}, "-abcd", false},
-		{60, []string{"join", "-s", "abcd"}, "-abcd", false},
-		{60, []string{"kill", "-s", "abcd"}, "-abcd", false},
+		{62, true, []string{"new"}, "-0", true},
+		{63, true, []string{"new"}, "-0", false},
+		{63, true, []string{"resume", "SESSION"}, "-0", false},
+		{60, true, []string{"new", "-s", "abc"}, "-abc", true},
+		{60, true, []string{"new", "-s", "abcd"}, "-abcd", false},
+		{60, true, []string{"join", "-s", "abcd"}, "-abcd", false},
+		{60, true, []string{"kill", "-s", "abcd"}, "-abcd", false},
+		{62, false, []string{"new"}, "-0", true},
+		{63, false, []string{"new"}, "-0", false},
+		{60, false, []string{"join", "-s", "abcd"}, "-abcd", false},
 	} {
 		repository := strings.Repeat("r", test.length)
 		name := repository + test.suffix
-		t.Run(strconv.Itoa(test.length)+", "+strings.Join(test.args, " "), func(t *testing.T) {
+		where := "repository"
+		if !test.repository {
+			where = "directory"
+		}
+		t.Run(where+" of "+strconv.Itoa(test.length)+", "+strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			runGit(t, s, s.Root, "init", "-q", repository)
+			if test.repository {
+				runGit(t, s, s.Root, "init", "-q", repository)
+			} else if err := os.Mkdir(filepath.Join(s.Root, repository), 0o755); err != nil {
+				t.Fatal(err)
+			}
 			result := s.RunCldIn(filepath.Join(s.Root, repository), map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
@@ -981,7 +994,7 @@ func TestRequiresTools(t *testing.T) {
 		{[]string{"join", "-n", "main"}, []string{"claude"}, "cld: tmux is not installed\n"},
 		{[]string{"join", "-n", "main"}, []string{"tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
 		{[]string{"kill", "-s", "x"}, []string{"claude"}, "cld: tmux is not installed\n"},
-		{[]string{"kill", "-s", "x"}, []string{"tmux"}, "cld: no session 'x' (see cld list)\n"},
+		{[]string{"kill", "-s", "x"}, []string{"tmux"}, "cld: no session 'work-x' (see cld list)\n"},
 		{[]string{"list"}, []string{"claude"}, "cld: tmux is not installed\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {
@@ -1222,7 +1235,7 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 			}
 			stdout := ""
 			if test.code == 0 {
-				stdout = "\x1b]0;✳ cld-0\x07"
+				stdout = "\x1b]0;✳ cld-work-0\x07"
 			}
 			if result.Code != test.code || result.Stdout != stdout || result.Stderr != test.stderr {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q",
@@ -1351,7 +1364,7 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 			}
 			result := s.RunCld(map[string]string{"PATH": tools, "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new")
 			if test.accepted {
-				if title := "\x1b]0;\u2733 cld-0\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
+				if title := "\x1b]0;\u2733 cld-work-0\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 					t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 				}
 				if argv := s.FakeTmuxRecord().Argv; !slices.Contains(argv, s.Work) {

@@ -148,9 +148,9 @@ func shellArgument(args []string) error {
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
 // on every TAB, and setup completion SHELL writes it where the shell reads it (see
 // setupCompletion). join -n offers the sessions list shows (see sessionNames), join -s the SUFFIX
-// of those named after the repository here (see sessionSuffixes), help the commands (see
-// commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers file
-// names, as no argument of cld's is a file.
+// of those named after the repository or directory here (see sessionSuffixes), help the commands
+// (see commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers
+// file names, as no argument of cld's is a file.
 //
 // new, resume, join and kill name their session with -n NAME or -s SUFFIX, not both (see
 // naming); new, and resume with SESSION, name it themselves without either.
@@ -178,8 +178,8 @@ stays, showing why, until cld kill ends it.`,
 		Short: "create session NAME in the current directory and attach to it",
 		Long: `create session NAME in the current directory and attach to it. Without -n
 and -s, NAME is REPO-INDEX, REPO being the name of the git repository the
-directory is in and INDEX 0 or, where sessions REPO-INDEX run, one above the
-highest of their INDEX; outside a repository, INDEX alone.`,
+directory is in, or outside one of the directory itself, and INDEX 0 or, where
+sessions REPO-INDEX run, one above the highest of their INDEX.`,
 	}
 	newNaming := addNaming(newCommand)
 	worktree := newCommand.Flags().BoolP("worktree", "w", false,
@@ -701,9 +701,8 @@ func sessionNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completio
 }
 
 // sessionSuffixes completes the SUFFIX of join -s as sessionNames completes -n's NAME, from the
-// sessions whose names start with the name of the git repository here and "-" (see
-// session.Prefix) - outside a repository, from them all: what follows it, where that is a SUFFIX
-// join takes.
+// sessions whose names start with the name of the git repository here, or outside one of the
+// directory, and "-" (see session.Prefix): what follows it, where that is a SUFFIX join takes.
 func sessionSuffixes(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	return completeSessions(session.Prefix(), typed)
 }
@@ -768,13 +767,13 @@ func commandNames(c *cobra.Command, args []string, typed string) ([]cobra.Comple
 // lines fit within 80 columns beside -s's own column, as wide as join's --detach-others.
 const (
 	nameUsage   = "session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\nstarting with a letter or digit"
-	suffixUsage = "session REPO-`SUFFIX`, REPO being the name of the git\nrepository here; SUFFIX alone outside one"
+	suffixUsage = "session REPO-`SUFFIX`, REPO being the name of the git\nrepository here, or outside one of the directory"
 )
 
 // naming is the -n and -s of new, resume, join and kill, which name the session: -n NAME as it is,
-// -s SUFFIX after the name of the git repository the current directory is in (see
-// session.Prefix). Without either, new names it itself (see session.Tmux.Next), as resume does
-// for SESSION; join and kill, and resume without SESSION, refuse to go on.
+// -s SUFFIX after the name of the git repository the current directory is in, or else of the
+// directory (see session.Prefix). Without either, new names it itself (see session.Tmux.Next), as
+// resume does for SESSION; join and kill, and resume without SESSION, refuse to go on.
 type naming struct {
 	flags        *pflag.FlagSet
 	name, suffix *string
@@ -791,8 +790,9 @@ func addNaming(command *cobra.Command) naming {
 
 // check checks -n and -s once the options have been read, before anything runs: not both, and
 // what was given - NAME's length, whatever its characters, then its characters, and SUFFIX's the
-// same way, as SUFFIX alone names the session outside a repository. missing, where not empty, is
-// what is missing when neither is given, for the command typed as typed.
+// same way, as SUFFIX alone names the session where the directory's name leaves nothing (see
+// session.Prefix). missing, where not empty, is what is missing when neither is given, for the
+// command typed as typed.
 func (n naming) check(typed, missing string) error {
 	name, suffix := n.flags.Changed("name"), n.flags.Changed("suffix")
 	switch {
@@ -815,9 +815,9 @@ func (n naming) check(typed, missing string) error {
 }
 
 // resolve is the NAME of the session, once tmux has been checked: -n's, or else the name of the
-// repository with -s's SUFFIX or, without -s, the next index (see session.Tmux.Next). A NAME made
-// so that is longer than a NAME can be is refused with status 1: what decides it is the
-// repository's name, not the command line alone.
+// repository or directory with -s's SUFFIX or, without -s, the next index (see
+// session.Tmux.Next). A NAME made so that is longer than a NAME can be is refused with status 1:
+// what decides it is the repository's or directory's name, not the command line alone.
 func (n naming) resolve(tmux *session.Tmux) (string, error) {
 	if n.flags.Changed("name") {
 		return *n.name, nil

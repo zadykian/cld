@@ -84,7 +84,7 @@ platform, `cld.sha256` and `install.sh`.
   cobra's own last line, which names the command (81 columns for `setup completion`).
 - Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the names
   `list` shows, read as `list` reads them, `join -s` the SUFFIX of those that start with the
-  repository's name, `help` the commands it takes, `setup project` and
+  repository's or directory's name, `help` the commands it takes, `setup project` and
   `setup telemetry` among them, `setup project --mcp` its MCP servers, nothing offers file names
   (`--collector-config`'s `FILE` neither), and completion makes none of the startup checks,
   `setup telemetry`'s included, and never starts the interactive list (decisions 17 to 19 in
@@ -101,12 +101,13 @@ platform, `cld.sha256` and `install.sh`.
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
   path fits in `sun_path`), never sanitised. `new`, `resume`, `join` and `kill` take `-n NAME` or
-  `-s SUFFIX`, the NAME `REPO-SUFFIX` (SUFFIX alone outside a git repository); `new` without
-  either, and `resume` with SESSION alone, name the session `REPO-INDEX`, the index one above the
-  highest of the sessions so named whose servers run (`INDEX` alone outside a repository), and
-  `join` and `kill` refuse to go without. `REPO` is the name of the directory holding the
-  repository's common `.git` (`git rev-parse --git-common-dir`), made a NAME: the one name cld
-  changes, as nobody typed it (decision 24). `-w` gives claude `--worktree cld-NAME`.
+  `-s SUFFIX`, the NAME `REPO-SUFFIX`; `new` without either, and `resume` with SESSION alone, name
+  the session `REPO-INDEX`, the index one above the highest of the sessions so named whose servers
+  run, and `join` and `kill` refuse to go without. `REPO` is the name of the directory holding the
+  git repository's common `.git` (`git rev-parse --git-common-dir`) or, outside a repository, of
+  the current directory (`os.Getwd`, which keeps `PWD`'s), made a NAME: the one name cld changes,
+  as nobody typed it; where nothing is left, as in `/`, the NAME is `SUFFIX` or `INDEX` alone
+  (decision 24). `-w` gives claude `--worktree cld-NAME`.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
   the `PATH`; a word of cld's ending in `;` (resume's SESSION or the directory given with `-c`

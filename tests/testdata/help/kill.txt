@@ -9,4 +9,4 @@ Flags:
   -n, --name NAME       session NAME: up to 64 letters, digits, "_" and "-",
                         starting with a letter or digit
   -s, --suffix SUFFIX   session REPO-SUFFIX, REPO being the name of the git
-                        repository here; SUFFIX alone outside one
+                        repository here, or outside one of the directory
