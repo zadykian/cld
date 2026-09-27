@@ -2,8 +2,9 @@
 // be detached and rejoined from any terminal. The command line is here; how cld uses tmux, and
 // why, is in internal/session, the interactive list, cld list on a terminal, in internal/picker,
 // cld setup project, claude's settings for a project, in internal/project, cld setup telemetry,
-// a local OpenTelemetry collector for claude, in internal/telemetry, and cld update, which
-// replaces cld with the latest release, in internal/update.
+// a local OpenTelemetry collector for claude, in internal/telemetry, cld update, which replaces
+// cld with the latest release, in internal/update, and cld setup completion, which writes the
+// completion script where a shell reads it, in internal/completion.
 // cld completion SHELL prints cobra's completion script for the shell, with which cld join -n
 // completes the names cld list shows (see commandLine).
 package main

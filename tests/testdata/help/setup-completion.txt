@@ -1,0 +1,17 @@
+set up cld's completion in a shell, one of the commands below: cld writes the
+script that cld completion SHELL prints where the shell reads it. TAB then
+completes cld's commands, their options and the names cld list shows. cld
+update writes the script anew where the release it installs prints another.
+
+Usage:
+  cld setup completion [command]
+
+Available Commands:
+  bash        set up cld's completion in bash
+  zsh         set up cld's completion in zsh
+  fish        set up cld's completion in fish
+
+Flags:
+  -h, --help   help for completion
+
+Use "cld setup completion [command] --help" for more information about a command.

@@ -1,0 +1,12 @@
+set up cld's completion in zsh: write the script cld completion zsh prints to
+~/.local/share/cld/zsh/_cld ($XDG_DATA_HOME in place of ~/.local/share where
+set), and add the lines that load it to the end of ~/.zshrc ($ZDOTDIR/.zshrc
+where ZDOTDIR is set), unless it has them. They run compinit only where
+nothing before them has: a second compinit would drop the completions set up
+after the first. Where the script is missing, they do nothing.
+
+Usage:
+  cld setup completion zsh [flags]
+
+Flags:
+  -h, --help   help for zsh

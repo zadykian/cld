@@ -1,0 +1,9 @@
+set up cld's completion in fish: write the script cld completion fish prints
+to ~/.config/fish/completions/cld.fish ($XDG_CONFIG_HOME in place of ~/.config
+where set), where fish finds it at the first TAB.
+
+Usage:
+  cld setup completion fish [flags]
+
+Flags:
+  -h, --help   help for fish

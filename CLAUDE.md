@@ -12,10 +12,12 @@ help texts, argument errors), `internal/session` the tmux side, `internal/picker
 `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json` and `.gitignore`),
 `internal/telemetry` `cld setup telemetry` (a local OpenTelemetry Collector in Docker, and
 claude's settings pointed at it), `internal/configfile` edits the files the two write in place,
-`internal/update` `cld update` (cld replacing itself with the latest release), `internal/tool`
-finds the programs cld runs on the `PATH` (and ends cld as a shell would when one cannot run),
-`internal/fail` carries exit statuses up to `main`, and `internal/output` prints cld's own
-output, a write that fails being one of those ends. `install.sh`, published with each release,
+`internal/update` `cld update` (cld replacing itself with the latest release),
+`internal/completion` `cld setup completion` (the completion script where bash, zsh or fish reads
+it, and `cld update` writing it anew), `internal/tool` finds the programs cld runs on the `PATH`
+(and ends cld as a shell would when one cannot run), `internal/fail` carries exit statuses up to
+`main`, and `internal/output` prints cld's own output, a write that fails being one of those ends,
+and its warnings. `install.sh`, published with each release,
 installs cld from a release. Everything else is its test harness (Go, under `tests/`),
 docs and CI.
 
@@ -49,7 +51,7 @@ platform, `cld.sha256` and `install.sh`.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
   run the real claude): they run `claude --version` before starting that claude; `join`, `kill`,
-  `list`, `setup project`, `setup telemetry`, `update` and completion do not. Re-derive the
+  `list`, `setup project`, `setup telemetry`, `setup completion`, `update` and completion do not. Re-derive the
   minimum when cld starts to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `install.sh` and
@@ -63,24 +65,37 @@ platform, `cld.sha256` and `install.sh`.
   `releases/latest` redirects, and refuses a version that is no X.Y.Z (`dev`). It replaces the
   file cld runs from (symbolic links resolved) by a rename, once the new binary matches its
   checksum and prints the release's version; an interrupt before that leaves cld as it was and
-  ends with 128 plus the signal's number. `CLD_RELEASES_URL` points it, and `install.sh`, at the
-  tests' releases.
+  ends with 128 plus the signal's number. Once cld is replaced, it has the new cld print anew
+  (`completion SHELL`, which every release has) each script where `setup completion` writes one,
+  and writes those that differ; one it cannot write is a warning (`output.Warn`) naming
+  `cld setup completion SHELL`, never a failure. `CLD_RELEASES_URL` points it, and `install.sh`,
+  at the tests' releases.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
   and the list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep
   cld's command line - the first argument checked before cobra, and the one after `setup`,
   options read up to the first argument, a `help [COMMAND]` that takes one of cld's commands
-  (and after `setup` or `completion`, one of theirs) and refuses anything else, the help and
+  (and after `setup` or `completion`, one of theirs, and after `setup completion`, a shell) and
+  refuses anything else, the help and
   cobra's other output printed through `output.Print`, the commands unsorted (see docs/design.md,
   Implementation notes).
 - The help is cobra's, generated with its default templates from each command's `Use`, `Short`
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
-  nothing: break the texts by hand within 80 columns, which `TestHelpText` checks.
+  nothing: break the texts by hand within 80 columns, which `TestHelpText` checks - all but
+  cobra's own last line, which names the command (81 columns for `setup completion`).
 - Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the names
   `list` shows, read as `list` reads them, `help` the commands it takes, `setup project` and
   `setup telemetry` among them, `setup project --mcp` its MCP servers, nothing offers file names
   (`--collector-config`'s `FILE` neither), and completion makes none of the startup checks,
   `setup telemetry`'s included, and never starts the interactive list (decisions 17 to 19 in
   docs/design.md). The `Short`s are also what `cld <TAB>` shows.
+- `setup completion SHELL` (bash, zsh, fish) writes the script cobra generates, byte for byte
+  what `completion SHELL` prints, where the shell reads it, following `BASH_COMPLETION_USER_DIR`,
+  `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `ZDOTDIR`: bash-completion 2's user directory,
+  `~/.config/fish/completions`, and for zsh `~/.local/share/cld/zsh/_cld` with lines at the end
+  of `.zshrc` that load it, running `compinit -i` only where nothing has before them (decision
+  22). It reads both files before it writes either, writes through `internal/configfile`, and
+  removes nothing. Outside the tests, which set `HOME` to the sandbox's, run it only with `HOME`
+  (and those variables) pointing at a scratch directory.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
@@ -116,13 +131,15 @@ platform, `cld.sha256` and `install.sh`.
   then checks with `git check-ignore` that git does not ignore `.claude/settings.json`
   (decision 19).
 - `setup` has commands of its own: `run` checks the argument after it before cobra, as it checks
-  the first, and `help` takes `setup project` and `setup telemetry`. Their checks (Linux, docker)
+  the first, and after `setup completion` the shell, and `help` takes `setup project`,
+  `setup telemetry` and `setup completion SHELL`. Their checks (Linux, docker)
   stay in their `Args` and `RunE`, never in a root hook, so completion (`__complete setup ...`),
   which `run` lets through, runs none of them.
 
-The package comments of `internal/session`, `internal/telemetry`, `internal/project` and
-`internal/update` explain why each tmux option is set and each step of `setup telemetry`,
-`setup project` and `update` is taken; keep them accurate when changing any of them.
+The package comments of `internal/session`, `internal/telemetry`, `internal/project`,
+`internal/update` and `internal/completion` explain why each tmux option is set and each step of
+`setup telemetry`, `setup project`, `update` and `setup completion` is taken; keep them accurate
+when changing any of them.
 
 ## Test architecture (`tests/`)
 
@@ -174,8 +191,13 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   piped into `sh` and `bash`, against releases an HTTP server of the test's serves
   (`CLD_RELEASES_URL`) and a fake `uname`: platforms, versions, directories, refusals, and the
   script cut short at every line; `update_test.go` — `cld update` of a cld built as release 0.4.0
-  and copied into the sandbox, against the same kind of releases: updates and none, a symbolic
-  link, a build from source, refusals, a directory it cannot write, signals.
+  and copied into the sandbox, against the same kind of releases, whose binaries also print a
+  script for `completion SHELL`: updates and none, a symbolic link, a build from source,
+  refusals, a directory it cannot write, signals, the completion scripts written anew and the
+  warning for one it cannot write; `completion_test.go` — `setup completion` in the sandbox's
+  home directory: each script and `.zshrc`'s lines where the variables say, files that exist,
+  refusals, and bash (with bash-completion 2), zsh and fish loading them, each skipped where it
+  is not installed (`tests/Dockerfile` installs all three).
 
 ## Documentation conventions
 

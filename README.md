@@ -33,15 +33,19 @@ upgrading tmux and cld.
 
 ### Shell completion
 
-`cld completion SHELL` prints a completion script for bash, zsh or fish: TAB then completes the
+`cld setup completion SHELL` sets up completion in bash, zsh or fish: TAB then completes the
 commands and their options, the sessions of `cld join -n` and the servers of
-`cld setup project --mcp`. `cld completion SHELL --help` says where the script goes; for fish:
+`cld setup project --mcp`. Run it once, then start a new shell:
 
 ```sh
-cld completion fish > ~/.config/fish/completions/cld.fish
+cld setup completion zsh   # or bash, or fish
 ```
 
-The [guide](docs/guide.md#shell-completion) has bash and zsh, macOS's bash 3.2 included.
+It writes the script that `cld completion SHELL` prints where the shell reads it - for zsh, with
+the lines that load it at the end of `~/.zshrc` - and `cld update` writes the script anew when a
+new release prints another. bash needs bash-completion 2, which Debian's and Ubuntu's `~/.bashrc`
+load. The [guide](docs/guide.md#shell-completion) says where each script goes, and how to set it
+up by hand, for macOS's bash 3.2 among others.
 
 ## Usage
 
@@ -59,7 +63,8 @@ it from claude.ai or the Claude app.
 | `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
 | `cld setup project [--mcp SERVER]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
-| `cld update` | update cld to the latest release, replacing the file it runs from |
+| `cld setup completion SHELL` | set up completion in `bash`, `zsh` or `fish` |
+| `cld update` | update cld to the latest release, replacing the file it runs from, and the completion scripts |
 | `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish` |
 | `cld help [COMMAND]` | show the help of cld, or of a command; `-h` and `--help` do the same |
 | `cld version` | show the version |

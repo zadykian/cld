@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/zadykian/cld/internal/completion"
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/picker"
@@ -98,18 +99,34 @@ func noFiles(text string) string {
 }
 
 // setupCommand checks the argument after setup before cobra sees it, as run checks the first: it
-// names one of setup's commands, project or telemetry, or is -h or --help, setup's help. cobra
-// would run telemetry for cld setup --local URL telemetry, taking --local for an option of
-// setup's.
+// names one of setup's commands, project, telemetry or completion, or is -h or --help, setup's
+// help. cobra would run telemetry for cld setup --local URL telemetry, taking --local for an
+// option of setup's. completion has commands of its own, one for each shell, and the argument
+// after it is checked the same way: cobra would run zsh's for setup completion --help=false zsh.
 func setupCommand(args []string) error {
-	const hint = "cld setup project or cld setup telemetry (see cld help)"
+	const hint = "cld setup project, cld setup telemetry or cld setup completion SHELL (see cld help)"
 	switch {
 	case len(args) == 0 || args[0] == "":
 		return fail.Usage("setup: missing command: " + hint)
+	case args[0] == "completion":
+		return shellArgument(args[1:])
 	case args[0] == "project" || args[0] == "telemetry" || args[0] == "-h" || args[0] == "--help":
 		return nil
 	}
 	return fail.Usage(fmt.Sprintf("setup: unknown command '%s': %s", args[0], hint))
+}
+
+// shellArgument checks the argument after setup completion, as setupCommand checks the one after
+// setup: one of the shells, or -h or --help, the help of setup completion.
+func shellArgument(args []string) error {
+	const hint = "bash, zsh or fish (see cld help)"
+	switch {
+	case len(args) == 0 || args[0] == "":
+		return fail.Usage("setup completion: missing shell: " + hint)
+	case slices.Contains(completion.Shells, args[0]) || args[0] == "-h" || args[0] == "--help":
+		return nil
+	}
+	return fail.Usage(fmt.Sprintf("setup completion: unknown shell '%s': %s", args[0], hint))
 }
 
 // commandLine is cld's commands, for a command typed as typed: the messages name it that way,
@@ -121,17 +138,18 @@ func setupCommand(args []string) error {
 // columns. help, -h and --help print it to out, which run prints through output.Print, and it lists
 // the commands in the order they are added here rather than by name.
 //
-// cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE".
-// help takes one of cld's commands at most - with setup, one of setup's after it - and version is
-// a command rather than cobra's --version and -v. Every command reads its options up to the first
-// argument, which pflag would otherwise pass over, and takes no argument but help's COMMAND,
-// resume's SESSION and completion's SHELL: the first one left - after COMMAND or SESSION, the next
-// - or a "--", which pflag would drop, is refused.
+// cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE". help
+// takes one of cld's commands at most - with setup, one of setup's after it, and a shell after
+// setup completion - and version is a command rather than cobra's --version and -v. Every command
+// reads its options up to the first argument, which pflag would otherwise pass over, and takes no
+// argument but help's COMMAND, resume's SESSION and completion's SHELL: the first one left - after
+// COMMAND or SESSION, the next - or a "--", which pflag would drop, is refused.
 //
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
-// on every TAB. join -n offers the sessions list shows (see sessionNames), help the commands (see
-// commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers file
-// names, as no argument of cld's is a file.
+// on every TAB, and setup completion SHELL writes it where the shell reads it (see
+// setupCompletion). join -n offers the sessions list shows (see sessionNames), help the commands
+// (see commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers
+// file names, as no argument of cld's is a file.
 func commandLine(typed string, out io.Writer) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
@@ -297,11 +315,12 @@ list. cld list | cat prints the list only.`,
 	// own; run has made sure that one of them follows it, or -h or --help.
 	setup := &cobra.Command{
 		Use:   "setup",
-		Short: "set up claude's settings in a project, or its telemetry",
+		Short: "set up claude in a project, its telemetry, or shell completion",
 	}
 	projectCommand := setupProject(typed + " project")
 	telemetryCommand := setupTelemetry(typed + " telemetry")
-	setup.AddCommand(projectCommand, telemetryCommand)
+	shellsCommand := setupCompletion(typed + " completion")
+	setup.AddCommand(projectCommand, telemetryCommand, shellsCommand)
 
 	// update runs neither tmux nor claude, so it makes none of their checks: it needs the network
 	// and the directory cld is in, which internal/update checks as it goes.
@@ -312,13 +331,26 @@ list. cld list | cat prints the list only.`,
 this system, check it against the release's cld.sha256 and that it runs, then
 replace the file cld runs from with it - the file a symbolic link leads to.
 Where cld is the latest release already, or newer, nothing changes; a cld built
-from source, cld dev, is not updated.`,
+from source, cld dev, is not updated. Once cld is replaced, the scripts that
+cld setup completion wrote are written anew where the new cld prints others.`,
 		RunE: func(*cobra.Command, []string) error {
 			result, err := update.Run(version)
 			if err != nil {
 				return err
 			}
-			return output.Print(result.Report())
+			if err := output.Print(result.Report()); err != nil || result.File == "" {
+				return err
+			}
+			// The new cld prints the completion scripts: its release's cobra may write others. cld
+			// is updated by then, so a script not written is a warning, not a failure.
+			report, warnings := completion.Refresh(result.File)
+			for _, warning := range warnings {
+				output.Warn(warning)
+			}
+			if report == "" {
+				return nil
+			}
+			return output.Print(report)
 		},
 	}
 
@@ -342,7 +374,9 @@ from source, cld dev, is not updated.`,
 		},
 	}
 
-	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, setup, projectCommand, telemetryCommand, updateCommand, help, versionCommand} {
+	all := []*cobra.Command{root, newCommand, resume, join, kill, list, setup, projectCommand, telemetryCommand, shellsCommand}
+	all = append(append(all, shellsCommand.Commands()...), updateCommand, help, versionCommand)
+	for _, command := range all {
 		// cobra adds -h and --help only where a command has no "help" option of its own.
 		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
 		if command == root {
@@ -395,8 +429,9 @@ func completionCommand(root *cobra.Command) {
 	}
 	completion.Short = "print the completion script for a shell"
 	completion.Long = `print the completion script for a shell, one of the commands below. With it,
-cld join -n completes the names cld list shows. The help of each command says
-where its script goes and what it needs.`
+cld join -n completes the names cld list shows. cld setup completion SHELL
+writes it where bash, zsh or fish reads it; the help of each command below
+says where the script goes by hand, and what it needs.`
 	for _, shell := range completion.Commands() {
 		shell.Short = "print the completion script for " + shell.Name()
 	}
@@ -421,6 +456,73 @@ where its script goes and what it needs.`
 		command.Flags().SetInterspersed(false)
 		command.SetFlagErrorFunc(flagError(name))
 	}
+}
+
+// setupCompletion is cld setup completion, named in its messages as typed, with a command for each
+// shell of completion.Shells: each writes the script that cld completion SHELL prints, which
+// cobra generates as it does there, where the shell reads it (see internal/completion).
+// setupCommand has made sure that a shell follows setup completion, or -h or --help, so it runs
+// nothing itself, as setup does not.
+func setupCompletion(typed string) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "completion",
+		Short: "set up cld's completion in bash, zsh or fish",
+		Long: `set up cld's completion in a shell, one of the commands below: cld writes the
+script that cld completion SHELL prints where the shell reads it. TAB then
+completes cld's commands, their options and the names cld list shows. cld
+update writes the script anew where the release it installs prints another.`,
+		Args: noArguments(typed),
+	}
+	command.SetFlagErrorFunc(flagError(typed))
+	long := map[string]string{
+		"bash": `set up cld's completion in bash: write the script cld completion bash prints
+to completions/cld in the first directory of $BASH_COMPLETION_USER_DIR, or else
+to ~/.local/share/bash-completion/completions/cld ($XDG_DATA_HOME in place of
+~/.local/share where set), where bash-completion 2 finds it at the first TAB.
+It needs ~/.bashrc to load bash-completion, as Debian's and Ubuntu's do;
+bash-completion 1, the one for macOS's bash 3.2, does not read that directory.`,
+		"zsh": `set up cld's completion in zsh: write the script cld completion zsh prints to
+~/.local/share/cld/zsh/_cld ($XDG_DATA_HOME in place of ~/.local/share where
+set), and add the lines that load it to the end of ~/.zshrc ($ZDOTDIR/.zshrc
+where ZDOTDIR is set), unless it has them. They run compinit only where
+nothing before them has: a second compinit would drop the completions set up
+after the first. Where the script is missing, they do nothing.`,
+		"fish": `set up cld's completion in fish: write the script cld completion fish prints
+to ~/.config/fish/completions/cld.fish ($XDG_CONFIG_HOME in place of ~/.config
+where set), where fish finds it at the first TAB.`,
+	}
+	for _, shell := range completion.Shells {
+		name := typed + " " + shell
+		shellCommand := &cobra.Command{
+			Use:   shell,
+			Short: "set up cld's completion in " + shell,
+			Long:  long[shell],
+			Args:  noArguments(name),
+			RunE: func(c *cobra.Command, _ []string) error {
+				var script bytes.Buffer
+				var err error
+				switch shell {
+				case "bash":
+					err = c.Root().GenBashCompletionV2(&script, true)
+				case "zsh":
+					err = c.Root().GenZshCompletion(&script)
+				default:
+					err = c.Root().GenFishCompletion(&script, true)
+				}
+				if err != nil {
+					return fail.Runtime("cannot make the script: " + err.Error())
+				}
+				report, err := completion.Setup(shell, script.Bytes())
+				if err != nil {
+					return err
+				}
+				return output.Print(report)
+			},
+		}
+		shellCommand.SetFlagErrorFunc(flagError(name))
+		command.AddCommand(shellCommand)
+	}
+	return command
 }
 
 // setupProject is cld setup project, named in its messages as typed. --mcp takes the MCP servers
@@ -679,9 +781,9 @@ func noArguments(typed string) cobra.PositionalArgs {
 	}
 }
 
-// helpArguments takes help's COMMAND, one of cld's, or one of setup's after setup, and refuses a
-// "--" before it, as noArguments does, a COMMAND that is not cld's, and an argument after it:
-// the first of these decides.
+// helpArguments takes help's COMMAND, one of cld's, then one of its own commands, such as setup's
+// after setup and a shell after setup completion, and refuses a "--" before it, as noArguments
+// does, a COMMAND that is not cld's, and an argument after it: the first of these decides.
 func helpArguments(typed string) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
 		if c.ArgsLenAtDash() >= 0 {

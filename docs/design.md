@@ -101,6 +101,8 @@ rows that name none were probed against tmux 3.6.
 | `cld join -n <TAB>` through cobra 1.10.2's bash script, typed into an interactive bash in a tmux pane (tmux 3.5a): bash 3.2.57 (the `bash:3.2` image) with bash-completion 1.3 built as Homebrew's formula builds it, and bash 5.2.37 with bash-completion 2.16 (Debian trixie) | with bash-completion, both list the names with their states on the second TAB - `bad (exited)  rev (attached)  review (detached)` - complete a prefix to the one name that starts with it, or to what all that do share (`--name=re` too), and list the commands and options with their descriptions. bash 5 adds a space after a completed name, and offers nothing where cld offers nothing (`-n x`, `new -n`). bash 3.2 has no `compopt`, so the script registers `complete -o default -o nospace` and cannot take `default` back: no space follows a completed name, and where cld offers nothing bash offers file names. `source <(cld completion bash)` loads nothing in bash 3.2. Without bash-completion, each TAB prints `_get_comp_words_by_ref: command not found` and bash offers file names. bash-completion 2.16 also loads the script from `~/.local/share/bash-completion/completions/cld` |
 | the same through cobra 1.10.2's zsh and fish scripts (zsh 5.9, `compinit` on, the script as `_cld` in a directory on `$fpath` (see the next row); fish 4.0.2, the script in `~/.config/fish/completions`; Debian trixie, tmux 3.5a) | both list the names with their states on the first TAB - zsh as `bad -- exited` and `review  rev -- detached`, one line per state; fish as `bad (exited)  rev (detached)  review (detached)` - and insert the first on the second. Both add a space after a completed name, offer nothing where cld offers nothing, and list the commands and options with their descriptions. fish still shows its autosuggestion for a word that starts like a file name in the directory - the rest of the name, in grey - which TAB does not insert |
 | where zsh 5.9 looks for `_cld` (Debian trixie, as an ordinary user without `sudo`; `cld join -n <TAB>` typed into an interactive zsh in a tmux pane, tmux 3.7c) | the user's `${fpath[1]}` is `/usr/local/share/zsh/site-functions`, owned by root with mode 755, so `cld completion zsh > "${fpath[1]}/_cld"`, the Linux line of cobra's help, fails with `permission denied`. With the script in `~/.zfunc/_cld` and `fpath=(~/.zfunc $fpath)` before `autoload -U compinit; compinit` in `~/.zshrc`, `$_comps[cld]` is `_cld` and the first TAB lists `bad -- exited`, `rev -- attached` and `review -- detached`; with the script written into that `${fpath[1]}` as root, the user's `compinit` loads it too |
+| where bash-completion 2.16, zsh 5.9 and fish 4.0.2 read a user's completion scripts, and what `source <(cld completion zsh)` in `.zshrc` needs (Debian trixie, each as a new ordinary user, cobra 1.10.2; `cld completion <TAB>` typed into an interactive shell in a tmux pane, tmux 3.7c; Ubuntu 24.04's `/etc/zsh/zshrc` read too) | bash-completion loads `completions/cld` from each directory of `$BASH_COMPLETION_USER_DIR`, split on `:`, or else from `${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion`, before the system's directories, and Debian's `/etc/skel/.bashrc` loads bash-completion. fish's `$fish_complete_path` starts with `~/.config/fish/completions` (`$XDG_CONFIG_HOME/fish/completions`), then `/etc/fish/completions` and `~/.local/share/fish/vendor_completions.d`: a script in the first hides one in the others. fish makes `~/.config/fish` at its first interactive start, not for `fish -c`: writing the script into `completions` before then fails with `warning: Path '/home/u/.config/fish/completions' does not exist`, but fish reads the directory once made for it. `/etc/zsh/zshrc` runs `compinit` for every user on Ubuntu, unless `skip_global_compinit` is set, and not on Debian. With `compdef _gnu_generic foo` between two `compinit`s, `$_comps[foo]` is empty after the second. `source <(cld completion zsh)` in `.zshrc` needs `compinit` before it - without, zsh prints `command not found: compdef` as it starts and `$_comps[cld]` is empty - and cld on the `PATH` by then: without, zsh prints `command not found: cld` |
+| the lines `cld setup completion zsh` adds to `.zshrc` (the same systems; `$_comps[cld]`, and `$functions_source[_cld]` after `autoload +X _cld`, printed by `zsh -ic`, and `cld setup completion <TAB>` typed into each of the three shells) | alone, they run `compinit` and register `_cld`, loaded from cld's file; after `compinit` and `compdef _gnu_generic foo`, both stay registered; before them, the later `compinit` registers `_cld` all the same, from `$fpath`, by the script's `#compdef cld`. `$XDG_DATA_HOME` and `$ZDOTDIR` move them as zsh reads them. With the script missing they do nothing, `compinit` included, and cld need not be on the `PATH` as zsh starts. The first TAB lists `bash`, `zsh` and `fish` with their descriptions in zsh, and so do bash - through Debian's own `~/.bashrc` - and fish, from the scripts `setup completion` wrote |
 | how long `cld __complete join -n ''` takes, beside `cld list | cat` (tmux 3.7c, in the image `tests/Dockerfile` builds on `debian:trixie`, 8 CPUs, load about 2; natively too, with Ubuntu's tmux 3.7c snap) | in the image about 3 ms with no socket, 22 ms with four sessions and 147 ms over 36 sockets, 16 of them stale, where `cld list | cat` took 9, 27 and 152 ms: one `list-sessions` a socket, as `list` (13.1), and no `tmux -V`. Before a server per session (13) it was one `list-sessions` in all: about 5 ms with no server and 10 ms with four sessions. Natively, where each tmux client of the snap took about 150 ms to start, 6 ms with no socket and 625 ms with four sessions |
 | when `claude` 2.1.282 reads its telemetry settings (Linux; this row and the next two with GoLand 2026.2.3 and the JetBrains OpenTelemetry plugin 2.1.5) | at startup only (the docs: environment variables). A running session keeps the endpoint it started with |
 | the plugin's receiver | a separate process, `java -jar .../open-telemetry-plugin/satellite/satellite.jar`, listening on all interfaces on a random port (37223 in the probe). Settings › OpenTelemetry › Common has "Use fixed OTLP server port" and "OTLP server port". Not probed: what a GoLand terminal gets from the plugin's terminal customizer (`SatelliteTerminalCustomizer`; its core module names `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and `OTEL_METRIC_EXPORT_INTERVAL`), and whether the `env` of `settings.json` wins over it for a claude started there |
@@ -154,7 +156,8 @@ rows that name none were probed against tmux 3.6.
 - Shell completion comes from the binary (see 17): `cld completion SHELL` prints the script, which
   always matches the binary it came from. Releases publish no completion files, and
   `make install` installs none; cobra's scripts ask `cld __complete` for everything at TAB time
-  and change only with cobra's templates. A Homebrew formula would generate them at install time
+  and change only with cobra's templates. `cld setup completion SHELL` writes the script where the
+  shell reads it, and `cld update` writes it anew from the release it installs (see 22). A Homebrew formula would generate them at install time
   with `generate_completions_from_executable(bin/"cld", shell_parameter_format: :cobra)`.
 
 ## Testing
@@ -478,8 +481,10 @@ The Linux job runs the same Docker image a developer runs locally.
        after the others (see Findings), so cld moves `version` back after it before it prints the
        help. An option's usage names its value in backquotes (`-n, --name NAME`), and pflag shows
        `-n`'s default, `main`. cobra wraps nothing, so the texts break their lines by hand, within
-       80 columns, which the test of the help's text holds them to. A template of cld's own, in the
-       usage text's layout, was the other way: closer to what cld printed, but one more thing for
+       80 columns, which the test of the help's text holds them to - all but cobra's own last
+       line, `Use "cld COMMAND [command] --help" ...`, which names the command, 81 columns for
+       `setup completion` (22.6). A template of cld's own, in the usage text's layout, was the
+       other way: closer to what cld printed, but one more thing for
        cld to keep, where cobra's changes with cobra and shows in that test;
     2. `help [COMMAND]` shows the help of one of the commands the root's help lists. `-h` and
        `--help`, given first, are `help` spelled otherwise, so `cld -h new` shows `new`'s help. A
@@ -904,7 +909,8 @@ The Linux job runs the same Docker image a developer runs locally.
        without the word to complete, which the scripts always pass, is a mistake on the command
        line: status 2 and cld's message, where cobra fails with its own and status 1.
     7. The scripts ship only through `cld completion SHELL`, not as release assets or files that
-       `make install` installs (see Distribution).
+       `make install` installs (see Distribution). Since 22, `cld setup completion SHELL` writes
+       one where the shell reads it.
     8. `cld -<TAB>` offers `-h` and `--help`, the root's options, but not `-V` and `--version`,
        which only the first-argument check knows: making them the root's options would list them
        in the root's help beside `version`, which names them. An option is described by the first
@@ -1002,7 +1008,8 @@ The Linux job runs the same Docker image a developer runs locally.
        takes `localhost:8888` and the collector exits when another collector has it;
     8. `setup` is cld's first command with commands of its own, as `completion` (17) is cobra's.
        `run` checks its first argument before cobra, as it checks cld's: `telemetry` - since 19,
-       `project` too - or `-h` or `--help`, setup's help; cobra would run `telemetry` for `cld setup
+       `project` too, and since 22 `completion`, followed by a shell - or `-h` or `--help`, setup's
+       help; cobra would run `telemetry` for `cld setup
        --local URL telemetry`, taking `--local` for an option of setup's. `help setup telemetry`
        shows telemetry's help: `help`'s `COMMAND` may be followed by one of that command's own (see
        12.2), as with cobra's help command - so `help completion bash` now shows what `completion
@@ -1187,12 +1194,85 @@ The Linux job runs the same Docker image a developer runs locally.
        address, as for `install.sh`, for the tests;
     6. the tests build cld as release 0.4.0 once, copy it into the sandbox and run its update,
        with nothing on the `PATH`, against releases an HTTP server of theirs serves, whose
-       binaries are scripts that print a version: the one for the host's platform replaces cld.
+       binaries are scripts that print a version: the one for the host's platform replaces cld;
+    7. since 22, once cld is replaced, update has the new cld print anew the completion scripts
+       `setup completion` wrote, and writes those that differ; one it cannot write gets a warning,
+       not a failure (22.5).
 
     Out of scope: an option to check without updating, updating to a given release (the install
     command takes `CLD_VERSION`), looking for a newer release as other commands run, and updating
     tmux or claude. cld 0.5.0 and earlier have no `update`: the user guide says to run the install
     command once more.
+
+22. Setting completion up: `cld setup completion SHELL`, for `bash`, `zsh` or `fish`, writes the
+    script that `cld completion SHELL` prints where the shell reads it, and `cld update` writes it
+    anew. Before it, the README and the user guide gave lines to run by hand for each shell: for
+    zsh a directory to make and two lines to add to `.zshrc`, for fish a directory that exists only
+    once fish has started interactively (see Findings), and for none a way to keep the script in
+    step with cobra's templates. Settled with it:
+    1. a command of `setup`'s, with a command of its own for each shell, `setup completion zsh`,
+       so that each has its help, and `help` and completion take them as they take setup's
+       commands (12.2, 17.3). `run` checks the argument after `setup completion` as it checks the
+       one after `setup` (18.8): a shell, or `-h` or `--help`, where cobra would run zsh's for
+       `setup completion --help=false zsh`. A missing or unknown shell, `powershell` included, is a
+       usage error. The script is cobra's, generated as `completion SHELL` generates it, with
+       descriptions, so the file holds byte for byte what that prints;
+    2. where each goes: bash's in bash-completion 2's user directory - `completions/cld` in the
+       first directory of `$BASH_COMPLETION_USER_DIR`, or else in
+       `${XDG_DATA_HOME:-~/.local/share}/bash-completion` - which it reads at the first TAB, before
+       the system's directories; fish's in `${XDG_CONFIG_HOME:-~/.config}/fish/completions`, the
+       first directory fish reads, where cobra's help and cld's docs had users write the script by
+       hand, and where such a script would hide one in `~/.local/share/fish/vendor_completions.d`,
+       the directory first thought of. zsh reads no directory of the user's (see Findings), so its
+       script goes in `${XDG_DATA_HOME:-~/.local/share}/cld/zsh/_cld`, which lines at the end of
+       `${ZDOTDIR:-~}/.zshrc` load. cld reads `ZDOTDIR` from its environment, not from `.zshenv`;
+    3. the lines put that directory first on `$fpath` and register `_cld` for `cld` with
+       `compdef`. They run `compinit`, which defines `compdef`, only where nothing before them has,
+       since a second one drops the completions set up after the first, and with `-i`, which leaves
+       out the directories `compaudit` finds insecure instead of asking as zsh starts, as it would
+       where Homebrew's are group-writable. A `compinit` after them finds `_cld` on `$fpath` by its
+       `#compdef` line. They do nothing where the script is missing, so that a `.zshrc` shared
+       between machines stays quiet where cld set nothing up, and run no cld as zsh starts, unlike
+       `source <(cld completion zsh)`, which needs cld on the `PATH` by then. They name the
+       directory by the variables zsh reads, not by where cld wrote it, so that they hold on every
+       machine; cld adds them once, and not again while `.zshrc` has their first line, wherever it
+       is and whatever follows it;
+    4. the files are written as `setup project` writes its own (19.4), with `internal/configfile`:
+       whole, through a symbolic link, directories made, and only where they change. Both are read
+       before either is written, so that a `.zshrc` cld cannot edit - a directory, a link that
+       leads nowhere - leaves the script unwritten too. cld reports each file, created, updated or
+       left as it was, and, where it wrote one, that a new shell takes it. It removes nothing, and
+       edits no `~/.bashrc`: loading bash-completion there is Debian's and Ubuntu's default, and
+       on macOS the user's to add, as Homebrew's caveats say;
+    5. `cld update`, once it has replaced cld (21.3), runs the new cld's `completion SHELL` for
+       each shell whose script is where `setup completion` writes it and starts as cobra's does,
+       and writes what it prints where it differs, naming each script it wrote. The new release
+       prints it because the script changes only with cobra's templates, which that release may
+       have bumped. `completion SHELL` is a command every release has, so no release after this
+       one has to keep another for update's sake; running its `setup completion` instead would also
+       put back lines a user took out of `.zshrc`. A script without descriptions (one that runs
+       `__completeNoDesc`) is printed again with `--no-descriptions`; a file that does not start
+       as cobra's does is someone's own, and left. cld is updated by then, so a script it cannot
+       write is no failure of the update's: cld warns on stderr - `cld: warning: cannot update the
+       completion script for SHELL, FILE: WHY. Run cld setup completion SHELL manually` - goes on
+       with the next shell's, and exits with status 0, as the maintainer asked. `output.Warn`
+       writes the warning, cld's first. The refresh runs after update's handling of signals
+       (21.4), so a signal then ends cld as it ends other commands, and can leave
+       `internal/configfile`'s temporary file beside the script. `install.sh` writes no script;
+    6. `cld setup completion`'s help ends with cobra's own line,
+       `Use "cld setup completion [command] --help" for more information about a command.`, 81
+       columns: the test of the help's width passes over that line of cobra's template, which
+       names the command and holds no text of cld's to break (12.1);
+    7. the tests write the scripts into the sandbox's home directory with nothing on the `PATH`,
+       where the variables say, then start the shells the test image installs - bash with
+       bash-completion 2, zsh and fish - to load them: bash-completion's own loader, zsh's
+       `$_comps` and `$functions_source`, fish's `complete -C`. update's tests serve releases whose
+       binaries print a script for `completion SHELL`.
+
+    Out of scope: PowerShell, whose script `cld completion powershell` still prints;
+    bash-completion 1's directory, which is in Homebrew's prefix, shared by every user; checking
+    that `~/.bashrc` loads bash-completion; removing what cld wrote; and `install.sh` writing the
+    scripts anew.
 
 ## Implementation notes
 
@@ -1242,8 +1322,8 @@ Where the implementation departs from the plan above:
     argument of the root, and skips options before the command (`cld -n x new` would run
     `new`). `completion`, `__complete` and `__completeNoDesc` pass (decision 17), and a bare
     `__complete` is refused there, where cobra's `Args` would refuse it with its own message. The
-    argument after `setup` is checked the same way (decision 18.8) where `setup` runs, and not
-    after `__complete`, which completes it;
+    argument after `setup` is checked the same way (decision 18.8) where `setup` runs, and the one
+    after `setup completion` (decision 22.1), and not after `__complete`, which completes them;
   - `SilenceErrors` and `SilenceUsage`: cobra would print `Error: MESSAGE` and the usage;
   - `SetInterspersed(false)` on every command: pflag reads options up to the first argument,
     where it would pass over arguments and read every option first (`cld join a -x` would name
@@ -1528,6 +1608,11 @@ by hand in a nested tmux).
 - `cld update` is tested against releases the tests serve, on Linux and macOS, and was run by
   hand against GitHub, from 0.4.0 to 0.5.0 on Linux (see Findings). An update on macOS, and one
   from the first release that has `update`, are still to check.
+- `setup completion` is tested with bash 5.2.37 and bash-completion 2.16, zsh 5.9 and fish 4.0.2
+  in the Linux image, and with the macOS runner's own zsh; the runner has neither fish nor
+  bash-completion, so those tests skip there. Homebrew's `bash-completion@2`, and `compinit -i`
+  where Homebrew's directories are group-writable, were not checked on a Mac, nor an update from
+  a release that has `setup completion` to one that prints other scripts.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

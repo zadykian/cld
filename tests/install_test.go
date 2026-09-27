@@ -89,9 +89,30 @@ func (r *releases) hold(path string) {
 	r.held = path
 }
 
-// fakeBinary is what a release of version serves as cld for platform.
+// fakeBinary is what a release of version serves as cld for platform: a script that prints "cld
+// VERSION", as cld --version does, and for cld completion SHELL a script that starts as cobra's
+// does (see fakeScript), which cld update writes where setup completion wrote one.
 func fakeBinary(version, platform string) string {
-	return "#!/bin/sh\n# cld-" + platform + "\necho 'cld " + version + "'\n"
+	return "#!/bin/sh\n# cld-" + platform + "\n" +
+		"case \"$1 $2\" in\n" +
+		"'completion bash') printf '# bash completion V2 for cld %s, " + version + "\\n' \"$*\" ;;\n" +
+		"'completion zsh') printf '#compdef cld\\n# %s, " + version + "\\n' \"$*\" ;;\n" +
+		"'completion fish') printf '# fish completion for cld %s, " + version + "\\n' \"$*\" ;;\n" +
+		"*) echo 'cld " + version + "' ;;\n" +
+		"esac\n"
+}
+
+// fakeScript is what the cld of fakeBinary for version prints when run with args, completion SHELL
+// and its options.
+func fakeScript(version string, args ...string) string {
+	line := strings.Join(args, " ") + ", " + version + "\n"
+	switch args[1] {
+	case "bash":
+		return "# bash completion V2 for cld " + line
+	case "zsh":
+		return "#compdef cld\n# " + line
+	}
+	return "# fish completion for cld " + line
 }
 
 // publish makes a release of version at path, latest/download or download/vX.Y.Z: a binary for

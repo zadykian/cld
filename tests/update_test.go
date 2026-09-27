@@ -151,6 +151,124 @@ func TestUpdateThroughLink(t *testing.T) {
 	}
 }
 
+// Once cld is replaced, update has the new cld print anew each completion script that is where
+// setup completion writes one - where the variables that move it say - and writes it where it
+// differs, saying so of each. A script without descriptions stays one. A script the new cld prints
+// the same, a file that does not start as cobra's script does, a script elsewhere and .zshrc are
+// left as they were. Without a script, update says nothing more (see TestUpdate).
+func TestUpdateRefreshesCompletion(t *testing.T) {
+	t.Parallel()
+	const old = "# old\n"
+	for _, test := range []struct {
+		name string
+		env  map[string]string
+		// files are what the files hold, by their paths under the root, before update; want what
+		// they hold after, "" where they are left as they were. updated are the files update
+		// names, as it names them, shell and path.
+		files   map[string]string
+		want    map[string]string
+		updated [][2]string
+	}{
+		{
+			name: "default places",
+			files: map[string]string{
+				"home/" + scripts["bash"]: "# bash completion V2 for cld   -*- shell-script -*-\n" + old,
+				"home/" + scripts["zsh"]:  "#compdef cld\n# requestComp=\"${words[1]} __completeNoDesc ${words[2,-1]}\"\n",
+				"home/" + scripts["fish"]: "complete -c cld -a mine\n",
+				"home/.zshrc":             zshLines,
+			},
+			want: map[string]string{
+				"home/" + scripts["bash"]: fakeScript("0.5.0", "completion", "bash"),
+				"home/" + scripts["zsh"]:  fakeScript("0.5.0", "completion", "zsh", "--no-descriptions"),
+			},
+			updated: [][2]string{{"bash", "home/" + scripts["bash"]}, {"zsh", "home/" + scripts["zsh"]}},
+		},
+		{
+			name: "moved by variables",
+			env:  map[string]string{"XDG_DATA_HOME": "{root}/data", "XDG_CONFIG_HOME": "{root}/config"},
+			files: map[string]string{
+				"data/bash-completion/completions/cld": fakeScript("0.5.0", "completion", "bash"),
+				"config/fish/completions/cld.fish":     "# fish completion for cld \n" + old,
+				"home/" + scripts["fish"]:              "# fish completion for cld \n" + old,
+			},
+			want:    map[string]string{"config/fish/completions/cld.fish": fakeScript("0.5.0", "completion", "fish")},
+			updated: [][2]string{{"fish", "config/fish/completions/cld.fish"}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			r := latestRelease(t, s, "0.5.0")
+			path := filepath.Join(s.Root, "bin", "cld")
+			placeCld(t, s, path, oldCld(t), 0o755)
+			for name, content := range test.files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(s.Root, name)), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				s.WriteFile(filepath.Join(s.Root, name), content)
+			}
+			cmd := updateCommand(s, path, r.url)
+			for name, value := range test.env {
+				cmd.Env = append(cmd.Env, name+"="+strings.ReplaceAll(value, "{root}", s.Root))
+			}
+			want := "Updated cld 0.4.0 to 0.5.0: " + path + "\n"
+			for _, updated := range test.updated {
+				want += "Updated the completion script for " + updated[0] + ": " + filepath.Join(s.Root, updated[1]) + "\n"
+			}
+			if result := runCommand(t, cmd); result != (sandbox.Result{Stdout: want}) {
+				t.Errorf("got %+v, want stdout\n%s", result, want)
+			}
+			for name, content := range test.files {
+				if updated, ok := test.want[name]; ok {
+					content = updated
+				}
+				checkContent(t, filepath.Join(s.Root, name), content)
+			}
+		})
+	}
+}
+
+// Where the new cld cannot print a script that needs writing anew, cld is updated all the same:
+// update warns, naming the script, why, and the command to run by hand, goes on with the next
+// shell's, and exits with status 0.
+func TestUpdateCompletionFails(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	r := newReleases(t, s)
+	const files = "download/v0.5.0"
+	binary := "#!/bin/sh\n" +
+		"case \"$1 $2\" in\n" +
+		"'completion bash') echo 'no completion here' >&2; exit 3 ;;\n" +
+		"'completion fish') printf '# fish completion for cld %s, 0.5.0\\n' \"$*\" ;;\n" +
+		"*) echo 'cld 0.5.0' ;;\n" +
+		"esac\n"
+	r.write(t, files, hostBinary, binary)
+	r.sum(t, files)
+	r.setLatest("0.5.0")
+	dir := filepath.Join(s.Root, "bin")
+	path := filepath.Join(dir, "cld")
+	placeCld(t, s, path, oldCld(t), 0o755)
+	bash, fish := filepath.Join(s.Home, scripts["bash"]), filepath.Join(s.Home, scripts["fish"])
+	for script, content := range map[string]string{bash: "# bash completion V2 for cld \n", fish: "# fish completion for cld \n"} {
+		if err := os.MkdirAll(filepath.Dir(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		s.WriteFile(script, content)
+	}
+	result := runCommand(t, updateCommand(s, path, r.url))
+	want := sandbox.Result{
+		Stdout: "Updated cld 0.4.0 to 0.5.0: " + path + "\nUpdated the completion script for fish: " + fish + "\n",
+		Stderr: "cld: warning: cannot update the completion script for bash, " + bash + ": " + path +
+			" completion bash: exit status 3: no completion here. Run cld setup completion bash manually\n",
+	}
+	if result != want {
+		t.Errorf("got %+v, want %+v", result, want)
+	}
+	checkCld(t, dir, binary, 0o755)
+	checkContent(t, bash, "# bash completion V2 for cld \n")
+	checkContent(t, fish, fakeScript("0.5.0", "completion", "fish"))
+}
+
 // A cld built from source, cld dev, is no release to compare: update refuses before it asks
 // for anything.
 func TestUpdateDev(t *testing.T) {
