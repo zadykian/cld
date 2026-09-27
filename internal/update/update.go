@@ -17,7 +17,8 @@
 // Anything that fails leaves cld as it was, and the temporary file removed; an interrupt (SIGINT,
 // SIGTERM or SIGHUP) before the rename too, ending cld with 128 plus the signal's number, as a
 // shell reports one. Redirects stay on HTTPS, as install.sh's do. CLD_RELEASES_URL stands in for
-// the releases' address, for the tests.
+// the releases' address, for the tests. The package prints nothing: Run returns what it did, a
+// Result, for cld update to report.
 package update
 
 import (
@@ -43,24 +44,41 @@ import (
 	"time"
 
 	"github.com/zadykian/cld/internal/fail"
-	"github.com/zadykian/cld/internal/output"
 )
 
 // releases is where cld's releases are, unless CLD_RELEASES_URL says otherwise.
 const releases = "https://github.com/zadykian/cld/releases"
 
+// Result is what an update did: cld went From its release To the latest one, replacing File. Where
+// File is "", cld stayed at From, which is To or newer.
+type Result struct {
+	From, To string
+	File     string
+}
+
+// Report is what cld update says of r.
+func (r Result) Report() string {
+	switch {
+	case r.File != "":
+		return fmt.Sprintf("Updated cld %s to %s: %s\n", r.From, r.To, r.File)
+	case r.From == r.To:
+		return fmt.Sprintf("cld %s is the latest release\n", r.From)
+	}
+	return fmt.Sprintf("cld %s is newer than the latest release, %s\n", r.From, r.To)
+}
+
 // Run updates cld, which runs as version, to the latest release.
-func Run(version string) error {
+func Run(version string) (Result, error) {
 	current, ok := parse(version)
 	if !ok {
-		return fail.Runtime(fmt.Sprintf("version %s is not a release: rebuild cld from its clone, or install a release as the README says", version))
+		return Result{}, fail.Runtime(fmt.Sprintf("version %s is not a release: rebuild cld from its clone, or install a release as the README says", version))
 	}
 	file, err := os.Executable()
 	if err == nil {
 		file, err = filepath.EvalSymlinks(file)
 	}
 	if err != nil {
-		return fail.Runtime("cannot find the file cld runs from: " + reason(err))
+		return Result{}, fail.Runtime("cannot find the file cld runs from: " + reason(err))
 	}
 	u := &updater{releases: releases, current: current, file: file, binary: "cld-" + runtime.GOOS + "-" + runtime.GOARCH}
 	if address := os.Getenv("CLD_RELEASES_URL"); address != "" {
@@ -68,23 +86,30 @@ func Run(version string) error {
 	}
 
 	// The update runs until it is done, or until a signal cancels it, which it waits for: the
-	// temporary file goes before cld exits. A signal after the rename changes nothing.
+	// temporary file goes before cld exits. A signal once cld is replaced changes nothing.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(signals)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- u.run(ctx) }()
+	type outcome struct {
+		result Result
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := u.run(ctx)
+		done <- outcome{result, err}
+	}()
 	select {
-	case err := <-done:
-		return err
+	case o := <-done:
+		return o.result, o.err
 	case caught := <-signals:
 		cancel()
-		if err := <-done; err == nil || u.renamed {
-			return err
+		if o := <-done; o.err == nil {
+			return o.result, nil
 		}
-		return fail.Status(128 + int(caught.(syscall.Signal)))
+		return Result{}, fail.Status(128 + int(caught.(syscall.Signal)))
 	}
 }
 
@@ -95,41 +120,38 @@ type updater struct {
 	current  release
 	file     string
 	binary   string
-	// renamed is whether the new cld has replaced the old one.
-	renamed bool
 }
 
-func (u *updater) run(ctx context.Context) error {
+func (u *updater) run(ctx context.Context) (Result, error) {
 	latest, err := u.latest(ctx)
 	if err != nil {
-		return err
+		return Result{}, err
 	}
-	switch {
-	case latest == u.current:
-		return output.Print(fmt.Sprintf("cld %s is the latest release\n", u.current))
-	case latest.before(u.current):
-		return output.Print(fmt.Sprintf("cld %s is newer than the latest release, %s\n", u.current, latest))
+	result := Result{From: u.current.String(), To: latest.String()}
+	if !u.current.before(latest) {
+		return result, nil
 	}
 	files := fmt.Sprintf("%s/download/v%s/", u.releases, latest)
 	var sums bytes.Buffer
 	if err := download(ctx, files+"cld.sha256", &sums); err != nil {
-		return err
+		return Result{}, err
 	}
 	want, ok := checksum(sums.String(), u.binary)
 	if !ok {
-		return fail.Runtime(fmt.Sprintf("%scld.sha256 has no checksum for %s", files, u.binary))
+		return Result{}, fail.Runtime(fmt.Sprintf("%scld.sha256 has no checksum for %s", files, u.binary))
 	}
 	info, err := os.Stat(u.file)
 	if err != nil {
-		return fail.Runtime("cannot read " + u.file + ": " + reason(err))
+		return Result{}, fail.Runtime("cannot read " + u.file + ": " + reason(err))
 	}
 	dir := filepath.Dir(u.file)
 	temporary, err := os.CreateTemp(dir, ".cld.")
 	if err != nil {
-		return fail.Runtime("cannot write to " + dir + ": " + reason(err))
+		return Result{}, fail.Runtime("cannot write to " + dir + ": " + reason(err))
 	}
+	renamed := false
 	defer func() {
-		if !u.renamed {
+		if !renamed {
 			_ = os.Remove(temporary.Name())
 		}
 	}()
@@ -139,32 +161,33 @@ func (u *updater) run(ctx context.Context) error {
 		err = fail.Runtime("cannot write to " + dir + ": " + reason(closeErr))
 	}
 	if err != nil {
-		return err
+		return Result{}, err
 	}
 	if !bytes.Equal(hash.Sum(nil), want) {
-		return fail.Runtime(fmt.Sprintf("%s does not match its checksum in %scld.sha256", u.binary, files))
+		return Result{}, fail.Runtime(fmt.Sprintf("%s does not match its checksum in %scld.sha256", u.binary, files))
 	}
 	if err := os.Chmod(temporary.Name(), info.Mode().Perm()); err != nil {
-		return fail.Runtime("cannot write to " + dir + ": " + reason(err))
+		return Result{}, fail.Runtime("cannot write to " + dir + ": " + reason(err))
 	}
 	out, err := exec.CommandContext(ctx, temporary.Name(), "--version").Output()
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return Result{}, ctx.Err()
 	}
 	if err != nil {
-		return fail.Runtime(fmt.Sprintf("the downloaded %s does not run: %s", u.binary, reason(err)))
+		return Result{}, fail.Runtime(fmt.Sprintf("the downloaded %s does not run: %s", u.binary, reason(err)))
 	}
 	if reported := strings.TrimSuffix(string(out), "\n"); reported != "cld "+latest.String() {
-		return fail.Runtime(fmt.Sprintf("the downloaded %s reports '%s', not cld %s", u.binary, reported, latest))
+		return Result{}, fail.Runtime(fmt.Sprintf("the downloaded %s reports '%s', not cld %s", u.binary, reported, latest))
 	}
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return Result{}, ctx.Err()
 	}
 	if err := os.Rename(temporary.Name(), u.file); err != nil {
-		return fail.Runtime("cannot replace " + u.file + ": " + reason(err))
+		return Result{}, fail.Runtime("cannot replace " + u.file + ": " + reason(err))
 	}
-	u.renamed = true
-	return output.Print(fmt.Sprintf("Updated cld %s to %s: %s\n", u.current, latest, u.file))
+	renamed = true
+	result.File = u.file
+	return result, nil
 }
 
 // latest is the latest release: the tag that the releases' latest redirects to.
