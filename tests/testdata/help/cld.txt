@@ -16,6 +16,7 @@ Available Commands:
   kill        end session NAME and its tmux server
   list        list the sessions cld started; on a terminal, join or kill one
   setup       set up claude's settings in a project, or its telemetry
+  update      update cld to the latest release
   completion  print the completion script for a shell
   help        show this help, or the help of COMMAND
   version     show the version

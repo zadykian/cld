@@ -16,11 +16,11 @@ curl -fsSL https://github.com/zadykian/cld/releases/latest/download/install.sh |
 
 The script downloads cld for your system - Linux or macOS, on amd64 or arm64 - from the latest
 release, checks it against the release's `cld.sha256` and installs it as `~/.local/bin/cld`, which
-has to be on your `PATH`; run it again to upgrade. `CLD_INSTALL_DIR` installs cld elsewhere, and
-`CLD_VERSION` another release, 0.4.0 or later: `... | CLD_INSTALL_DIR=~/bin CLD_VERSION=0.4.0 sh`.
-See the [guide](docs/guide.md#installing) for what it checks, and for installing by hand. From a
-clone, `make install` builds cld into `~/.local/bin` (`PREFIX=/usr/local` for another prefix); it
-needs Go 1.26 or newer.
+has to be on your `PATH`; `cld update` upgrades it later. `CLD_INSTALL_DIR` installs cld
+elsewhere, and `CLD_VERSION` another release, 0.4.0 or later:
+`... | CLD_INSTALL_DIR=~/bin CLD_VERSION=0.4.0 sh`. See the [guide](docs/guide.md#installing) for
+what it checks, and for installing by hand. From a clone, `make install` builds cld into
+`~/.local/bin` (`PREFIX=/usr/local` for another prefix); it needs Go 1.26 or newer.
 
 Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
 for `cld new -w`; Docker, on Linux, for `cld setup telemetry`.
@@ -59,6 +59,7 @@ it from claude.ai or the Claude app.
 | `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
 | `cld setup project [--mcp SERVER]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
+| `cld update` | update cld to the latest release, replacing the file it runs from |
 | `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish` |
 | `cld help [COMMAND]` | show the help of cld, or of a command; `-h` and `--help` do the same |
 | `cld version` | show the version |

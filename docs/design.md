@@ -64,6 +64,7 @@ rows that name none were probed against tmux 3.6.
 | how tmux starts a command given as several words, such as `new-session -c DIR claude ...` (tmux 3.7c, glibc 2.43, Ubuntu 26.04) | with `execvp`, in `DIR`, and with the `PATH` of the client that ran `new-session`, also for a second session on a server that a client with another `PATH` started. So a bare `claude` is looked up in every entry, relative ones included, from `DIR`: with `PATH=.:/abs`, or `:/abs`, and a `claude` in both, tmux started the one in `DIR`, where cld had checked `/abs/claude`. A script without `#!`, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh`, by name and by path |
 | `new-session -c DIR` with a `DIR` its user cannot enter, and a binary for another machine as the command (tmux 3.7c, glibc 2.41, in the image `tests/Dockerfile` builds on `debian:trixie`; the first as `nobody`) | tmux started the command in the home directory, printing nothing, and `new-session` exited 0: for a `DIR` of mode `000`, and for one inside a directory of mode `000`. An arm64 ELF binary on x86_64, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh` all the same, as a script: a `/bin/sh` that logged its arguments recorded `sh PATH --version`, and the pane died with dash's status 2 |
 | `install.sh` against the release v0.4.0 on GitHub (curl 8.18.0; dash 0.5.12, bash 5.3.9 and busybox's sh on Ubuntu 26.04) | `releases/latest/download/cld.sha256` redirected (302) to `releases/download/v0.4.0/cld.sha256`, and that to `release-assets.githubusercontent.com`, over HTTPS both; a file the release lacks answered 404. Under each shell the script installed `cld 0.4.0`, whose checksum matched the line `sha256sum` wrote in `cld.sha256` on the release runner, `HASH  cld-OS-ARCH`; `CLD_VERSION=9.9.9` ended at curl's 404 for `cld.sha256` |
+| `https://github.com/zadykian/cld/releases/latest`, v0.5.0 the latest release (curl 8.18.0, GET and HEAD) | 302 to `https://github.com/zadykian/cld/releases/tag/v0.5.0`, alike for both; `releases/download/v9.9.9/cld.sha256`, of no release, and the `releases/latest` of a repository that does not exist answered 404. cld built with `-X main.version=0.4.0`, run through a symbolic link, updated itself to 0.5.0 from there, replacing the file the link led to; that 0.5.0 knows no `update` |
 | `claude --version` (2.1.282, native installer, Linux) | prints `2.1.282 (Claude Code)` and exits 0, in about 20 ms. It leaves nothing running that holds its output: piped to `cat`, it returns as soon. In a directory that has since been removed it prints `error: The current working directory was deleted, so that command didn't work. Please cd into a different directory and try again.` on stderr and exits 1 |
 | `claude --help` of 2.1.282 on resuming | `-r, --resume [value]`: "Resume a conversation by session ID, or open interactive picker with optional search term"; `-n, --name <name>`: "Set a display name for this session (shown in the prompt box, /resume picker, and terminal title)"; `--fork-session`: "When resuming, create a new session ID instead of reusing the original". The help says nothing of resuming by name, which Claude Code's docs describe, and names no restriction on giving `--name` with `--resume`. `--resume`'s value is optional (`[value]`): by the rule of commander, whose `.option()` calls the bundle holds, a word starting with `-` after it is read as the next option, not as its value (not run) |
 | how `claude` 2.1.282 resumes (read from its bundle, not run) | `--resume ID` with no conversation for the ID prints `No conversation found with session ID: ID` and exits 1. A conversation that runs as a background session (`claude --bg`) is refused, naming `claude attach` and `claude stop`, unless `--fork-session` is given; one open in an interactive claude is not. When Remote Control starts and another process on the machine holds the conversation's Remote Control session, claude leaves Remote Control off with a notice that starts `Remote Control not started here · another Claude Code on this machine ... already has Remote Control for this conversation` and ends `run /remote-control to move it to this terminal`. Not found in the bundle: whether a session that connected at startup, as cld's do, records its Remote Control session in the conversation, and how `remoteControlAtStartup` on the command line combines with a recorded one |
@@ -139,9 +140,9 @@ rows that name none were probed against tmux 3.6.
 - Tagged GitHub releases (`vX.Y.Z`) publish a binary per platform, `cld-OS-ARCH` for Linux and
   macOS on amd64 and arm64, with the version stamped in, plus `cld.sha256`, which lists their
   SHA-256 checksums, and `install.sh`, which picks the binary from `uname`, checks it and installs
-  it into `~/.local/bin` (see 20); `make install PREFIX=...` builds cld for the host from a clone,
-  with Go. The releases of the script published `cld`; that download fails once a Go release is
-  the latest.
+  it into `~/.local/bin` (see 20); `cld update` replaces cld with a newer release's binary (see
+  21); `make install PREFIX=...` builds cld for the host from a clone, with Go. The releases of
+  the script published `cld`; that download fails once a Go release is the latest.
 - The binaries are built with cgo off, on the Linux runner: the Linux ones are static, the
   darwin ones link only system libraries (`libSystem`, `libresolv`), and Go's linker signs the
   darwin/arm64 one ad hoc, which Apple silicon requires. They are not notarized.
@@ -1147,6 +1148,48 @@ The Linux job runs the same Docker image a developer runs locally.
     Out of scope: wget, checking tmux and claude, which cld checks as it starts (see 6), editing
     shell profiles, and signatures: `cld.sha256` comes from the release the binary does, so it
     catches a download gone wrong, not a release replaced.
+21. Self-update: `cld update` replaces cld with the latest release's binary, where that release is
+    newer than the one cld runs as. Before it, upgrading meant running the install command again,
+    which does not know where cld is unless told (`CLD_INSTALL_DIR`). Settled with it:
+    1. the latest release is the tag that `releases/latest` redirects to, read without following
+       the redirect (see Findings). GitHub's API, `repos/zadykian/cld/releases/latest`, says the
+       same in JSON, but takes 60 calls an hour from an address without a token, which a shared
+       address runs out of. Versions compare by their numbers, X.Y.Z, so 0.10.0 comes after
+       0.4.0; where cld is that release, or newer, update says so, exits with status 0 and
+       downloads nothing. A version that is no X.Y.Z - `dev`, which `go build` and `make install`
+       stamp by default - is refused with status 1 before anything is asked: a build from source
+       is neither compared with the releases nor replaced by one;
+    2. it is Go, not a run of `install.sh`: cld knows the platform it was built for
+       (`runtime.GOOS`, `runtime.GOARCH`) and the file it runs from, which the script would have
+       to be told, and needs neither curl nor a shell. It downloads the files `install.sh` does,
+       `cld.sha256` and `cld-OS-ARCH`, from the release's tag rather than `latest/download`, so
+       that a release published meanwhile cannot mix the two; an amd64 cld under Rosetta 2 stays
+       amd64;
+    3. it replaces the file cld runs from, `os.Executable` with symbolic links resolved - what
+       runs, where `install.sh` replaces what is at its own path. The new binary goes into a
+       temporary file in that file's directory, is checked against its line in `cld.sha256`,
+       takes the old file's permissions, and must print `cld X.Y.Z` for the release when run
+       with `--version`; only then is it renamed over the old file. A cld that runs meanwhile, a
+       list open on a terminal, say, keeps its old file;
+    4. anything that fails ends it with status 1 and a message - the address and what it
+       answered, or the connection's error - leaving cld as it was and the temporary file
+       removed. SIGINT, SIGTERM and SIGHUP before the rename cancel the download and remove the
+       file too, and end cld with 128 plus the signal's number, printing nothing, as a shell
+       reports such an end; `fail.Status` carries it to main. After the rename they change
+       nothing;
+    5. it runs neither tmux nor claude, so it makes none of their checks (see 6), and runs where
+       neither is installed. It reaches GitHub through Go's default transport, a proxy the
+       environment names included, waiting 30 seconds at most for an answer to begin; redirects
+       stay on HTTPS, as `install.sh`'s do. `CLD_RELEASES_URL` stands in for the releases'
+       address, as for `install.sh`, for the tests;
+    6. the tests build cld as release 0.4.0 once, copy it into the sandbox and run its update,
+       with nothing on the `PATH`, against releases an HTTP server of theirs serves, whose
+       binaries are scripts that print a version: the one for the host's platform replaces cld.
+
+    Out of scope: an option to check without updating, updating to a given release (the install
+    command takes `CLD_VERSION`), looking for a newer release as other commands run, and updating
+    tmux or claude. cld 0.5.0 and earlier have no `update`: the user guide says to run the install
+    command once more.
 
 ## Implementation notes
 
@@ -1443,6 +1486,9 @@ by hand in a nested tmux).
 - `install.sh` is tested against releases the tests serve, under the `sh` and `bash` of the Linux
   image and of the macOS runner, and was run by hand against the release v0.4.0 on Linux (see
   Findings). Rosetta 2's `sysctl.proc_translated` was not probed on a Mac.
+- `cld update` is tested against releases the tests serve, on Linux and macOS, and was run by
+  hand against GitHub, from 0.4.0 to 0.5.0 on Linux (see Findings). An update on macOS, and one
+  from the first release that has `update`, are still to check.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not
