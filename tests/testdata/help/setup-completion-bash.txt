@@ -1,0 +1,12 @@
+set up cld's completion in bash: write the script cld completion bash prints
+to completions/cld in the first directory of $BASH_COMPLETION_USER_DIR, or else
+to ~/.local/share/bash-completion/completions/cld ($XDG_DATA_HOME in place of
+~/.local/share where set), where bash-completion 2 finds it at the first TAB.
+It needs ~/.bashrc to load bash-completion, as Debian's and Ubuntu's do;
+bash-completion 1, the one for macOS's bash 3.2, does not read that directory.
+
+Usage:
+  cld setup completion bash [flags]
+
+Flags:
+  -h, --help   help for bash

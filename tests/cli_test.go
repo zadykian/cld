@@ -25,12 +25,14 @@ import (
 var update = flag.Bool("update", false, "rewrite the help in testdata/help from what cld help prints")
 
 // helpTopics are what cld help takes, "" for none, in the order the help lists them: a command
-// of cld's, followed by the commands it has, "setup telemetry" for setup's telemetry.
-var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "setup", "setup project", "setup telemetry", "update", "completion", "help", "version"}
+// of cld's, followed by the commands it has, "setup telemetry" for setup's telemetry, and theirs,
+// "setup completion zsh" for zsh's.
+var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "setup", "setup project", "setup telemetry",
+	"setup completion", "setup completion bash", "setup completion zsh", "setup completion fish", "update", "completion", "help", "version"}
 
 // goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
-// testdata/help/COMMAND.txt for cld help COMMAND, and setup-telemetry.txt for cld help setup
-// telemetry.
+// testdata/help/COMMAND.txt for cld help COMMAND, setup-telemetry.txt for cld help setup
+// telemetry, and setup-completion-zsh.txt for cld help setup completion zsh.
 func goldenHelp(topic string) string {
 	if topic == "" {
 		topic = "cld"
@@ -55,8 +57,9 @@ func subtopics(topic string) []string {
 
 // The help of cld and of each command, byte for byte: cobra generates it from each command's texts
 // and options, with its default templates, so a change to either shows here. -update rewrites
-// the files. cobra wraps nothing, so the texts break their lines by hand, within 80 columns, and
-// a usage line names the options before the arguments, as cld reads them.
+// the files. cobra wraps nothing, so the texts break their lines by hand, within 80 columns - all
+// but cobra's own last line, which names the command - and a usage line names the options before
+// the arguments, as cld reads them.
 func TestHelpText(t *testing.T) {
 	t.Parallel()
 	for _, topic := range helpTopics {
@@ -81,6 +84,11 @@ func TestHelpText(t *testing.T) {
 				t.Errorf("stdout\n%s\nwant, as in %s\n%s", result.Stdout, goldenHelp(topic), want)
 			}
 			for number, line := range strings.Split(result.Stdout, "\n") {
+				// cobra's last line, which names the command, is its template's, not a text of cld's
+				// to break: setup completion's is 81 columns.
+				if strings.HasPrefix(line, `Use "cld `) && strings.HasSuffix(line, ` [command] --help" for more information about a command.`) {
+					continue
+				}
 				if width := utf8.RuneCountInString(line); width > 80 {
 					t.Errorf("line %d is %d columns wide: %q", number+1, width, line)
 				}
@@ -203,6 +211,18 @@ func TestHelp(t *testing.T) {
 		{[]string{"setup", "project", "--help", "x"}, "setup project"},
 		{[]string{"setup", "project", "--mcp", "idea", "-h"}, "setup project"},
 		{[]string{"setup", "project", "-h", "--bogus"}, "setup project"},
+		// setup completion's shells: after it, or after help setup completion; -h after setup
+		// completion is its own.
+		{[]string{"help", "setup", "completion"}, "setup completion"},
+		{[]string{"setup", "-h", "completion"}, "setup completion"},
+		{[]string{"setup", "completion", "-h"}, "setup completion"},
+		{[]string{"setup", "completion", "--help", "x"}, "setup completion"},
+		{[]string{"help", "setup", "completion", "zsh"}, "setup completion zsh"},
+		{[]string{"-h", "setup", "completion", "bash"}, "setup completion bash"},
+		{[]string{"setup", "completion", "-h", "fish"}, "setup completion fish"},
+		{[]string{"setup", "completion", "zsh", "--help"}, "setup completion zsh"},
+		{[]string{"setup", "completion", "bash", "-h", "x"}, "setup completion bash"},
+		{[]string{"setup", "completion", "fish", "-h", "--no-descriptions"}, "setup completion fish"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -270,7 +290,8 @@ func TestCompletionScripts(t *testing.T) {
 }
 
 // __complete offers the commands, completion and setup among them, and the commands help takes -
-// after setup or completion, theirs - each with its description; the options; the MCP servers of
+// after setup or completion, theirs, and after setup completion, its shells - each with its
+// description; the options; the MCP servers of
 // setup project --mcp, after a comma the others; and no file names where nothing is offered
 // (":4", ShellCompDirectiveNoFileComp, which cobra reports on stderr), the root's default for an
 // argument with nothing to complete, setup telemetry's included.
@@ -284,13 +305,17 @@ func TestCompleteCommands(t *testing.T) {
 		"join\tattach to session NAME, detaching any other terminal from it\n" +
 		"kill\tend session NAME and its tmux server\n" +
 		"list\tlist the sessions cld started; on a terminal, join or kill one\n" +
-		"setup\tset up claude's settings in a project, or its telemetry\n" +
+		"setup\tset up claude in a project, its telemetry, or shell completion\n" +
 		"update\tupdate cld to the latest release\n" +
 		"version\tshow the version\n" +
 		"completion\tprint the completion script for a shell\n" +
 		"help\tshow this help, or the help of COMMAND\n"
 	project := "project\tset claude up in the project in the current directory\n"
 	telemetry := "telemetry\tsend claude's telemetry through a local OpenTelemetry collector\n"
+	setupShells := "completion\tset up cld's completion in bash, zsh or fish\n"
+	shellSetups := "bash\tset up cld's completion in bash\n" +
+		"zsh\tset up cld's completion in zsh\n" +
+		"fish\tset up cld's completion in fish\n"
 	goland := "goland\tGoLand's MCP server, port $GOLAND_MCP_PORT or 64422\n"
 	jbcontext := "jbcontext\tJetBrains Context's semantic code search, jbcontext mcp\n"
 	rider := "rider\tRider's MCP server, port $RIDER_MCP_PORT or 64482\n"
@@ -309,16 +334,23 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", "help", "x"}, ":4\n"},
 		{[]string{"__complete", "help", "new", ""}, ":4\n"},
 		// After a command with commands of its own, help takes one of those, and nothing after it.
-		{[]string{"__complete", "help", "setup", ""}, project + telemetry + ":4\n"},
+		{[]string{"__complete", "help", "setup", ""}, project + telemetry + setupShells + ":4\n"},
 		{[]string{"__complete", "help", "setup", "t"}, telemetry + ":4\n"},
 		{[]string{"__complete", "help", "setup", "project", ""}, ":4\n"},
 		{[]string{"__complete", "help", "setup", "x"}, ":4\n"},
 		{[]string{"__complete", "help", "setup", "telemetry", ""}, ":4\n"},
+		{[]string{"__complete", "help", "setup", "completion", ""}, shellSetups + ":4\n"},
+		{[]string{"__complete", "help", "setup", "completion", "z"}, "zsh\tset up cld's completion in zsh\n:4\n"},
+		{[]string{"__complete", "help", "setup", "completion", "zsh", ""}, ":4\n"},
 		{[]string{"__complete", "help", "completion", ""}, shells + ":4\n"},
 		{[]string{"__complete", "help", "nope", ""}, ":4\n"},
 		{[]string{"__complete", "completion", ""}, shells + ":4\n"},
-		{[]string{"__complete", "setup", ""}, project + telemetry + ":4\n"},
+		{[]string{"__complete", "setup", ""}, project + telemetry + setupShells + ":4\n"},
 		{[]string{"__complete", "setup", "p"}, project + ":4\n"},
+		{[]string{"__complete", "setup", "c"}, setupShells + ":4\n"},
+		{[]string{"__complete", "setup", "completion", ""}, shellSetups + ":4\n"},
+		{[]string{"__complete", "setup", "completion", "f"}, "fish\tset up cld's completion in fish\n:4\n"},
+		{[]string{"__complete", "setup", "completion", "bash", ""}, ":4\n"},
 		// --mcp offers its servers; after a comma, those the list does not have, after it.
 		{[]string{"__complete", "setup", "project", "--m"}, "--mcp\tan MCP `SERVER` for claude in the project: goland or rider,\n:4\n"},
 		{[]string{"__complete", "setup", "project", "--mcp", ""}, goland + jbcontext + rider + ":4\n"},
@@ -619,6 +651,12 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"completion", "--no-descriptions", "bash"}, "cld: completion: unexpected argument '--no-descriptions' (see cld help)\n"},
 		{[]string{"completion", "--", "bash"}, "cld: completion: unexpected argument '--' (see cld help)\n"},
 		{[]string{"completion", "bash", "--"}, "cld: completion bash: unexpected argument '--' (see cld help)\n"},
+		{[]string{"setup", "completion", "zsh", "x"}, "cld: setup completion zsh: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"setup", "completion", "bash", "--"}, "cld: setup completion bash: unexpected argument '--' (see cld help)\n"},
+		{[]string{"setup", "completion", "fish", "--no-descriptions"}, "cld: setup completion fish: unexpected argument '--no-descriptions' (see cld help)\n"},
+		{[]string{"setup", "completion", "zsh", "x", "-h"}, "cld: setup completion zsh: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"help", "setup", "completion", "tcsh"}, "cld: help: unknown command 'setup completion tcsh' (see cld help)\n"},
+		{[]string{"help", "setup", "completion", "zsh", "x"}, "cld: help: unexpected argument 'x' (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -630,12 +668,17 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 	}
 }
 
-// setup takes one of its commands, project or telemetry, as its first argument, which run checks
-// as it checks cld's first: no option comes before it (cobra would run telemetry for setup --local
-// URL telemetry), and help can be asked for with -h or --help only, as for cld.
+// setup takes one of its commands, project, telemetry or completion, as its first argument, which
+// run checks as it checks cld's first: no option comes before it (cobra would run telemetry for
+// setup --local URL telemetry), and help can be asked for with -h or --help only, as for cld.
+// setup completion takes a shell the same way, bash, zsh or fish (cobra would run zsh's for setup
+// completion --help=false zsh). Nothing is written, in the work directory or the home directory.
 func TestSetupRequiresCommand(t *testing.T) {
 	t.Parallel()
-	const telemetry = "cld setup project or cld setup telemetry (see cld help)\n"
+	const (
+		telemetry = "cld setup project, cld setup telemetry or cld setup completion SHELL (see cld help)\n"
+		shells    = "bash, zsh or fish (see cld help)\n"
+	)
 	for _, test := range []struct {
 		args []string
 		want string
@@ -651,6 +694,15 @@ func TestSetupRequiresCommand(t *testing.T) {
 		{[]string{"setup", "--"}, "cld: setup: unknown command '--': " + telemetry},
 		{[]string{"setup", "--mcp", "goland", "project"}, "cld: setup: unknown command '--mcp': " + telemetry},
 		{[]string{"setup", "Project"}, "cld: setup: unknown command 'Project': " + telemetry},
+		{[]string{"setup", "completion"}, "cld: setup completion: missing shell: " + shells},
+		{[]string{"setup", "completion", ""}, "cld: setup completion: missing shell: " + shells},
+		{[]string{"setup", "completion", "", "zsh"}, "cld: setup completion: missing shell: " + shells},
+		{[]string{"setup", "completion", "tcsh"}, "cld: setup completion: unknown shell 'tcsh': " + shells},
+		{[]string{"setup", "completion", "powershell"}, "cld: setup completion: unknown shell 'powershell': " + shells},
+		{[]string{"setup", "completion", "Zsh"}, "cld: setup completion: unknown shell 'Zsh': " + shells},
+		{[]string{"setup", "completion", "--help=false", "zsh"}, "cld: setup completion: unknown shell '--help=false': " + shells},
+		{[]string{"setup", "completion", "--no-descriptions", "bash"}, "cld: setup completion: unknown shell '--no-descriptions': " + shells},
+		{[]string{"setup", "completion", "--", "fish"}, "cld: setup completion: unknown shell '--': " + shells},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -663,6 +715,9 @@ func TestSetupRequiresCommand(t *testing.T) {
 			}
 			if entries, err := os.ReadDir(s.Work); err != nil || len(entries) != 0 {
 				t.Errorf("the work directory holds %v (%v), want nothing", entries, err)
+			}
+			if entries, err := os.ReadDir(s.Home); err != nil || len(entries) != 1 {
+				t.Errorf("the home directory holds %v (%v), want .tmux.conf alone", entries, err)
 			}
 		})
 	}
@@ -1651,6 +1706,8 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "", ""},
 		{[]string{"help", "setup", "project"}, "", ""},
 		{[]string{"setup", "project", "--mcp", "goland"}, "", ""},
+		{[]string{"help", "setup", "completion"}, "", ""},
+		{[]string{"setup", "completion", "fish"}, "", ""},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()

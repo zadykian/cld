@@ -9,9 +9,11 @@ ARG GO_IMAGE=golang:1.27-bookworm
 FROM ${GO_IMAGE} AS go
 
 FROM ${BASE}
+# bash-completion, fish and zsh load what cld setup completion writes, in the tests that check it.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         bash ca-certificates curl default-jdk-headless git make shellcheck shfmt \
+        bash-completion fish zsh \
         bison build-essential libevent-dev libncurses-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 

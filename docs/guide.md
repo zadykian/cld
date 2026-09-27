@@ -175,40 +175,54 @@ cld reads the file when it runs: edits apply when you run it again. The containe
 `cld join -n <TAB>` offers each session with its state, and `--mcp` the next server after a comma.
 No file names are offered, and `cld new -n`, `cld resume` and the values of `cld setup telemetry`
 offer nothing. The script runs `cld` on every TAB, so the names are always current.
-`cld completion SHELL --no-descriptions`, or `CLD_COMPLETION_DESCRIPTIONS=0` in the environment,
-leaves out the states and the other descriptions. Start a new shell for the script to take effect.
+`CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states and the other
+descriptions.
 
-- **bash** needs the bash-completion package. With bash-completion 2 (Linux, or Homebrew's
-  `bash-completion@2` for Homebrew's bash):
+`cld setup completion SHELL` writes the script that `cld completion SHELL` prints where the shell
+reads it, making its directories, and says what it wrote; start a new shell for it to take effect.
+Run again, it changes nothing but a script that differs. Once `cld update` has installed a release,
+it has that release print each script anew, and writes the ones that differ; a script without
+descriptions, `cld completion SHELL --no-descriptions` written in its place, stays one. Where it
+cannot write one, the update stands, and cld warns: run the `cld setup completion SHELL` the
+warning names. The install command leaves the scripts as they are: run
+`cld setup completion SHELL` again after it.
+cld removes nothing: to undo it, delete the script, and for zsh the lines in `.zshrc`.
 
-  ```sh
-  mkdir -p ~/.local/share/bash-completion/completions
-  cld completion bash > ~/.local/share/bash-completion/completions/cld
+- **bash**: `~/.local/share/bash-completion/completions/cld` - with `$XDG_DATA_HOME` in place of
+  `~/.local/share` where it is set, or in the first directory of `$BASH_COMPLETION_USER_DIR` where
+  that is. bash-completion 2 loads it at the first TAB, where `~/.bashrc` loads bash-completion:
+  Debian's and Ubuntu's do; with Homebrew's bash, install `bash-completion@2` and follow its
+  caveats. Without bash-completion, every TAB prints `_get_comp_words_by_ref: command not found`.
+
+  macOS's own `/bin/bash`, 3.2, takes Homebrew's `bash-completion` (1.3), which reads no such
+  directory: install it, add the line its caveats show to `~/.bash_profile`, and write the script
+  by hand, `cld completion bash > "$(brew --prefix)/etc/bash_completion.d/cld"`, which
+  `cld update` leaves as it is; bash 3.2 cannot load it with `source <(cld completion bash)`. It
+  puts no space after a completed name, and offers file names where cld offers nothing.
+- **zsh**: `~/.local/share/cld/zsh/_cld` (`$XDG_DATA_HOME` in place of `~/.local/share` where
+  set), and at the end of `~/.zshrc` - `$ZDOTDIR/.zshrc` where `ZDOTDIR` is in the environment -
+  the lines that load it:
+
+  ```zsh
+  # cld's completion, from cld setup completion zsh
+  if [[ -r ${XDG_DATA_HOME:-$HOME/.local/share}/cld/zsh/_cld ]]; then
+    fpath=("${XDG_DATA_HOME:-$HOME/.local/share}/cld/zsh" $fpath)
+    (( $+functions[compdef] )) || { autoload -U compinit && compinit -i; }
+    autoload -Uz _cld && compdef _cld cld
+  fi
   ```
 
-  For macOS's own `/bin/bash`, 3.2, install Homebrew's `bash-completion` (1.3), add the line its
-  caveats show to `~/.bash_profile`, and run
-  `cld completion bash > "$(brew --prefix)/etc/bash_completion.d/cld"`; bash 3.2 cannot load it
-  with `source <(cld completion bash)`. It puts no space after a completed name, and offers file
-  names where cld offers nothing. Without bash-completion, every TAB prints
-  `_get_comp_words_by_ref: command not found`.
-- **zsh** needs `compinit`, and the script as `_cld` in a directory on `$fpath`:
-
-  ```sh
-  mkdir -p ~/.zfunc
-  cld completion zsh > ~/.zfunc/_cld
-  ```
-
-  with, in `~/.zshrc`:
-
-  ```sh
-  fpath=(~/.zfunc $fpath)
-  autoload -U compinit; compinit
-  ```
-
-  On macOS it can go in Homebrew's directory instead:
-  `cld completion zsh > "$(brew --prefix)/share/zsh/site-functions/_cld"`.
-- **fish**: `cld completion fish > ~/.config/fish/completions/cld.fish`.
+  They run `compinit` only where nothing before them has - oh-my-zsh, say, or Ubuntu's
+  `/etc/zsh/zshrc` - since a second `compinit` drops the completions set up after the first; with
+  `-i`, it leaves out directories that other users can write to instead of asking about them as
+  zsh starts. A `compinit` after the lines finds the script all the same. Where the script is
+  missing, as on another machine that shares the `.zshrc`, they do nothing. cld adds them once, and
+  not again while `.zshrc` has their first line. Where a tool writes `.zshrc` for you - a link into
+  a read-only store, as home-manager makes, or a dotfiles manager that writes it over - cld cannot
+  write it, or its lines do not last: add them where that tool takes them.
+- **fish**: `~/.config/fish/completions/cld.fish` (`$XDG_CONFIG_HOME` in place of `~/.config`
+  where set), the directory fish looks in first, where the script used to be written by hand:
+  cld replaces such a script.
 
 ## Troubleshooting
 
@@ -228,11 +242,13 @@ leaves out the states and the other descriptions. Start a new shell for the scri
 
 - **cld.** `cld update` replaces cld with the latest release, when there is a newer one: it checks
   the release's binary for your system against `cld.sha256` and that it runs, then replaces the
-  file cld runs from - the one a symbolic link leads to - which you need to be able to write. It
-  reaches GitHub through the proxy `HTTPS_PROXY` names, if any. cld 0.5.0 and earlier have no
-  `update`: run the [install command](../README.md#install) again, with the same
-  `CLD_INSTALL_DIR` if you gave one - it also takes `CLD_VERSION` for another release. A cld built
-  from source, whose version is `dev`, is not updated.
+  file cld runs from - the one a symbolic link leads to - which you need to be able to write.
+  Then it writes anew the completion scripts that `cld setup completion` wrote, where the new
+  release prints others (see [Shell completion](#shell-completion)). It reaches GitHub through the
+  proxy `HTTPS_PROXY` names, if any. cld 0.5.0 and earlier have no `update`: run the
+  [install command](../README.md#install) again, with the same `CLD_INSTALL_DIR` if you gave one -
+  it also takes `CLD_VERSION` for another release. A cld built from source, whose version is
+  `dev`, is not updated.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill -n NAME`): each
   session's server keeps running the tmux that started it until the session ends.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from

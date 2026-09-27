@@ -1,9 +1,10 @@
-// Package output writes cld's own output. A write that fails is one of the ways cld ends (see
-// internal/fail), so that output cut short does not pass for whole.
+// Package output writes cld's own output, and its warnings. A write of the output that fails is
+// one of the ways cld ends (see internal/fail), so that output cut short does not pass for whole.
 package output
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 
@@ -25,4 +26,10 @@ func Print(text string) error {
 		return fail.Runtime("write error: " + err.Error())
 	}
 	return nil
+}
+
+// Warn writes warning to stderr, as "cld: warning: WARNING", for what goes wrong without ending
+// cld. A write that fails is passed over, as main passes over one of cld's last message.
+func Warn(warning string) {
+	_, _ = fmt.Fprintf(os.Stderr, "cld: warning: %s\n", warning)
 }

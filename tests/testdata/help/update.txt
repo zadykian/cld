@@ -2,7 +2,8 @@ update cld to the latest release on GitHub: download the release's cld for
 this system, check it against the release's cld.sha256 and that it runs, then
 replace the file cld runs from with it - the file a symbolic link leads to.
 Where cld is the latest release already, or newer, nothing changes; a cld built
-from source, cld dev, is not updated.
+from source, cld dev, is not updated. Once cld is replaced, the scripts that
+cld setup completion wrote are written anew where the new cld prints others.
 
 Usage:
   cld update [flags]
