@@ -314,7 +314,11 @@ replace the file cld runs from with it - the file a symbolic link leads to.
 Where cld is the latest release already, or newer, nothing changes; a cld built
 from source, cld dev, is not updated.`,
 		RunE: func(*cobra.Command, []string) error {
-			return update.Run(version)
+			result, err := update.Run(version)
+			if err != nil {
+				return err
+			}
+			return output.Print(result.Report())
 		},
 	}
 
