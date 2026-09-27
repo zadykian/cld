@@ -26,7 +26,7 @@ var update = flag.Bool("update", false, "rewrite the help in testdata/help from 
 
 // helpTopics are what cld help takes, "" for none, in the order the help lists them: a command
 // of cld's, followed by the commands it has, "setup telemetry" for setup's telemetry.
-var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "setup", "setup project", "setup telemetry", "completion", "help", "version"}
+var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "setup", "setup project", "setup telemetry", "update", "completion", "help", "version"}
 
 // goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
 // testdata/help/COMMAND.txt for cld help COMMAND, and setup-telemetry.txt for cld help setup
@@ -161,6 +161,9 @@ func TestHelp(t *testing.T) {
 		{[]string{"join", "-n", "x", "-h"}, "join"},
 		{[]string{"kill", "--help"}, "kill"},
 		{[]string{"list", "-h"}, "list"},
+		{[]string{"update", "-h"}, "update"},
+		{[]string{"help", "update"}, "update"},
+		{[]string{"update", "--help", "x"}, "update"},
 		{[]string{"help", "-h"}, "help"},
 		{[]string{"version", "--help"}, "version"},
 		{[]string{"-V", "-h"}, "version"},
@@ -282,6 +285,7 @@ func TestCompleteCommands(t *testing.T) {
 		"kill\tend session NAME and its tmux server\n" +
 		"list\tlist the sessions cld started; on a terminal, join or kill one\n" +
 		"setup\tset up claude's settings in a project, or its telemetry\n" +
+		"update\tupdate cld to the latest release\n" +
 		"version\tshow the version\n" +
 		"completion\tprint the completion script for a shell\n" +
 		"help\tshow this help, or the help of COMMAND\n"
@@ -562,6 +566,9 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"join", "-w"}, "cld: join: unexpected argument '-w' (see cld help)\n"},
 		{[]string{"kill", "-n", "a", "--worktree"}, "cld: kill: unexpected argument '--worktree' (see cld help)\n"},
 		{[]string{"list", "-n", "a"}, "cld: list: unexpected argument '-n' (see cld help)\n"},
+		{[]string{"update", "x"}, "cld: update: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"update", "--check"}, "cld: update: unexpected argument '--check' (see cld help)\n"},
+		{[]string{"update", "--"}, "cld: update: unexpected argument '--' (see cld help)\n"},
 		{[]string{"help", "nope"}, "cld: help: unknown command 'nope' (see cld help)\n"},
 		{[]string{"help", "new", "join"}, "cld: help: unexpected argument 'join' (see cld help)\n"},
 		{[]string{"help", "nope", "join"}, "cld: help: unknown command 'nope' (see cld help)\n"},

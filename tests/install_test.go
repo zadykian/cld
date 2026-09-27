@@ -29,26 +29,64 @@ var platforms = []string{"darwin-amd64", "darwin-arm64", "linux-amd64", "linux-a
 
 // releases stands in for GitHub's releases: the files under dir, a release's at
 // latest/download/NAME or download/vX.Y.Z/NAME, served at url, which records the paths asked for.
+// latest, once set (see setLatest), redirects to the tag of the latest release, as GitHub's does.
 type releases struct {
 	dir   string
 	url   string
 	mu    sync.Mutex
 	paths []string
+	// latest is the version of the latest release, "" for none.
+	latest string
+	// held is a path whose download stops after its first byte, until the client goes; arrived
+	// gets a value once it has stopped there.
+	held    string
+	arrived chan struct{}
 }
 
 func newReleases(t *testing.T, s *sandbox.Sandbox) *releases {
 	t.Helper()
-	r := &releases{dir: filepath.Join(s.Root, "releases")}
+	r := &releases{dir: filepath.Join(s.Root, "releases"), arrived: make(chan struct{}, 1)}
 	files := http.FileServer(http.Dir(r.dir))
+	closing := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		r.mu.Lock()
 		r.paths = append(r.paths, req.URL.Path)
+		latest, held := r.latest, r.held
 		r.mu.Unlock()
-		files.ServeHTTP(w, req)
+		switch {
+		case req.URL.Path == "/latest" && latest != "":
+			http.Redirect(w, req, "/tag/v"+latest, http.StatusFound)
+		case req.URL.Path == held:
+			w.Header().Set("Content-Length", "1000000")
+			_, _ = w.Write([]byte("#"))
+			w.(http.Flusher).Flush()
+			r.arrived <- struct{}{}
+			select {
+			case <-req.Context().Done():
+			case <-closing:
+			}
+		default:
+			files.ServeHTTP(w, req)
+		}
 	}))
 	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(closing) }) // before server.Close, which waits for the handlers
 	r.url = server.URL
 	return r
+}
+
+// setLatest makes version the latest release, which latest redirects to.
+func (r *releases) setLatest(version string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.latest = version
+}
+
+// hold stops the download of path after its first byte (see releases.held).
+func (r *releases) hold(path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.held = path
 }
 
 // fakeBinary is what a release of version serves as cld for platform.
@@ -144,12 +182,18 @@ func runInstaller(t *testing.T, s *sandbox.Sandbox, shell, script string, extra 
 	cmd.Stdin = strings.NewReader(script)
 	cmd.Env = s.Environ(extra)
 	cmd.Dir = s.Work
+	return runCommand(t, cmd)
+}
+
+// runCommand runs cmd, which does not start with a terminal, for what it ends with.
+func runCommand(t *testing.T, cmd *exec.Cmd) sandbox.Result {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err = cmd.Run()
+	err := cmd.Run()
 	var exit *exec.ExitError
 	if err != nil && !errors.As(err, &exit) {
-		t.Fatalf("run %s: %v", shell, err)
+		t.Fatalf("run %s: %v", cmd.Path, err)
 	}
 	return sandbox.Result{Code: cmd.ProcessState.ExitCode(), Stdout: stdout.String(), Stderr: stderr.String()}
 }
@@ -162,6 +206,13 @@ func installScript(t *testing.T) string {
 
 // checkInstalled reports a dir that does not hold cld, and cld alone, with content, executable.
 func checkInstalled(t *testing.T, dir, content string) {
+	t.Helper()
+	checkCld(t, dir, content, 0o755)
+}
+
+// checkCld reports a dir that does not hold cld, and cld alone, with content and the permissions
+// mode.
+func checkCld(t *testing.T, dir, content string, mode os.FileMode) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -178,8 +229,8 @@ func checkInstalled(t *testing.T, dir, content string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 {
-		t.Errorf("cld has mode %v, want -rwxr-xr-x", info.Mode().Perm())
+	if info.Mode().Perm() != mode {
+		t.Errorf("cld has mode %v, want %v", info.Mode().Perm(), mode)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "cld"))
 	if err != nil {

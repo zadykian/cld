@@ -19,13 +19,15 @@ import (
 	"github.com/zadykian/cld/internal/project"
 	"github.com/zadykian/cld/internal/session"
 	"github.com/zadykian/cld/internal/telemetry"
+	"github.com/zadykian/cld/internal/update"
 )
 
 // commands maps each command, and each alias of one, to the command it runs: cld's, cobra's
 // completion, and the hidden commands through which cobra's completion scripts ask cld what to
 // offer, on every TAB.
 var commands = map[string]string{
-	"new": "new", "resume": "resume", "join": "join", "kill": "kill", "list": "list", "setup": "setup", "completion": "completion",
+	"new": "new", "resume": "resume", "join": "join", "kill": "kill", "list": "list", "setup": "setup",
+	"update": "update", "completion": "completion",
 	"help": "help", "-h": "help", "--help": "help",
 	"version": "version", "-V": "version", "--version": "version",
 	cobra.ShellCompRequestCmd: cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd: cobra.ShellCompNoDescRequestCmd,
@@ -300,6 +302,21 @@ list. cld list | cat prints the list only.`,
 	telemetryCommand := setupTelemetry(typed + " telemetry")
 	setup.AddCommand(projectCommand, telemetryCommand)
 
+	// update runs neither tmux nor claude, so it makes none of their checks: it needs the network
+	// and the directory cld is in, which internal/update checks as it goes.
+	updateCommand := &cobra.Command{
+		Use:   "update",
+		Short: "update cld to the latest release",
+		Long: `update cld to the latest release on GitHub: download the release's cld for
+this system, check it against the release's cld.sha256 and that it runs, then
+replace the file cld runs from with it - the file a symbolic link leads to.
+Where cld is the latest release already, or newer, nothing changes; a cld built
+from source, cld dev, is not updated.`,
+		RunE: func(*cobra.Command, []string) error {
+			return update.Run(version)
+		},
+	}
+
 	// cobra would add "[flags]" at the end of help's usage line, after COMMAND, where cld reads no
 	// options. cobra's own help command completes COMMAND, and so does cld's.
 	help := &cobra.Command{
@@ -320,7 +337,7 @@ list. cld list | cat prints the list only.`,
 		},
 	}
 
-	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, setup, projectCommand, telemetryCommand, help, versionCommand} {
+	for _, command := range []*cobra.Command{root, newCommand, resume, join, kill, list, setup, projectCommand, telemetryCommand, updateCommand, help, versionCommand} {
 		// cobra adds -h and --help only where a command has no "help" option of its own.
 		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
 		if command == root {
@@ -331,7 +348,7 @@ list. cld list | cat prints the list only.`,
 		}
 		command.Flags().SetInterspersed(false)
 	}
-	root.AddCommand(newCommand, resume, join, kill, list, setup, versionCommand)
+	root.AddCommand(newCommand, resume, join, kill, list, setup, updateCommand, versionCommand)
 	root.SetHelpCommand(help)
 	completionCommand(root)
 

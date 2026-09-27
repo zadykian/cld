@@ -226,8 +226,13 @@ leaves out the states and the other descriptions. Start a new shell for the scri
 
 ## Upgrading
 
-- **cld.** Run the [install command](../README.md#install) again, with the same `CLD_INSTALL_DIR`
-  if you gave one: it replaces cld with the latest release, or with the one `CLD_VERSION` names.
+- **cld.** `cld update` replaces cld with the latest release, when there is a newer one: it checks
+  the release's binary for your system against `cld.sha256` and that it runs, then replaces the
+  file cld runs from - the one a symbolic link leads to - which you need to be able to write. It
+  reaches GitHub through the proxy `HTTPS_PROXY` names, if any. cld 0.5.0 and earlier have no
+  `update`: run the [install command](../README.md#install) again, with the same
+  `CLD_INSTALL_DIR` if you gave one - it also takes `CLD_VERSION` for another release. A cld built
+  from source, whose version is `dev`, is not updated.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill -n NAME`): each
   session's server keeps running the tmux that started it until the session ends.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from

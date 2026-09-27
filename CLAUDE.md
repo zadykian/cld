@@ -12,10 +12,11 @@ help texts, argument errors), `internal/session` the tmux side, `internal/picker
 `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json` and `.gitignore`),
 `internal/telemetry` `cld setup telemetry` (a local OpenTelemetry Collector in Docker, and
 claude's settings pointed at it), `internal/configfile` edits the files the two write in place,
-`internal/tool` finds the programs cld runs on the `PATH` (and ends cld as a shell would when one
-cannot run), and `internal/fail` carries exit statuses up to `main`. `install.sh`, published with
-each release, installs cld from a release. Everything else is its test harness (Go, under `tests/`), docs
-and CI.
+`internal/update` `cld update` (cld replacing itself with the latest release), `internal/tool`
+finds the programs cld runs on the `PATH` (and ends cld as a shell would when one cannot run),
+and `internal/fail` carries exit statuses up to `main`. `install.sh`, published with each
+release, installs cld from a release. Everything else is its test harness (Go, under `tests/`),
+docs and CI.
 
 ## Commands
 
@@ -47,15 +48,22 @@ platform, `cld.sha256` and `install.sh`.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
   run the real claude): they run `claude --version` before starting that claude; `join`, `kill`,
-  `list`, `setup project`, `setup telemetry` and completion do not. Re-derive the minimum when
-  cld starts to pass or rely on something newer (docs/design.md, decision 6).
+  `list`, `setup project`, `setup telemetry`, `update` and completion do not. Re-derive the
+  minimum when cld starts to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `install.sh` and
   `tests/jediterm/fetch-deps`.
 - `install.sh` is POSIX sh, run as `curl -fsSL .../releases/latest/download/install.sh | sh`:
   everything stays in functions that its last line calls, so that a download cut short runs
   nothing. It relies on the names `make dist` publishes, `cld-OS-ARCH` and `cld.sha256` with its
-  `HASH  NAME` lines, so a change to them goes with one to it (decision 20).
+  `HASH  NAME` lines, as `internal/update` does, so a change to them goes with one to both
+  (decisions 20 and 21).
+- `update` makes none of the tmux and claude checks: it finds the latest release where GitHub's
+  `releases/latest` redirects, and refuses a version that is no X.Y.Z (`dev`). It replaces the
+  file cld runs from (symbolic links resolved) by a rename, once the new binary matches its
+  checksum and prints the release's version; an interrupt before that leaves cld as it was and
+  ends with 128 plus the signal's number. `CLD_RELEASES_URL` points it, and `install.sh`, at the
+  tests' releases.
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
   and the list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep
   cld's command line - the first argument checked before cobra, and the one after `setup`,
@@ -111,9 +119,9 @@ platform, `cld.sha256` and `install.sh`.
   stay in their `Args` and `RunE`, never in a root hook, so completion (`__complete setup ...`),
   which `run` lets through, runs none of them.
 
-The package comments of `internal/session`, `internal/telemetry` and `internal/project` explain
-why each tmux option is set and each step of `setup telemetry` and `setup project` is taken; keep
-them accurate when changing any of them.
+The package comments of `internal/session`, `internal/telemetry`, `internal/project` and
+`internal/update` explain why each tmux option is set and each step of `setup telemetry`,
+`setup project` and `update` is taken; keep them accurate when changing any of them.
 
 ## Test architecture (`tests/`)
 
@@ -164,7 +172,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   patterns that ignore the settings all the same, refusals; `install_test.go` — `install.sh`
   piped into `sh` and `bash`, against releases an HTTP server of the test's serves
   (`CLD_RELEASES_URL`) and a fake `uname`: platforms, versions, directories, refusals, and the
-  script cut short at every line.
+  script cut short at every line; `update_test.go` — `cld update` of a cld built as release 0.4.0
+  and copied into the sandbox, against the same kind of releases: updates and none, a symbolic
+  link, a build from source, refusals, a directory it cannot write, signals.
 
 ## Documentation conventions
 
