@@ -18,6 +18,13 @@
 //	            cd DIR            change to DIR, as claude does entering a worktree
 //	            tmux ARGS         run tmux with ARGS, split at spaces, as anything claude runs
 //	                              may: TMUX takes it to the server of claude's pane
+//	            hook EVENT [JSON] run the hooks for EVENT in the settings given with --settings as
+//	                              claude does: each command through sh -c, in the probe's
+//	                              directory and environment, with JSON (default {}) as its
+//	                              input - where a hook has a matcher, only if it matches the
+//	                              event's notification_type, or tool_name; once they have run,
+//	                              append a line to PID.hooks: EVENT, and after a ": " why where
+//	                              one failed or printed anything
 //	            exit [N]          exit at once with status N (default 0), leaving the terminal
 //	                              modes on
 //
@@ -66,12 +73,14 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -449,7 +458,7 @@ func claude() error {
 		_, _ = os.Stdout.WriteString(s)
 	}
 	write(modes + "\x1b]0;probe\x07" + screen())
-	go obey(control, write)
+	go obey(control, write, base)
 
 	buffer := make([]byte, 4096)
 	for {
@@ -479,7 +488,7 @@ func version() error {
 	return err
 }
 
-func obey(control *os.File, write func(string)) {
+func obey(control *os.File, write func(string), base string) {
 	lines := bufio.NewScanner(control)
 	for lines.Scan() {
 		command, argument, _ := strings.Cut(lines.Text(), " ")
@@ -509,6 +518,24 @@ func obey(control *os.File, write func(string)) {
 			if out, err := exec.Command("tmux", strings.Fields(argument)...).CombinedOutput(); err != nil {
 				fmt.Fprintf(os.Stderr, "probe: tmux: %v: %s", err, out)
 			}
+		case "hook":
+			// A hook that fails, or prints anything, which claude would show or hand the model,
+			// goes on the line after the event, for the test to report.
+			event, input, _ := strings.Cut(argument, " ")
+			line := event
+			if err := runHooks(event, input); err != nil {
+				line += ": " + strconv.Quote(err.Error())
+			}
+			hooks, err := os.OpenFile(base+".hooks", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			if err == nil {
+				_, err = hooks.WriteString(line + "\n")
+				if closeErr := hooks.Close(); err == nil {
+					err = closeErr
+				}
+			}
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "probe:", err)
+			}
 		case "exit":
 			status, _ := strconv.Atoi(argument)
 			os.Exit(status)
@@ -516,9 +543,71 @@ func obey(control *os.File, write func(string)) {
 	}
 }
 
-// screen is what the probe draws: its arguments, then a line in the attributes claude uses.
+// runHooks runs the hooks for event in the settings the probe was given with --settings, as
+// claude runs them, with input as their input (see the package comment). A hook that fails or
+// prints anything is an error.
+func runHooks(event, input string) error {
+	i := slices.Index(os.Args, "--settings")
+	if i < 0 || i+1 == len(os.Args) {
+		return errors.New("no --settings")
+	}
+	var settings struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(os.Args[i+1]), &settings); err != nil {
+		return err
+	}
+	if input == "" {
+		input = "{}"
+	}
+	var fields struct {
+		NotificationType string `json:"notification_type"`
+		ToolName         string `json:"tool_name"`
+	}
+	if err := json.Unmarshal([]byte(input), &fields); err != nil {
+		return err
+	}
+	for _, group := range settings.Hooks[event] {
+		if group.Matcher != "" {
+			matched, err := regexp.MatchString("^(?:"+group.Matcher+")$", fields.NotificationType+fields.ToolName)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				continue
+			}
+		}
+		for _, hook := range group.Hooks {
+			if hook.Type != "command" {
+				return fmt.Errorf("a hook of type %q", hook.Type)
+			}
+			cmd := exec.Command("/bin/sh", "-c", hook.Command)
+			cmd.Stdin = strings.NewReader(input)
+			out, err := cmd.CombinedOutput()
+			if err != nil || len(out) != 0 {
+				return fmt.Errorf("%s: %v, printed %q", hook.Command, err, out)
+			}
+		}
+	}
+	return nil
+}
+
+// screen is what the probe draws: its arguments, the settings cut short, then a line in the
+// attributes claude uses.
 func screen() string {
-	return "probe " + strings.Join(os.Args[1:], " ") + "\r\n" +
+	// The settings, some two thousand bytes of JSON with their hooks, go as {...}: the arguments
+	// stay within a line of the smallest terminal a test gives claude, as they did before them.
+	args := slices.Clone(os.Args[1:])
+	if i := slices.Index(args, "--settings"); i >= 0 && i+1 < len(args) {
+		args[i+1] = "{...}"
+	}
+	return "probe " + strings.Join(args, " ") + "\r\n" +
 		"\x1b[1mbold\x1b[22m \x1b[2mdim\x1b[22m \x1b[3mitalic\x1b[23m \x1b[7minverse\x1b[27m " +
 		"\x1b[38;5;208mcolour\x1b[39m\r\n"
 }

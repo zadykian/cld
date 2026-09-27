@@ -136,6 +136,10 @@ rows that name none were probed against tmux 3.6.
 | the port of a JetBrains IDE's MCP server (GoLand 2026.2.3's `mcpserver` plugin, `McpServerSettings` and `McpServerService` read with `javap`; GoLand 2026.2.3 and Rider 2026.2.1 remote-development backends listening) | the default is 64342 plus an offset per product, chosen by `PlatformUtils.getPlatformPrefix()`: IntelliJ IDEA 0, CLion 20, DataGrip 60, GoLand 80, PhpStorm 100, PyCharm 120, Rider 140, RubyMine 160, RustRover 180, WebStorm 200, any other 0 - so GoLand listens on 64422 and Rider on 64482, as they do here, the two running at once; an authorized endpoint takes the port 100 above (64522, 64582). The MCP Server settings keep a port of their own (`mcpServerPort`), and the system property `idea.mcp.server.force.port` overrides both; where the port was never changed, the options file (`mcpServer.xml`) holds `enableMcpServer` alone. "Copy HTTP Stream Config" in those settings gives `http://127.0.0.1:PORT/stream` |
 | `${VAR:-DEFAULT}` in the URL of an `.mcp.json` server (claude 2.1.283, `claude mcp list` and `claude mcp get`, a scratch `CLAUDE_CONFIG_DIR`, the folder trusted, GoLand and Rider as above) | claude expands it as it connects: to DEFAULT where VAR is unset, and to VAR from its environment, or from the `env` of `$CLAUDE_CONFIG_DIR/settings.json`; VAR in the `env` of the project's `.claude/settings.local.json` was not used. It shows the URL with `${VAR}`, the default left out. `${VAR}` without a default, VAR unset: `[Warning] [goland] mcpServers.goland: Missing environment variables: VAR`, and the server fails with `'url' is not a valid URL` |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
+| `claude` 2.1.283's own title (read from its bundle; and the `#{pane_title}` of a claude working in a session of cld's, read every 50 ms for 45 s) | `MARKER NAME`, the marker from claude's status: `◐` and `◑` in turn, every 960 ms, while it is `busy`; `✳` while it is `idle` or `waiting` - a permission dialog, an MCP server's question. Where `TMUX`, `STY` or `ZELLIJ` is set and the feature flag `tengu_static_title_under_mux` (on by default) holds, the marker stays `✳`: the pane's title read `✳ cld-NAME` throughout. claude also writes its status to `~/.claude/sessions/PID.json` (`status`, `statusUpdatedAt`), which no documentation names, and sends no OSC 9;4 that tmux records: `#{pane_pb_state}` stayed `hidden` |
+| claude's hook events (the linux-x64 bundles of 2.1.232 and 2.1.283, read, not run) | both have `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` ("When a permission dialog is displayed"), `Elicitation`, `ElicitationResult`, `Notification` - of the types `permission_prompt`, `idle_prompt`, `elicitation_dialog` and others - `Stop` and `StopFailure` ("Fires instead of Stop when an API error ... ended the turn"). `PostToolUseFailure`'s input has `is_interrupt`. No event comes when the user interrupts claude as it writes |
+| hooks given with `--settings` (the real `claude` 2.1.283, alone on a scratch tmux server, in a directory whose trust was accepted, Remote Control off; a second `UserPromptSubmit` hook exited 2, which blocks the prompt, so nothing reached the API) | claude ran them - `SessionStart` as it started, `UserPromptSubmit` on Enter - in its own environment, with `TMUX` naming the server and `TMUX_PANE` its pane: `tmux if -F -t "$TMUX_PANE" '#{!=:#{@cld-status},busy}' 'set @cld-status busy'` set the option on claude's session. No `Stop` followed the blocked prompt: the option stayed `busy` |
+| `set-titles` under `status off` (tmux 3.7c: `server-client.c`, `format.c`, `options.c`, `status.c` and `cmd-refresh-client.c` read, and probed with a client in a pane of another server, whose `#{pane_title}` is the title that client sets) | tmux expands `set-titles-string`, a session option, with strftime whenever it redraws a client, and writes the title only where it changed; it restores no title on detach. Setting any option, a user option too, redraws every client on the server: `set @cld-status busy` turned `✳ NAME` into `◐ NAME` at once. With `status off` no timer expands the title again, and a `#()` job in it redraws nothing when it ends - only the status line's jobs do - but a job that runs `refresh-client -S`, which redraws the status alone, that is the title, a second later in the background kept it turning: `◐` and `◑` swapped every 1.0 to 1.3 s until the option changed, with the job naming a tmux whose path has a space, `#`, `%` and parentheses through `#{q:@OPTION}`. tmux runs a title's job at most once a second for each client. With `set-titles` on tmux also hands the active pane's directory (OSC 7) to the terminals it credits with `osc7`, iTerm2 and foot among them: an empty one for claude, which sets none |
 
 ## Distribution
 
@@ -183,7 +187,7 @@ a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the prob
 
 | # | Check | Evidence |
 |---|---|---|
-| C1 | tab title is `✳ cld-NAME` and survives claude's own title changes | terminal |
+| C1 | tab title is `✳ cld-NAME`, with `◐` and `◑` in turn in place of `✳` while claude is busy, and survives claude's own title changes | terminal, probe |
 | C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, ...) | tmux |
 | C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
 | C4 | mouse wheel and focus in/out reach claude; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
@@ -1415,6 +1419,56 @@ The Linux job runs the same Docker image a developer runs locally.
 
     Out of scope: filling gaps, counting what outlives a session - its conversation, its worktree
     - and completing `kill`'s options.
+25. The tab's title follows claude's status: `✳ cld-NAME`, and `◐` and `◑` in turn in place of
+    `✳` while claude is busy - the markers claude's own title has outside tmux; under tmux it keeps
+    them at `✳` (see Findings). claude tells tmux through hooks that `new` and `resume` give it with
+    `--settings`, and tmux sets the title of every terminal on the session from that. Settled with
+    it:
+    1. the status comes from claude's hooks, which claude documents and 2.1.232 already has, so
+       the minimum of 6 stands. Rejected: reading claude's status from
+       `~/.claude/sessions/PID.json`, which would catch interrupts too but which claude documents
+       nowhere, and which would take a process per session to watch it; telling it from the
+       pane's output, which typing and redraws make too; passing claude's title on, which never
+       turns under tmux; and taking `TMUX` away from claude, which needs it for its passthrough;
+    2. the events: `UserPromptSubmit`, `PostToolUse` and `ElicitationResult` make claude busy -
+       `PostToolUse` also after a permission answered - `PermissionRequest` and `Elicitation` make
+       it wait, and `Stop`, `StopFailure`, `Notification` of the type `idle_prompt` and
+       `PostToolUseFailure` with `is_interrupt` make it idle; a failure that is no interrupt
+       leaves it busy. An interrupt as claude writes has no event: the title stays busy until the
+       next prompt, or until claude, idle for a minute (its default), notifies `idle_prompt`.
+       Waiting shows `✳`, as claude's title does;
+    3. a hook runs `tmux if -F -t "$TMUX_PANE"`, by the path cld checked, quoted for sh, on the
+       server claude's `TMUX` names, and sets `@cld-status` on claude's session only where it
+       changes: setting any option redraws every terminal on the server, and `PostToolUse` comes
+       with every tool. It prints nothing, since what a `UserPromptSubmit` hook prints goes to the
+       model; a tmux that fails says so, which claude shows the user;
+    4. `set-titles` on, `set-titles-string`
+       `#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-NAME`, the marker
+       `@cld-busy` and the path `@cld-tmux` go on claude's session, not the server, as 5's options
+       go on claude's window: a session claude makes keeps tmux's. A claude that exited is not
+       busy, though a turn it failed in left the option so. The title leaves claude's own, `#T`,
+       out, so that C1 still holds;
+    5. the turning: `@cld-busy`, expanded with strftime, is `◐` in even seconds and `◑` in odd
+       ones, followed by a `#()` job that in the background, a second later, runs
+       `refresh-client -S` for the terminal the title was expanded for, which expands it anew,
+       job and all. A second rather than claude's 960 ms: tmux runs the job again only in another
+       second, and a refresh within the same one would end the turning. The job names tmux by
+       `#{q:@cld-tmux}`, since a path in the format could hold a `#` or `%`, which formats and
+       strftime take up, or a `)`, which ends the job. No job runs for an idle claude or a session
+       no terminal is on, and the last one ends within a second of the turn;
+    6. cld still prints `✳ cld-NAME` before tmux starts, and the list before it hands the terminal
+       over (14), which tmux replaces on attach with the session's title as it stands. A terminal
+       that detaches keeps the title tmux set last - a busy marker, if claude was busy - and a
+       session an older cld started keeps `✳ cld-NAME`, as it has neither the hooks nor the title;
+    7. the tests: the probe runs the hooks of its `--settings` as claude would (`hook EVENT
+       JSON`), and fails a test on one that fails or prints anything; the events one by one, and
+       the status each leaves; C1 with `✳`, then `◐` and `◑` in turn and `✳` again, and `✳` for a
+       claude that fails in a turn, on each terminal; the title's options on claude's session and
+       not the server's; the settings and the tmux command word for word, with the tmux cld found.
+       The probe draws its settings as `{...}`, which with the hooks no longer fit a line.
+
+    Out of scope: a marker for `waiting` of its own (claude's title has none), a title that shows
+    more than the marker, and the title a terminal keeps after it detaches.
 
 ## Implementation notes
 
@@ -1765,6 +1819,12 @@ by hand in a nested tmux).
 - `new -w`'s worktree `cld-NAME-SUFFIX` (24.7) was not run with the real `claude`: its name has the
   characters of the `wt` probed with 2.1.281 (see Findings). The repository's name is tested with
   git 2.47.3 in the Linux image, and with the git of the macOS runner.
+- The title's hooks were run by the real `claude` 2.1.283 only as far as a prompt that a hook
+  blocked (see Findings), which costs no call to the API. A real turn - `Stop` at its end,
+  `PermissionRequest` and `PostToolUse` around a permission, `PostToolUseFailure` with
+  `is_interrupt` for `Esc` in a tool, `idle_prompt` a minute after an interrupt as claude writes -
+  was not run: each takes a prompt to the API, so the maintainer runs or allows it. The title in
+  iTerm2, and the empty OSC 7 tmux sends it, were not seen.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

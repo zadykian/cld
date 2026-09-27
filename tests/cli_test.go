@@ -1461,10 +1461,17 @@ func endHint(options string) string {
 		"C-q d detaches, cld kill " + options + " ends the session'"
 }
 
+// busyMarker is the marker new and resume have tmux put before the session's name in the tab's
+// title while claude is busy: ◐ in even seconds and ◑ in odd ones, with a job that, a second
+// later, has tmux set the title again (see TestContractTitle).
+const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
+	"#((sleep 1; #{q:@cld-tmux} -S #{q:socket_path} refresh-client -S -t #{q:client_name}) >/dev/null 2>&1 &)"
+
 // new and resume hand over to tmux with this command, word for word: the session's own server,
 // its options, the directory, claude - by the path of the one it checked - and its arguments as
-// separate words, and what goes on claude's window. resume's claude gets new's arguments, never
-// -w's, then --resume. A word ending in ";", which tmux would take for the end of its command,
+// separate words, what goes on claude's window, and the tab's title on claude's session, naming
+// the tmux cld checked, as claude's hooks do. resume's claude gets new's arguments, never -w's,
+// then --resume. A word ending in ";", which tmux would take for the end of its command,
 // goes with a "\" before the ";", which tmux drops: SESSION, or the directory cld runs in. The
 // directory goes with every "#" doubled, since tmux expands -c as a format, in which "##" is a
 // "#". The fake tmux, which finds no server running for the session, records the command, and
@@ -1475,7 +1482,8 @@ func endHint(options string) string {
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
-	const fromHead = `{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`
+	// cld finds the fake tmux, which the hooks then name.
+	remoteControl, fromHead := settings(sandbox.FakeTmux, false), settings(sandbox.FakeTmux, true)
 	for _, command := range []struct {
 		args []string
 		// dir is where in the work tree cld runs, and c what tmux gets with -c there
@@ -1532,7 +1540,11 @@ func TestNewTmuxCommand(t *testing.T) {
 			want = append(want, ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
-				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`)
+				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`, ";",
+				"set", "-t", "=cld-x:", "@cld-tmux", sandbox.FakeTmux, ";",
+				"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",
+				"set", "-t", "=cld-x:", "set-titles-string", "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-x", ";",
+				"set", "-t", "=cld-x:", "set-titles", "on")
 			record := s.FakeTmuxRecord()
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)

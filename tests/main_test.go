@@ -10,6 +10,7 @@
 package tests
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -51,6 +52,17 @@ func setup(dir string) error {
 	// Open to every user, so that a test run as root can run cld as another one.
 	if err := os.Chmod(dir, 0o755); err != nil {
 		return err
+	}
+	// cld skips the relative entries of the PATH (see tool.LookPath in internal/tool).
+	for _, entry := range filepath.SplitList(os.Getenv("PATH")) {
+		if path := filepath.Join(entry, "tmux"); filepath.IsAbs(entry) && sandbox.RealTmux == "" {
+			if _, err := exec.LookPath(path); err == nil {
+				sandbox.RealTmux = path
+			}
+		}
+	}
+	if sandbox.RealTmux == "" {
+		return errors.New("tmux is not installed")
 	}
 	sandbox.Cld = filepath.Join(dir, "cld")
 	if err := run("go", "build", "-o", sandbox.Cld, "github.com/zadykian/cld/cmd/cld"); err != nil {
