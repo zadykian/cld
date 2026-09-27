@@ -64,7 +64,9 @@ func between(t *testing.T, term terminal.Terminal, probe *sandbox.Probe, keys ..
 	return string(input[start+1 : end])
 }
 
-// C1: the tab shows the session name, whatever claude sets as its own title.
+// C1: the tab shows the session name after claude's marker, whatever claude sets as its own title:
+// ✳, and while claude is busy - from the prompt it was given, as its hooks tell tmux (see
+// TestStatusHooks) - ◐ and ◑ in turn, a second each, until its turn is done.
 func TestContractTitle(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		s, term, probe := startContract(t, name)
@@ -75,6 +77,31 @@ func TestContractTitle(t *testing.T) {
 		if title := term.Title(); title != "\u2733 cld-contract" {
 			t.Errorf("terminal title %q, want %q", title, "\u2733 cld-contract")
 		}
+		probe.Hook("UserPromptSubmit", `{"prompt":"go"}`)
+		for _, marker := range []string{"\u25d0", "\u25d1", "\u25d0", "\u25d1"} {
+			want := marker + " cld-contract"
+			sandbox.WaitFor(t, 5*time.Second, "the terminal title "+strconv.Quote(want), func() bool {
+				return term.Title() == want
+			})
+		}
+		probe.Hook("Stop", `{}`)
+		sandbox.WaitFor(t, 5*time.Second, "the terminal title back at \u2733", func() bool {
+			return term.Title() == "\u2733 cld-contract"
+		})
+		// The job that would turn the marker next finds claude idle.
+		time.Sleep(1500 * time.Millisecond)
+		if title := term.Title(); title != "\u2733 cld-contract" {
+			t.Errorf("terminal title %q a while after the turn, want %q", title, "\u2733 cld-contract")
+		}
+		// A claude that fails in a turn leaves it busy, and its pane on screen: the tab says ✳.
+		probe.Hook("UserPromptSubmit", `{"prompt":"go"}`)
+		sandbox.WaitFor(t, 5*time.Second, "a busy terminal title", func() bool {
+			return term.Title() != "\u2733 cld-contract"
+		})
+		probe.Send("exit 1")
+		sandbox.WaitFor(t, 5*time.Second, "the terminal title back at \u2733 once claude failed", func() bool {
+			return term.Title() == "\u2733 cld-contract"
+		})
 	})
 }
 

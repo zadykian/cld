@@ -94,6 +94,10 @@ Leaving claude (`/exit`, `Ctrl+C` twice) ends its session. If claude exits with 
 session stays with its message on screen, as `exited` in `cld list`, until `cld kill` ends it.
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
+The terminal's tab shows the session, `✳ cld-NAME`, and while claude works `◐` and `◑` in turn in
+place of the `✳`, as claude's own title does outside tmux. claude tells tmux through hooks that
+cld gives it; the [guide](docs/guide.md#sessions) says what they miss.
+
 ### Resuming a conversation
 
 A session's conversation outlives it: after `cld kill`, a reboot or a crash it stays in Claude

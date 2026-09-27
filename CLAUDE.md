@@ -126,7 +126,15 @@ platform, `cld.sha256` and `install.sh`.
   `#{socket_path}` names another NAME that differs only in case (a socket directory that ignores
   case, as on macOS), they name that session instead of pointing at `kill-server`.
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
-  window, not the server, so the sessions claude makes on its server behave as plain tmux would.
+  window, and the tab's title (`set-titles`, `set-titles-string`, `@cld-busy`, `@cld-tmux`) on
+  claude's session, not the server, so the sessions claude makes on its server behave as plain
+  tmux would.
+- The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn while claude is busy (claude keeps its
+  own at `✳` under tmux). `new` and `resume` give claude hooks in `--settings` that set
+  `@cld-status` on its session - `tmux if -F -t "$TMUX_PANE"`, by the path cld checked, only where
+  it changes, printing nothing - and tmux sets the title from it; a `#()` job in `@cld-busy`
+  refreshes the terminal a second later to turn the marker, since `status off` leaves tmux no
+  timer (decision 25). The hook events must exist in the minimum claude.
 - `TERMINAL_EMULATOR` is removed from the environment `new` and `resume` exec tmux with, so from
   the server's; claude trusts it over `TERM_PROGRAM=tmux`.
 - `setup telemetry` needs Docker, and Linux (`--network host`): it replaces the container
@@ -165,7 +173,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   `forEachTerminal` runs a body as a parallel subtest per terminal.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
-  FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).
+  FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `hook`,
+  `exit`); `hook EVENT JSON` runs the hooks of its `--settings` as claude would.
   `CLD_PROBE_FAIL` makes it fail at startup. `claude --version` answers first, writing nothing,
   with `CLD_FAKE_CLAUDE_VERSION` (`99.0.0 (Claude Code)` when unset). Invoked as `tmux`, it fakes
   `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS` (unset:
@@ -195,7 +204,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   list's keys), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, the names `new` gives from the
-  repository and the index, and the names completion offers;
+  repository and the index, the hooks that keep claude's status for the title, and the names
+  completion offers;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
   byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures

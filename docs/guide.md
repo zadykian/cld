@@ -64,6 +64,18 @@ install it as `cld`, executable, in a directory on your `PATH`.
   `/config`. It stays off where your organisation's policy does, or where the project's
   `.claude/settings.json` or `.claude/settings.local.json` sets `remoteControlAtStartup` to
   `false`.
+- The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn in place of the `✳` while claude
+  works. Under tmux claude keeps its own marker at `✳`, so cld gives claude hooks with
+  `--settings` that tell tmux when a turn starts, when claude asks for a permission and when the
+  turn ends. They miss:
+  - an interrupt (`Esc`) as claude writes: the title stays busy until the next prompt, or until
+    claude, idle for a minute, notifies it; an interrupt in a tool comes through;
+  - a prompt that a `UserPromptSubmit` hook of your own blocks: busy until the next one;
+  - everything under `disableAllHooks`, or a policy that allows only managed hooks: the title
+    stays `✳ cld-NAME`.
+
+  A terminal that detaches keeps the title it had, a busy one too. A session that an older cld
+  started keeps `✳ cld-NAME`.
 
 ## The session list
 

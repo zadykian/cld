@@ -28,8 +28,40 @@ import (
 // How cld uses its tmux server, independent of the outer terminal: cld runs in the baseline
 // terminal (a pane of an outer tmux server).
 
-// remoteControl is the --settings every new claude gets: Remote Control on from the start.
-const remoteControl = `{"remoteControlAtStartup":true}`
+// remoteControl is the --settings every new claude gets from a cld that finds the sandbox's tmux
+// (see settings).
+func remoteControl() string { return settings(sandbox.RealTmux, false) }
+
+// settings is the --settings a new claude gets from a cld that found tmux at the path tmux: Remote
+// Control on from the start and, with fromHead, new -w's worktree branched from HEAD, then the
+// hooks that keep claude's status on its session for the tab's title (see TestStatusHooks). Each
+// runs that tmux on the server of claude's pane.
+func settings(tmux string, fromHead bool) string {
+	set := func(status string) string {
+		return `'` + tmux + `' if -F -t \"$TMUX_PANE\" '#{!=:#{@cld-status},` + status + `}' 'set @cld-status ` + status + `'`
+	}
+	on := func(event, matcher, command string) string {
+		if matcher != "" {
+			matcher = `"matcher":"` + matcher + `",`
+		}
+		return `"` + event + `":[{` + matcher + `"hooks":[{"type":"command","command":"` + command + `"}]}]`
+	}
+	worktree := ""
+	if fromHead {
+		worktree = `"worktree":{"baseRef":"head"},`
+	}
+	return `{"remoteControlAtStartup":true,` + worktree + `"hooks":{` + strings.Join([]string{
+		on("Elicitation", "", set("waiting")),
+		on("ElicitationResult", "", set("busy")),
+		on("Notification", "idle_prompt", set("idle")),
+		on("PermissionRequest", "", set("waiting")),
+		on("PostToolUse", "", set("busy")),
+		on("PostToolUseFailure", "", `if grep -Eq '\"is_interrupt\": *true'; then `+set("idle")+`; else `+set("busy")+`; fi`),
+		on("Stop", "", set("idle")),
+		on("StopFailure", "", set("idle")),
+		on("UserPromptSubmit", "", set("busy")),
+	}, ",") + `}}`
+}
 
 // Session NAME-SUFFIX is the tmux session cld-NAME-SUFFIX, and claude's --name: NAME is -n's, or
 // else the name of the git repository - outside one, as here, of the directory, work - and SUFFIX
@@ -67,7 +99,7 @@ func TestSessionNames(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{test.session}) {
 				t.Errorf("sessions %q, want [%s]", sessions, test.session)
 			}
-			if want := []string{"--name", test.session, "--settings", remoteControl}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", test.session, "--settings", remoteControl()}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != dir {
@@ -108,7 +140,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 			s.WriteProgram(filepath.Join(dir, "claude"), test.script, 0o755)
 			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "new")
 			probe := s.WaitProbes(1)[0]
-			if want := []string{"--name", "cld-0", "--settings", remoteControl}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", "cld-0", "--settings", remoteControl()}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if args, err := os.ReadFile(filepath.Join(s.ProbeDir, "relative claude ran")); err == nil {
@@ -123,7 +155,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 // it then makes or reopens the worktree itself and moves into it. The repository is named work.
 func TestNewWorktree(t *testing.T) {
 	t.Parallel()
-	const fromHead = `{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`
+	fromHead := settings(sandbox.RealTmux, true)
 	for _, test := range []struct {
 		args []string
 		want []string
@@ -187,7 +219,7 @@ func TestResume(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-" + test.name}) {
 				t.Errorf("sessions %q, want [cld-%s]", sessions, test.name)
 			}
-			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl, "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl(), "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != s.Work {
@@ -213,8 +245,8 @@ func TestDirectoryTmuxWouldChange(t *testing.T) {
 	for _, command := range []struct {
 		args, argv []string
 	}{
-		{[]string{"new", "-n", "a", "-s", "x"}, []string{"--name", "cld-a-x", "--settings", remoteControl}},
-		{[]string{"resume", "-n", "a", "-s", "x"}, []string{"--name", "cld-a-x", "--settings", remoteControl, "--resume", "cld-a-x"}},
+		{[]string{"new", "-n", "a", "-s", "x"}, []string{"--name", "cld-a-x", "--settings", remoteControl()}},
+		{[]string{"resume", "-n", "a", "-s", "x"}, []string{"--name", "cld-a-x", "--settings", remoteControl(), "--resume", "cld-a-x"}},
 	} {
 		for _, name := range []string{"w;", "C#S", "x#(touch ran)", "#{session_name};"} {
 			args, argv := command.args, command.argv
@@ -719,7 +751,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 		t.Errorf("new -n inside started claude with %q", probe.Argv)
 	}
 	startCld(t, s, "tmux", nil, "resume", "-s", "a-x")
-	resumed := []string{"--name", "cld-a-x", "--settings", remoteControl, "--resume", "cld-a-x"}
+	resumed := []string{"--name", "cld-a-x", "--settings", remoteControl(), "--resume", "cld-a-x"}
 	if probes := s.WaitProbes(3); !slices.ContainsFunc(probes, func(p *sandbox.Probe) bool { return slices.Equal(p.Argv, resumed) }) {
 		t.Errorf("resume -n a-x started no claude with %q", resumed)
 	}
@@ -1377,6 +1409,49 @@ func TestIgnoresUserTmuxConfig(t *testing.T) {
 	}
 }
 
+// The hooks new and resume give claude keep its status in @cld-status on its session, which the
+// tab's title reads (see TestContractTitle), telling apart what claude's own title does outside
+// tmux: busy from a prompt on, and after a question answered; waiting while claude asks - a
+// permission, an MCP server's question; idle once the turn is done, or failed, or a tool of it was
+// interrupted, or claude says it has been idle a while. claude runs each hook in its own
+// environment, whose TMUX and TMUX_PANE take tmux to its pane.
+func TestStatusHooks(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	startCld(t, s, "tmux", nil, "resume", "-s", "x")
+	probe := s.WaitProbes(1)[0]
+	status := func() string { return s.Format("cld-x", "#{@cld-status}") }
+	if got := status(); got != "" {
+		t.Fatalf("@cld-status is %q before any hook, want none", got)
+	}
+	for _, step := range []struct{ event, input, want string }{
+		{"UserPromptSubmit", `{"prompt":"go"}`, "busy"},
+		{"PostToolUse", `{"tool_name":"Bash"}`, "busy"},
+		{"PermissionRequest", `{"tool_name":"Bash"}`, "waiting"},
+		{"PostToolUse", `{"tool_name":"Bash"}`, "busy"},
+		{"Elicitation", `{"mcp_server_name":"m"}`, "waiting"},
+		{"ElicitationResult", `{"mcp_server_name":"m"}`, "busy"},
+		{"PostToolUseFailure", `{"tool_name":"Bash","is_interrupt":false}`, "busy"},
+		{"Notification", `{"notification_type":"permission_prompt"}`, "busy"},
+		{"Stop", `{}`, "idle"},
+		{"UserPromptSubmit", `{"prompt":"go"}`, "busy"},
+		{"PostToolUseFailure", `{"tool_name":"Bash","is_interrupt":true}`, "idle"},
+		{"UserPromptSubmit", `{"prompt":"go"}`, "busy"},
+		{"StopFailure", `{"error":"rate_limit"}`, "idle"},
+		{"UserPromptSubmit", `{"prompt":"go"}`, "busy"},
+		{"Notification", `{"notification_type":"idle_prompt"}`, "idle"},
+		{"SessionStart", `{"source":"clear"}`, "idle"},
+	} {
+		probe.Hook(step.event, step.input)
+		if got := status(); got != step.want {
+			t.Errorf("@cld-status is %q after %s %s, want %q", got, step.event, step.input, step.want)
+		}
+	}
+	if global := s.MustTmux("cld-x", "show", "-gqv", "@cld-status"); global != "" {
+		t.Errorf("global @cld-status %q, want none: it goes to claude's session", global)
+	}
+}
+
 func TestServerOptions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1394,8 +1469,9 @@ func TestServerOptions(t *testing.T) {
 			t.Errorf("%s is %q, want %q", option.name, value, option.value)
 		}
 	}
-	// What cld sets for a failed claude goes to claude's window; the sessions claude makes on its
-	// server keep tmux's.
+	// What cld sets for a failed claude goes to claude's window, and the tab's title - the tmux the
+	// title's job runs is the one cld checked - to claude's session; the sessions claude makes on
+	// its server keep tmux's.
 	for _, option := range []struct {
 		args  []string
 		value string
@@ -1403,6 +1479,11 @@ func TestServerOptions(t *testing.T) {
 		{[]string{"-wv", "-t", "=cld-0:", "remain-on-exit"}, "failed"},
 		{[]string{"-Awv", "-t", "=cld-0:", "remain-on-exit-format"}, ""},
 		{[]string{"-gwv", "remain-on-exit"}, "off"},
+		{[]string{"-v", "-t", "=cld-0:", "set-titles"}, "on"},
+		{[]string{"-v", "-t", "=cld-0:", "set-titles-string"}, "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-0"},
+		{[]string{"-v", "-t", "=cld-0:", "@cld-busy"}, busyMarker},
+		{[]string{"-v", "-t", "=cld-0:", "@cld-tmux"}, sandbox.RealTmux},
+		{[]string{"-gv", "set-titles"}, "off"},
 	} {
 		if value := s.MustTmux("cld-0", append([]string{"show"}, option.args...)...); value != option.value {
 			t.Errorf("show %s is %q, want %q", strings.Join(option.args, " "), value, option.value)
@@ -3328,7 +3409,7 @@ func TestListResumedSession(t *testing.T) {
 	})
 	resumed.Keys("C-q", "d")
 	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !resumed.Running() })
-	argv := []string{"--name", "cld-b", "--settings", remoteControl, "--resume", "cld-b"}
+	argv := []string{"--name", "cld-b", "--settings", remoteControl(), "--resume", "cld-b"}
 	claude := func(other *sandbox.Probe) *sandbox.Probe {
 		for _, probe := range s.Probes() {
 			if slices.Equal(probe.Argv, argv) && (other == nil || probe.PID != other.PID) {

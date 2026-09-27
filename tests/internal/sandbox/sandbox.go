@@ -27,6 +27,9 @@ var (
 	ProbeBin string
 	// FakeTmux is the probe installed as "tmux"; set by TestMain.
 	FakeTmux string
+	// RealTmux is the tmux cld finds on a sandbox's PATH: the first in its absolute entries; set
+	// by TestMain.
+	RealTmux string
 )
 
 // Record is what the probe writes about a process it stands in for.
@@ -397,6 +400,29 @@ func (p *Probe) Send(command string) {
 	defer fifo.Close()
 	if _, err := fifo.WriteString(command + "\n"); err != nil {
 		p.t.Fatal(err)
+	}
+}
+
+// Hook runs the hooks claude's settings give event, as claude would, with input - JSON, {} where
+// empty - as their input (see tests/probe), and waits until they have run. A hook that fails, or
+// prints anything, fails the test.
+func (p *Probe) Hook(event, input string) {
+	p.t.Helper()
+	// The lines the probe has ended: what follows the last newline is being written.
+	ran := func() []string {
+		data, _ := os.ReadFile(p.base + ".hooks")
+		lines := strings.Split(string(data), "\n")
+		return lines[:len(lines)-1]
+	}
+	before := len(ran())
+	p.Send(strings.TrimSuffix("hook "+event+" "+input, " "))
+	var lines []string
+	WaitFor(p.t, 10*time.Second, "the "+event+" hooks to run", func() bool {
+		lines = ran()
+		return len(lines) > before
+	})
+	if last := lines[len(lines)-1]; last != event {
+		p.t.Errorf("hook %s: %s", event, last)
 	}
 }
 

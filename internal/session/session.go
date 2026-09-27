@@ -62,10 +62,17 @@
 //     keys until q; join shows it instead. These go to claude's window only, not the server, so
 //     that the sessions claude makes there close as tmux would close them (see Tmux.create)
 //
+// The tab's title is the session's name after claude's marker, as claude's own title has it
+// outside tmux: ◐ and ◑ in turn while claude is busy, ✳ otherwise. Under tmux - TMUX set, which
+// claude needs for its passthrough - claude keeps its marker at ✳ (claude 2.1.283), so it tells
+// tmux instead: the hooks new and resume give it with --settings keep its status in the option
+// @cld-status of its session (see statusHooks), and tmux, with set-titles on for that session
+// only, sets the title of every terminal on it from that (see titles). claude's own title stays
+// in its pane. A terminal that detaches keeps the title tmux set last.
+//
 // join attaches beside any other terminal on the session, which stays attached: the window takes
 // the size of the terminal used last (window-size latest), and a larger one shows the rest of its
-// screen dotted. With --detach-others it attaches with -d, detaching the others. tmux keeps
-// claude's title changes to the pane (set-titles is off), so the tab keeps the session name.
+// screen dotted. With --detach-others it attaches with -d, detaching the others.
 // claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux, and its environment comes from the
 // client that started its server: a session created in the JetBrains terminal would keep its
 // claude, and whatever claude starts through tmux, acting as if in JediTerm (extended keys off, so
@@ -364,12 +371,60 @@ func hint(suffix string) string {
 
 // settings are what new and resume pass claude with --settings, as JSON in this field order.
 type settings struct {
-	RemoteControlAtStartup bool             `json:"remoteControlAtStartup"`
-	Worktree               worktreeSettings `json:"worktree,omitzero"`
+	RemoteControlAtStartup bool              `json:"remoteControlAtStartup"`
+	Worktree               worktreeSettings  `json:"worktree,omitzero"`
+	Hooks                  map[string][]hook `json:"hooks"`
 }
 
 type worktreeSettings struct {
 	BaseRef string `json:"baseRef"`
+}
+
+// hook is a command claude runs on an event, where the event's matcher field - the notification's
+// type for Notification - matches Matcher, or on every one of the event without it.
+type hook struct {
+	Matcher string        `json:"matcher,omitempty"`
+	Hooks   []hookCommand `json:"hooks"`
+}
+
+type hookCommand struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+}
+
+// statusHooks are the hooks that keep @cld-status on claude's session, for the tab's title (see
+// titles): busy from a prompt on, waiting while claude asks - a permission, an MCP server's
+// question - and idle once the turn is done, as claude tells its own status apart for its title
+// outside tmux. PostToolUse goes back to busy after a question answered; an interrupt ends a
+// tool's run with PostToolUseFailure, which says so, while one that comes as claude writes leaves
+// busy until claude, idle a minute, notifies idle_prompt, or the next prompt. Each runs tmux, by
+// the path cld checked, on the server of claude's pane, which claude's TMUX names; tmux sets the
+// option only where it changes, since setting any option redraws every terminal on the server.
+// tmux prints nothing that claude would take up: what a UserPromptSubmit hook prints goes to the
+// model.
+func statusHooks(tmux string) map[string][]hook {
+	set := func(status string) string {
+		return shellWord(tmux) + ` if -F -t "$TMUX_PANE" '#{!=:#{@cld-status},` + status + `}' 'set @cld-status ` + status + `'`
+	}
+	on := func(matcher, command string) []hook {
+		return []hook{{Matcher: matcher, Hooks: []hookCommand{{Type: "command", Command: command}}}}
+	}
+	return map[string][]hook{
+		"UserPromptSubmit":   on("", set("busy")),
+		"PostToolUse":        on("", set("busy")),
+		"PostToolUseFailure": on("", `if grep -Eq '"is_interrupt": *true'; then `+set("idle")+`; else `+set("busy")+`; fi`),
+		"PermissionRequest":  on("", set("waiting")),
+		"Elicitation":        on("", set("waiting")),
+		"ElicitationResult":  on("", set("busy")),
+		"Notification":       on("idle_prompt", set("idle")),
+		"Stop":               on("", set("idle")),
+		"StopFailure":        on("", set("idle")),
+	}
+}
+
+// shellWord is text as one word of sh, quoted.
+func shellWord(text string) string {
+	return "'" + strings.ReplaceAll(text, "'", `'\''`) + "'"
 }
 
 // New creates session cld-SUFFIX on a server of its own, running claude in the current directory,
@@ -420,7 +475,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// Control starts with the session, so it can be reached from claude.ai and the mobile app;
 	// claude still keeps it off where org policy or the project's own settings turn it off. A
 	// resumed conversation does not keep the settings it was started with: they go again.
-	given := settings{RemoteControlAtStartup: true}
+	given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path)}
 	if worktree {
 		// cld reports a missing repository in the terminal; claude would report it in a session
 		// left to kill.
@@ -455,7 +510,8 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// which go to claude's window only, so that a session claude makes on its server closes as
 	// tmux would close it - takes effect before tmux sees claude exit, however soon; tmux cuts the
 	// command short when new-session fails, as when another cld new or cld resume -n NAME got
-	// there first. The targets end in ":" because set takes a pane, which "=NAME" does not find.
+	// there first. The title's options go to claude's session only, for the same reason (see
+	// titles). The targets end in ":" because set takes a pane, which "=NAME" does not find.
 	window := "=" + name + ":"
 	argv := []string{"tmux", "-L", name, "-f", "/dev/null",
 		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
@@ -469,7 +525,11 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	argv = append(argv, ";",
 		"set", "-w", "-t", window, "remain-on-exit", "failed", ";",
 		"set", "-w", "-t", window, "remain-on-exit-format", "", ";",
-		"set-hook", "-w", "-t", window, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"")
+		"set-hook", "-w", "-t", window, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"", ";",
+		"set", "-t", window, "@cld-tmux", literal(t.path), ";",
+		"set", "-t", window, "@cld-busy", busyMarker, ";",
+		"set", "-t", window, "set-titles-string", titles(suffix), ";",
+		"set", "-t", window, "set-titles", "on")
 	// The server keeps the environment of the client that starts it, cld's (see the package
 	// comment).
 	return t.become(argv, slices.DeleteFunc(os.Environ(), func(variable string) bool {
@@ -928,11 +988,33 @@ func inWorkTree() bool {
 	return strings.TrimRight(string(out), "\n") == "true"
 }
 
-// Title is what sets the terminal's title to the name of session cld-SUFFIX, which the tab
-// keeps: tmux keeps claude's own title changes to its pane.
+// Title is what sets the terminal's title to the name of session cld-SUFFIX after the marker ✳,
+// as new, resume and join print it before tmux starts, and the session list before it hands the
+// terminal over: tmux, once attached, keeps the title itself (see titles).
 func Title(suffix string) string {
 	return "\033]0;✳ cld-" + suffix + "\007"
 }
+
+// titles is the title tmux gives the terminals on session cld-SUFFIX (its set-titles-string, with
+// set-titles on for that session): the session's name after claude's marker - busyMarker while
+// @cld-status is busy (see statusHooks), ✳ otherwise, and for a claude that exited, which a turn
+// it failed in leaves busy. claude's own title, #T, stays out: under tmux claude keeps a ✳ that
+// never turns, and a program it runs could set another.
+func titles(suffix string) string {
+	return "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-" + suffix
+}
+
+// busyMarker is claude's marker while it is busy, expanded with strftime (T:): ◐ in even seconds
+// and ◑ in odd ones, as claude outside tmux turns them every 960 ms. With status off tmux has no
+// timer to expand the title again, so the marker comes with a job that, a second later and in the
+// background, refreshes the status of the terminal the title was expanded for - that is, its
+// title - which expands the title, and so runs the job, again: tmux runs it at most once a second
+// for each terminal, and not at all for a title that is not busy or a session no terminal is on.
+// It names tmux by @cld-tmux, the path cld checked, quoted for the shell there: in the format, a
+// "#" or a "%" would be taken for a format or a conversion of strftime's, and a ")" for the end of
+// the job.
+const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
+	"#((sleep 1; #{q:@cld-tmux} -S #{q:socket_path} refresh-client -S -t #{q:client_name}) >/dev/null 2>&1 &)"
 
 // command is a tmux command run with cld's stdin and stderr, as tmux.
 func (t *Tmux) command(args ...string) *exec.Cmd {
