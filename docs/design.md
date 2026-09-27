@@ -60,6 +60,7 @@ cld() {
 | what the claude minimum rests on (#21): Claude Code's changelog, and the linux-x64 npm bundles of 2.1.118, 2.1.119, 2.1.133, 2.1.221 and 2.1.222, read for the issue, not run | `--worktree` came in 2.1.49, `-n`/`--name` in 2.1.76 and the `worktree.baseRef` setting in 2.1.133 (changelog). `remoteControlAtStartup` moved into the settings in 2.1.119, with `/config`'s other settings ("now persist to `~/.claude/settings.json`", changelog): 2.1.118 reads it from the global config (`~/.claude.json`) only, which `--settings` does not reach. 2.1.133 and 2.1.221 decide from the merged settings, then the global config, and in the merge flag settings outrank the project's and the local ones, so cld's `true` beats a project's `false`. 2.1.222 returns `false` first when the project or local settings have it, then takes the first of the policy, flag and user settings, as the row above records for 2.1.282; its changelog agrees: repo-local settings "can no longer turn it on (they can still turn it off)". On 25 September 2026 npm's `stable` tag was at 2.1.274 and `latest` at 2.1.282; for the issue, Homebrew's default `claude-code` cask and the apt, dnf and apk `stable` repositories served 2.1.274 too |
 | how tmux starts a command given as several words, such as `new-session -c DIR claude ...` (tmux 3.7c, glibc 2.43, Ubuntu 26.04) | with `execvp`, in `DIR`, and with the `PATH` of the client that ran `new-session`, also for a second session on a server that a client with another `PATH` started. So a bare `claude` is looked up in every entry, relative ones included, from `DIR`: with `PATH=.:/abs`, or `:/abs`, and a `claude` in both, tmux started the one in `DIR`, where cld had checked `/abs/claude`. A script without `#!`, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh`, by name and by path |
 | `new-session -c DIR` with a `DIR` its user cannot enter, and a binary for another machine as the command (tmux 3.7c, glibc 2.41, in the image `tests/Dockerfile` builds on `debian:trixie`; the first as `nobody`) | tmux started the command in the home directory, printing nothing, and `new-session` exited 0: for a `DIR` of mode `000`, and for one inside a directory of mode `000`. An arm64 ELF binary on x86_64, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh` all the same, as a script: a `/bin/sh` that logged its arguments recorded `sh PATH --version`, and the pane died with dash's status 2 |
+| `install.sh` against the release v0.4.0 on GitHub (curl 8.18.0; dash 0.5.12, bash 5.3.9 and busybox's sh on Ubuntu 26.04) | `releases/latest/download/cld.sha256` redirected (302) to `releases/download/v0.4.0/cld.sha256`, and that to `release-assets.githubusercontent.com`, over HTTPS both; a file the release lacks answered 404. Under each shell the script installed `cld 0.4.0`, whose checksum matched the line `sha256sum` wrote in `cld.sha256` on the release runner, `HASH  cld-OS-ARCH`; `CLD_VERSION=9.9.9` ended at curl's 404 for `cld.sha256` |
 | `claude --version` (2.1.282, native installer, Linux) | prints `2.1.282 (Claude Code)` and exits 0, in about 20 ms. It leaves nothing running that holds its output: piped to `cat`, it returns as soon. In a directory that has since been removed it prints `error: The current working directory was deleted, so that command didn't work. Please cd into a different directory and try again.` on stderr and exits 1 |
 | `claude --help` of 2.1.282 on resuming | `-r, --resume [value]`: "Resume a conversation by session ID, or open interactive picker with optional search term"; `-n, --name <name>`: "Set a display name for this session (shown in the prompt box, /resume picker, and terminal title)"; `--fork-session`: "When resuming, create a new session ID instead of reusing the original". The help says nothing of resuming by name, which Claude Code's docs describe, and names no restriction on giving `--name` with `--resume`. `--resume`'s value is optional (`[value]`): by the rule of commander, whose `.option()` calls the bundle holds, a word starting with `-` after it is read as the next option, not as its value (not run) |
 | how `claude` 2.1.282 resumes (read from its bundle, not run) | `--resume ID` with no conversation for the ID prints `No conversation found with session ID: ID` and exits 1. A conversation that runs as a background session (`claude --bg`) is refused, naming `claude attach` and `claude stop`, unless `--fork-session` is given; one open in an interactive claude is not. When Remote Control starts and another process on the machine holds the conversation's Remote Control session, claude leaves Remote Control off with a notice that starts `Remote Control not started here · another Claude Code on this machine ... already has Remote Control for this conversation` and ends `run /remote-control to move it to this terminal`. Not found in the bundle: whether a session that connected at startup, as cld's do, records its Remote Control session in the conversation, and how `remoteControlAtStartup` on the command line combines with a recorded one |
@@ -131,14 +132,15 @@ cld() {
   tmux the same way (`execve`).
 - Tagged GitHub releases (`vX.Y.Z`) publish a binary per platform, `cld-OS-ARCH` for Linux and
   macOS on amd64 and arm64, with the version stamped in, plus `cld.sha256`, which lists their
-  SHA-256 checksums. The install one-liner picks the binary from `uname` and downloads it into
-  `~/.local/bin`; `make install PREFIX=...` builds cld for the host from a clone, with Go. The
-  releases of the script published `cld`; that download fails once a Go release is the latest.
+  SHA-256 checksums, and `install.sh`, which picks the binary from `uname`, checks it and installs
+  it into `~/.local/bin` (see 20); `make install PREFIX=...` builds cld for the host from a clone,
+  with Go. The releases of the script published `cld`; that download fails once a Go release is
+  the latest.
 - The binaries are built with cgo off, on the Linux runner: the Linux ones are static, the
   darwin ones link only system libraries (`libSystem`, `libresolv`), and Go's linker signs the
   darwin/arm64 one ad hoc, which Apple silicon requires. They are not notarized.
-- A Homebrew tap is possible later; a `curl | bash` installer is not needed for one binary, which
-  the one-liner picks from `uname`.
+- A Homebrew tap is possible later. A `curl | sh` installer was first thought not needed for one
+  binary, which a one-liner picked from `uname`; one replaced it all the same (see 20).
 - Shell completion comes from the binary (see 17): `cld completion SHELL` prints the script, which
   always matches the binary it came from. Releases publish no completion files, and
   `make install` installs none; cobra's scripts ask `cld __complete` for everything at TAB time
@@ -1098,6 +1100,47 @@ The Linux job runs the same Docker image a developer runs locally.
 
     Out of scope: removing what cld wrote, other servers, finding the port an IDE listens on, and
     settings per kind of project.
+20. An install script: the README installs cld with
+    `curl -fsSL https://github.com/zadykian/cld/releases/latest/download/install.sh | sh`, in
+    place of the two lines it had, which picked the binary from `uname` and downloaded it with
+    curl straight into `~/.local/bin/cld`. They checked no checksum, knew `x86_64` and `aarch64`
+    alone, wrote over cld as they downloaded it, and were two lines to copy. Settled with it:
+    1. the script is a release asset, `install.sh`, which `make dist` copies beside the binaries,
+       outside `cld.sha256`: the latest release's script goes with that release's binaries, and
+       the release's checks run its tests before it is published. One read from `main` on
+       `raw.githubusercontent.com` would work before the first release that has it, but could
+       run ahead of the binaries it downloads. It installs the latest release
+       (`releases/latest/download/NAME`, which GitHub redirects to the release's tag; see
+       Findings), or the one `CLD_VERSION` names, as `X.Y.Z` or `vX.Y.Z`: 0.4.0 or later, since
+       the earlier releases published a script, which the user guide installs by hand. Anything
+       else is refused before a download;
+    2. it is POSIX sh, so that `| sh` runs it under dash, bash, busybox or macOS's sh, and `| bash`
+       as well. It needs `curl`, which fetched it, and `sha256sum` or `shasum`, checked before a
+       download. Everything is in functions that the last line calls, so that a download cut
+       short defines functions or fails to parse, and runs nothing, which the tests check at the
+       end of every line;
+    3. the binary is `cld-OS-ARCH` from `uname -s`, `Linux` or `Darwin`, and `uname -m`, `x86_64`
+       or `amd64`, `aarch64` or `arm64`, and on macOS `arm64` also where `sysctl.proc_translated`
+       is 1, a shell that Rosetta 2 translates, where the native binary runs too (Apple's
+       documentation; not probed). Other systems and machines are refused, naming them;
+    4. it downloads `cld.sha256` first, then the binary, into a temporary file in the directory it
+       installs to, `CLD_INSTALL_DIR`, `~/.local/bin` by default, made where missing. The file is
+       checked against its line in `cld.sha256`, made 0755, run with `--version`, and only then
+       renamed to `cld`, replacing what is there, a symbolic link too, never what it points to.
+       In that directory, rather than `$TMPDIR`, the rename replaces cld at once, a cld that runs
+       keeps its old file, and a `/tmp` mounted `noexec` does not stop the run. Anything that fails
+       ends it with status 1 and a message, `install.sh: ...`, after curl's or mkdir's own,
+       leaving the directory as it was: the temporary file goes on exit, and on HUP, INT and TERM;
+    5. it prints `installed cld X.Y.Z as DIR/cld`, DIR as `cd` and `pwd` spell it, absolute and
+       without a trailing slash, and warns where DIR is not on the `PATH`, or where another `cld`
+       comes first there. It edits no shell profile;
+    6. `CLD_RELEASES_URL` stands in for `https://github.com/zadykian/cld/releases`, for the tests:
+       they serve releases of scripts that print a version as cld does, so that every platform's
+       binary runs, with a fake `uname`, and pipe the installer into `sh` and `bash`.
+
+    Out of scope: wget, checking tmux and claude, which cld checks as it starts (see 6), editing
+    shell profiles, and signatures: `cld.sha256` comes from the release the binary does, so it
+    catches a download gone wrong, not a release replaced.
 
 ## Implementation notes
 
@@ -1377,6 +1420,9 @@ by hand in a nested tmux).
   Findings), the ports from their variables included; a claude session calling the servers' tools,
   and whether a session, rather than `claude mcp list`, takes the variables from the project's
   `.claude/settings.local.json`, were not.
+- `install.sh` is tested against releases the tests serve, under the `sh` and `bash` of the Linux
+  image and of the macOS runner, and was run by hand against the release v0.4.0 on Linux (see
+  Findings). Rosetta 2's `sysctl.proc_translated` was not probed on a Mac.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

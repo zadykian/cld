@@ -11,13 +11,16 @@ is `C-q`, which claude leaves free.
 ## Install
 
 ```sh
-os=$(uname -s | tr '[:upper:]' '[:lower:]') arch=$(uname -m); case $arch in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; esac
-mkdir -p ~/.local/bin && curl -fsSL "https://github.com/zadykian/cld/releases/latest/download/cld-$os-$arch" -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld
+curl -fsSL https://github.com/zadykian/cld/releases/latest/download/install.sh | sh
 ```
 
-`~/.local/bin` has to be on your `PATH`. Releases publish cld for Linux and macOS on amd64 and
-arm64, with their checksums in `cld.sha256`. From a clone, `make install` builds cld into
-`~/.local/bin` (`PREFIX=/usr/local` for another prefix); it needs Go 1.26 or newer.
+The script downloads cld for your system - Linux or macOS, on amd64 or arm64 - from the latest
+release, checks it against the release's `cld.sha256` and installs it as `~/.local/bin/cld`, which
+has to be on your `PATH`; run it again to upgrade. `CLD_INSTALL_DIR` installs cld elsewhere, and
+`CLD_VERSION` another release, 0.4.0 or later: `... | CLD_INSTALL_DIR=~/bin CLD_VERSION=0.4.0 sh`.
+See the [guide](docs/guide.md#installing) for what it checks, and for installing by hand. From a
+clone, `make install` builds cld into `~/.local/bin` (`PREFIX=/usr/local` for another prefix); it
+needs Go 1.26 or newer.
 
 Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
 for `cld new -w`; Docker, on Linux, for `cld setup telemetry`.
@@ -172,7 +175,7 @@ its jars, fetched once with `tests/jediterm/fetch-deps tests/jediterm/lib`.
 
 [docs/design.md](docs/design.md) records the tmux and claude behaviour cld relies on, the decisions
 taken and how the tests work. Pushing a tag `vX.Y.Z` publishes a release with cld for each
-platform and `cld.sha256`; `make dist VERSION=X.Y.Z` builds the same into `dist/`.
+platform, `cld.sha256` and `install.sh`; `make dist VERSION=X.Y.Z` builds the same into `dist/`.
 
 ## License
 

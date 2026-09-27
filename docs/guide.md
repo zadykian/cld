@@ -3,6 +3,27 @@
 The [README](../README.md) gives the overview and `cld help COMMAND` each command's options; this
 guide has the details beyond them. How cld works, and why, is in [design.md](design.md).
 
+## Installing
+
+The command in the [README](../README.md#install) runs `install.sh`, which each release publishes
+beside its binaries: the latest release's. It runs in any POSIX shell, `sh` or `bash`, and needs
+`curl`, and `sha256sum` or `shasum`. It:
+
+- picks the binary from `uname`: `cld-linux-amd64`, `cld-linux-arm64`, `cld-darwin-amd64` or
+  `cld-darwin-arm64`, the last also in a shell that runs under Rosetta 2 on Apple silicon;
+- takes it from the latest release, or from the one `CLD_VERSION` names, as `0.4.0` or `v0.4.0`;
+  the releases before 0.4.0 published a script, which [Upgrading](#upgrading) installs;
+- downloads it into `CLD_INSTALL_DIR`, `~/.local/bin` by default, made where missing, checks it
+  against the release's `cld.sha256`, runs it for its version, and only then replaces the `cld`
+  there. When anything fails it says so and exits with status 1, leaving the directory as it was;
+- says when the directory is not on your `PATH`, or another `cld` comes first there. It edits no
+  shell profile: add the directory to `PATH` yourself, in `~/.profile`, `~/.zshrc` or the like.
+
+To install cld by hand, download the binary for your system and `cld.sha256` from a
+[release](https://github.com/zadykian/cld/releases), check the binary -
+`grep ' cld-linux-amd64$' cld.sha256 | sha256sum -c`, with `shasum -a 256 -c` on macOS - and
+install it as `cld`, executable, in a directory on your `PATH`.
+
 ## Sessions
 
 - A name consists of up to 64 ASCII letters, digits, `_` and `-`, starting with a letter or digit.
@@ -205,6 +226,8 @@ leaves out the states and the other descriptions. Start a new shell for the scri
 
 ## Upgrading
 
+- **cld.** Run the [install command](../README.md#install) again, with the same `CLD_INSTALL_DIR`
+  if you gave one: it replaces cld with the latest release, or with the one `CLD_VERSION` names.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill -n NAME`): each
   session's server keeps running the tmux that started it until the session ends.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from

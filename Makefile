@@ -19,8 +19,8 @@ BUILD = CGO_ENABLED=0 go build -trimpath -ldflags '-X main.version=$(VERSION)'
 check: lint test
 
 lint:
-	shellcheck tests/jediterm/fetch-deps
-	shfmt -d -i 4 tests/jediterm/fetch-deps
+	shellcheck install.sh tests/jediterm/fetch-deps
+	shfmt -d -i 4 install.sh tests/jediterm/fetch-deps
 	@test -z "$$(gofmt -l .)" || { gofmt -d .; exit 1; }
 	go vet ./...
 
@@ -41,12 +41,14 @@ docker-check: docker-image
 	@$(MAKE) --no-print-directory docker-test
 
 # With cgo off every platform cross-compiles without a C toolchain, into a static binary on Linux.
+# The installer goes with the binaries it downloads, outside cld.sha256.
 dist:
 	rm -rf dist && mkdir dist
 	set -e; for platform in $(PLATFORMS); do \
 		GOOS=$${platform%/*} GOARCH=$${platform#*/} $(BUILD) -o dist/cld-$${platform%/*}-$${platform#*/} ./cmd/cld; \
 	done
 	cd dist && { sha256sum cld-* 2>/dev/null || shasum -a 256 cld-*; } > cld.sha256
+	cp install.sh dist/
 
 install:
 	install -d "$(PREFIX)/bin"
