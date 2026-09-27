@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/picker"
 	"github.com/zadykian/cld/internal/project"
 	"github.com/zadykian/cld/internal/session"
@@ -81,7 +82,7 @@ func run(args []string) error {
 	if completing {
 		text = noFiles(text)
 	}
-	return fail.Print(text)
+	return output.Print(text)
 }
 
 // noFiles turns cobra's answer to __complete, text, into one that offers no file names where
@@ -117,7 +118,7 @@ func setupCommand(args []string) error {
 // The help is cobra's, from its default templates: each command's Use, and its Long or else its
 // Short, then its options with their usages, which name their value in backquotes (`NAME`). Its
 // text is here and nowhere else; cobra wraps none of it, so the lines break by hand, within 80
-// columns. help, -h and --help print it to out, which run prints through fail.Print, and it lists
+// columns. help, -h and --help print it to out, which run prints through output.Print, and it lists
 // the commands in the order they are added here rather than by name.
 //
 // cobra's defaults give way to cld's command line. main prints the errors, as "cld: MESSAGE".
@@ -288,7 +289,7 @@ list. cld list | cat prints the list only.`,
 					sessions = last
 				}
 			}
-			return fail.Print(table(sessions))
+			return output.Print(table(sessions))
 		},
 	}
 
@@ -333,7 +334,7 @@ from source, cld dev, is not updated.`,
 		Short: "show the version",
 		Long:  "show the version; cld -V and cld --version show it too",
 		RunE: func(*cobra.Command, []string) error {
-			return fail.Print("cld " + version + "\n")
+			return output.Print("cld " + version + "\n")
 		},
 	}
 

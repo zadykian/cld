@@ -496,7 +496,7 @@ The Linux job runs the same Docker image a developer runs locally.
        names its options before `COMMAND`, `cld help [flags] [COMMAND]`, with
        `DisableFlagsInUseLine`, where cobra adds ` [flags]` at the end (see Findings), and the test
        of the help's text refuses an option after an argument in any usage line;
-    5. the help is rendered into a buffer that `fail.Print` prints, so that a write that fails
+    5. the help is rendered into a buffer that `output.Print` prints, so that a write that fails
        still ends cld with status 1 (see 11.9), where cobra's own help function drops the error;
     6. the root's help holds what the usage text said besides the commands and options: what a
        session is, the private server, Remote Control, the detach keys and failed sessions.
@@ -893,7 +893,7 @@ The Linux job runs the same Docker image a developer runs locally.
        status 1, or read the option first. A typo such as `cld completion tcsh > FILE` would
        otherwise fill FILE with the help and succeed.
     6. What cobra prints - the help (12.5), the scripts, the answers to `__complete` - goes out
-       through `fail.Print`, so that a write that fails ends cld with status 1 and cld's message,
+       through `output.Print`, so that a write that fails ends cld with status 1 and cld's message,
        as with cld's own output: cobra's help function and `__complete` drop the error and would
        exit 0, and the commands that print the scripts return it, in Go's words
        (`write /dev/stdout: ...`). When cobra has printed nothing - for `kill`, say - nothing is
@@ -1227,11 +1227,13 @@ Where the implementation departs from the plan above:
   the same `cannot run` message, as the script's `die 1` did. How cld finds a program on the
   `PATH` (11.5) and ends when it cannot run one (11.9) is `internal/tool`, which `setup
   telemetry` shares for `docker` (decision 18).
-  cld's own output goes through `fail.Print`, which turns a failed write into an error. What
-  cobra prints - the help, the completion scripts and the answers to `__complete` (decision 17) -
-  goes to a buffer, the root's output, which `run` then prints with `fail.Print`: cobra's help
-  function and `__complete` drop the error of a write that fails. Reading the sessions is one
-  function returning rows, which `list` lays out and completion filters.
+  cld's own output goes through `output.Print` (`internal/output`), which turns a failed write
+  into an error, so that every value `internal/fail` makes is one of cld's ends, never its
+  output. What cobra prints - the help, the completion scripts and the answers to `__complete`
+  (decision 17) - goes to a buffer, the root's output, which `run` then prints with
+  `output.Print`: cobra's help function and `__complete` drop the error of a write that fails.
+  Reading the sessions is one function returning rows, which `list` lays out and completion
+  filters.
 - cobra's defaults give way to cld's command line (cobra 1.10.2, pflag 1.0.9):
   - the first argument is checked before cobra sees it: cobra takes an unknown command for an
     argument of the root, and skips options before the command (`cld -n x new` would run

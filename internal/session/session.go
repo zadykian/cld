@@ -86,6 +86,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/tool"
 )
 
@@ -430,7 +431,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	if conversation != "" {
 		claude = append(claude, "--resume", conversation)
 	}
-	if err := fail.Print(Title(suffix)); err != nil {
+	if err := output.Print(Title(suffix)); err != nil {
 		return err
 	}
 	// claude and its arguments go to tmux as separate words: tmux then executes them directly
@@ -521,7 +522,7 @@ func (t *Tmux) Attach(suffix string) error {
 		return err
 	}
 	name := "cld-" + suffix
-	if err := fail.Print(Title(suffix)); err != nil {
+	if err := output.Print(Title(suffix)); err != nil {
 		return err
 	}
 	// After attach-session in one command list, the hint goes to this terminal, attached by then.

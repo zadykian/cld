@@ -60,6 +60,7 @@ import (
 	"time"
 
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/tool"
 )
 
@@ -286,7 +287,7 @@ func Setup(o Options) error {
 	}
 
 	// Report.
-	return fail.Print(report(port, o, s.Path, changes))
+	return output.Print(report(port, o, s.Path, changes))
 }
 
 // extraConfig reads the --collector-config file at path into the variable that takes it to the

@@ -14,8 +14,9 @@ help texts, argument errors), `internal/session` the tmux side, `internal/picker
 claude's settings pointed at it), `internal/configfile` edits the files the two write in place,
 `internal/update` `cld update` (cld replacing itself with the latest release), `internal/tool`
 finds the programs cld runs on the `PATH` (and ends cld as a shell would when one cannot run),
-and `internal/fail` carries exit statuses up to `main`. `install.sh`, published with each
-release, installs cld from a release. Everything else is its test harness (Go, under `tests/`),
+`internal/fail` carries exit statuses up to `main`, and `internal/output` prints cld's own
+output, a write that fails being one of those ends. `install.sh`, published with each release,
+installs cld from a release. Everything else is its test harness (Go, under `tests/`),
 docs and CI.
 
 ## Commands
@@ -69,7 +70,7 @@ platform, `cld.sha256` and `install.sh`.
   cld's command line - the first argument checked before cobra, and the one after `setup`,
   options read up to the first argument, a `help [COMMAND]` that takes one of cld's commands
   (and after `setup` or `completion`, one of theirs) and refuses anything else, the help and
-  cobra's other output printed through `fail.Print`, the commands unsorted (see docs/design.md,
+  cobra's other output printed through `output.Print`, the commands unsorted (see docs/design.md,
   Implementation notes).
 - The help is cobra's, generated with its default templates from each command's `Use`, `Short`
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
