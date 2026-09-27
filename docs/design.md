@@ -131,6 +131,7 @@ rows that name none were probed against tmux 3.6.
 | `cld setup telemetry --local http://127.0.0.1:4319 --remote http://127.0.0.1:4320`, with a collector with the debug exporter on each of those ports standing in for the plugin and a team's collector, and `telemetrygen` sending a span, a metric and a log to the port cld chose | the local one got all three, the remote one the metric only. A rerun kept the port; a second source with a key the exporter does not know was refused by `validate`, and the collector kept running with the settings unchanged; one that moved the receiver onto a taken port made cld report the collector stopped, with its log, within 2.4 s, and leave it `exited` (after one more restart Docker had scheduled) where it had restarted again and again, and a rerun without it recovered on the same port; one that set the collector's log level to `warn` left its log empty, and cld found it ready by its port within 1.5 s, the span reaching the local one. Checked again once cld waited for the port alone, with collectors of the debug exporter on two other ports: the same three signals and the metric, cld done within 1.2 s, `validate` included; with the collector paused, a rerun kept its port, and so did `--port` with that port, where cld had given the new collector another port; a second source that moved the receiver to another port made cld say after 10 s that the collector took no connections on its port, naming it, below the end of the log, with the ready line, and leave the settings - or say that its log was empty, with the level at `warn` too - and a rerun without it recovered on the same port |
 | `/.claude/*`, then `!/.claude/settings.json`, in `.gitignore` (git 2.53.0 on Ubuntu 26.04; the tests' cases also on git 2.47.3, in the image `tests/Dockerfile` builds) | git ignores `.claude/settings.local.json` and would add `.claude/settings.json`; `.claude/*` and `!.claude/settings.json`, without the leading slash, do the same. A `.claude/` before them in `.gitignore`, or a `.claude` in `.git/info/exclude`, keeps git out of the directory, and the settings stay ignored whatever follows; `*.json` after them ignores the settings again. git reads a line without the carriage return of a CRLF and without trailing spaces, but a trailing tab stays in the pattern: `!/.claude/settings.json` and a tab excepts nothing. `git check-ignore -v PATH` names the last pattern that matches, an exception too, with exit status 0 either way, as `SOURCE:LINE:PATTERN`, a tab, `PATH`; `-q` without `-v` exits 1 for a path an exception keeps. `-z` needs `--stdin` (`fatal: -z only makes sense with --stdin`), and then ends `SOURCE`, `LINE`, `PATTERN` and `PATH` each with a NUL. Outside a work tree it exits 128: `fatal: not a git repository` |
 | `git init -q DIR` as a command of `git rebase --exec` (git 2.53.0 on Ubuntu 26.04) | in the main work tree git runs the command with no `GIT_DIR` (`GIT_EXEC_PATH`, `GIT_PREFIX` and others); in a linked worktree with `GIT_DIR` naming its git directory, `.git/worktrees/NAME`, and `git init DIR` initialises that one again, leaving `DIR` an empty directory. git takes a git directory named other than `.git` for a bare repository: it wrote `core.bare = true` into the repository's `.git/config`, and the main work tree stopped working (`fatal: this operation must be run in a work tree`) |
+| `git rev-parse --is-inside-work-tree --git-common-dir`, as `cld new` runs it for the repository's name (24.3), read through the names cld gives (git 2.47.3, in the image `tests/Dockerfile` builds) | in the main work tree, a subdirectory of it and a linked worktree under `.claude/worktrees`, the common git directory is the main work tree's `.git`; in a worktree of a bare repository it is the bare repository, `bare.git`; in a submodule the superproject's `.git/modules/NAME`, whose name is the submodule's path, `module.x`. In `.git` itself `--is-inside-work-tree` is `false`, and outside a repository `git rev-parse` fails (`fatal: not a git repository`) |
 | `claude mcp list` (2.1.283, Linux, a scratch `CLAUDE_CONFIG_DIR`) in a project that `cld setup project --mcp goland,jbcontext,rider` wrote, GoLand and Rider 2026.2 running with their MCP servers on 64422 and 64482 | claude lists the three from `.mcp.json` - `claude mcp get jbcontext` names its scope `Project config (shared via .mcp.json)` - as `Pending approval (run claude to approve)` while the folder's workspace trust is not accepted; once it is, all three are `Connected`. Trusted, but without `enabledMcpjsonServers` in `.claude/settings.json`, they stay `Pending approval` |
 | the port of a JetBrains IDE's MCP server (GoLand 2026.2.3's `mcpserver` plugin, `McpServerSettings` and `McpServerService` read with `javap`; GoLand 2026.2.3 and Rider 2026.2.1 remote-development backends listening) | the default is 64342 plus an offset per product, chosen by `PlatformUtils.getPlatformPrefix()`: IntelliJ IDEA 0, CLion 20, DataGrip 60, GoLand 80, PhpStorm 100, PyCharm 120, Rider 140, RubyMine 160, RustRover 180, WebStorm 200, any other 0 - so GoLand listens on 64422 and Rider on 64482, as they do here, the two running at once; an authorized endpoint takes the port 100 above (64522, 64582). The MCP Server settings keep a port of their own (`mcpServerPort`), and the system property `idea.mcp.server.force.port` overrides both; where the port was never changed, the options file (`mcpServer.xml`) holds `enableMcpServer` alone. "Copy HTTP Stream Config" in those settings gives `http://127.0.0.1:PORT/stream` |
 | `${VAR:-DEFAULT}` in the URL of an `.mcp.json` server (claude 2.1.283, `claude mcp list` and `claude mcp get`, a scratch `CLAUDE_CONFIG_DIR`, the folder trusted, GoLand and Rider as above) | claude expands it as it connects: to DEFAULT where VAR is unset, and to VAR from its environment, or from the `env` of `$CLAUDE_CONFIG_DIR/settings.json`; VAR in the `env` of the project's `.claude/settings.local.json` was not used. It shows the URL with `${VAR}`, the default left out. `${VAR}` without a default, VAR unset: `[Warning] [goland] mcpServers.goland: Missing environment variables: VAR`, and the server fails with `'url' is not a valid URL` |
@@ -240,7 +241,8 @@ The Linux job runs the same Docker image a developer runs locally.
 
 1. Naming: names are validated (`[A-Za-z0-9][A-Za-z0-9_-]*`), not sanitised - a silent rename
    would make `cld foo.bar` and the session it attaches to disagree. Since 13 a name has at most
-   64 characters, so that its server's socket path fits (see 13.2).
+   64 characters, so that its server's socket path fits (see 13.2). Since 24 the repository's name,
+   which `-s` and `new`'s default put in a NAME, is made one: it is no name typed (24.4).
 2. Inside another tmux: `cld` nests; the private socket already allows it. Inside a live pane of
    one of its own servers - claude's external editor, say - a session attached would show inside
    a session of cld's, itself or another, both taking `C-q`, and `new`, `resume` and `join`
@@ -251,8 +253,8 @@ The Linux job runs the same Docker image a developer runs locally.
    asks that server. `list` prints its table there rather than the interactive list, whose Enter
    would be refused (see 14).
 3. Commands (0.2.0): `new` creates a session and fails if it exists, `join` attaches to one and
-   fails if it does not; the name moves to `-n NAME` (default `main`). A bare `cld` fails, and
-   `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME` (but for `cld completion`, a
+   fails if it does not; the name moves to `-n NAME` (default `main`, until 24). A bare `cld`
+   fails, and `cld NAME` fails naming `cld new -n NAME` and `cld join -n NAME` (but for `cld completion`, a
    command since 17, and `cld setup`, since 18). Commands address sessions as `=cld-NAME`, since tmux would otherwise take
    `cld-rev` for `cld-review`. `list` shows the
    directory claude is in now (`pane_current_path`), not the one its session started in, and
@@ -270,7 +272,8 @@ The Linux job runs the same Docker image a developer runs locally.
    saves a round trip through claude; workspace trust, which claude also requires, lives in
    claude's own state, so claude reports it (see 5). `kill` leaves
    the worktree: claude offers to remove it only when it exits on its own. The worktree is named
-   after the session, also when that is the default `main`.
+   after the session, also when that is the default `main`; since 24 by its whole name,
+   `--worktree cld-NAME` (24.6).
 5. Failures stay on screen: with `remain-on-exit failed`, a claude that exits with an error or a
    signal keeps its pane, so what it printed - a startup error above all, which would otherwise
    vanish with the session - stays readable. The format is empty, so tmux does not scroll that out
@@ -480,10 +483,11 @@ The Linux job runs the same Docker image a developer runs locally.
        their order: `new`, `resume`, `join`, `kill`, `list`, `help`, `version`, with `completion`
        before `help` since 17, and `setup` after `list` since 18. `Execute` moves the help command
        after the others (see Findings), so cld moves `version` back after it before it prints the
-       help. An option's usage names its value in backquotes (`-n, --name NAME`), and pflag shows
-       `-n`'s default, `main`. cobra wraps nothing, so the texts break their lines by hand, within
-       80 columns, which the test of the help's text holds them to - all but cobra's own last
-       line, `Use "cld COMMAND [command] --help" ...`, which names the command, 81 columns for
+       help. An option's usage names its value in backquotes (`-n, --name NAME`), and pflag
+       showed `-n`'s default, `main`, until 24. cobra wraps nothing, so the texts break their
+       lines by hand, within 80 columns, which the test of the help's text holds them to - all
+       but cobra's own last line, `Use "cld COMMAND [command] --help" ...`, which names the
+       command, 81 columns for
        `setup completion` (22.6). A template of cld's own, in the usage text's layout, was the
        other way: closer to what cld printed, but one more thing for
        cld to keep, where cobra's changes with cobra and shows in that test;
@@ -784,7 +788,8 @@ The Linux job runs the same Docker image a developer runs locally.
     6. like `cld kill`, the kill leaves a `cld new -w` worktree where it is, where agent view's
        delete removes the worktree Claude created. Killing several sessions at once, a stopped
        state and removing worktrees are not part of it.
-16. Resume (#26): `resume [-n NAME] [SESSION]` joins the commands of decision 3. It brings back a
+16. Resume (#26): `resume [-n NAME] [SESSION]` (since 24 with `-s SUFFIX`, and `-n`, `-s` or
+    SESSION needed, 24.5) joins the commands of decision 3. It brings back a
     conversation whose session is gone - ended by `kill` or the list's Ctrl+X (15), a reboot or a
     crashed server - in a new session `cld-NAME`, made as `new` makes it: the same checks and
     refusals (the name, claude on the `PATH` and its version (6), a live pane of one of cld's
@@ -849,7 +854,8 @@ The Linux job runs the same Docker image a developer runs locally.
        a stopped session to come back to (15), but the conversation stays in claude's history, and
        `resume -n NAME`, run where the session ran (16.4), brings it back in a new session.
 17. Shell completion (#25): `cld completion SHELL` prints a completion script for bash, zsh or
-    fish, with which `cld join -n <TAB>` offers the names `cld list` shows.
+    fish, with which `cld join -n <TAB>` offers the names `cld list` shows (and since 24
+    `cld join -s <TAB>` their SUFFIX, 24.7).
     1. It is cobra's: `completion SHELL` prints cobra's script (PowerShell's too, undocumented),
        which asks `cld __complete`, or `__completeNoDesc`, what to offer on every TAB. The
        scripts know nothing of cld's commands, change only with cobra's templates, and need no
@@ -1306,6 +1312,81 @@ The Linux job runs the same Docker image a developer runs locally.
 
     Out of scope: a key in the list that joins as `--detach-others` does, a short option, and
     showing in `list` how many terminals are attached.
+24. Names from the repository: `cld new` without `-n` names the session after the git repository
+    it starts in, and `-s SUFFIX`, which `new`, `resume`, `join` and `kill` take in place of
+    `-n NAME`, after it too; `-w`'s worktree takes the session's whole name, `cld-NAME`. Before,
+    `-n` defaulted to `main` (3), so every `cld new` past the first - in another repository, often
+    - needed a name typed, and a name said nothing of where its session belonged; a worktree was
+    named `NAME`, and nothing in `.claude/worktrees` or the branches told cld's from claude's
+    own. Settled with it:
+    1. without `-n` and `-s`, `new` names the session `REPO-INDEX`: `REPO` is the repository's name
+       (24.3), and `INDEX` 0 or, where sessions `REPO-INDEX` run, one above the highest `INDEX`
+       among them; outside a repository, `INDEX` alone. The maintainer asked for the highest plus
+       one rather than the lowest free index: a gap stays, so the names keep the order they were
+       given in. `new` reads the socket directory as `list` does (13.1) and asks only the servers
+       of sockets `cld-REPO-DIGITS`, one after another: a server that has outlived its session
+       counts, since `new` would refuse its name (13), and a stale socket does not. `REPO` is
+       compared ignoring case, since a socket directory that ignores case reaches one server for
+       both spellings (13.6). Only running sessions count: a name comes back once its session has
+       ended, and its conversation then shares the name with the next (16), and the next `new -w`
+       of that name reopens its worktree (24.6). Counting the conversations would mean reading
+       claude's transcripts (16.4), and counting worktrees would tie the names to directories cld
+       does not manage. Two `new` at once can take one name, and the second ends with tmux's
+       `duplicate session: cld-NAME` (see 13's closing paragraph), as two `new -n NAME` did;
+    2. `-s SUFFIX` names the session `REPO-SUFFIX`, and `SUFFIX` alone outside a repository, in
+       `new`, `resume`, `join` and `kill` alike, so that a session `new` made is reached from the
+       repository by what follows its name: `cld join -s 1`, `cld kill -s fix`. Given with `-n`, it
+       is refused (`new: -n NAME and -s SUFFIX both name the session; give one`). SUFFIX is
+       checked as NAME is (1, 13.2), length then characters, since outside a repository it is the
+       NAME, with messages of its own (`invalid suffix ' '`): the empty one and one of spaces are
+       invalid. All of these are mistakes on the command line, status 2, and come before any tool
+       is looked for. A NAME that SUFFIX or the index makes longer than 64 characters is refused
+       with status 1, pointing at `-n NAME`: the repository's name decides it, not the command
+       line alone;
+    3. `REPO` is the name of the directory that holds the repository's common git directory, when
+       that is `.git`, so that the subdirectories and linked worktrees of a repository -
+       `.claude/worktrees` among them - share it; otherwise, as for a worktree of a bare repository
+       or for a submodule, whose git directory is under the superproject's `.git/modules`, it is
+       the git directory's own name, without `.git`. One `git rev-parse --is-inside-work-tree
+       --git-common-dir` gives both, the directory as a path from the current one or a whole path
+       (see Findings). Outside a work tree - in `.git` itself - where git is not on the `PATH`, or
+       where it fails, there is no `REPO`, and `new` goes on without it: only `-w` needs git. The
+       remote's name was the other way, but a repository without a remote would have none, and
+       two clones of one remote would share their sessions' names;
+    4. the repository's name is made a NAME rather than refused, as decision 1 refuses a name that
+       is typed: each run of the characters a NAME cannot have becomes `-`, and `-` and `_` go from
+       either end - `my.site` is `my-site`, `.dotfiles` `dotfiles` - and a name with nothing left,
+       in another script, counts as none. Refusing it would have failed every `cld new` in a
+       repository such as `user.github.io`, which no option but `-n` could have helped. The NAME
+       made is what `list`, the title and claude's `--name` show, and what `-n` then takes;
+    5. `join` and `kill` have no default: without `-n` or `-s` they are refused, `join: missing -n
+       NAME or -s SUFFIX (see cld list)`, with status 2. `resume` takes either or SESSION: with
+       SESSION alone its session is named as `new` names one, and without any it is refused
+       alike, as no conversation has the name of an index not given yet. The maintainer chose this
+       over keeping `main`, which `new` no longer makes, and over the repository's only session:
+       `cld list` picks a session without its name (14). The usage lines name the choice in
+       parentheses where it is needed, `join (-n NAME | -s SUFFIX) [--detach-others]`, and in
+       brackets for `new` and `resume`; the test of the help's text takes a word in parentheses
+       starting with `-` for an option (12.4). `-s`'s column moves the usages of `new`, `resume`
+       and `kill` to the 25th, where `join`'s were (23.1);
+    6. `new -w` gives claude `--worktree cld-NAME`: the worktree `.claude/worktrees/cld-NAME` on the
+       branch `worktree-cld-NAME` (4), named as its session and apart from the worktrees claude
+       names itself - those of `claude --worktree` without a name, or of its subagents - as the
+       maintainer asked. The worktree of an earlier `new -n NAME -w`, `NAME`, stays; `resume -n
+       NAME` takes its conversation back there, as claude does whatever the worktree's name (16.3);
+    7. completion: `join -s` offers the SUFFIX of the sessions `list` shows whose names start with
+       `REPO-`, where it is one `join` takes - outside a repository every name, as `-n` does - so
+       a TAB there runs `git rev-parse` besides `list`'s reads (17.4). `new -s`, `resume -s` and
+       `kill -s` offer none, as their `-n` does not (17.3);
+    8. the tests: the default names in a repository and outside one, with running sessions, a gap,
+       a server without its session, a stale socket and the names of another repository, of none
+       and in other letters; `resume SESSION` named alike; the repository's name from its root, a
+       subdirectory, `.git`, a linked worktree, a bare repository's worktree and a submodule, and
+       names made a NAME; `-s` in `new`, `resume`, `join`, `kill` and completion; the option
+       errors, the missing name and a NAME made too long; `-w`'s worktree name.
+
+    Out of scope: filling gaps, counting what outlives a session - its conversation, its worktree
+    - and completing `kill -n` and `kill -s`.
 
 ## Implementation notes
 
@@ -1646,6 +1727,9 @@ by hand in a nested tmux).
   bash-completion, so those tests skip there. Homebrew's `bash-completion@2`, and `compinit -i`
   where Homebrew's directories are group-writable, were not checked on a Mac, nor an update from
   a release that has `setup completion` to one that prints other scripts.
+- `new -w`'s worktree `cld-NAME` (24.6) was not run with the real `claude`: its name has the
+  characters of the `wt` probed with 2.1.281 (see Findings). The repository's name is tested with
+  git 2.47.3 in the Linux image, and with the git of the macOS runner.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

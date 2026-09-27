@@ -1,19 +1,23 @@
 // Package session is cld's tmux side: it runs Claude Code in named sessions, each on a private
 // tmux server of its own.
 //
-// `cld new -n NAME` creates the tmux session "cld-NAME" (NAME defaults to "main") on the server
-// cld-NAME (tmux -L cld-NAME), running `claude --name cld-NAME` in the current directory, with
-// Remote Control on from the start, and attaches to it; with -w claude also gets --worktree NAME,
-// makes git worktree NAME from HEAD or reopens it, and works there. `cld resume -n NAME [SESSION]`
-// creates the session the same way, without -w, and claude resumes the conversation named
-// cld-NAME, or SESSION, instead of starting one: it also gets --resume cld-NAME or
-// --resume SESSION.
+// `cld new -n NAME` creates the tmux session "cld-NAME" on the server cld-NAME
+// (tmux -L cld-NAME), running `claude --name cld-NAME` in the current directory, with Remote
+// Control on from the start, and attaches to it; with -w claude also gets --worktree cld-NAME,
+// makes git worktree cld-NAME from HEAD or reopens it, and works there. `-s SUFFIX` in place of
+// `-n NAME` names the session REPO-SUFFIX, where REPO is the name of the git repository the
+// current directory is in, and SUFFIX alone outside one (see Prefix); `cld new` without either
+// names it REPO-0, or the index above the highest REPO-INDEX running, and 0, 1, ... outside a
+// repository (see Tmux.Next). `cld resume -n NAME [SESSION]` creates the session the same way,
+// without -w, and claude resumes the conversation named cld-NAME, or SESSION, instead of starting
+// one: it also gets --resume cld-NAME or --resume SESSION.
 // `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it with its server
-// (see Tmux.Kill), and `cld list` shows the sessions, asking each server for its own (see
-// Tmux.Sessions) - on a terminal as a list to pick one from with the arrow keys, to join with
-// Enter, as join does, or to kill with Ctrl+X pressed twice, as kill does (see internal/picker).
-// The shell completion that `cld completion SHELL` prints reads the same sessions, where
-// `cld join -n` completes the names `cld list` shows.
+// (see Tmux.Kill), each taking -s SUFFIX as new does, and `cld list` shows the sessions, asking
+// each server for its own (see Tmux.Sessions) - on a terminal as a list to pick one from with the
+// arrow keys, to join with Enter, as join does, or to kill with Ctrl+X pressed twice, as kill does
+// (see internal/picker). The shell completion that `cld completion SHELL` prints reads the same
+// sessions, where `cld join -n` completes the names `cld list` shows, and `cld join -s` the
+// SUFFIX of those named after the repository.
 //
 // cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
 // Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
@@ -363,7 +367,8 @@ type worktreeSettings struct {
 }
 
 // New creates session cld-SUFFIX on a server of its own, running claude in the current directory,
-// and becomes a tmux client attached to it; with worktree claude works in git worktree SUFFIX. It
+// and becomes a tmux client attached to it; with worktree claude works in git worktree cld-SUFFIX,
+// named as the session is, which claude makes on the branch worktree-cld-SUFFIX or reopens. It
 // returns only when it does not get as far.
 func (t *Tmux) New(c *Claude, suffix string, worktree bool) error {
 	return t.create(c, suffix, worktree, "")
@@ -381,7 +386,7 @@ func (t *Tmux) Resume(c *Claude, suffix, conversation string) error {
 }
 
 // create makes session cld-SUFFIX for New and Resume, which differ only in claude's arguments:
-// with worktree claude works in git worktree SUFFIX, and with a conversation it resumes that.
+// with worktree claude works in git worktree cld-SUFFIX, and with a conversation it resumes that.
 func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation string) error {
 	if err := t.readyClient(); err != nil {
 		return err
@@ -428,7 +433,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// is to take the session's, so that the next resume finds it (decision 16 in docs/design.md).
 	claude := []string{c.path, "--name", name, "--settings", string(encoded)}
 	if worktree {
-		claude = append(claude, "--worktree", suffix)
+		claude = append(claude, "--worktree", name)
 	}
 	if conversation != "" {
 		claude = append(claude, "--resume", conversation)
@@ -786,6 +791,101 @@ func (t *Tmux) OwnPane() (string, bool) {
 		return "", false
 	}
 	return suffix, slices.Contains(strings.Split(strings.TrimRight(string(live), "\n"), "\n"), strings.TrimRight(string(terminal), "\n"))
+}
+
+// Prefix is what the NAME that -s and new's default give starts with (see Next): the name of the
+// git repository the current directory is in, then "-", or "" outside one (see repository).
+func Prefix() string {
+	if name := repository(); name != "" {
+		return name + "-"
+	}
+	return ""
+}
+
+// notInName is a run of the characters a NAME cannot have.
+var notInName = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
+
+// repository is the name of the git repository the current directory is in, as a NAME can have
+// it: the name of the directory that holds the .git every work tree of the repository shares, so
+// that a linked worktree - one of claude's, under .claude/worktrees - has the repository's name
+// too; for a bare repository's worktree, and a submodule, whose git directory has a name of its
+// own, that name, without ".git". Each run of characters a NAME cannot have becomes "-", and "-"
+// and "_" go from either end: my.site is my-site, .dotfiles dotfiles. It is "" outside a git work
+// tree, where git is missing or fails, and for a name with nothing left. git gives the directory
+// as a path from the current one, or else a whole path.
+func repository() string {
+	git, err := tool.Command("git", "rev-parse", "--is-inside-work-tree", "--git-common-dir")
+	if err != nil {
+		return ""
+	}
+	git.Stderr = nil
+	out, err := git.Output()
+	if err != nil {
+		return ""
+	}
+	inside, common, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\n")
+	if inside != "true" || common == "" {
+		return ""
+	}
+	if !filepath.IsAbs(common) {
+		dir, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		common = filepath.Join(dir, common)
+	}
+	common = filepath.Clean(common)
+	name := filepath.Base(common)
+	if name == ".git" {
+		name = filepath.Base(filepath.Dir(common))
+	} else {
+		name = strings.TrimSuffix(name, ".git")
+	}
+	return strings.Trim(notInName.ReplaceAllString(name, "-"), "-_")
+}
+
+// Next is the NAME new gives a session without -n or -s: prefix, then the index above the highest
+// among the sessions named prefix and an index whose servers run - 0 where none does, and gaps
+// left as they are. A server that has outlived its session counts, since new would refuse its
+// name (see lingering). prefix is compared ignoring case, as a socket directory that ignores case
+// would: its socket for a prefix in other letters would reach that server. Next reads the socket
+// directory as Sessions does, and asks only the servers whose sockets have such a name. Two new
+// at once can take the same NAME: tmux's new-session then fails for the second, which ends with
+// tmux's message. Once ctx is done, its tmux is killed.
+func (t *Tmux) Next(ctx context.Context, prefix string) (string, error) {
+	dir := socketDir()
+	sockets, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		var pathError *fs.PathError
+		if errors.As(err, &pathError) {
+			err = pathError.Err
+		}
+		return "", fail.Runtime(fmt.Sprintf("cannot read %s: %v", dir, err))
+	}
+	next := 0
+	for _, socket := range sockets {
+		suffix, found := strings.CutPrefix(socket.Name(), "cld-")
+		if !found || !ValidName(suffix) || len(suffix) <= len(prefix) || !strings.EqualFold(suffix[:len(prefix)], prefix) {
+			continue
+		}
+		digits := suffix[len(prefix):]
+		if strings.Trim(digits, "0123456789") != "" {
+			continue
+		}
+		// An index too large for an int, or the largest, which no index is above, is none.
+		index, err := strconv.Atoi(digits)
+		if err != nil || index == math.MaxInt || index < next {
+			continue
+		}
+		server, _, _, err := t.lookup(ctx, suffix)
+		if err != nil {
+			return "", err
+		}
+		if server {
+			next = index + 1
+		}
+	}
+	return prefix + strconv.Itoa(next), nil
 }
 
 // inWorkTree reports whether the current directory is in a git work tree.

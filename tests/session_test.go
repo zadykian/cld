@@ -31,19 +31,26 @@ import (
 // remoteControl is the --settings every new claude gets: Remote Control on from the start.
 const remoteControl = `{"remoteControlAtStartup":true}`
 
+// Session NAME is the tmux session cld-NAME, and claude's --name: the NAME given with -n, or with
+// -s the SUFFIX after the name of the git repository - outside one, as here, the SUFFIX alone - or
+// else the next index, 0 where no session runs.
 func TestSessionNames(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args    []string
 		session string
 	}{
-		{[]string{"new"}, "cld-main"},
+		{[]string{"new"}, "cld-0"},
 		{[]string{"new", "-n", "review"}, "cld-review"},
 		{[]string{"new", "--name", "Fix_42-b"}, "cld-Fix_42-b"},
 		{[]string{"new", "--name=x"}, "cld-x"},
+		{[]string{"new", "-s", "fix"}, "cld-fix"},
+		{[]string{"new", "--suffix", "Fix_42-b"}, "cld-Fix_42-b"},
 		// The spellings of pflag, which reads the options.
 		{[]string{"new", "-ny"}, "cld-y"},
 		{[]string{"new", "-n=z"}, "cld-z"},
+		{[]string{"new", "-sq"}, "cld-q"},
+		{[]string{"new", "--suffix=7"}, "cld-7"},
 	} {
 		t.Run(test.session, func(t *testing.T) {
 			t.Parallel()
@@ -94,7 +101,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 			s.WriteProgram(filepath.Join(dir, "claude"), test.script, 0o755)
 			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "new")
 			probe := s.WaitProbes(1)[0]
-			if want := []string{"--name", "cld-main", "--settings", remoteControl}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", "cld-0", "--settings", remoteControl}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if args, err := os.ReadFile(filepath.Join(s.ProbeDir, "relative claude ran")); err == nil {
@@ -104,9 +111,9 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 	}
 }
 
-// new -w hands the worktree to claude: claude gets --worktree NAME, with settings that also make it
-// branch a new worktree from HEAD, and starts where cld runs; it then makes or reopens the
-// worktree itself and moves into it.
+// new -w hands the worktree to claude: claude gets --worktree cld-NAME, named as the session is,
+// with settings that also make it branch a new worktree from HEAD, and starts where cld runs; it
+// then makes or reopens the worktree itself and moves into it. The repository is named work.
 func TestNewWorktree(t *testing.T) {
 	t.Parallel()
 	const fromHead = `{"remoteControlAtStartup":true,"worktree":{"baseRef":"head"}}`
@@ -114,10 +121,11 @@ func TestNewWorktree(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{[]string{"new", "-w"}, []string{"--name", "cld-main", "--settings", fromHead, "--worktree", "main"}},
-		{[]string{"new", "-n", "feat", "--worktree"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
-		{[]string{"new", "-w", "--name=feat"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
-		{[]string{"new", "-wn", "feat"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "feat"}},
+		{[]string{"new", "-w"}, []string{"--name", "cld-work-0", "--settings", fromHead, "--worktree", "cld-work-0"}},
+		{[]string{"new", "-n", "feat", "--worktree"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "cld-feat"}},
+		{[]string{"new", "-w", "--name=feat"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "cld-feat"}},
+		{[]string{"new", "-wn", "feat"}, []string{"--name", "cld-feat", "--settings", fromHead, "--worktree", "cld-feat"}},
+		{[]string{"new", "-s", "feat", "-w"}, []string{"--name", "cld-work-feat", "--settings", fromHead, "--worktree", "cld-work-feat"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -142,15 +150,17 @@ func TestNewWorktree(t *testing.T) {
 // resume makes its session as new does, in the current directory, and claude gets new's arguments
 // - never -w's - then --resume with the conversation: the one named like the session, or SESSION,
 // as one word, whatever it holds. tmux would end its command at a word ending in ";" (see
-// literal in internal/session), and a git repository makes no worktree session.
+// literal in internal/session), and a git repository, named work, makes no worktree session.
+// With SESSION alone the session gets the NAME new would give it.
 func TestResume(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args         []string
 		name, resume string
 	}{
-		{[]string{"resume"}, "main", "cld-main"},
 		{[]string{"resume", "-n", "x"}, "x", "cld-x"},
+		{[]string{"resume", "-s", "x"}, "work-x", "cld-work-x"},
+		{[]string{"resume", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "work-0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"},
 		{[]string{"resume", "--name=x"}, "x", "cld-x"},
 		{[]string{"resume", "-n", "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"},
 		{[]string{"resume", "-n", "x", "a b"}, "x", "a b"},
@@ -174,7 +184,8 @@ func TestResume(t *testing.T) {
 			if probe.Cwd != s.Work {
 				t.Errorf("claude runs in %s, want %s", probe.Cwd, s.Work)
 			}
-			list := fmt.Sprintf("NAME  STATE     DIRECTORY\n%-4s  attached  %s\n", test.name, s.Work)
+			width := max(4, len(test.name))
+			list := fmt.Sprintf("%-*s  STATE     DIRECTORY\n%-*s  attached  %s\n", width, "NAME", width, test.name, s.Work)
 			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
 				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 			}
@@ -238,6 +249,158 @@ func TestNewWorktreeRequiresRepository(t *testing.T) {
 	}
 	if sessions := s.Sessions(); len(sessions) != 0 {
 		t.Errorf("sessions %q, want none", sessions)
+	}
+}
+
+// Without -n and -s, new names the session after the git repository, work here, and the index
+// above the highest of the sessions so named that run: a gap stays, a server that has outlived its
+// session counts, as new would refuse its name, and so does a session whose name has the
+// repository's in other letters, whose socket would be the same where the socket directory
+// ignores case. A stale socket does not count, nor does a session of another repository, one
+// without the repository's name, or one with no index after it. resume with SESSION alone names
+// its session the same way. Outside a repository the index alone is the NAME.
+func TestDefaultNames(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		// repository is whether cld runs in a git repository
+		repository bool
+		// running are the sessions that run before, each on its server; lingering the servers that
+		// run without their session, and stale the sockets no server answers on
+		running, lingering, stale []string
+		// want are the names that new, then resume SESSION, give
+		want []string
+	}{
+		{"in a repository", true, nil, nil, nil, []string{"cld-work-0", "cld-work-1"}},
+		{"in a repository, with sessions", true,
+			[]string{"cld-work-0", "cld-work-3", "cld-WORK-4", "cld-work-x", "cld-work-6a", "cld-other-9", "cld-9", "cld-work"},
+			[]string{"cld-work-5"}, []string{"cld-work-9"}, []string{"cld-work-6", "cld-work-7"}},
+		{"outside a repository", false, nil, nil, nil, []string{"cld-0", "cld-1"}},
+		{"outside a repository, with sessions", false,
+			[]string{"cld-2", "cld-x-7", "cld-x"}, nil, []string{"cld-8"}, []string{"cld-3", "cld-4"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			if test.repository {
+				gitInit(t, s)
+			}
+			for _, name := range test.running {
+				s.MustTmux(name, "-f", "/dev/null", "new-session", "-d", "-s", name, "sleep", "600")
+			}
+			for _, name := range test.lingering {
+				s.MustTmux(name, "-f", "/dev/null", "new-session", "-d", "-s", "other", "sleep", "600")
+			}
+			for _, name := range test.stale {
+				socket(t, s, name)
+			}
+			startCld(t, s, "tmux", nil, "new")
+			s.WaitProbes(1)
+			startCld(t, s, "tmux", nil, "resume", "SESSION")
+			var names []string
+			for _, probe := range s.WaitProbes(2) {
+				names = append(names, probe.Argv[1])
+			}
+			if slices.Sort(names); !slices.Equal(names, test.want) {
+				t.Errorf("claude named %q, want %q", names, test.want)
+			}
+			want := append(slices.Clone(test.running), test.want...)
+			for _, name := range test.lingering {
+				want = append(want, name+"/other")
+			}
+			if slices.Sort(want); !slices.Equal(s.Sessions(), want) {
+				t.Errorf("sessions %q, want %q", s.Sessions(), want)
+			}
+		})
+	}
+}
+
+// The repository's name in a NAME is that of the directory holding the .git that its work trees
+// share, from a subdirectory or a linked worktree - one of claude's - too, or else that of the
+// repository's git directory, without ".git": a bare repository's, for its worktree, or a
+// submodule's. Each run of the characters a NAME cannot have becomes "-", and "-" and "_" go from
+// either end; where nothing is left, and outside a work tree - in the .git directory - the NAME is
+// the index alone, or SUFFIX. The fake tmux finds no server.
+func TestRepositoryNames(t *testing.T) {
+	t.Parallel()
+	// committed is the sandbox's work directory as a repository with a commit, from which a
+	// worktree can branch.
+	committed := func(t *testing.T, s *sandbox.Sandbox) {
+		gitInit(t, s)
+		runGit(t, s, s.Work, "commit", "-q", "--allow-empty", "-m", "first")
+	}
+	for _, test := range []struct {
+		name string
+		// setup makes the repository in the sandbox's root and returns the directory cld runs in:
+		// by default git init makes the repository name, and cld runs there
+		setup func(t *testing.T, s *sandbox.Sandbox) string
+		// prefix is what the NAME starts with, before the index or SUFFIX
+		prefix string
+	}{
+		{name: "work", prefix: "work-"},
+		{name: "work/sub/dir", prefix: "work-"},
+		{name: "work/.git", prefix: ""},
+		{name: "my.site", prefix: "my-site-"},
+		{name: ".dotfiles", prefix: "dotfiles-"},
+		{name: "a  b", prefix: "a-b-"},
+		{name: "café", prefix: "caf-"},
+		{name: "__x-", prefix: "x-"},
+		{name: "Repo_1", prefix: "Repo_1-"},
+		{name: "日本", prefix: ""},
+		{name: "a linked worktree", setup: func(t *testing.T, s *sandbox.Sandbox) string {
+			committed(t, s)
+			runGit(t, s, s.Work, "worktree", "add", "-q", "-b", "worktree-cld-x", ".claude/worktrees/cld-x")
+			return filepath.Join(s.Work, ".claude", "worktrees", "cld-x", "sub")
+		}, prefix: "work-"},
+		{name: "a bare repository's worktree", setup: func(t *testing.T, s *sandbox.Sandbox) string {
+			committed(t, s)
+			runGit(t, s, s.Root, "clone", "-q", "--bare", s.Work, "bare.git")
+			runGit(t, s, filepath.Join(s.Root, "bare.git"), "worktree", "add", "-q", filepath.Join(s.Root, "tree"))
+			return filepath.Join(s.Root, "tree")
+		}, prefix: "bare-"},
+		{name: "a submodule", setup: func(t *testing.T, s *sandbox.Sandbox) string {
+			committed(t, s)
+			runGit(t, s, s.Root, "init", "-q", "super")
+			runGit(t, s, filepath.Join(s.Root, "super"), "-c", "protocol.file.allow=always", "submodule", "add", "-q", s.Work, "module.x")
+			return filepath.Join(s.Root, "super", "module.x")
+		}, prefix: "module-x-"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			var dir string
+			if test.setup != nil {
+				dir = test.setup(t, s)
+			} else {
+				repository, _, _ := strings.Cut(test.name, "/")
+				runGit(t, s, s.Root, "init", "-q", repository)
+				dir = filepath.Join(s.Root, test.name)
+			}
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			fake := map[string]string{
+				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+			}
+			for _, command := range []struct {
+				args []string
+				want string
+			}{
+				{[]string{"new"}, "cld-" + test.prefix + "0"},
+				{[]string{"new", "-s", "fix"}, "cld-" + test.prefix + "fix"},
+				{[]string{"resume", "-s", "fix"}, "cld-" + test.prefix + "fix"},
+			} {
+				result := s.RunCldIn(dir, fake, command.args...)
+				if title := "\x1b]0;\u2733 " + command.want + "\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
+					t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", strings.Join(command.args, " "), result.Code, result.Stdout, result.Stderr, title)
+					continue
+				}
+				if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:2], []string{"-L", command.want}) {
+					t.Errorf("%s: tmux arguments start %q, want -L %s", strings.Join(command.args, " "), argv[:2], command.want)
+				}
+			}
+		})
 	}
 }
 
@@ -780,6 +943,12 @@ func TestCompleteNames(t *testing.T) {
 		{[]string{"__completeNoDesc", "join", "-n", ""}, nil, offered(bare...)},
 		{[]string{"__complete", "join", "-n", ""}, map[string]string{"CLD_COMPLETION_DESCRIPTIONS": "0"}, offered(bare...)},
 		{[]string{"__complete", "join", "-n", ""}, notUTF8, all},
+		// Outside a repository -s SUFFIX is the NAME: join -s offers the names too.
+		{[]string{"__complete", "join", "-s", ""}, nil, all},
+		{[]string{"__complete", "join", "--suffix=re"}, nil, offered("rev\tattached", "review\tdetached")},
+		{[]string{"__complete", "new", "-s", ""}, nil, offered()},
+		{[]string{"__complete", "resume", "-s", ""}, nil, offered()},
+		{[]string{"__complete", "kill", "-s", ""}, nil, offered()},
 		{[]string{"__complete", "new", "-n", ""}, nil, offered()},
 		{[]string{"__complete", "resume", "-n", ""}, nil, offered()},
 		{[]string{"__complete", "resume", ""}, nil, offered()},
@@ -798,6 +967,36 @@ func TestCompleteNames(t *testing.T) {
 	}
 	if count := len(s.Probes()); count != probes {
 		t.Errorf("%d claude processes after completing, want %d", count, probes)
+	}
+}
+
+// In a git repository, work here, join -s offers the SUFFIX of the sessions named after it, those
+// cld list shows, from a subdirectory too: what follows "work-", where that is a SUFFIX join takes,
+// and not the sessions of another repository, or of none.
+func TestCompleteSuffixes(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	gitInit(t, s)
+	sub := filepath.Join(s.Work, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"cld-work-0", "cld-work-fix", "cld-work--x", "cld-work", "cld-other-1", "cld-3"} {
+		s.MustTmux(name, "-f", "/dev/null", "new-session", "-d", "-s", name, "sleep", "600")
+	}
+	for _, test := range []struct {
+		dir, typed, want string
+	}{
+		{s.Work, "", "0\tdetached\nfix\tdetached\n:4\n"},
+		{sub, "", "0\tdetached\nfix\tdetached\n:4\n"},
+		{s.Work, "f", "fix\tdetached\n:4\n"},
+		{s.Work, "-", ":4\n"},
+		{s.Work, "work", ":4\n"},
+		{s.Root, "", "3\tdetached\nother-1\tdetached\nwork\tdetached\nwork--x\tdetached\nwork-0\tdetached\nwork-fix\tdetached\n:4\n"},
+	} {
+		if result := s.RunCldIn(test.dir, nil, "__complete", "join", "-s", test.typed); result.Code != 0 || result.Stdout != test.want {
+			t.Errorf("join -s %q in %s: exit %d, stdout\n%s\nwant\n%s", test.typed, test.dir, result.Code, result.Stdout, test.want)
+		}
 	}
 }
 
@@ -1076,7 +1275,7 @@ func TestIgnoresUserTmuxConfig(t *testing.T) {
 	s := sandbox.New(t)
 	startCld(t, s, "tmux", nil, "new")
 	s.WaitProbes(1)
-	if left := s.MustTmux("cld-main", "show", "-gv", "status-left"); left == "POISONED" {
+	if left := s.MustTmux("cld-0", "show", "-gv", "status-left"); left == "POISONED" {
 		t.Error("~/.tmux.conf was loaded")
 	}
 	socket := filepath.Join(s.Root, fmt.Sprintf("tmux-%d", os.Getuid()), "default")
@@ -1098,7 +1297,7 @@ func TestServerOptions(t *testing.T) {
 		{"-gv", "status", "off"},
 		{"-gv", "prefix", "C-q"},
 	} {
-		if value := s.MustTmux("cld-main", "show", option.scope, option.name); value != option.value {
+		if value := s.MustTmux("cld-0", "show", option.scope, option.name); value != option.value {
 			t.Errorf("%s is %q, want %q", option.name, value, option.value)
 		}
 	}
@@ -1108,25 +1307,25 @@ func TestServerOptions(t *testing.T) {
 		args  []string
 		value string
 	}{
-		{[]string{"-wv", "-t", "=cld-main:", "remain-on-exit"}, "failed"},
-		{[]string{"-Awv", "-t", "=cld-main:", "remain-on-exit-format"}, ""},
+		{[]string{"-wv", "-t", "=cld-0:", "remain-on-exit"}, "failed"},
+		{[]string{"-Awv", "-t", "=cld-0:", "remain-on-exit-format"}, ""},
 		{[]string{"-gwv", "remain-on-exit"}, "off"},
 	} {
-		if value := s.MustTmux("cld-main", append([]string{"show"}, option.args...)...); value != option.value {
+		if value := s.MustTmux("cld-0", append([]string{"show"}, option.args...)...); value != option.value {
 			t.Errorf("show %s is %q, want %q", strings.Join(option.args, " "), value, option.value)
 		}
 	}
-	if hooks := s.MustTmux("cld-main", "show-hooks", "-g", "pane-died"); strings.Contains(hooks, "[") {
+	if hooks := s.MustTmux("cld-0", "show-hooks", "-g", "pane-died"); strings.Contains(hooks, "[") {
 		t.Errorf("global pane-died hooks, want none: they go to claude's window\n%s", hooks)
 	}
-	if hooks := strings.Split(s.MustTmux("cld-main", "show-hooks", "-w", "-t", "=cld-main:", "pane-died"), "\n"); len(hooks) != 1 || !strings.Contains(hooks[0], "window_active_clients") {
+	if hooks := strings.Split(s.MustTmux("cld-0", "show-hooks", "-w", "-t", "=cld-0:", "pane-died"), "\n"); len(hooks) != 1 || !strings.Contains(hooks[0], "window_active_clients") {
 		t.Errorf("pane-died hooks of claude's window, want one:\n%s", strings.Join(hooks, "\n"))
 	}
-	// Two cld new -n main at once can both set the options on one server: the lookup of each finds
-	// no server, and the tmux command of the second reaches the server the first one started,
-	// setting them again before its new-session fails. The extkeys feature goes to a fixed index,
-	// so it is there once however often it is set. The fake tmux says no server is running, and
-	// runs the real one for the rest.
+	// Two cld new at once can both take NAME 0 and set the options on one server: the lookup of
+	// each finds no server, and the tmux command of the second reaches the server the first one
+	// started, setting them again before its new-session fails. The extkeys feature goes to a
+	// fixed index, so it is there once however often it is set. The fake tmux says no server is
+	// running, and runs the real one for the rest.
 	realTmux, err := exec.LookPath("tmux")
 	if err != nil {
 		t.Fatal(err)
@@ -1135,10 +1334,10 @@ func TestServerOptions(t *testing.T) {
 		"PATH":               filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_REAL": realTmux,
 	}, "new")
-	if want := "duplicate session: cld-main\n"; second.Code != 1 || second.Stderr != want {
+	if want := "duplicate session: cld-0\n"; second.Code != 1 || second.Stderr != want {
 		t.Errorf("a second cld new: exit %d, stderr %q, want exit 1, stderr %q", second.Code, second.Stderr, want)
 	}
-	features := strings.Split(s.MustTmux("cld-main", "show", "-sv", "terminal-features"), "\n")
+	features := strings.Split(s.MustTmux("cld-0", "show", "-sv", "terminal-features"), "\n")
 	if count := len(slices.DeleteFunc(features, func(f string) bool { return f != "xterm*:extkeys" })); count != 1 {
 		t.Errorf("%d xterm*:extkeys entries in terminal-features, want 1", count)
 	}
@@ -1146,7 +1345,7 @@ func TestServerOptions(t *testing.T) {
 		t.Errorf("%d claude processes, want the first one", len(probes))
 	}
 	// "list-keys -T prefix C-q" would be shorter, but tmux 3.7 prints nothing for it.
-	bindings := strings.Split(s.MustTmux("cld-main", "list-keys", "-T", "prefix"), "\n")
+	bindings := strings.Split(s.MustTmux("cld-0", "list-keys", "-T", "prefix"), "\n")
 	if !slices.ContainsFunc(bindings, func(binding string) bool {
 		return slices.Equal(strings.Fields(binding), []string{"bind-key", "-T", "prefix", "C-q", "send-prefix"})
 	}) {
@@ -1183,10 +1382,10 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 	startCld(t, s, "tmux", map[string]string{"TMUX": elsewhere, "LANG": "C"}, "new")
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
-	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-main"}) {
-		t.Errorf("sessions %q, want [cld-main]", sessions)
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-0"}) {
+		t.Errorf("sessions %q, want [cld-0]", sessions)
 	}
-	if utf8 := s.MustTmux("cld-main", "list-clients", "-F", "#{client_utf8}"); utf8 != "1" {
+	if utf8 := s.MustTmux("cld-0", "list-clients", "-F", "#{client_utf8}"); utf8 != "1" {
 		t.Errorf("client_utf8 %q under LANG=C, want 1", utf8)
 	}
 
@@ -1231,7 +1430,7 @@ func TestNestsOnADeadPanesPty(t *testing.T) {
 	}
 	ttyFile := filepath.Join(s.Root, "tty")
 	term := terminal.New(t, "tmux", s)
-	term.Start(append([]string{"sh", "-c", `tty=$(tty) && printf '%s\n' "$tty" >"$0" && exec "$@" join`, ttyFile}, s.CldArgv()...), env, s.Work)
+	term.Start(append([]string{"sh", "-c", `tty=$(tty) && printf '%s\n' "$tty" >"$0" && exec "$@" join -n main`, ttyFile}, s.CldArgv()...), env, s.Work)
 	var tty []byte
 	sandbox.WaitFor(t, 10*time.Second, "the terminal's pty", func() bool {
 		tty, _ = os.ReadFile(ttyFile)
@@ -3133,10 +3332,18 @@ func isStopped(pid int) bool {
 // environment, as cld does, so no GIT_DIR, say, sends it to another repository (see TestMain).
 func gitInit(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
-	cmd := exec.Command("git", "init", "-q", s.Work)
+	runGit(t, s, s.Root, "init", "-q", s.Work)
+}
+
+// runGit runs git with args in dir, in the sandbox's environment (see gitInit), as an author and
+// committer of its own, where the sandbox's home has no git configuration.
+func runGit(t *testing.T, s *sandbox.Sandbox, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-c", "user.name=cld", "-c", "user.email=cld@example.com"}, args...)...)
 	cmd.Env = s.Environ(nil)
+	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 }
 

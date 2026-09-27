@@ -23,7 +23,8 @@ what it checks, and for installing by hand. From a clone, `make install` builds 
 `~/.local/bin` (`PREFIX=/usr/local` for another prefix); it needs Go 1.26 or newer.
 
 Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
-for `cld new -w`; Docker, on Linux, for `cld setup telemetry`.
+for `cld new -w`, and to name sessions after their repository; Docker, on Linux, for
+`cld setup telemetry`.
 
 Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a.
 [Homebrew](https://formulae.brew.sh/formula/tmux) has 3.7 on macOS and Linux, as do Debian testing
@@ -34,7 +35,7 @@ upgrading tmux and cld.
 ### Shell completion
 
 `cld setup completion SHELL` sets up completion in bash, zsh or fish: TAB then completes the
-commands and their options, the sessions of `cld join -n` and the servers of
+commands and their options, the sessions of `cld join -n` and `-s` and the servers of
 `cld setup project --mcp`. Run it once, then start a new shell:
 
 ```sh
@@ -49,17 +50,25 @@ up by hand, for macOS's bash 3.2 among others.
 
 ## Usage
 
-Session `NAME` - `main` without `-n` - is the tmux session `cld-NAME` on a tmux server of its own,
-`tmux -L cld-NAME`, running `claude --name cld-NAME` with
+Session `NAME` is the tmux session `cld-NAME` on a tmux server of its own, `tmux -L cld-NAME`,
+running `claude --name cld-NAME` with
 [Remote Control](https://code.claude.com/docs/en/remote-control) on, so that you can also continue
 it from claude.ai or the Claude app.
 
+`-n NAME` names the session; `-s SUFFIX` names it `REPO-SUFFIX`, `REPO` being the name of the git
+repository you are in, and `SUFFIX` alone outside one. Without either, `cld new` names it after the
+repository and an index: `REPO-0`, or where sessions `REPO-INDEX` run, the index above the highest
+of them - `0`, `1` and so on outside a repository. In a repository `api`, `cld new` twice and
+`cld new -s fix` make the sessions `cld-api-0`, `cld-api-1` and `cld-api-fix`, which
+`cld join -s 1` and `cld kill -s fix` then reach; `cld resume SESSION` names its session as
+`cld new` does.
+
 | Command | Action |
 |---|---|
-| `cld new [-n NAME] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `NAME` |
-| `cld resume [-n NAME] [SESSION]` | create the session with claude resuming the conversation `cld-NAME`, or `SESSION` |
-| `cld join [-n NAME] [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
-| `cld kill [-n NAME]` | end the session, its claude and its tmux server |
+| `cld new [-n NAME \| -s SUFFIX] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME` |
+| `cld resume [-n NAME \| -s SUFFIX] [SESSION]` | create the session with claude resuming the conversation `cld-NAME`, or `SESSION` |
+| `cld join (-n NAME \| -s SUFFIX) [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
+| `cld kill (-n NAME \| -s SUFFIX)` | end the session, its claude and its tmux server |
 | `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
 | `cld setup project [--mcp SERVER]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
@@ -97,11 +106,11 @@ interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions)
 
 ### Worktrees
 
-`cld new -n NAME -w` runs `claude --worktree NAME`: claude
-[creates the git worktree](https://code.claude.com/docs/en/worktrees) `.claude/worktrees/NAME` on
-the branch `worktree-NAME` - from your current `HEAD` - or reopens it, and works there. `cld kill`
-leaves the worktree, and `cld resume -n NAME`, run in the repository, takes the conversation back
-to it. See the [guide](docs/guide.md#worktrees).
+`cld new -w` runs `claude --worktree cld-NAME`, named as the session is: claude
+[creates the git worktree](https://code.claude.com/docs/en/worktrees) `.claude/worktrees/cld-NAME`
+on the branch `worktree-cld-NAME` - from your current `HEAD` - or reopens it, and works there.
+`cld kill` leaves the worktree, and `cld resume -n NAME`, run in the repository, takes the
+conversation back to it. See the [guide](docs/guide.md#worktrees).
 
 ### Project settings
 
@@ -154,8 +163,8 @@ Claude Code has its own tmux option, `claude --worktree [name] --tmux`, for a di
 | iTerm2 | a regular tmux client | native panes when available; `--tmux=classic` for regular tmux |
 
 The `claude --tmux` column follows `claude --help` in Claude Code 2.1.281, as the docs do not
-describe the option yet. `cld new -n NAME -w` combines the two: claude's own worktree, in a session
-of cld's.
+describe the option yet. `cld new -w` combines the two: claude's own worktree, in a session of
+cld's.
 
 ## Terminals
 

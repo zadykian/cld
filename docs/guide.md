@@ -26,7 +26,22 @@ install it as `cld`, executable, in a directory on your `PATH`.
 
 ## Sessions
 
-- A name consists of up to 64 ASCII letters, digits, `_` and `-`, starting with a letter or digit.
+- A name consists of up to 64 ASCII letters, digits, `_` and `-`, starting with a letter or digit;
+  so does a `SUFFIX`, which is the name outside a git repository.
+- The repository's name, `REPO` in `REPO-SUFFIX` and in `cld new`'s `REPO-INDEX`, is that of the
+  directory that holds its `.git`, so that its worktrees - claude's under `.claude/worktrees`
+  among them - and its subdirectories share it; for a submodule, or a worktree of a bare
+  repository, it is the name of the git directory, without `.git`. Each run of the characters a
+  name cannot have becomes `-`, and `-` and `_` go from either end: `my.site` gives `my-site-0`,
+  `.dotfiles` `dotfiles-0`. Where nothing is left - a name in another script - or git is missing,
+  the session is named as outside a repository. A name that comes out longer than 64 characters is
+  refused: name the session with `-n NAME`.
+- `cld new` counts the sessions that run, those `cld list` shows, and servers that outlive their
+  session (see [Troubleshooting](#troubleshooting)); a gap stays a gap. A session that has ended
+  counts no more, so the next `cld new` can give its name again, and claude's history then holds
+  two conversations of that name (see [Resuming a conversation](#resuming-a-conversation)). Two
+  `cld new` started at the same moment can pick the same name: the second ends with tmux's
+  `duplicate session: cld-NAME`, and run again it takes the next.
 - Each claude gets the environment of the shell that ran `cld new` or `cld resume` -
   `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like.
 - Whatever claude runs - its Bash tool, a hook - reaches the session's server with a plain `tmux`,
@@ -75,12 +90,13 @@ it:
   `CLAUDE_CONFIG_DIR`, if you set one.
 - When exactly one conversation has the name, claude resumes it. Several can have it: `/clear`
   keeps the name for the conversation it starts, and a later `cld new -n NAME` presumably gives it
-  to a new one as well (not checked yet). claude then opens its picker with the name as the search
+  to a new one as well (not checked yet) - as does `cld new` without `-n`, which gives a name
+  again once its session has ended. claude then opens its picker with the name as the search
   term, which may not be an exact filter: for `cld-rev` it may list `cld-review` too (not checked
   yet).
 - With `SESSION`, claude still gets `--name cld-NAME`, meant to give the conversation the session's
   name for the next `cld resume -n NAME`; how claude applies it to a resumed conversation has not
-  been checked yet.
+  been checked yet. Without `-n` and `-s`, the session gets the name `cld new` would give it.
 - For a session ID that matches no conversation, claude prints
   `No conversation found with session ID: ...` and exits with an error; the session stays with the
   message.
@@ -98,11 +114,16 @@ worktree, and when claude exits it asks whether to keep the worktree. Unlike it,
 branches from your current `HEAD`, not from the remote's default branch, whatever your
 `worktree.baseRef` setting says.
 
+- The worktree is named as the session is, `cld-NAME`, on the branch `worktree-cld-NAME`: in a
+  repository `api`, `cld new -w` makes `.claude/worktrees/cld-api-0`.
 - `cld new -n NAME -w` again reopens the worktree with a new conversation; `cld resume -n NAME`,
   run in the repository, resumes the conversation, and claude takes it back to its worktree - or,
   if the worktree is gone, resumes where `cld resume` runs and says so. `cld resume` has no `-w`,
   and a worktree claude makes during a resumed session - for a subagent, say - branches as your
   settings say.
+- A worktree outlives its session, and `cld new -w` counts sessions, not worktrees: once session
+  `api-0` has ended, the next `cld new -w` is `api-0` again, and reopens its worktree. Give `-s` or
+  `-n` for a new one.
 - claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
   (or `cld new`) there once first; otherwise claude says so and exits, and the session stays with
   the message.
@@ -175,10 +196,11 @@ cld reads the file when it runs: edits apply when you run it again. The containe
 
 ## Shell completion
 
-`cld join -n <TAB>` offers each session with its state, and `--mcp` the next server after a comma.
-No file names are offered, and `cld new -n`, `cld resume` and the values of `cld setup telemetry`
-offer nothing. The script runs `cld` on every TAB, so the names are always current.
-`CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states and the other
+`cld join -n <TAB>` offers each session with its state, `cld join -s <TAB>` the `SUFFIX` of those
+named after the repository you are in, and `--mcp` the next server after a comma. No file names are
+offered, and `cld new -n`, `cld new -s`, `cld resume`, `cld kill` and the values of
+`cld setup telemetry` offer nothing. The script runs `cld` on every TAB, so the names are always
+current. `CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states and the other
 descriptions.
 
 `cld setup completion SHELL` writes the script that `cld completion SHELL` prints where the shell
@@ -255,6 +277,13 @@ cld removes nothing: to undo it, delete the script, and for zsh the lines in `.z
 - **`cld join` and other terminals.** cld 0.7.0 and earlier detached any other terminal from the
   session on `cld join`, and on `Enter` in `cld list`; both now leave it attached. Use
   `cld join --detach-others` to take the session over as before.
+- **Session names.** In cld 0.7.1 and earlier, `-n` defaulted to `main`, and `-w` named the
+  worktree `NAME`. Now `cld new` names the session after the repository (see
+  [Sessions](#sessions)); `cld join` and `cld kill` need `-n NAME` or `-s SUFFIX`, and
+  `cld resume` those or `SESSION`: sessions named `main` before, and their conversations, are
+  `-n main`. `cld new -n NAME -w` makes the worktree `cld-NAME`: the worktree `NAME` of an earlier
+  session stays where it is, and `cld resume -n NAME` still takes its conversation back there;
+  `git worktree remove .claude/worktrees/NAME` removes it once you are done with it.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill -n NAME`): each
   session's server keeps running the tmux that started it until the session ends.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from
