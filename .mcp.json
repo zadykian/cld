@@ -2,7 +2,7 @@
   "mcpServers": {
     "goland": {
       "type": "http",
-      "url": "http://127.0.0.1:64422/stream"
+      "url": "http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream"
     }
   }
 }

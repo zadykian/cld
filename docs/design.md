@@ -116,7 +116,8 @@ cld() {
 | `cld setup telemetry --local http://127.0.0.1:4319 --remote http://127.0.0.1:4320`, with a collector with the debug exporter on each of those ports standing in for the plugin and a team's collector, and `telemetrygen` sending a span, a metric and a log to the port cld chose | the local one got all three, the remote one the metric only. A rerun kept the port; a second source with a key the exporter does not know was refused by `validate`, and the collector kept running with the settings unchanged; one that moved the receiver onto a taken port made cld report the collector stopped, with its log, within 2.4 s, and leave it `exited` (after one more restart Docker had scheduled) where it had restarted again and again, and a rerun without it recovered on the same port; one that set the collector's log level to `warn` left its log empty, and cld found it ready by its port within 1.5 s, the span reaching the local one. Checked again once cld waited for the port alone, with collectors of the debug exporter on two other ports: the same three signals and the metric, cld done within 1.2 s, `validate` included; with the collector paused, a rerun kept its port, and so did `--port` with that port, where cld had given the new collector another port; a second source that moved the receiver to another port made cld say after 10 s that the collector took no connections on its port, naming it, below the end of the log, with the ready line, and leave the settings - or say that its log was empty, with the level at `warn` too - and a rerun without it recovered on the same port |
 | `/.claude/*`, then `!/.claude/settings.json`, in `.gitignore` (git 2.53.0 on Ubuntu 26.04; the tests' cases also on git 2.47.3, in the image `tests/Dockerfile` builds) | git ignores `.claude/settings.local.json` and would add `.claude/settings.json`; `.claude/*` and `!.claude/settings.json`, without the leading slash, do the same. A `.claude/` before them in `.gitignore`, or a `.claude` in `.git/info/exclude`, keeps git out of the directory, and the settings stay ignored whatever follows; `*.json` after them ignores the settings again. git reads a line without the carriage return of a CRLF and without trailing spaces, but a trailing tab stays in the pattern: `!/.claude/settings.json` and a tab excepts nothing. `git check-ignore -v PATH` names the last pattern that matches, an exception too, with exit status 0 either way, as `SOURCE:LINE:PATTERN`, a tab, `PATH`; `-q` without `-v` exits 1 for a path an exception keeps. `-z` needs `--stdin` (`fatal: -z only makes sense with --stdin`), and then ends `SOURCE`, `LINE`, `PATTERN` and `PATH` each with a NUL. Outside a work tree it exits 128: `fatal: not a git repository` |
 | `claude mcp list` (2.1.283, Linux, a scratch `CLAUDE_CONFIG_DIR`) in a project that `cld setup project --mcp goland,jbcontext,rider` wrote, GoLand and Rider 2026.2 running with their MCP servers on 64422 and 64482 | claude lists the three from `.mcp.json` - `claude mcp get jbcontext` names its scope `Project config (shared via .mcp.json)` - as `Pending approval (run claude to approve)` while the folder's workspace trust is not accepted; once it is, all three are `Connected`. Trusted, but without `enabledMcpjsonServers` in `.claude/settings.json`, they stay `Pending approval` |
-| the port of a JetBrains IDE's MCP server (read in JetBrains' Rider docs and in guides to the server, not probed) | the server built into the IDE (2025.2 and newer; Settings › Tools › MCP Server) takes the first free port from 64342 as the IDE starts; "Copy HTTP Stream Config" there gives its URL, `http://127.0.0.1:PORT/stream` for streamable HTTP. The maintainer's GoLand has 64422, Rider 64482 |
+| the port of a JetBrains IDE's MCP server (GoLand 2026.2.3's `mcpserver` plugin, `McpServerSettings` and `McpServerService` read with `javap`; GoLand 2026.2.3 and Rider 2026.2.1 remote-development backends listening) | the default is 64342 plus an offset per product, chosen by `PlatformUtils.getPlatformPrefix()`: IntelliJ IDEA 0, CLion 20, DataGrip 60, GoLand 80, PhpStorm 100, PyCharm 120, Rider 140, RubyMine 160, RustRover 180, WebStorm 200, any other 0 - so GoLand listens on 64422 and Rider on 64482, as they do here, the two running at once; an authorized endpoint takes the port 100 above (64522, 64582). The MCP Server settings keep a port of their own (`mcpServerPort`), and the system property `idea.mcp.server.force.port` overrides both; where the port was never changed, the options file (`mcpServer.xml`) holds `enableMcpServer` alone. "Copy HTTP Stream Config" in those settings gives `http://127.0.0.1:PORT/stream` |
+| `${VAR:-DEFAULT}` in the URL of an `.mcp.json` server (claude 2.1.283, `claude mcp list` and `claude mcp get`, a scratch `CLAUDE_CONFIG_DIR`, the folder trusted, GoLand and Rider as above) | claude expands it as it connects: to DEFAULT where VAR is unset, and to VAR from its environment, or from the `env` of `$CLAUDE_CONFIG_DIR/settings.json`; VAR in the `env` of the project's `.claude/settings.local.json` was not used. It shows the URL with `${VAR}`, the default left out. `${VAR}` without a default, VAR unset: `[Warning] [goland] mcpServers.goland: Missing environment variables: VAR`, and the server fails with `'url' is not a valid URL` |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 
 ## Distribution
@@ -1035,13 +1036,21 @@ The Linux job runs the same Docker image a developer runs locally.
        claude uses them without asking (not probed); `jbcontext` also
        allows `Bash(jbcontext:*)`, since its hooks and instructions have claude run
        `jbcontext search`. `goland` and `rider` are the servers built into the IDEs, over
-       streamable HTTP at `http://127.0.0.1:64422/stream` and `http://127.0.0.1:64482/stream`,
-       the ports of the maintainer's IDEs, which are no defaults - an IDE takes the first free port
-       from 64342 (see Findings) - so the README says how to check one's own. `jbcontext` is
-       `jbcontext mcp` over stdio, looked up on the `PATH` by claude, as JetBrains Context's
-       `jbcontext setup-agent` configures it for a user. Not taken: an option for the ports; the
-       servers as arguments (`cld setup project goland`), which cld's commands take as options
-       elsewhere too;
+       streamable HTTP at `http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream` and
+       `http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream`. `.mcp.json` is shared through git,
+       and each developer's IDE has a port of its own: 64342 plus an offset per product by default,
+       64422 for GoLand and 64482 for Rider in 2026.2, or another in its MCP Server settings (see
+       Findings). So the port is a variable that claude expands as it reads the file, with the
+       default after it (see Findings): a developer whose IDE listens elsewhere sets
+       `GOLAND_MCP_PORT` or `RIDER_MCP_PORT` once for the machine - in the shell's profile, or in
+       the `env` of `~/.claude/settings.json`; the project's `.claude/settings.local.json` does not
+       work. An entry with the port written out, as cld wrote it first, differs, and is replaced
+       (see 4). `jbcontext` is `jbcontext mcp` over stdio, looked up on the `PATH` by claude, as
+       JetBrains Context's `jbcontext setup-agent` configures it for a user. Not taken: the ports
+       written out, which only fit the IDEs of whoever ran cld; an option for them, which would
+       write one developer's port for all; the IDEs' servers in the local scope, kept per user
+       in `~/.claude.json`, which each developer would have to set up; the servers as arguments
+       (`cld setup project goland`), which cld's commands take as options elsewhere too;
     3. the project is the current directory, where `cld new` starts claude, which reads its
        `.claude/settings.json` and `.mcp.json` there; it need not be a git repository, and in a
        subdirectory of one `.gitignore` is that directory's, its patterns anchored there;
@@ -1085,7 +1094,7 @@ The Linux job runs the same Docker image a developer runs locally.
        typed, each described by its URL or command; after a comma, the servers the list does not
        have yet, the list before them.
 
-    Out of scope: removing what cld wrote, other servers, ports other than the maintainer's, and
+    Out of scope: removing what cld wrote, other servers, finding the port an IDE listens on, and
     settings per kind of project.
 
 ## Implementation notes
@@ -1363,8 +1372,9 @@ by hand in a nested tmux).
   debug exporter in the plugin's place: the plugin itself, and claude sending through the
   collector, are still to check.
 - `setup project` was checked by hand with git 2.53.0 and `claude mcp list` 2.1.283 (see
-  Findings); a claude session calling the servers' tools, and the IDEs' ports on another machine,
-  were not.
+  Findings), the ports from their variables included; a claude session calling the servers' tools,
+  and whether a session, rather than `claude mcp list`, takes the variables from the project's
+  `.claude/settings.local.json`, were not.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not
