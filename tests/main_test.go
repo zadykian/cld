@@ -54,15 +54,20 @@ func setup(dir string) error {
 		return err
 	}
 	// cld skips the relative entries of the PATH (see tool.LookPath in internal/tool).
-	for _, entry := range filepath.SplitList(os.Getenv("PATH")) {
-		if path := filepath.Join(entry, "tmux"); filepath.IsAbs(entry) && sandbox.RealTmux == "" {
-			if _, err := exec.LookPath(path); err == nil {
-				sandbox.RealTmux = path
+	for _, tool := range []struct {
+		name string
+		path *string
+	}{{"tmux", &sandbox.RealTmux}, {"git", &sandbox.RealGit}} {
+		for _, entry := range filepath.SplitList(os.Getenv("PATH")) {
+			if path := filepath.Join(entry, tool.name); filepath.IsAbs(entry) && *tool.path == "" {
+				if _, err := exec.LookPath(path); err == nil {
+					*tool.path = path
+				}
 			}
 		}
-	}
-	if sandbox.RealTmux == "" {
-		return errors.New("tmux is not installed")
+		if *tool.path == "" {
+			return errors.New(tool.name + " is not installed")
+		}
 	}
 	sandbox.Cld = filepath.Join(dir, "cld")
 	if err := run("go", "build", "-o", sandbox.Cld, "github.com/zadykian/cld/cmd/cld"); err != nil {

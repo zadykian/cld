@@ -66,7 +66,8 @@ func between(t *testing.T, term terminal.Terminal, probe *sandbox.Probe, keys ..
 
 // C1: the tab shows the session name after claude's marker, whatever claude sets as its own title:
 // ✳, and while claude is busy - from the prompt it was given, as its hooks tell tmux (see
-// TestStatusHooks) - ◐ and ◑ in turn, a second each, until its turn is done.
+// TestStatusHooks) - ◐ and ◑ in turn, a second each, until its turn is done; then " [w]" after
+// the name while claude is in a linked git worktree (see TestWorktreeHooks).
 func TestContractTitle(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		s, term, probe := startContract(t, name)
@@ -93,14 +94,25 @@ func TestContractTitle(t *testing.T) {
 		if title := term.Title(); title != "\u2733 cld-contract" {
 			t.Errorf("terminal title %q a while after the turn, want %q", title, "\u2733 cld-contract")
 		}
-		// A claude that fails in a turn leaves it busy, and its pane on screen: the tab says ✳.
-		probe.Hook("UserPromptSubmit", `{"prompt":"go"}`)
-		sandbox.WaitFor(t, 5*time.Second, "a busy terminal title", func() bool {
-			return term.Title() != "\u2733 cld-contract"
+		// In a linked git worktree the title ends in [w], busy or not.
+		gitInit(t, s)
+		worktree := gitWorktree(t, s, "contract")
+		probe.Send("cd " + worktree)
+		probe.Hook("CwdChanged", `{"new_cwd":"`+worktree+`"}`)
+		sandbox.WaitFor(t, 5*time.Second, "[w] in the terminal title", func() bool {
+			return term.Title() == "✳ cld-contract [w]"
 		})
+		probe.Hook("UserPromptSubmit", `{"prompt":"go"}`)
+		for _, marker := range []string{"◐", "◑"} {
+			want := marker + " cld-contract [w]"
+			sandbox.WaitFor(t, 5*time.Second, "the terminal title "+strconv.Quote(want), func() bool {
+				return term.Title() == want
+			})
+		}
+		// A claude that fails in a turn leaves it busy, and its pane on screen: the tab says ✳.
 		probe.Send("exit 1")
-		sandbox.WaitFor(t, 5*time.Second, "the terminal title back at \u2733 once claude failed", func() bool {
-			return term.Title() == "\u2733 cld-contract"
+		sandbox.WaitFor(t, 5*time.Second, "the terminal title back at ✳ once claude failed", func() bool {
+			return term.Title() == "✳ cld-contract [w]"
 		})
 	})
 }

@@ -130,11 +130,14 @@ platform, `cld.sha256` and `install.sh`.
   claude's session, not the server, so the sessions claude makes on its server behave as plain
   tmux would.
 - The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn while claude is busy (claude keeps its
-  own at `✳` under tmux). `new` and `resume` give claude hooks in `--settings` that set
-  `@cld-status` on its session - `tmux if -F -t "$TMUX_PANE"`, by the path cld checked, only where
-  it changes, printing nothing - and tmux sets the title from it; a `#()` job in `@cld-busy`
-  refreshes the terminal a second later to turn the marker, since `status off` leaves tmux no
-  timer (decision 25). The hook events must exist in the minimum claude.
+  own at `✳` under tmux), and ` [w]` after it in a linked git worktree. `new` and `resume` give
+  claude hooks in `--settings` that set `@cld-status` on its session - `tmux if -F -t
+  "$TMUX_PANE"`, by the path cld checked, only where it changes, printing nothing - and tmux sets
+  the title from it; a `#()` job in `@cld-busy` refreshes the terminal a second later to turn the
+  marker, since `status off` leaves tmux no timer (decision 25). `SessionStart` and `CwdChanged`
+  hooks keep `@cld-worktree`, 1 while claude's directory is in a linked git worktree; they run git
+  by the path cld found, and are left out where it finds none (decision 26). The hook events must
+  exist in the minimum claude.
 - `TERMINAL_EMULATOR` is removed from the environment `new` and `resume` exec tmux with, so from
   the server's; claude trusts it over `TERM_PROGRAM=tmux`.
 - `setup telemetry` needs Docker, and Linux (`--network host`): it replaces the container
@@ -204,8 +207,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   list's keys), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, the names `new` gives from the
-  repository and the index, the hooks that keep claude's status for the title, and the names
-  completion offers;
+  repository and the index, the hooks that keep claude's status and its worktree for the title,
+  and the names completion offers;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
   byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures

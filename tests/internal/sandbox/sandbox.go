@@ -27,9 +27,9 @@ var (
 	ProbeBin string
 	// FakeTmux is the probe installed as "tmux"; set by TestMain.
 	FakeTmux string
-	// RealTmux is the tmux cld finds on a sandbox's PATH: the first in its absolute entries; set
-	// by TestMain.
-	RealTmux string
+	// RealTmux and RealGit are the tmux and the git cld finds on a sandbox's PATH: the first in
+	// its absolute entries; set by TestMain.
+	RealTmux, RealGit string
 )
 
 // Record is what the probe writes about a process it stands in for.
