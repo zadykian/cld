@@ -120,11 +120,12 @@ them accurate when changing any of them.
 Tests build cld (`cmd/cld`) and run it against real tmux; only `claude` is faked, and `docker`
 for `setup telemetry`. Read the package doc comments at the top of each file for details.
 
-- `main_test.go` — `TestMain` builds cld and `probe/` into a temp dir, the probe as `claude` (and
-  symlinks it as a fake `tmux` for version/tool checks and the commands `new`, `resume` and
-  `join` exec, and as `docker` beside `claude`, so that no test reaches the real Docker), and
-  compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`. `forEachTerminal` runs a
-  body as a parallel subtest per terminal.
+- `main_test.go` — `TestMain` unsets every `GIT_*` variable (git sets them for hooks and
+  `rebase --exec`; `TestGitVariables` pins it), builds cld and `probe/` into a temp dir, the probe
+  as `claude` (and symlinks it as a fake `tmux` for version/tool checks and the commands `new`,
+  `resume` and `join` exec, and as `docker` beside `claude`, so that no test reaches the real
+  Docker), and compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`.
+  `forEachTerminal` runs a body as a parallel subtest per terminal.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `exit`).
@@ -148,6 +149,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   (an outer tmux server provides the pty; input as raw xterm bytes via `send-keys -H`) and
   `jediterm.go`, which talks line-by-line to `jediterm/JediTermDriver.java` (headless JediTerm
   3.76, pinned in `jediterm/deps.txt`). A terminal that cannot do something skips with a reason.
+  JediTerm emulates on a thread of its own, so a test waits for modes that change while cld runs
+  (`waitModes`); once `Running` is false, what the terminal shows is final.
 - `contract_test.go` — the terminal contract (C1–C10 in `docs/design.md`: title, client features,
   Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, paste, claude exiting, the session
   list's keys), run per terminal.

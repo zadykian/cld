@@ -122,7 +122,7 @@ func TestNewWorktree(t *testing.T) {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			sub := filepath.Join(s.Work, "sub")
 			if err := os.Mkdir(sub, 0o755); err != nil {
 				t.Fatal(err)
@@ -161,7 +161,7 @@ func TestResume(t *testing.T) {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			startCld(t, s, "tmux", nil, test.args...)
 			probe := s.WaitProbes(1)[0]
 			waitClients(t, s, 1)
@@ -3098,10 +3098,13 @@ func isStopped(pid int) bool {
 	return strings.HasPrefix(strings.TrimSpace(string(state)), "T")
 }
 
-// gitInit makes dir a git repository.
-func gitInit(t *testing.T, dir string) {
+// gitInit makes the sandbox's work directory a git repository. git runs in the sandbox's
+// environment, as cld does, so no GIT_DIR, say, sends it to another repository (see TestMain).
+func gitInit(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
-	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+	cmd := exec.Command("git", "init", "-q", s.Work)
+	cmd.Env = s.Environ(nil)
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 }
@@ -3119,6 +3122,21 @@ func waitScreen(t *testing.T, term terminal.Terminal, text string) {
 	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("%q on the screen", text), func() bool {
 		return strings.Contains(term.Screen(), text)
 	})
+}
+
+// waitModes waits until the terminal's modes are as ok wants them, and reports them otherwise: the
+// terminal may not have taken in yet what sets them, which can come after the screen it shows -
+// tmux turns every mouse mode off and on again once it has drawn.
+func waitModes(t *testing.T, term terminal.Terminal, when, want string, ok func(terminal.Modes) bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for modes := term.Modes(); !ok(modes); modes = term.Modes() {
+		if time.Now().After(deadline) {
+			t.Errorf("modes %s %+v, want %s", when, modes, want)
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // waitLines waits until the screen shows exactly lines, from the top, and nothing below them;
@@ -3485,14 +3503,9 @@ func (r listRun) checkRestored(t *testing.T, term terminal.Terminal) {
 	if before, after := r.read(t, "before"), r.read(t, "after"); before != after {
 		t.Errorf("stty -g after cld\n%s\nwant as before\n%s", after, before)
 	}
-	deadline := time.Now().Add(10 * time.Second)
-	for modes := term.Modes(); modes.AltScreen || modes.Mouse || !modes.Cursor; modes = term.Modes() {
-		if time.Now().After(deadline) {
-			t.Errorf("modes after cld %+v, want the main screen, no mouse and the cursor visible", modes)
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitModes(t, term, "after cld", "the main screen, no mouse and the cursor visible", func(modes terminal.Modes) bool {
+		return !modes.AltScreen && !modes.Mouse && modes.Cursor
+	})
 }
 
 // afterList waits for cld to leave the alternate screen and print want after it, with the

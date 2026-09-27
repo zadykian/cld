@@ -50,10 +50,13 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * keys KEY                  type a key named the tmux way: Enter, S-Enter, Up, Down, Escape, C-q,
  *                           or one character
  * paste BASE64              paste the text, the way JediTerm's UI does
- * wheel-up                  scroll the mouse wheel up over the screen
+ * wheel-up                  scroll the mouse wheel up over the screen: true, or false, sending
+ *                           nothing, while the program has mouse reporting off
  * focus                     unsupported: the emulator ignores focus reporting
  * clipboard                 unsupported: the emulator does not handle OSC 52
- * title | screen | modes | running
+ * title | screen | modes
+ * running                   whether the program runs, or the emulator has yet to take in what it
+ *                           wrote: the screen and the modes are final once it answers false
  * output                    everything the program has written to the terminal
  * </pre>
  * End of input kills the pty and exits.
@@ -72,6 +75,7 @@ public final class JediTermDriver {
   private KeyEventProcessingSettings keySettings;
   private PtyProcess process;
   private Connector connector;
+  private Thread emulatorThread;
 
   public static void main(String[] args) throws IOException {
     new JediTermDriver().serve();
@@ -116,10 +120,7 @@ public final class JediTermDriver {
         // JediTerm's UI turns an upward wheel rotation into SCROLLDOWN, which it reports as
         // xterm's button 64 (wheel up).
         MouseWheelEvent up = new MouseWheelEvent(MouseButtonCodes.SCROLLDOWN, 0, -1);
-        if (!terminal.onMouseEvent(10, 10, up, settings)) {
-          throw new IllegalStateException("the program has not enabled mouse reporting");
-        }
-        return "null";
+        return String.valueOf(terminal.onMouseEvent(10, 10, up, settings));
       case "focus":
         throw new UnsupportedOperationException("the emulator ignores focus reporting (DECSET 1004)");
       case "clipboard":
@@ -133,7 +134,9 @@ public final class JediTermDriver {
                ",\"mouse\":" + (display.mouseMode != MouseMode.MOUSE_REPORTING_NONE) +
                ",\"cursor\":" + display.cursorVisible + "}";
       case "running":
-        return String.valueOf(process != null && process.isAlive());
+        // The program may exit before the emulator has taken in what it wrote last, tmux turning
+        // its modes off, say: the emulator reads the pty to the end all the same.
+        return String.valueOf(process != null && (process.isAlive() || emulatorThread.isAlive()));
       case "output":
         synchronized (output) {
           return quote(output.toString());
@@ -164,7 +167,7 @@ public final class JediTermDriver {
       }
     });
     JediEmulator emulator = new JediEmulator(new TtyBasedArrayDataStream(connector), terminal);
-    Thread thread = new Thread(() -> {
+    emulatorThread = new Thread(() -> {
       try {
         while (emulator.hasNext()) {
           emulator.next();
@@ -176,8 +179,8 @@ public final class JediTermDriver {
         }
       }
     }, "emulator");
-    thread.setDaemon(true);
-    thread.start();
+    emulatorThread.setDaemon(true);
+    emulatorThread.start();
   }
 
   /**

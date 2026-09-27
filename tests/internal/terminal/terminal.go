@@ -53,7 +53,8 @@ type Terminal interface {
 	Modes() Modes
 	// Clipboard is the text last copied to the clipboard through OSC 52.
 	Clipboard() string
-	// Running reports whether the program Start ran is still running.
+	// Running reports whether the program Start ran is still running, or the terminal has yet to
+	// take in what it wrote: once it reports false, the screen and the modes are final.
 	Running() bool
 	Close()
 }
