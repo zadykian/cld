@@ -160,8 +160,13 @@ with the tmux versions checked), **Decisions** (numbered) and **Implementation n
 changes are made together across the code (the package comments of `internal/session`,
 `internal/picker` and `internal/telemetry`, inline comments, the commands' `Short`, `Long` and
 option usages in `cmd/cld`, which the help is generated from, and `tests/testdata/help`),
-`README.md` and `docs/design.md`, with tests. When a change rests on observed tmux or claude
-behaviour, record the probe and the versions in Findings.
+`README.md`, `docs/guide.md` and `docs/design.md`, with tests. When a change rests on observed tmux
+or claude behaviour, record the probe and the versions in Findings.
+
+`README.md` is the overview: what cld does, installing it, the commands, a paragraph per feature.
+`docs/guide.md` has the details a user may need beyond it and `cld help`: caveats, what is not
+checked yet, troubleshooting, upgrading. Neither explains how cld works inside; that is for
+`docs/design.md` and the package comments.
 
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
 a header `type(scope): description`, then a body, then optional footers, each separated by a blank
