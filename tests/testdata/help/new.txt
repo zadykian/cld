@@ -1,7 +1,7 @@
 create session NAME in the current directory and attach to it. Without -n
 and -s, NAME is REPO-INDEX, REPO being the name of the git repository the
-directory is in and INDEX 0 or, where sessions REPO-INDEX run, one above the
-highest of their INDEX; outside a repository, INDEX alone.
+directory is in, or outside one of the directory itself, and INDEX 0 or, where
+sessions REPO-INDEX run, one above the highest of their INDEX.
 
 Usage:
   cld new [-n NAME | -s SUFFIX] [-w] [flags]
@@ -11,6 +11,6 @@ Flags:
   -n, --name NAME       session NAME: up to 64 letters, digits, "_" and "-",
                         starting with a letter or digit
   -s, --suffix SUFFIX   session REPO-SUFFIX, REPO being the name of the git
-                        repository here; SUFFIX alone outside one
+                        repository here, or outside one of the directory
   -w, --worktree        run claude in git worktree cld-NAME, which claude makes
                         from HEAD or reopens (claude --worktree cld-NAME)

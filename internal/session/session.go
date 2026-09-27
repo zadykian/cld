@@ -6,9 +6,9 @@
 // Control on from the start, and attaches to it; with -w claude also gets --worktree cld-NAME,
 // makes git worktree cld-NAME from HEAD or reopens it, and works there. `-s SUFFIX` in place of
 // `-n NAME` names the session REPO-SUFFIX, where REPO is the name of the git repository the
-// current directory is in, and SUFFIX alone outside one (see Prefix); `cld new` without either
-// names it REPO-0, or the index above the highest REPO-INDEX running, and 0, 1, ... outside a
-// repository (see Tmux.Next). `cld resume -n NAME [SESSION]` creates the session the same way,
+// current directory is in or, outside one, of the directory itself (see Prefix); `cld new`
+// without either names it REPO-0, or the index above the highest REPO-INDEX running (see
+// Tmux.Next). `cld resume -n NAME [SESSION]` creates the session the same way,
 // without -w, and claude resumes the conversation named cld-NAME, or SESSION, instead of starting
 // one: it also gets --resume cld-NAME or --resume SESSION.
 // `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it with its server
@@ -17,7 +17,7 @@
 // arrow keys, to join with Enter, as join does, or to kill with Ctrl+X pressed twice, as kill does
 // (see internal/picker). The shell completion that `cld completion SHELL` prints reads the same
 // sessions, where `cld join -n` completes the names `cld list` shows, and `cld join -s` the
-// SUFFIX of those named after the repository.
+// SUFFIX of those named after the repository, or the directory.
 //
 // cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
 // Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
@@ -794,9 +794,21 @@ func (t *Tmux) OwnPane() (string, bool) {
 }
 
 // Prefix is what the NAME that -s and new's default give starts with (see Next): the name of the
-// git repository the current directory is in, then "-", or "" outside one (see repository).
+// git repository the current directory is in (see repository) or, outside one, of the current
+// directory itself - /root gives root - made a NAME (see asName), then "-". Where nothing is left
+// of the name, as for the root directory, it is "".
 func Prefix() string {
-	if name := repository(); name != "" {
+	name, found := repository()
+	if !found {
+		// Getwd gives the directory as the shell's PWD names it, where that is the directory: the
+		// name pwd shows, not that of the directory a symbolic link leads to.
+		dir, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		name = filepath.Base(dir)
+	}
+	if name = asName(name); name != "" {
 		return name + "-"
 	}
 	return ""
@@ -805,43 +817,47 @@ func Prefix() string {
 // notInName is a run of the characters a NAME cannot have.
 var notInName = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
 
-// repository is the name of the git repository the current directory is in, as a NAME can have
-// it: the name of the directory that holds the .git every work tree of the repository shares, so
-// that a linked worktree - one of claude's, under .claude/worktrees - has the repository's name
-// too; for a bare repository's worktree, and a submodule, whose git directory has a name of its
-// own, that name, without ".git". Each run of characters a NAME cannot have becomes "-", and "-"
-// and "_" go from either end: my.site is my-site, .dotfiles dotfiles. It is "" outside a git work
-// tree, where git is missing or fails, and for a name with nothing left. git gives the directory
-// as a path from the current one, or else a whole path.
-func repository() string {
+// asName is name as the start of a NAME: each run of the characters a NAME cannot have becomes
+// "-", and "-" and "_" go from either end - my.site is my-site, .dotfiles dotfiles, and "/"
+// nothing at all.
+func asName(name string) string {
+	return strings.Trim(notInName.ReplaceAllString(name, "-"), "-_")
+}
+
+// repository is the name of the git repository the current directory is in, and whether it is in
+// one: the name of the directory that holds the .git every work tree of the repository shares, so
+// that a linked worktree - one of claude's, under .claude/worktrees - and a subdirectory have the
+// repository's name too; for a bare repository's worktree, and a submodule, whose git directory
+// has a name of its own, that name, without ".git". A directory is in no repository outside a git
+// work tree - in the .git directory, say - where git is missing, and where it fails. git gives
+// the directory as a path from the current one, or else a whole path.
+func repository() (string, bool) {
 	git, err := tool.Command("git", "rev-parse", "--is-inside-work-tree", "--git-common-dir")
 	if err != nil {
-		return ""
+		return "", false
 	}
 	git.Stderr = nil
 	out, err := git.Output()
 	if err != nil {
-		return ""
+		return "", false
 	}
 	inside, common, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\n")
 	if inside != "true" || common == "" {
-		return ""
+		return "", false
 	}
 	if !filepath.IsAbs(common) {
 		dir, err := os.Getwd()
 		if err != nil {
-			return ""
+			return "", false
 		}
 		common = filepath.Join(dir, common)
 	}
 	common = filepath.Clean(common)
 	name := filepath.Base(common)
 	if name == ".git" {
-		name = filepath.Base(filepath.Dir(common))
-	} else {
-		name = strings.TrimSuffix(name, ".git")
+		return filepath.Base(filepath.Dir(common)), true
 	}
-	return strings.Trim(notInName.ReplaceAllString(name, "-"), "-_")
+	return strings.TrimSuffix(name, ".git"), true
 }
 
 // Next is the NAME new gives a session without -n or -s: prefix, then the index above the highest

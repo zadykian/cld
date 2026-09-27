@@ -56,12 +56,11 @@ running `claude --name cld-NAME` with
 it from claude.ai or the Claude app.
 
 `-n NAME` names the session; `-s SUFFIX` names it `REPO-SUFFIX`, `REPO` being the name of the git
-repository you are in, and `SUFFIX` alone outside one. Without either, `cld new` names it after the
-repository and an index: `REPO-0`, or where sessions `REPO-INDEX` run, the index above the highest
-of them - `0`, `1` and so on outside a repository. In a repository `api`, `cld new` twice and
-`cld new -s fix` make the sessions `cld-api-0`, `cld-api-1` and `cld-api-fix`, which
-`cld join -s 1` and `cld kill -s fix` then reach; `cld resume SESSION` names its session as
-`cld new` does.
+repository you are in or, outside one, of the current directory. Without either, `cld new` names it
+`REPO-0`, or where sessions `REPO-INDEX` run, the index above the highest of them. In a repository
+`api`, `cld new` twice and `cld new -s fix` make the sessions `cld-api-0`, `cld-api-1` and
+`cld-api-fix`, which `cld join -s 1` and `cld kill -s fix` then reach; in `/root`, outside any
+repository, `cld new` makes `cld-root-0`. `cld resume SESSION` names its session as `cld new` does.
 
 | Command | Action |
 |---|---|

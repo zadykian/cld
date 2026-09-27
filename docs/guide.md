@@ -27,15 +27,17 @@ install it as `cld`, executable, in a directory on your `PATH`.
 ## Sessions
 
 - A name consists of up to 64 ASCII letters, digits, `_` and `-`, starting with a letter or digit;
-  so does a `SUFFIX`, which is the name outside a git repository.
-- The repository's name, `REPO` in `REPO-SUFFIX` and in `cld new`'s `REPO-INDEX`, is that of the
-  directory that holds its `.git`, so that its worktrees - claude's under `.claude/worktrees`
-  among them - and its subdirectories share it; for a submodule, or a worktree of a bare
-  repository, it is the name of the git directory, without `.git`. Each run of the characters a
-  name cannot have becomes `-`, and `-` and `_` go from either end: `my.site` gives `my-site-0`,
-  `.dotfiles` `dotfiles-0`. Where nothing is left - a name in another script - or git is missing,
-  the session is named as outside a repository. A name that comes out longer than 64 characters is
-  refused: name the session with `-n NAME`.
+  so does a `SUFFIX`, which is the whole name where `REPO` leaves nothing (see below).
+- `REPO`, in `REPO-SUFFIX` and in `cld new`'s `REPO-INDEX`, is the name of the git repository you
+  are in: that of the directory that holds its `.git`, so that its worktrees - claude's under
+  `.claude/worktrees` among them - and its subdirectories share it; for a submodule, or a
+  worktree of a bare repository, the name of the git directory, without `.git`. Outside a
+  repository, and where git is missing, it is the name of the current directory as `pwd` shows
+  it - that of a symbolic link, not of where it leads: in `/root`, `cld new` makes `cld-root-0`.
+  Each run of the characters a name cannot have becomes `-`, and `-` and `_` go from either end:
+  `my.site` gives `my-site-0`, `.dotfiles` `dotfiles-0`. Where nothing is left - in the root
+  directory, or for a name in another script - the name is the index alone, or `SUFFIX`. A name
+  that comes out longer than 64 characters is refused: name the session with `-n NAME`.
 - `cld new` counts the sessions that run, those `cld list` shows, and servers that outlive their
   session (see [Troubleshooting](#troubleshooting)); a gap stays a gap. A session that has ended
   counts no more, so the next `cld new` can give its name again, and claude's history then holds
@@ -197,7 +199,8 @@ cld reads the file when it runs: edits apply when you run it again. The containe
 ## Shell completion
 
 `cld join -n <TAB>` offers each session with its state, `cld join -s <TAB>` the `SUFFIX` of those
-named after the repository you are in, and `--mcp` the next server after a comma. No file names are
+named after the repository or directory you are in, and `--mcp` the next server after a comma. No
+file names are
 offered, and `cld new -n`, `cld new -s`, `cld resume`, `cld kill` and the values of
 `cld setup telemetry` offer nothing. The script runs `cld` on every TAB, so the names are always
 current. `CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states and the other
@@ -278,7 +281,7 @@ cld removes nothing: to undo it, delete the script, and for zsh the lines in `.z
   session on `cld join`, and on `Enter` in `cld list`; both now leave it attached. Use
   `cld join --detach-others` to take the session over as before.
 - **Session names.** In cld 0.7.1 and earlier, `-n` defaulted to `main`, and `-w` named the
-  worktree `NAME`. Now `cld new` names the session after the repository (see
+  worktree `NAME`. Now `cld new` names the session after the repository or directory (see
   [Sessions](#sessions)); `cld join` and `cld kill` need `-n NAME` or `-s SUFFIX`, and
   `cld resume` those or `SESSION`: sessions named `main` before, and their conversations, are
   `-n main`. `cld new -n NAME -w` makes the worktree `cld-NAME`: the worktree `NAME` of an earlier
