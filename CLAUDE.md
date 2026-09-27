@@ -13,14 +13,15 @@ help texts, argument errors), `internal/session` the tmux side, `internal/picker
 `internal/telemetry` `cld setup telemetry` (a local OpenTelemetry Collector in Docker, and
 claude's settings pointed at it), `internal/configfile` edits the files the two write in place,
 `internal/tool` finds the programs cld runs on the `PATH` (and ends cld as a shell would when one
-cannot run), and `internal/fail` carries exit statuses up to `main`. Everything else is its test
-harness (Go, under `tests/`), docs and CI.
+cannot run), and `internal/fail` carries exit statuses up to `main`. `install.sh`, published with
+each release, installs cld from a release. Everything else is its test harness (Go, under `tests/`), docs
+and CI.
 
 ## Commands
 
 ```sh
 make check                              # lint + test, natively (baseline terminal only)
-make lint                               # gofmt, go vet; shellcheck, shfmt -i 4 on fetch-deps
+make lint                               # gofmt, go vet; shellcheck, shfmt -i 4 on the scripts
 make test                               # cd tests && go test -count=1 ./...
 cd tests && go test -count=1 -run 'TestList$' .   # a single test
 cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata/help from cld
@@ -28,14 +29,15 @@ make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
 make docker-check                       # same as CI: tmux 3.7c built from source, tmux + jediterm
 make docker-image TMUX_VERSION=X        # an image with another tmux release, to try it by hand
-make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH, linux/darwin x amd64/arm64, + cld.sha256
+make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH, linux/darwin x amd64/arm64, cld.sha256,
+                                        #   install.sh
 make install PREFIX=DIR                 # build cld for the host into DIR/bin (VERSION stamps it)
 ```
 
 Native runs need Go, tmux 3.7 or newer, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`)
 runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, and `make check` on macOS with
 Homebrew tmux. Pushing a tag `vX.Y.Z` runs the checks and publishes a release: a binary per
-platform and `cld.sha256`.
+platform, `cld.sha256` and `install.sh`.
 
 ## Constraints on cld
 
@@ -48,7 +50,12 @@ platform and `cld.sha256`.
   `list`, `setup project`, `setup telemetry` and completion do not. Re-derive the minimum when
   cld starts to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
-  `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `tests/jediterm/fetch-deps`.
+  `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `install.sh` and
+  `tests/jediterm/fetch-deps`.
+- `install.sh` is POSIX sh, run as `curl -fsSL .../releases/latest/download/install.sh | sh`:
+  everything stays in functions that its last line calls, so that a download cut short runs
+  nothing. It relies on the names `make dist` publishes, `cld-OS-ARCH` and `cld.sha256` with its
+  `HASH  NAME` lines, so a change to them goes with one to it (decision 20).
 - Only `main` exits: errors carry their exit status up (`internal/fail`); `new`, `resume`, `join`
   and the list's Enter end in `syscall.Exec` of tmux. cobra's defaults are overridden to keep
   cld's command line - the first argument checked before cobra, and the one after `setup`,
@@ -151,7 +158,10 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   against the fake docker: its calls, the collector config, the port, the settings file, failures
   (Linux only; macOS checks the refusal); `project_test.go` — `setup project` against the real
   git: the files as the repository has them, edits of files that exist, `.gitignore`'s lines,
-  patterns that ignore the settings all the same, refusals.
+  patterns that ignore the settings all the same, refusals; `install_test.go` — `install.sh`
+  piped into `sh` and `bash`, against releases an HTTP server of the test's serves
+  (`CLD_RELEASES_URL`) and a fake `uname`: platforms, versions, directories, refusals, and the
+  script cut short at every line.
 
 ## Documentation conventions
 
