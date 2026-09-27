@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2006,11 +2007,30 @@ func TestNewRefusesADirectoryItCannotEnter(t *testing.T) {
 }
 
 // socket makes a file where tmux keeps the sandbox's socket of server, for list to find: its
-// lookups go to a fake tmux, which answers whatever the file is.
+// lookups go to a fake tmux, which answers whatever the file is. The real tmux needs staleSocket.
 func socket(t *testing.T, s *sandbox.Sandbox, server string) {
 	t.Helper()
 	if err := os.MkdirAll(s.SocketDir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	s.WriteFile(filepath.Join(s.SocketDir(), server), "")
+}
+
+// staleSocket makes the sandbox's socket of server as a server that has died leaves it: a socket
+// that nothing listens on, where the real tmux says that no server is running. A plain file will
+// not do: tmux says so on Linux, whose connect refuses the connection there, but macOS's reports
+// that the file is no socket, and tmux fails with that.
+func staleSocket(t *testing.T, s *sandbox.Sandbox, server string) {
+	t.Helper()
+	if err := os.MkdirAll(s.SocketDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(s.SocketDir(), server), Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener.SetUnlinkOnClose(false)
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
