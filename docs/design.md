@@ -237,6 +237,15 @@ than skipped, so a terminal gaining or losing support flips a test.
 
 The Linux job runs the same Docker image a developer runs locally.
 
+Pull requests land on `main` by fast-forward, so `main` holds the very commits CI checked. GitHub
+has no such merge method - a merge commit, a squash and a rebase all write commits of their own,
+a rebase setting each committer anew - so none is left: the repository allows merge commits alone
+and the ruleset on `main` rebase alone, besides a linear history. A push of a pull request's head
+to `main` passes the ruleset once its required checks pass and its conversations are resolved, and
+GitHub marks the pull request merged. `.github/workflows/fast-forward.yml` makes that push for a
+comment `/fast-forward` from someone who can push; a pull request that changes
+`.github/workflows` is pushed by hand, since `GITHUB_TOKEN` may not push such a change.
+
 ### Spike before building the iTerm2 driver
 
 1. Does the pinned iTerm2 start on a hosted macOS runner without a dialog blocking it?

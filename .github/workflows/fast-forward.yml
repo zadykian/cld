@@ -1,0 +1,81 @@
+name: fast-forward
+
+# Pull requests land on main by fast-forward, as the very commits their checks ran on. GitHub has
+# no such merge method: a merge commit, a squash and a rebase all write commits of their own (a
+# rebase sets each commit's committer anew). None of them is left: the repository allows merge
+# commits alone and the ruleset on main rebase alone, besides a linear history, which refuses
+# merge commits too. Instead, a comment `/fast-forward` on a pull request into main, from someone
+# who can push to the repository, pushes the pull request's head commit to main here, and GitHub
+# marks the pull request merged. The ruleset still judges that push: it passes only as a
+# fast-forward, to the head of a pull request whose required checks pass on that commit and whose
+# conversations are resolved.
+#
+# The job runs main's copy of this file with a token that can push, so it runs nothing of the pull
+# request's: it fetches its commits and pushes one. GITHUB_TOKEN may not push a change to
+# .github/workflows, so such a pull request is refused here and pushed by hand
+# (`git push origin SHA:main`). Its push starts no workflow either, so ci.yml does not run again on
+# main for a commit it has checked already.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  fast-forward:
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/fast-forward')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.issue.number }}
+      COMMENTER: ${{ github.event.comment.user.login }}
+      MAIN: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Each refusal leaves its reason in $RUNNER_TEMP/refusal for the comment below.
+      - name: Fast-forward
+        run: |
+          refuse() {
+              printf '%s\n' "$*" >"$RUNNER_TEMP/refusal"
+              echo "::error::$(head -n 1 "$RUNNER_TEMP/refusal")"
+              exit 1
+          }
+          # Anyone may comment; the push is made for those who could make it themselves.
+          push="$(gh api "repos/$GH_REPO/collaborators/$COMMENTER/permission" \
+              --jq .user.permissions.push)"
+          [ "$push" = true ] || refuse "@$COMMENTER cannot push to $GH_REPO."
+          pr="$(gh api "repos/$GH_REPO/pulls/$PR" --jq '[.state, .base.ref, .head.sha] | @tsv')"
+          IFS=$'\t' read -r state base sha <<<"$pr"
+          [ "$state" = open ] || refuse "#$PR is $state."
+          [ "$base" = "$MAIN" ] || refuse "#$PR is into $base, not $MAIN."
+          # The pull request's head by its hash, which a fork's commits have here too.
+          git fetch --no-tags origin "$sha" "+refs/heads/$MAIN:refs/remotes/origin/$MAIN"
+          if ! git merge-base --is-ancestor "origin/$MAIN" "$sha"; then
+              refuse "#$PR does not start from the head of $MAIN: rebase it onto $MAIN."
+          fi
+          if ! git diff --quiet "origin/$MAIN" "$sha" -- .github/workflows; then
+              refuse "#$PR changes .github/workflows, which GITHUB_TOKEN may not push:" \
+                  "push it yourself, \`git push origin $sha:$MAIN\`."
+          fi
+          # The ruleset's reasons, if it refuses, are in what git prints.
+          if ! git push origin "$sha:refs/heads/$MAIN" 2>"$RUNNER_TEMP/push"; then
+              cat "$RUNNER_TEMP/push" >&2
+              refuse "$(printf 'GitHub refused the push of %s to %s:\n\n~~~\n%s\n~~~' \
+                  "$sha" "$MAIN" "$(cat "$RUNNER_TEMP/push")")"
+          fi
+      - name: Report
+        if: failure()
+        run: |
+          reason="$(cat "$RUNNER_TEMP/refusal" 2>/dev/null || echo 'The run failed.')"
+          run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="$(printf "\`/fast-forward\` did not move %s: %s\n\n[The run](%s)" \
+              "$MAIN" "$reason" "$run")"
+          gh pr comment "$PR" --body "$body"

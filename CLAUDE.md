@@ -43,6 +43,14 @@ runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, and `make ch
 Homebrew tmux. Pushing a tag `vX.Y.Z` runs the checks and publishes a release: a binary per
 platform, `cld.sha256` and `install.sh`.
 
+Pull requests land on `main` by fast-forward only, as the commits CI checked; GitHub's merge
+methods are all refused (`gh pr merge` included): the repository allows merge commits alone, and
+the ruleset on `main` rebase alone. A comment `/fast-forward` on the pull request pushes its head
+to `main` (`.github/workflows/fast-forward.yml`), which the ruleset lets through once the checks
+`linux` and `macos` pass and every conversation is resolved. A pull request that changes
+`.github/workflows` is pushed by hand, `git push origin SHA:main`, since the workflow's token may
+not push such a change. Rebase onto `main` before either.
+
 ## Constraints on cld
 
 - Requires **tmux 3.7 or newer**, the release the tests run on (3.7c, pinned in
