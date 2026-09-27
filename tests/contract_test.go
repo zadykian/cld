@@ -138,9 +138,9 @@ func TestContractControlKeys(t *testing.T) {
 func TestContractDetach(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		s, term, probe := startContract(t, name)
-		if modes := term.Modes(); !modes.AltScreen || !modes.Mouse {
-			t.Fatalf("modes while attached %+v, want the alternate screen and mouse reporting on", modes)
-		}
+		waitModes(t, term, "while attached", "the alternate screen and mouse reporting on", func(modes terminal.Modes) bool {
+			return modes.AltScreen && modes.Mouse
+		})
 		term.Keys("C-q", "d")
 		sandbox.WaitFor(t, 10*time.Second, "cld to exit", func() bool { return !term.Running() })
 		if modes := term.Modes(); modes.AltScreen || modes.Mouse {

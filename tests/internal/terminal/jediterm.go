@@ -112,9 +112,14 @@ func (j *jediTerm) Paste(text string) {
 	j.call("paste", base64.StdEncoding.EncodeToString([]byte(text)))
 }
 
+// WheelUp waits for mouse reporting to scroll: JediTerm sends the wheel only while it is on, and
+// may not have taken in yet what turned it on. tmux turns every mouse mode off and on again when
+// a client attaches, and when the modes of claude's pane change.
 func (j *jediTerm) WheelUp() {
 	j.t.Helper()
-	j.call("wheel-up")
+	sandbox.WaitFor(j.t, 10*time.Second, "mouse reporting to scroll the wheel in jediterm", func() bool {
+		return string(j.call("wheel-up")) == "true"
+	})
 }
 
 func (j *jediTerm) Focus(focused bool) {

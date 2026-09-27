@@ -852,7 +852,7 @@ func TestIgnoresRelativePathEntries(t *testing.T) {
 			t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ",")+" after '"+relative+"'", func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
-				gitInit(t, s.Work)
+				gitInit(t, s)
 				for _, name := range []string{"tmux", "claude", "git"} {
 					script := "#!/bin/sh\necho \"relative " + name + " ran\" >&2\nexit 99\n"
 					if err := os.WriteFile(filepath.Join(s.Work, name), []byte(script), 0o755); err != nil {
@@ -1304,7 +1304,7 @@ func TestNewTmuxCommand(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			if dir != "" {
 				if err := os.Mkdir(filepath.Join(s.Work, dir), 0o755); err != nil {
 					t.Fatal(err)
@@ -1579,7 +1579,7 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 		t.Run(strings.Join(test.args, " ")+", "+strings.Join(test.denied, ",")+" denied, "+strings.Join(test.present, ",")+" present", func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			denied := filepath.Join(s.Root, "denied")
 			if err := os.Mkdir(denied, 0o755); err != nil {
 				t.Fatal(err)
@@ -1721,7 +1721,7 @@ func TestNewRefusesARemovedDirectory(t *testing.T) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			// sh makes the directory, moves into it and removes it, then runs cld there.
 			script := `mkdir "$1" && cd "$1" && rmdir "$1" && shift && exec "$0" "$@"`
 			cmd := exec.Command("/bin/sh", append([]string{"-c", script, sandbox.Cld, filepath.Join(s.Work, "removed")}, args...)...)

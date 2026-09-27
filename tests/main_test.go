@@ -4,6 +4,9 @@
 //
 // CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"):
 // tmux, jediterm (needs a JDK and CLD_JEDITERM_LIB, see jediterm/fetch-deps).
+//
+// The tests run the same from git hooks and git rebase --exec: TestMain unsets the GIT_*
+// variables git sets there, before it runs anything.
 package tests
 
 import (
@@ -22,6 +25,15 @@ import (
 var terminals = strings.Split(envOr("CLD_TERMINALS", "tmux"), ",")
 
 func TestMain(m *testing.M) {
+	// git runs hooks and the commands of rebase --exec with GIT_* variables set, in a linked
+	// worktree GIT_DIR among them; git init DIR, as the tests run it, would then initialise that
+	// repository again instead of DIR, and take it for a bare one (see Findings in
+	// docs/design.md). Nothing the tests run inherits any of them.
+	for _, variable := range os.Environ() {
+		if name, _, _ := strings.Cut(variable, "="); strings.HasPrefix(name, "GIT_") {
+			_ = os.Unsetenv(name)
+		}
+	}
 	dir, err := os.MkdirTemp("", "cld-tests.")
 	if err == nil {
 		err = setup(dir)
@@ -84,6 +96,38 @@ func envOr(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// The tests run nothing with a GIT_* variable they inherit, and gitInit makes the work directory a
+// repository even with GIT_DIR set, leaving the repository it names alone: git init DIR would
+// initialise that one again instead, and take it for a bare one. Not parallel, for t.Setenv.
+func TestGitVariables(t *testing.T) {
+	for _, variable := range os.Environ() {
+		if strings.HasPrefix(variable, "GIT_") {
+			t.Errorf("the tests run with %s", variable)
+		}
+	}
+	s := sandbox.New(t)
+	gitInit(t, s)
+	// Not named .git, as a worktree's git directory is not: git init guesses that such a
+	// repository is bare, and writes core.bare = true into its config.
+	gitDir := filepath.Join(s.Root, "rebased")
+	if err := os.Rename(filepath.Join(s.Work, ".git"), gitDir); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(gitDir, "config")
+	before, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_DIR", gitDir)
+	gitInit(t, s)
+	if after, _ := os.ReadFile(config); string(after) != string(before) {
+		t.Errorf("git init changed the config of the repository GIT_DIR names:\n%s\nwas\n%s", after, before)
+	}
+	if _, err := os.Stat(filepath.Join(s.Work, ".git", "HEAD")); err != nil {
+		t.Errorf("git init made no repository of the work directory: %v", err)
+	}
 }
 
 // forEachTerminal runs body as a subtest per terminal in CLD_TERMINALS.

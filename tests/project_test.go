@@ -203,7 +203,7 @@ func TestSetupProject(t *testing.T) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			result := s.RunCld(nil, args...)
 			want := "Created .claude/settings.json\nCreated .claude/settings.local.json\n"
 			if test.servers != nil {
@@ -268,7 +268,7 @@ func TestSetupProject(t *testing.T) {
 func TestSetupProjectEditsFiles(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	gitInit(t, s.Work)
+	gitInit(t, s)
 	settings := projectWrite(t, s, ".claude/settings.json", `{
     "permissions": {
         "deny": ["Bash(rm:*)"],
@@ -357,7 +357,7 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 	t.Run("a key given twice", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
-		gitInit(t, s.Work)
+		gitInit(t, s)
 		settings := projectWrite(t, s, ".claude/settings.json", `{"theme": "light", "enabledMcpjsonServers": [], "theme": "light", "enabledMcpjsonServers": ["goland"]}`)
 		projectWrite(t, s, ".mcp.json", `{"mcpServers": {"goland": {}}, "mcpServers": {"goland": {}, "goland": {"type": "sse"}}}`)
 		result := s.RunCld(nil, "setup", "project", "--mcp", "goland")
@@ -399,7 +399,7 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 	t.Run("no servers", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
-		gitInit(t, s.Work)
+		gitInit(t, s)
 		projectWrite(t, s, ".mcp.json", "{")
 		if result := s.RunCld(nil, "setup", "project"); result.Code != 0 || strings.Contains(result.Stdout, ".mcp.json") || result.Stderr != "" {
 			t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, nothing of .mcp.json", result.Code, result.Stdout, result.Stderr)
@@ -434,7 +434,7 @@ func TestSetupProjectGitignore(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			projectWrite(t, s, ".gitignore", test.before)
 			result := s.RunCld(nil, "setup", "project")
 			line, after := "Left .gitignore as it was\n", test.before
@@ -479,7 +479,7 @@ func TestSetupProjectIgnoredAllTheSame(t *testing.T) {
 			// git looks no further up than the sandbox for a work tree.
 			extra := map[string]string{"GIT_CEILING_DIRECTORIES": s.Root}
 			if test.git {
-				gitInit(t, s.Work)
+				gitInit(t, s)
 			}
 			if test.gitignore != "" {
 				projectWrite(t, s, ".gitignore", test.gitignore)
@@ -501,7 +501,7 @@ func TestSetupProjectIgnoredAllTheSame(t *testing.T) {
 	t.Run("no git", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
-		gitInit(t, s.Work)
+		gitInit(t, s)
 		projectWrite(t, s, ".gitignore", ".claude/\n")
 		result := s.RunCld(map[string]string{"PATH": s.Tools()}, "setup", "project")
 		if want := created + "Updated .gitignore: /.claude/*, !/.claude/settings.json\n"; result.Code != 0 || result.Stdout != want || result.Stderr != "" {
@@ -541,7 +541,7 @@ func TestSetupProjectRefuses(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			gitInit(t, s.Work)
+			gitInit(t, s)
 			for name, content := range test.files {
 				projectWrite(t, s, name, content)
 			}
@@ -574,7 +574,7 @@ func TestSetupProjectCannotWrite(t *testing.T) {
 		t.Skip("the longest path is Linux's")
 	}
 	s := sandbox.New(t)
-	gitInit(t, s.Work)
+	gitInit(t, s)
 	length := 4095 - len("/gitignore")
 	dir := filepath.Join(s.Root, "long")
 	for len(dir) < length-202 {
