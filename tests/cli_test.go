@@ -1483,7 +1483,8 @@ func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
 	// cld finds the fake tmux, which the hooks then name.
-	remoteControl, fromHead := settings(sandbox.FakeTmux, false), settings(sandbox.FakeTmux, true)
+	remoteControl := settings(sandbox.FakeTmux, sandbox.RealGit, false)
+	fromHead := settings(sandbox.FakeTmux, sandbox.RealGit, true)
 	for _, command := range []struct {
 		args []string
 		// dir is where in the work tree cld runs, and c what tmux gets with -c there
@@ -1543,7 +1544,7 @@ func TestNewTmuxCommand(t *testing.T) {
 				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`, ";",
 				"set", "-t", "=cld-x:", "@cld-tmux", sandbox.FakeTmux, ";",
 				"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",
-				"set", "-t", "=cld-x:", "set-titles-string", "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-x", ";",
+				"set", "-t", "=cld-x:", "set-titles-string", "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-x#{?@cld-worktree, [w],}", ";",
 				"set", "-t", "=cld-x:", "set-titles", "on")
 			record := s.FakeTmuxRecord()
 			if !slices.Equal(record.Argv, want) {

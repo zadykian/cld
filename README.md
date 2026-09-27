@@ -95,8 +95,9 @@ session stays with its message on screen, as `exited` in `cld list`, until `cld 
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
 The terminal's tab shows the session, `✳ cld-NAME`, and while claude works `◐` and `◑` in turn in
-place of the `✳`, as claude's own title does outside tmux. claude tells tmux through hooks that
-cld gives it; the [guide](docs/guide.md#sessions) says what they miss.
+place of the `✳`, as claude's own title does outside tmux; while claude works in a linked git
+worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
+[guide](docs/guide.md#sessions) says what they miss.
 
 ### Resuming a conversation
 

@@ -139,6 +139,8 @@ rows that name none were probed against tmux 3.6.
 | `claude` 2.1.283's own title (read from its bundle; and the `#{pane_title}` of a claude working in a session of cld's, read every 50 ms for 45 s) | `MARKER NAME`, the marker from claude's status: `◐` and `◑` in turn, every 960 ms, while it is `busy`; `✳` while it is `idle` or `waiting` - a permission dialog, an MCP server's question. Where `TMUX`, `STY` or `ZELLIJ` is set and the feature flag `tengu_static_title_under_mux` (on by default) holds, the marker stays `✳`: the pane's title read `✳ cld-NAME` throughout. claude also writes its status to `~/.claude/sessions/PID.json` (`status`, `statusUpdatedAt`), which no documentation names, and sends no OSC 9;4 that tmux records: `#{pane_pb_state}` stayed `hidden` |
 | claude's hook events (the linux-x64 bundles of 2.1.232 and 2.1.283, read, not run) | both have `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` ("When a permission dialog is displayed"), `Elicitation`, `ElicitationResult`, `Notification` - of the types `permission_prompt`, `idle_prompt`, `elicitation_dialog` and others - `Stop` and `StopFailure` ("Fires instead of Stop when an API error ... ended the turn"). `PostToolUseFailure`'s input has `is_interrupt`. No event comes when the user interrupts claude as it writes |
 | hooks given with `--settings` (the real `claude` 2.1.283, alone on a scratch tmux server, in a directory whose trust was accepted, Remote Control off; a second `UserPromptSubmit` hook exited 2, which blocks the prompt, so nothing reached the API) | claude ran them - `SessionStart` as it started, `UserPromptSubmit` on Enter - in its own environment, with `TMUX` naming the server and `TMUX_PANE` its pane: `tmux if -F -t "$TMUX_PANE" '#{!=:#{@cld-status},busy}' 'set @cld-status busy'` set the option on claude's session. No `Stop` followed the blocked prompt: the option stayed `busy` |
+| where claude runs a hook, and what `SessionStart` and `CwdChanged` see (the real `claude` 2.1.283 started in a linked worktree whose trust was accepted, alone on a scratch tmux server, Remote Control off; bash mode's `!cd /tmp`, `!cd` to the main worktree and `!cd` back - which claude answered with the model all the same, three short replies) | `SessionStart` ran in claude's directory, with it as its input's `cwd`. `!cd /tmp` fired `CwdChanged` with `new_cwd` `/tmp`, and `!cd` to the main worktree one with that; each time claude then took its shell back to the worktree the session works in ("Shell cwd was reset"), with no event, and the hooks' own directory, their `cwd` and `#{pane_current_path}` stayed the worktree throughout. `!cd` back to it fired nothing, the shell being there already |
+| where claude sets its directory (claude 2.1.283's bundle, read, not run) | a hook runs in the host's project root where a launch sets one, and otherwise in claude's current directory. claude sets that - `process.chdir` and the session's `setCwd`, whose change fires `CwdChanged` - for `--worktree` as it starts; for `EnterWorktree` and `ExitWorktree`, the latter back to the directory it came from; and for a resumed conversation that recorded a worktree. A `WorktreeCreate` hook replaces claude's own making of a worktree (its stdout names the directory), so it is no event to listen to |
 | `set-titles` under `status off` (tmux 3.7c: `server-client.c`, `format.c`, `options.c`, `status.c` and `cmd-refresh-client.c` read, and probed with a client in a pane of another server, whose `#{pane_title}` is the title that client sets) | tmux expands `set-titles-string`, a session option, with strftime whenever it redraws a client, and writes the title only where it changed; it restores no title on detach. Setting any option, a user option too, redraws every client on the server: `set @cld-status busy` turned `✳ NAME` into `◐ NAME` at once. With `status off` no timer expands the title again, and a `#()` job in it redraws nothing when it ends - only the status line's jobs do - but a job that runs `refresh-client -S`, which redraws the status alone, that is the title, a second later in the background kept it turning: `◐` and `◑` swapped every 1.0 to 1.3 s until the option changed, with the job naming a tmux whose path has a space, `#`, `%` and parentheses through `#{q:@OPTION}`. tmux runs a title's job at most once a second for each client. With `set-titles` on tmux also hands the active pane's directory (OSC 7) to the terminals it credits with `osc7`, iTerm2 and foot among them: an empty one for claude, which sets none |
 
 ## Distribution
@@ -187,7 +189,7 @@ a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the prob
 
 | # | Check | Evidence |
 |---|---|---|
-| C1 | tab title is `✳ cld-NAME`, with `◐` and `◑` in turn in place of `✳` while claude is busy, and survives claude's own title changes | terminal, probe |
+| C1 | tab title is `✳ cld-NAME`, with `◐` and `◑` in turn in place of `✳` while claude is busy and ` [w]` after it while claude is in a linked git worktree, and survives claude's own title changes | terminal, probe |
 | C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, ...) | tmux |
 | C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
 | C4 | mouse wheel and focus in/out reach claude; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
@@ -1469,6 +1471,36 @@ The Linux job runs the same Docker image a developer runs locally.
 
     Out of scope: a marker for `waiting` of its own (claude's title has none), a title that shows
     more than the marker, and the title a terminal keeps after it detaches.
+26. The tab marks a worktree: while claude works in a linked git worktree - one `new -w` has
+    claude make, one it enters with `EnterWorktree`, one `cld new` runs in - the title ends in
+    ` [w]`, as in `✳ cld-NAME [w]`, and loses it as claude leaves. It follows claude as 25's
+    status does. Settled with it:
+    1. the hooks of 25 keep `@cld-worktree` on claude's session, `1` or `0`, and the title adds
+       `#{?@cld-worktree, [w],}` after the name. The hooks are `SessionStart` and `CwdChanged`:
+       claude runs a hook in its directory, and sets that directory - firing `CwdChanged` - as
+       `--worktree` starts it, as it enters or leaves a worktree, and as a resumed conversation
+       takes it back to one (see Findings). Whether `--worktree` moves claude before
+       `SessionStart` or after it, one of the two runs in the worktree;
+    2. a hook asks git in its own directory: a linked worktree's `--git-dir` is not its
+       `--git-common-dir` (with `--path-format=absolute`, git 2.31 and newer); the main worktree's
+       is, and outside a repository both are empty. `CwdChanged`'s `new_cwd` is not taken: it
+       names where claude's shell went, which claude takes back without an event when it leaves
+       the worktree a session works in;
+    3. git goes by the path cld finds in the PATH's absolute entries, as tmux does: the hook runs
+       in claude's directory, where a relative entry would find a git of the project's own. Where
+       cld finds no git, the two hooks are left out, and the title never says `[w]`. What the hook
+       prints goes to /dev/null: `SessionStart`'s output goes to the model. The settings are
+       encoded without HTML's escapes, so that `2>/dev/null` reads so in claude's arguments;
+    4. rather than follow claude, `[w]` could have stood for the `-w` a session started with -
+       fixed, and with no hooks - but it would miss `EnterWorktree`, `cld new` in a worktree and
+       a resumed worktree conversation (the maintainer chose to follow claude);
+    5. the tests: the hooks as claude starts in the main worktree, a linked one and its
+       subdirectory, and as it moves among them, a directory outside the repository and `.git`;
+       no hooks for the worktree where cld finds no git; C1 with ` [w]` idle, busy and for a
+       claude that failed, on each terminal.
+
+    Out of scope: `[w]` for a shell `cd` into a worktree that the session's directory does not
+    follow, and saying which worktree.
 
 ## Implementation notes
 
@@ -1824,7 +1856,10 @@ by hand in a nested tmux).
   `PermissionRequest` and `PostToolUse` around a permission, `PostToolUseFailure` with
   `is_interrupt` for `Esc` in a tool, `idle_prompt` a minute after an interrupt as claude writes -
   was not run: each takes a prompt to the API, so the maintainer runs or allows it. The title in
-  iTerm2, and the empty OSC 7 tmux sends it, were not seen.
+  iTerm2, and the empty OSC 7 tmux sends it, were not seen. Of the worktree's hooks (26),
+  `SessionStart` in a linked worktree and `CwdChanged` for bash mode's `cd` were seen with the
+  real claude; `--worktree`, `EnterWorktree`, `ExitWorktree` and a resumed worktree conversation
+  were read in its bundle, not run.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

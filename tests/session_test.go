@@ -2,9 +2,11 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -29,37 +31,45 @@ import (
 // terminal (a pane of an outer tmux server).
 
 // remoteControl is the --settings every new claude gets from a cld that finds the sandbox's tmux
-// (see settings).
-func remoteControl() string { return settings(sandbox.RealTmux, false) }
+// and git (see settings).
+func remoteControl() string { return settings(sandbox.RealTmux, sandbox.RealGit, false) }
 
-// settings is the --settings a new claude gets from a cld that found tmux at the path tmux: Remote
-// Control on from the start and, with fromHead, new -w's worktree branched from HEAD, then the
-// hooks that keep claude's status on its session for the tab's title (see TestStatusHooks). Each
-// runs that tmux on the server of claude's pane.
-func settings(tmux string, fromHead bool) string {
-	set := func(status string) string {
-		return `'` + tmux + `' if -F -t \"$TMUX_PANE\" '#{!=:#{@cld-status},` + status + `}' 'set @cld-status ` + status + `'`
+// settings is the --settings a new claude gets from a cld that found tmux and git at those paths:
+// Remote Control on from the start and, with fromHead, new -w's worktree branched from HEAD, then
+// the hooks that keep claude's status and whether it is in a linked worktree on its session, for
+// the tab's title (see TestStatusHooks and TestWorktreeHooks). Each runs that tmux on the server
+// of claude's pane.
+func settings(tmux, git string, fromHead bool) string {
+	set := func(option, value string) string {
+		return `'` + tmux + `' if -F -t \"$TMUX_PANE\" \"#{!=:#{` + option + `},` + value + `}\" \"set ` + option + ` ` + value + `\"`
 	}
+	status := func(value string) string { return set("@cld-status", value) }
+	dir := func(which string) string {
+		return `\"$('` + git + `' rev-parse --path-format=absolute ` + which + ` 2>/dev/null)\"`
+	}
+	worktree := `w=0; [ ` + dir("--git-dir") + ` = ` + dir("--git-common-dir") + ` ] || w=1; ` + set("@cld-worktree", "$w")
 	on := func(event, matcher, command string) string {
 		if matcher != "" {
 			matcher = `"matcher":"` + matcher + `",`
 		}
 		return `"` + event + `":[{` + matcher + `"hooks":[{"type":"command","command":"` + command + `"}]}]`
 	}
-	worktree := ""
+	base := ""
 	if fromHead {
-		worktree = `"worktree":{"baseRef":"head"},`
+		base = `"worktree":{"baseRef":"head"},`
 	}
-	return `{"remoteControlAtStartup":true,` + worktree + `"hooks":{` + strings.Join([]string{
-		on("Elicitation", "", set("waiting")),
-		on("ElicitationResult", "", set("busy")),
-		on("Notification", "idle_prompt", set("idle")),
-		on("PermissionRequest", "", set("waiting")),
-		on("PostToolUse", "", set("busy")),
-		on("PostToolUseFailure", "", `if grep -Eq '\"is_interrupt\": *true'; then `+set("idle")+`; else `+set("busy")+`; fi`),
-		on("Stop", "", set("idle")),
-		on("StopFailure", "", set("idle")),
-		on("UserPromptSubmit", "", set("busy")),
+	return `{"remoteControlAtStartup":true,` + base + `"hooks":{` + strings.Join([]string{
+		on("CwdChanged", "", worktree),
+		on("Elicitation", "", status("waiting")),
+		on("ElicitationResult", "", status("busy")),
+		on("Notification", "idle_prompt", status("idle")),
+		on("PermissionRequest", "", status("waiting")),
+		on("PostToolUse", "", status("busy")),
+		on("PostToolUseFailure", "", `if grep -Eq '\"is_interrupt\": *true'; then `+status("idle")+`; else `+status("busy")+`; fi`),
+		on("SessionStart", "", worktree),
+		on("Stop", "", status("idle")),
+		on("StopFailure", "", status("idle")),
+		on("UserPromptSubmit", "", status("busy")),
 	}, ",") + `}}`
 }
 
@@ -155,7 +165,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 // it then makes or reopens the worktree itself and moves into it. The repository is named work.
 func TestNewWorktree(t *testing.T) {
 	t.Parallel()
-	fromHead := settings(sandbox.RealTmux, true)
+	fromHead := settings(sandbox.RealTmux, sandbox.RealGit, true)
 	for _, test := range []struct {
 		args []string
 		want []string
@@ -1452,6 +1462,82 @@ func TestStatusHooks(t *testing.T) {
 	}
 }
 
+// The same hooks keep @cld-worktree on claude's session, which the tab's title reads (see
+// TestContractTitle): 1 while claude's directory is in a linked git worktree - one claude's
+// --worktree makes, or another - and 0 in the main worktree or outside a repository, as claude
+// starts in it, and each time claude's directory changes. claude runs the hooks in its directory.
+func TestWorktreeHooks(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		// start is where cld runs, in the work directory's repository, which has the linked
+		// worktree .claude/worktrees/x
+		start string
+		want  string
+	}{
+		{"in the main worktree", ".", "0"},
+		{"in a linked worktree", ".claude/worktrees/x", "1"},
+		{"in a linked worktree's subdirectory", ".claude/worktrees/x/sub", "1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			gitInit(t, s)
+			worktree := gitWorktree(t, s, "x")
+			if err := os.Mkdir(filepath.Join(worktree, "sub"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			startCldIn(t, s, "tmux", filepath.Join(s.Work, test.start), nil, "new", "-s", "x")
+			probe := s.WaitProbes(1)[0]
+			status := func() string { return s.Format("cld-x", "#{@cld-worktree}") }
+			probe.Hook("SessionStart", `{"source":"startup"}`)
+			if got := status(); got != test.want {
+				t.Errorf("@cld-worktree is %q as claude starts, want %q", got, test.want)
+			}
+			for _, step := range []struct{ dir, want string }{
+				{worktree, "1"},
+				{s.Work, "0"},
+				{filepath.Join(worktree, "sub"), "1"},
+				{s.Root, "0"},
+				{filepath.Join(s.Work, ".git"), "0"},
+				{worktree, "1"},
+			} {
+				probe.Send("cd " + step.dir)
+				probe.Hook("CwdChanged", `{"new_cwd":"`+step.dir+`"}`)
+				if got := status(); got != step.want {
+					t.Errorf("@cld-worktree is %q once claude is in %s, want %q", got, step.dir, step.want)
+				}
+			}
+		})
+	}
+}
+
+// Where cld finds no git, claude gets no hooks that run it, and the title never says [w].
+func TestWorktreeHooksWithoutGit(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	result := s.RunCld(map[string]string{"PATH": s.Tools("tmux", "claude"), "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new", "-s", "x")
+	if result.Code != 0 {
+		t.Fatalf("exit %d, stderr %q, want exit 0", result.Code, result.Stderr)
+	}
+	argv := s.FakeTmuxRecord().Argv
+	i := slices.Index(argv, "--settings")
+	if i < 0 {
+		t.Fatalf("no --settings in tmux's arguments %q", argv)
+	}
+	var given struct {
+		Hooks map[string]any `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(argv[i+1]), &given); err != nil {
+		t.Fatal(err)
+	}
+	events := slices.Sorted(maps.Keys(given.Hooks))
+	if want := []string{"Elicitation", "ElicitationResult", "Notification", "PermissionRequest", "PostToolUse",
+		"PostToolUseFailure", "Stop", "StopFailure", "UserPromptSubmit"}; !slices.Equal(events, want) {
+		t.Errorf("hooks for %q, want %q", events, want)
+	}
+}
+
 func TestServerOptions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1480,7 +1566,7 @@ func TestServerOptions(t *testing.T) {
 		{[]string{"-Awv", "-t", "=cld-0:", "remain-on-exit-format"}, ""},
 		{[]string{"-gwv", "remain-on-exit"}, "off"},
 		{[]string{"-v", "-t", "=cld-0:", "set-titles"}, "on"},
-		{[]string{"-v", "-t", "=cld-0:", "set-titles-string"}, "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-0"},
+		{[]string{"-v", "-t", "=cld-0:", "set-titles-string"}, "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-0#{?@cld-worktree, [w],}"},
 		{[]string{"-v", "-t", "=cld-0:", "@cld-busy"}, busyMarker},
 		{[]string{"-v", "-t", "=cld-0:", "@cld-tmux"}, sandbox.RealTmux},
 		{[]string{"-gv", "set-titles"}, "off"},
@@ -3529,6 +3615,25 @@ func runGit(t *testing.T, s *sandbox.Sandbox, dir string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
+}
+
+// gitWorktree makes the linked worktree .claude/worktrees/NAME of the work directory's
+// repository, which gitInit made, on a commit of its own, as claude's --worktree NAME makes one,
+// and returns its path.
+func gitWorktree(t *testing.T, s *sandbox.Sandbox, name string) string {
+	t.Helper()
+	path := filepath.Join(s.Work, ".claude", "worktrees", name)
+	for _, args := range [][]string{
+		{"-c", "user.name=cld", "-c", "user.email=cld@example.com", "commit", "-q", "--allow-empty", "-m", name},
+		{"worktree", "add", "-q", "-b", "worktree-" + name, path},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", s.Work}, args...)...)
+		cmd.Env = s.Environ(nil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	return path
 }
 
 // waitClients waits until count clients are attached to cld's servers, all told.

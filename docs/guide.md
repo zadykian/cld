@@ -76,6 +76,11 @@ install it as `cld`, executable, in a directory on your `PATH`.
 
   A terminal that detaches keeps the title it had, a busy one too. A session that an older cld
   started keeps `✳ cld-NAME`.
+- While claude works in a linked git worktree - one `cld new -w` has it make, one it enters with
+  its `EnterWorktree` tool, one you run `cld new` in - the title ends in ` [w]`, and loses it
+  when claude leaves. It follows claude's working directory, not where a shell command `cd`s
+  to. Without git on your `PATH` when the session starts, or with hooks turned off, there is no
+  `[w]`.
 
 ## The session list
 

@@ -67,8 +67,9 @@
 // claude needs for its passthrough - claude keeps its marker at ✳ (claude 2.1.283), so it tells
 // tmux instead: the hooks new and resume give it with --settings keep its status in the option
 // @cld-status of its session (see statusHooks), and tmux, with set-titles on for that session
-// only, sets the title of every terminal on it from that (see titles). claude's own title stays
-// in its pane. A terminal that detaches keeps the title tmux set last.
+// only, sets the title of every terminal on it from that (see titles). The same hooks keep
+// @cld-worktree, and the title ends in " [w]" while claude works in a linked git worktree. claude's
+// own title stays in its pane. A terminal that detaches keeps the title tmux set last.
 //
 // join attaches beside any other terminal on the session, which stays attached: the window takes
 // the size of the terminal used last (window-size latest), and a larger one shows the rest of its
@@ -392,34 +393,55 @@ type hookCommand struct {
 	Command string `json:"command"`
 }
 
-// statusHooks are the hooks that keep @cld-status on claude's session, for the tab's title (see
-// titles): busy from a prompt on, waiting while claude asks - a permission, an MCP server's
-// question - and idle once the turn is done, as claude tells its own status apart for its title
-// outside tmux. PostToolUse goes back to busy after a question answered; an interrupt ends a
-// tool's run with PostToolUseFailure, which says so, while one that comes as claude writes leaves
-// busy until claude, idle a minute, notifies idle_prompt, or the next prompt. Each runs tmux, by
-// the path cld checked, on the server of claude's pane, which claude's TMUX names; tmux sets the
-// option only where it changes, since setting any option redraws every terminal on the server.
-// tmux prints nothing that claude would take up: what a UserPromptSubmit hook prints goes to the
-// model.
-func statusHooks(tmux string) map[string][]hook {
-	set := func(status string) string {
-		return shellWord(tmux) + ` if -F -t "$TMUX_PANE" '#{!=:#{@cld-status},` + status + `}' 'set @cld-status ` + status + `'`
+// statusHooks are the hooks that keep claude's status on its session, for the tab's title (see
+// titles). @cld-status is busy from a prompt on, waiting while claude asks - a permission, an MCP
+// server's question - and idle once the turn is done, as claude tells its own status apart for
+// its title outside tmux. PostToolUse goes back to busy after a question answered; an interrupt
+// ends a tool's run with PostToolUseFailure, which says so, while one that comes as claude writes
+// leaves busy until claude, idle a minute, notifies idle_prompt, or the next prompt.
+//
+// @cld-worktree is 1 while claude's directory is in a linked git worktree - its git directory is
+// not the repository's common one - and 0 elsewhere: in the main worktree, outside a repository.
+// claude runs a hook in its directory, which it sets as it starts, entering the worktree of
+// --worktree or of a conversation it resumes, and as it enters or leaves one (EnterWorktree,
+// ExitWorktree), each time with CwdChanged. CwdChanged's new_cwd is not taken: it names where the
+// shell went, which claude takes back, without another event, when the shell leaves the worktree
+// a session works in. git goes by the path cld found in the PATH's absolute entries (see
+// tool.LookPath): the hook runs in claude's directory, where a relative entry would find a git of
+// the project's own. Where cld finds no git, the hooks leave @cld-worktree alone.
+//
+// Each hook runs tmux, by the path cld checked, on the server of claude's pane, which claude's
+// TMUX names; tmux sets an option only where it changes, since setting any option redraws every
+// terminal on the server. Nothing is printed for claude to take up: what a UserPromptSubmit or a
+// SessionStart hook prints goes to the model.
+func statusHooks(tmux, git string) map[string][]hook {
+	// set sets option to value, a word of sh that the shell expands.
+	set := func(option, value string) string {
+		return shellWord(tmux) + ` if -F -t "$TMUX_PANE" "#{!=:#{` + option + `},` + value + `}" "set ` + option + ` ` + value + `"`
 	}
 	on := func(matcher, command string) []hook {
 		return []hook{{Matcher: matcher, Hooks: []hookCommand{{Type: "command", Command: command}}}}
 	}
-	return map[string][]hook{
-		"UserPromptSubmit":   on("", set("busy")),
-		"PostToolUse":        on("", set("busy")),
-		"PostToolUseFailure": on("", `if grep -Eq '"is_interrupt": *true'; then `+set("idle")+`; else `+set("busy")+`; fi`),
-		"PermissionRequest":  on("", set("waiting")),
-		"Elicitation":        on("", set("waiting")),
-		"ElicitationResult":  on("", set("busy")),
-		"Notification":       on("idle_prompt", set("idle")),
-		"Stop":               on("", set("idle")),
-		"StopFailure":        on("", set("idle")),
+	hooks := map[string][]hook{
+		"UserPromptSubmit":   on("", set("@cld-status", "busy")),
+		"PostToolUse":        on("", set("@cld-status", "busy")),
+		"PostToolUseFailure": on("", `if grep -Eq '"is_interrupt": *true'; then `+set("@cld-status", "idle")+`; else `+set("@cld-status", "busy")+`; fi`),
+		"PermissionRequest":  on("", set("@cld-status", "waiting")),
+		"Elicitation":        on("", set("@cld-status", "waiting")),
+		"ElicitationResult":  on("", set("@cld-status", "busy")),
+		"Notification":       on("idle_prompt", set("@cld-status", "idle")),
+		"Stop":               on("", set("@cld-status", "idle")),
+		"StopFailure":        on("", set("@cld-status", "idle")),
 	}
+	if git != "" {
+		dir := func(which string) string {
+			return `"$(` + shellWord(git) + ` rev-parse --path-format=absolute ` + which + ` 2>/dev/null)"`
+		}
+		worktree := `w=0; [ ` + dir("--git-dir") + ` = ` + dir("--git-common-dir") + ` ] || w=1; ` + set("@cld-worktree", "$w")
+		hooks["SessionStart"] = on("", worktree)
+		hooks["CwdChanged"] = on("", worktree)
+	}
+	return hooks
 }
 
 // shellWord is text as one word of sh, quoted.
@@ -475,7 +497,8 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// Control starts with the session, so it can be reached from claude.ai and the mobile app;
 	// claude still keeps it off where org policy or the project's own settings turn it off. A
 	// resumed conversation does not keep the settings it was started with: they go again.
-	given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path)}
+	git, _ := tool.LookPath("git")
+	given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path, git)}
 	if worktree {
 		// cld reports a missing repository in the terminal; claude would report it in a session
 		// left to kill.
@@ -486,13 +509,16 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 		// worktree.baseRef is "head".
 		given.Worktree.BaseRef = "head"
 	}
-	encoded, err := json.Marshal(given)
-	if err != nil {
+	// Without HTML's escapes, so that a hook's 2>/dev/null reads as such, not as 2\u003e/dev/null.
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(given); err != nil {
 		return fail.Runtime(err.Error())
 	}
 	// claude gets the session's name when it resumes too: a conversation resumed by another name
 	// is to take the session's, so that the next resume finds it (decision 16 in docs/design.md).
-	claude := []string{c.path, "--name", name, "--settings", string(encoded)}
+	claude := []string{c.path, "--name", name, "--settings", strings.TrimSuffix(encoded.String(), "\n")}
 	if worktree {
 		claude = append(claude, "--worktree", name)
 	}
@@ -998,10 +1024,11 @@ func Title(suffix string) string {
 // titles is the title tmux gives the terminals on session cld-SUFFIX (its set-titles-string, with
 // set-titles on for that session): the session's name after claude's marker - busyMarker while
 // @cld-status is busy (see statusHooks), ✳ otherwise, and for a claude that exited, which a turn
-// it failed in leaves busy. claude's own title, #T, stays out: under tmux claude keeps a ✳ that
-// never turns, and a program it runs could set another.
+// it failed in leaves busy - and " [w]" after it while @cld-worktree says claude is in a linked
+// git worktree. claude's own title, #T, stays out: under tmux claude keeps a ✳ that never turns,
+// and a program it runs could set another.
 func titles(suffix string) string {
-	return "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-" + suffix
+	return "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-" + suffix + "#{?@cld-worktree, [w],}"
 }
 
 // busyMarker is claude's marker while it is busy, expanded with strftime (T:): ◐ in even seconds
