@@ -49,7 +49,7 @@ func run(args []string) error {
 	if !known {
 		// Before cld had commands, "cld NAME" attached to session NAME, creating it first.
 		if session.ValidName(typed) {
-			return fail.Usage(fmt.Sprintf("unknown command '%s'; for session %[1]s: cld new -n %[1]s, cld join -n %[1]s", typed))
+			return fail.Usage(fmt.Sprintf("unknown command '%s'; for a session %[1]s-SUFFIX: cld new -n %[1]s, cld join -n %[1]s -s SUFFIX", typed))
 		}
 		return fail.Usage(fmt.Sprintf("unknown command '%s' (see cld help)", typed))
 	}
@@ -147,21 +147,25 @@ func shellArgument(args []string) error {
 //
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
 // on every TAB, and setup completion SHELL writes it where the shell reads it (see
-// setupCompletion). join -n offers the sessions list shows (see sessionNames), join -s the SUFFIX
-// of those named after the repository or directory here (see sessionSuffixes), help the commands
-// (see commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers
-// file names, as no argument of cld's is a file.
+// setupCompletion). join -n offers the NAME of NAME-SUFFIX for the sessions list shows (see
+// sessionNames), join -s their SUFFIX (see sessionSuffixes), help the commands (see
+// commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers file
+// names, as no argument of cld's is a file.
 //
-// new, resume, join and kill name their session with -n NAME or -s SUFFIX, not both (see
-// naming); new, and resume with SESSION, name it themselves without either.
+// new, resume, join and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX (see
+// naming): NAME defaults to the repository's or directory's name, and SUFFIX, for new and for
+// resume with SESSION, to the next index; join and kill need -s, and resume -s or SESSION.
 func commandLine(typed string, out io.Writer) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
 		Use: "cld",
 		Long: `Run Claude Code in named sessions, each on a private tmux server that ignores
-~/.tmux.conf. Session NAME is the tmux session "cld-NAME" on the server
-"tmux -L cld-NAME", running "claude --name cld-NAME" with Remote Control on.
-What claude starts through tmux runs on that server too, and ends with it.
+~/.tmux.conf. A session is named NAME-SUFFIX: NAME is by default the name of
+the git repository the current directory is in, or else of the directory, and
+SUFFIX, for a new session, the next index. Session S is the tmux session
+"cld-S" on the server "tmux -L cld-S", running "claude --name cld-S" with
+Remote Control on. What claude starts through tmux runs on that server too,
+and ends with it.
 
 Detach with C-q d; C-q C-q sends C-q to claude. A session whose claude fails
 stays, showing why, until cld kill ends it.`,
@@ -174,16 +178,20 @@ stays, showing why, until cld kill ends it.`,
 	root.SetFlagErrorFunc(flagError(typed))
 
 	newCommand := &cobra.Command{
-		Use:   "new [-n NAME | -s SUFFIX] [-w]",
-		Short: "create session NAME in the current directory and attach to it",
-		Long: `create session NAME in the current directory and attach to it. Without -n
-and -s, NAME is REPO-INDEX, REPO being the name of the git repository the
-directory is in, or outside one of the directory itself, and INDEX 0 or, where
-sessions REPO-INDEX run, one above the highest of their INDEX.`,
+		Use:   "new [-n NAME] [-s SUFFIX] [-w]",
+		Short: "create session NAME-SUFFIX in this directory and attach to it",
+		Long: `create session NAME-SUFFIX in the current directory and attach to it. NAME is
+by default the name of the git repository the directory is in, or else of the
+directory itself; SUFFIX is by default INDEX, 0 or, where sessions NAME-INDEX
+run, one above the highest of their INDEX. Where the directory's name leaves
+nothing, as in /, the session is SUFFIX alone. NAME and SUFFIX consist of
+letters, digits, "_" and "-", each starting with a letter or digit, and make
+64 characters at most.`,
 	}
-	newNaming := addNaming(newCommand)
+	newNaming := addNaming(newCommand, "the session's `SUFFIX`, after NAME-: by default the index\n"+
+		"above the highest of the sessions NAME-INDEX, or 0")
 	worktree := newCommand.Flags().BoolP("worktree", "w", false,
-		"run claude in git worktree cld-NAME, which claude makes\nfrom HEAD or reopens (claude --worktree cld-NAME)")
+		"run claude in git worktree cld-NAME-SUFFIX, which claude\nmakes from HEAD or reopens (claude --worktree\ncld-NAME-SUFFIX)")
 	newCommand.RunE = func(*cobra.Command, []string) error {
 		if err := newNaming.check(typed, ""); err != nil {
 			return err
@@ -214,19 +222,20 @@ sessions REPO-INDEX run, one above the highest of their INDEX.`,
 	// resume makes its session the way new does, and has claude resume a conversation in it. Its
 	// usage line names its options before SESSION, as help's does before COMMAND.
 	resume := &cobra.Command{
-		Use:   "resume [-n NAME | -s SUFFIX] [flags] [SESSION]",
-		Short: "create session NAME with claude resuming its conversation",
-		Long: `create session NAME in the current directory and attach to it, as new does,
-with claude resuming the conversation named cld-NAME, or SESSION: whatever
-claude --resume takes, such as a session ID, a name, or a search term for
-claude's picker. SESSION comes after the options and does not start with "-".
-With SESSION and without -n and -s, NAME is the one new would give.`,
+		Use:   "resume [-n NAME] [-s SUFFIX] [flags] [SESSION]",
+		Short: "create session NAME-SUFFIX with claude resuming its conversation",
+		Long: `create session NAME-SUFFIX in the current directory and attach to it, as new
+does, with claude resuming the conversation named cld-NAME-SUFFIX, or SESSION:
+whatever claude --resume takes, such as a session ID, a name, or a search term
+for claude's picker. SESSION comes after the options and does not start with
+"-". Without SESSION, -s is needed.`,
 		Args:                  conversationArgument(typed),
 		DisableFlagsInUseLine: true,
 	}
-	resumeNaming := addNaming(resume)
+	resumeNaming := addNaming(resume, "the session's `SUFFIX`, after NAME-: with SESSION, by\n"+
+		"default the index new would give")
 	resume.RunE = func(_ *cobra.Command, args []string) error {
-		missing := "-n NAME, -s SUFFIX or SESSION (see cld help)"
+		missing := "-s SUFFIX or SESSION (see cld help)"
 		if len(args) > 0 {
 			missing = ""
 		}
@@ -255,16 +264,16 @@ With SESSION and without -n and -s, NAME is the one new would give.`,
 
 	// join attaches beside the terminals on the session, which --detach-others detaches.
 	join := &cobra.Command{
-		Use:   "join (-n NAME | -s SUFFIX) [--detach-others]",
-		Short: "attach to session NAME",
-		Long: `attach to session NAME, beside any terminal attached to it already: each shows
-claude, whose window takes the size of the terminal used last. With
+		Use:   "join [-n NAME] -s SUFFIX [--detach-others]",
+		Short: "attach to session NAME-SUFFIX",
+		Long: `attach to session NAME-SUFFIX, beside any terminal attached to it already:
+each shows claude, whose window takes the size of the terminal used last. With
 --detach-others, those terminals are detached.`,
 	}
-	joinNaming := addNaming(join)
+	joinNaming := addNaming(join, "the session's `SUFFIX`, after NAME-")
 	detachOthers := join.Flags().Bool("detach-others", false, "detach any other terminal attached to the session")
 	join.RunE = func(*cobra.Command, []string) error {
-		if err := joinNaming.check(typed, "-n NAME or -s SUFFIX (see cld list)"); err != nil {
+		if err := joinNaming.check(typed, "-s SUFFIX (see cld list)"); err != nil {
 			return err
 		}
 		tmux, err := session.Check()
@@ -285,14 +294,14 @@ claude, whose window takes the size of the terminal used last. With
 	}
 
 	kill := &cobra.Command{
-		Use:   "kill (-n NAME | -s SUFFIX)",
-		Short: "end session NAME and its tmux server",
-		Long: `end session NAME and its tmux server: claude exits as when its terminal closes,
-and what claude started through tmux ends too`,
+		Use:   "kill [-n NAME] -s SUFFIX",
+		Short: "end session NAME-SUFFIX and its tmux server",
+		Long: `end session NAME-SUFFIX and its tmux server: claude exits as when its terminal
+closes, and what claude started through tmux ends too`,
 	}
-	killNaming := addNaming(kill)
+	killNaming := addNaming(kill, "the session's `SUFFIX`, after NAME-")
 	kill.RunE = func(*cobra.Command, []string) error {
-		if err := killNaming.check(typed, "-n NAME or -s SUFFIX (see cld list)"); err != nil {
+		if err := killNaming.check(typed, "-s SUFFIX (see cld list)"); err != nil {
 			return err
 		}
 		tmux, err := session.Check()
@@ -462,9 +471,9 @@ func completionCommand(root *cobra.Command) {
 	}
 	completion.Short = "print the completion script for a shell"
 	completion.Long = `print the completion script for a shell, one of the commands below. With it,
-cld join -n completes the names cld list shows. cld setup completion SHELL
-writes it where bash, zsh or fish reads it; the help of each command below
-says where the script goes by hand, and what it needs.`
+cld join -n and -s complete the sessions cld list shows. cld setup completion
+SHELL writes it where bash, zsh or fish reads it; the help of each command
+below says where the script goes by hand, and what it needs.`
 	for _, shell := range completion.Commands() {
 		shell.Short = "print the completion script for " + shell.Name()
 	}
@@ -692,27 +701,58 @@ starts: sessions running then keep theirs. Needs Docker; Linux only.`,
 	return command
 }
 
-// sessionNames completes the NAME of join -n: the names of the sessions list shows that start with
-// what was typed, in list's order, each described by its state. Every one is a name join takes:
-// list reads only the socket of a valid NAME, and only session cld-NAME on it (see
-// session.Tmux.Sessions).
+// sessionNames completes the NAME of join -n: for the sessions list shows, what comes before the
+// last "-" of their names, where that and what follows it are both NAMEs - the split cld's own
+// messages name a session by (see session.Options) - once each, in list's order, and each
+// described by the number of its sessions. With -s then, join takes each of those sessions.
 func sessionNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	return completeSessions("", typed)
+	var names []string
+	counts := map[string]int{}
+	for _, s := range listed() {
+		i := strings.LastIndexByte(s.Name, '-')
+		if i <= 0 || !session.ValidName(s.Name[:i]) || !session.ValidName(s.Name[i+1:]) || !strings.HasPrefix(s.Name[:i], typed) {
+			continue
+		}
+		if counts[s.Name[:i]]++; counts[s.Name[:i]] == 1 {
+			names = append(names, s.Name[:i])
+		}
+	}
+	completions := make([]cobra.Completion, 0, len(names))
+	for _, name := range names {
+		description := "1 session"
+		if counts[name] > 1 {
+			description = strconv.Itoa(counts[name]) + " sessions"
+		}
+		completions = append(completions, cobra.CompletionWithDesc(name, description))
+	}
+	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
-// sessionSuffixes completes the SUFFIX of join -s as sessionNames completes -n's NAME, from the
-// sessions whose names start with the name of the git repository here, or outside one of the
-// directory, and "-" (see session.Prefix): what follows it, where that is a SUFFIX join takes.
-func sessionSuffixes(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	return completeSessions(session.Prefix(), typed)
+// sessionSuffixes completes the SUFFIX of join -s: for the sessions list shows whose names are
+// NAME-SUFFIX with the NAME join takes - -n's, or else the repository's or directory's (see
+// session.DefaultName) - their SUFFIX, where it starts with what was typed and join takes it, in
+// list's order, each described by its state. Where NAME is "", every name is a SUFFIX.
+func sessionSuffixes(c *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	name := session.DefaultName()
+	if c.Flags().Changed("name") {
+		name, _ = c.Flags().GetString("name")
+	}
+	if name != "" {
+		name += "-"
+	}
+	var suffixes []cobra.Completion
+	for _, s := range listed() {
+		if suffix, found := strings.CutPrefix(s.Name, name); found && strings.HasPrefix(suffix, typed) && session.ValidName(suffix) {
+			suffixes = append(suffixes, cobra.CompletionWithDesc(suffix, s.State))
+		}
+	}
+	return suffixes, cobra.ShellCompDirectiveNoFileComp
 }
 
-// completeSessions offers the sessions list shows whose names are prefix and a valid NAME starting
-// with typed, that NAME, in list's order, each described by its state. It offers no file names,
-// and it never fails: with no server there is nothing to offer, and with no tmux, one that fails,
-// or a socket directory it cannot read neither, and cobra.CompErrorln says why on stderr, which
-// the completion scripts discard.
-func completeSessions(prefix, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+// listed is the sessions list shows, for completion. It never fails: with no server there is
+// nothing to offer, and with no tmux, one that fails, or a socket directory it cannot read
+// neither, and cobra.CompErrorln says why on stderr, which the completion scripts discard.
+func listed() []session.Session {
 	var sessions []session.Session
 	tmux, err := session.Find()
 	if err == nil {
@@ -721,13 +761,7 @@ func completeSessions(prefix, typed string) ([]cobra.Completion, cobra.ShellComp
 	if err != nil {
 		cobra.CompErrorln(err.Error())
 	}
-	var names []cobra.Completion
-	for _, s := range sessions {
-		if rest, found := strings.CutPrefix(s.Name, prefix); found && strings.HasPrefix(rest, typed) && session.ValidName(rest) {
-			names = append(names, cobra.CompletionWithDesc(rest, s.State))
-		}
-	}
-	return names, cobra.ShellCompDirectiveNoFileComp
+	return sessions
 }
 
 // serverNames completes the SERVER of setup project --mcp: the servers it takes that start with
@@ -763,24 +797,22 @@ func commandNames(c *cobra.Command, args []string, typed string) ([]cobra.Comple
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// nameUsage and suffixUsage are -n and -s in the help of new, resume, join and kill: their first
-// lines fit within 80 columns beside -s's own column, as wide as join's --detach-others.
-const (
-	nameUsage   = "session `NAME`: up to 64 letters, digits, \"_\" and \"-\",\nstarting with a letter or digit"
-	suffixUsage = "session REPO-`SUFFIX`, REPO being the name of the git\nrepository here, or outside one of the directory"
-)
+// nameUsage is -n in the help of new, resume, join and kill: its first line fits within 80
+// columns beside -s's own column, as wide as join's --detach-others.
+const nameUsage = "the session's `NAME`, before -SUFFIX: by default the\ngit repository's name here, or else the directory's"
 
-// naming is the -n and -s of new, resume, join and kill, which name the session: -n NAME as it is,
-// -s SUFFIX after the name of the git repository the current directory is in, or else of the
-// directory (see session.Prefix). Without either, new names it itself (see session.Tmux.Next), as
-// resume does for SESSION; join and kill, and resume without SESSION, refuse to go on.
+// naming is the -n and -s of new, resume, join and kill, which name the session NAME-SUFFIX: NAME
+// is -n's, or else the name of the git repository the current directory is in, or of the
+// directory (see session.DefaultName) - where that leaves nothing, the session is SUFFIX alone -
+// and SUFFIX -s's, or else, for new and for resume with SESSION, the next index (see
+// session.Tmux.Next). join and kill, and resume without SESSION, need -s.
 type naming struct {
 	flags        *pflag.FlagSet
 	name, suffix *string
 }
 
-// addNaming gives command -n and -s.
-func addNaming(command *cobra.Command) naming {
+// addNaming gives command -n and -s, whose usage is suffixUsage.
+func addNaming(command *cobra.Command, suffixUsage string) naming {
 	return naming{
 		flags:  command.Flags(),
 		name:   command.Flags().StringP("name", "n", "", nameUsage),
@@ -788,19 +820,20 @@ func addNaming(command *cobra.Command) naming {
 	}
 }
 
-// check checks -n and -s once the options have been read, before anything runs: not both, and
-// what was given - NAME's length, whatever its characters, then its characters, and SUFFIX's the
-// same way, as SUFFIX alone names the session where the directory's name leaves nothing (see
-// session.Prefix). missing, where not empty, is what is missing when neither is given, for the
-// command typed as typed.
+// check checks -n and -s once the options have been read, before anything runs: each that was
+// given - its length, whatever its characters, then its characters, as SUFFIX alone names the
+// session where the directory's name leaves nothing (see session.DefaultName) - then the name
+// both make, which is too long for a session's where they make it longer than one NAME can be
+// (see tooLong); and, where missing is not empty, that -s was given, which missing says is
+// missing, for the command typed as typed.
 func (n naming) check(typed, missing string) error {
 	name, suffix := n.flags.Changed("name"), n.flags.Changed("suffix")
+	if name {
+		if _, err := sessionName(*n.name); err != nil {
+			return err
+		}
+	}
 	switch {
-	case name && suffix:
-		return fail.Usage(typed + ": -n NAME and -s SUFFIX both name the session; give one (see cld help)")
-	case name:
-		_, err := sessionName(*n.name)
-		return err
 	case suffix:
 		if utf8.RuneCountInString(*n.suffix) > session.MaxName {
 			return fail.Usage(fmt.Sprintf("suffix '%s' is longer than %d characters (see cld help)", *n.suffix, session.MaxName))
@@ -808,31 +841,44 @@ func (n naming) check(typed, missing string) error {
 		if !session.ValidName(*n.suffix) {
 			return fail.Usage(fmt.Sprintf("invalid suffix '%s' (see cld help)", *n.suffix))
 		}
+		if both := *n.name + "-" + *n.suffix; name && len(both) > session.MaxName {
+			return tooLong(2, both)
+		}
 	case missing != "":
 		return fail.Usage(typed + ": missing " + missing)
 	}
 	return nil
 }
 
-// resolve is the NAME of the session, once tmux has been checked: -n's, or else the name of the
-// repository or directory with -s's SUFFIX or, without -s, the next index (see
-// session.Tmux.Next). A NAME made so that is longer than a NAME can be is refused with status 1:
-// what decides it is the repository's or directory's name, not the command line alone.
+// tooLong refuses session name, longer than a session's name can be, with status.
+func tooLong(status int, name string) error {
+	return &fail.Error{Status: status,
+		Message: fmt.Sprintf("session name '%s' is longer than %d characters", name, session.MaxName),
+		Advice:  "; give a shorter -n NAME or -s SUFFIX (see cld help)"}
+}
+
+// resolve is the session's name, NAME-SUFFIX, once tmux has been checked: -n's NAME, or else the
+// repository's or directory's, and -s's SUFFIX, or else the next index (see session.Tmux.Next).
+// One longer than a session's name can be is refused with status 1: the repository's or
+// directory's name, or the index, makes it so, not the command line alone (see check).
 func (n naming) resolve(tmux *session.Tmux) (string, error) {
-	if n.flags.Changed("name") {
-		return *n.name, nil
+	name := *n.name
+	if !n.flags.Changed("name") {
+		name = session.DefaultName()
 	}
-	name := session.Prefix() + *n.suffix
-	if !n.flags.Changed("suffix") {
+	if name != "" {
+		name += "-"
+	}
+	if n.flags.Changed("suffix") {
+		name += *n.suffix
+	} else {
 		var err error
 		if name, err = tmux.Next(context.Background(), name); err != nil {
 			return "", err
 		}
 	}
 	if len(name) > session.MaxName {
-		return "", &fail.Error{Status: 1,
-			Message: fmt.Sprintf("session name '%s' is longer than %d characters", name, session.MaxName),
-			Advice:  "; name the session with -n NAME (see cld help)"}
+		return "", tooLong(1, name)
 	}
 	return name, nil
 }

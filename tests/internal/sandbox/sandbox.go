@@ -38,9 +38,12 @@ type Record struct {
 
 // Sandbox is the isolated world of one test.
 type Sandbox struct {
-	t        testing.TB
-	Root     string
-	Home     string
+	t    testing.TB
+	Root string
+	Home string
+	// Work is where cld runs unless a test says otherwise: a directory named "_", of which
+	// nothing is left in a session's name, so that -s SUFFIX names a session SUFFIX there, and
+	// the tests name their sessions exactly.
 	Work     string
 	ProbeDir string
 	// Env is the environment cld runs in; terminals add their own variables on top.
@@ -63,7 +66,7 @@ func New(t testing.TB) *Sandbox {
 		t:        t,
 		Root:     root,
 		Home:     filepath.Join(root, "home"),
-		Work:     filepath.Join(root, "work"),
+		Work:     filepath.Join(root, "_"),
 		ProbeDir: filepath.Join(root, "probe"),
 	}
 	for _, dir := range []string{s.Home, s.Work, s.ProbeDir} {

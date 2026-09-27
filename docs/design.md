@@ -241,8 +241,9 @@ The Linux job runs the same Docker image a developer runs locally.
 
 1. Naming: names are validated (`[A-Za-z0-9][A-Za-z0-9_-]*`), not sanitised - a silent rename
    would make `cld foo.bar` and the session it attaches to disagree. Since 13 a name has at most
-   64 characters, so that its server's socket path fits (see 13.2). Since 24 the repository's name,
-   which `-s` and `new`'s default put in a NAME, is made one: it is no name typed (24.4).
+   64 characters, so that its server's socket path fits (see 13.2). Since 24 a session's name is
+   `NAME-SUFFIX`, and the repository's or directory's name that `NAME` defaults to is made one: it
+   is no name typed (24.4).
 2. Inside another tmux: `cld` nests; the private socket already allows it. Inside a live pane of
    one of its own servers - claude's external editor, say - a session attached would show inside
    a session of cld's, itself or another, both taking `C-q`, and `new`, `resume` and `join`
@@ -273,12 +274,13 @@ The Linux job runs the same Docker image a developer runs locally.
    claude's own state, so claude reports it (see 5). `kill` leaves
    the worktree: claude offers to remove it only when it exits on its own. The worktree is named
    after the session, also when that is the default `main`; since 24 by its whole name,
-   `--worktree cld-NAME` (24.6).
+   `--worktree cld-NAME` (24.7).
 5. Failures stay on screen: with `remain-on-exit failed`, a claude that exits with an error or a
    signal keeps its pane, so what it printed - a startup error above all, which would otherwise
    vanish with the session - stays readable. The format is empty, so tmux does not scroll that out
    of sight; a `pane-died` hook shows how to end the session on the message line instead, naming it
-   through the session's one window, named `NAME`. The hook shows it only to a terminal on that
+   through the session's one window, named `NAME` (since 24, as `kill` takes it, `-n` and `-s`,
+   written into the hook as the session is made). The hook shows it only to a terminal on that
    window (`if -F '#{window_active_clients}'`), since tmux would otherwise show it on another
    session's terminal or over the next session attached (see Findings); `join` shows it on
    attaching to such a session, with a `display-message` in the same command list as
@@ -788,8 +790,8 @@ The Linux job runs the same Docker image a developer runs locally.
     6. like `cld kill`, the kill leaves a `cld new -w` worktree where it is, where agent view's
        delete removes the worktree Claude created. Killing several sessions at once, a stopped
        state and removing worktrees are not part of it.
-16. Resume (#26): `resume [-n NAME] [SESSION]` (since 24 with `-s SUFFIX`, and `-n`, `-s` or
-    SESSION needed, 24.5) joins the commands of decision 3. It brings back a
+16. Resume (#26): `resume [-n NAME] [SESSION]` (since 24 `resume [-n NAME] [-s SUFFIX] [SESSION]`,
+    `-s` or SESSION needed, 24.5) joins the commands of decision 3. It brings back a
     conversation whose session is gone - ended by `kill` or the list's Ctrl+X (15), a reboot or a
     crashed server - in a new session `cld-NAME`, made as `new` makes it: the same checks and
     refusals (the name, claude on the `PATH` and its version (6), a live pane of one of cld's
@@ -854,8 +856,8 @@ The Linux job runs the same Docker image a developer runs locally.
        a stopped session to come back to (15), but the conversation stays in claude's history, and
        `resume -n NAME`, run where the session ran (16.4), brings it back in a new session.
 17. Shell completion (#25): `cld completion SHELL` prints a completion script for bash, zsh or
-    fish, with which `cld join -n <TAB>` offers the names `cld list` shows (and since 24
-    `cld join -s <TAB>` their SUFFIX, 24.7).
+    fish, with which `cld join -n <TAB>` offers the names `cld list` shows (since 24 `-n` their
+    NAME and `-s` their SUFFIX, 24.8).
     1. It is cobra's: `completion SHELL` prints cobra's script (PowerShell's too, undocumented),
        which asks `cld __complete`, or `__completeNoDesc`, what to offer on every TAB. The
        scripts know nothing of cld's commands, change only with cobra's templates, and need no
@@ -1312,89 +1314,107 @@ The Linux job runs the same Docker image a developer runs locally.
 
     Out of scope: a key in the list that joins as `--detach-others` does, a short option, and
     showing in `list` how many terminals are attached.
-24. Names from the repository: `cld new` without `-n` names the session after the git repository
-    it starts in, or outside one after the directory, and `-s SUFFIX`, which `new`, `resume`,
-    `join` and `kill` take in place of `-n NAME`, after it too; `-w`'s worktree takes the
-    session's whole name, `cld-NAME`. Before,
-    `-n` defaulted to `main` (3), so every `cld new` past the first - in another repository, often
-    - needed a name typed, and a name said nothing of where its session belonged; a worktree was
-    named `NAME`, and nothing in `.claude/worktrees` or the branches told cld's from claude's
-    own. Settled with it:
-    1. without `-n` and `-s`, `new` names the session `REPO-INDEX`: `REPO` is the repository's name
-       or, outside one, the directory's (24.3), and `INDEX` 0 or, where sessions `REPO-INDEX` run,
-       one above the highest `INDEX` among them. The maintainer asked for the highest plus
-       one rather than the lowest free index: a gap stays, so the names keep the order they were
-       given in. `new` reads the socket directory as `list` does (13.1) and asks only the servers
-       of sockets `cld-REPO-DIGITS`, one after another: a server that has outlived its session
-       counts, since `new` would refuse its name (13), and a stale socket does not. `REPO` is
-       compared ignoring case, since a socket directory that ignores case reaches one server for
+24. Names from the repository: a session is named `NAME-SUFFIX`, from `-n NAME` and `-s SUFFIX`,
+    which `new`, `resume`, `join` and `kill` take together: `NAME` is by default the name of the
+    git repository the current directory is in, or outside one of the directory, and `SUFFIX`, for
+    `new`, the next index within `NAME`; `-w`'s worktree takes the session's whole name. Before,
+    `-n` named the session whole and defaulted to `main` (3), so every `cld new` past the first -
+    in another repository, often - needed a name typed, and a name said nothing of where its
+    session belonged; a worktree was named `NAME`, and nothing in `.claude/worktrees` or the
+    branches told cld's from claude's own. In the decisions before this one, and in
+    `internal/session`, `NAME` is a session's whole name, all that tmux sees; below, that is `S`.
+    Settled with it:
+    1. without `-s`, `new` names the session `NAME-INDEX`: `INDEX` is 0 or, where sessions
+       `NAME-INDEX` run, one above the highest `INDEX` among them. The maintainer asked for the
+       highest plus one rather than the lowest free index: a gap stays, so the names keep the order
+       they were given in. `new` reads the socket directory as `list` does (13.1) and asks only the
+       servers of sockets `cld-NAME-DIGITS`, one after another: a server that has outlived its
+       session counts, since `new` would refuse its name (13), and a stale socket does not. `NAME`
+       is compared ignoring case, since a socket directory that ignores case reaches one server for
        both spellings (13.6). Only running sessions count: a name comes back once its session has
        ended, and its conversation then shares the name with the next (16), and the next `new -w`
-       of that name reopens its worktree (24.6). Counting the conversations would mean reading
+       of that name reopens its worktree (24.7). Counting the conversations would mean reading
        claude's transcripts (16.4), and counting worktrees would tie the names to directories cld
        does not manage. Two `new` at once can take one name, and the second ends with tmux's
-       `duplicate session: cld-NAME` (see 13's closing paragraph), as two `new -n NAME` did;
-    2. `-s SUFFIX` names the session `REPO-SUFFIX` in `new`, `resume`, `join` and `kill` alike, so
-       that a session `new` made is reached from the repository, or directory, by what follows its
-       name: `cld join -s 1`, `cld kill -s fix`. Given with `-n`, it is refused (`new: -n NAME and
-       -s SUFFIX both name the session; give one`). SUFFIX is checked as NAME is (1, 13.2), length
-       then characters, since it is the whole NAME where `REPO` leaves nothing (24.4), with
-       messages of its own (`invalid suffix ' '`): the empty one and one of spaces are invalid.
-       All of these are mistakes on the command line, status 2, and come before any tool is looked
-       for. A NAME that SUFFIX or the index makes longer than 64 characters is refused with status
-       1, pointing at `-n NAME`: `REPO` decides it, not the command line alone;
-    3. `REPO` is the name of the directory that holds the repository's common git directory, when
-       that is `.git`, so that the subdirectories and linked worktrees of a repository -
-       `.claude/worktrees` among them - share it; otherwise, as for a worktree of a bare repository
-       or for a submodule, whose git directory is under the superproject's `.git/modules`, it is
-       the git directory's own name, without `.git`. One `git rev-parse --is-inside-work-tree
-       --git-common-dir` gives both, the directory as a path from the current one or a whole path
-       (see Findings). The remote's name was the other way, but a repository without a remote
-       would have none, and two clones of one remote would share their sessions' names. Outside a
-       work tree - in `.git` itself too - where git is not on the `PATH`, and where it fails,
-       `REPO` is the name of the current directory as `os.Getwd` gives it: the shell's `PWD` where
-       that is the current directory, so the name `pwd` shows, a symbolic link's rather than that
-       of the directory it leads to. In `/root`, `cld new` makes `cld-root-0`; only `-w` needs git.
-       The index alone, as this decision first had it outside a repository, was the other way: the
-       maintainer asked for the directory's name, so that those names say where their sessions
-       started too, and `-s` names a session the same way everywhere;
+       `duplicate session: cld-S` (see 13's closing paragraph), as two `new -n NAME` did before;
+    2. `-n` and `-s` go together, in either order: one way to name a session, whose two parts
+       default where they can. The first version of this decision had them exclude each other,
+       `-n` naming the session whole and `-s` after the repository's name; the maintainer asked for
+       them together, for simplicity. Each is checked as a whole name was (1, 13.2), `-n` first,
+       its length, whatever its characters, then its characters, with messages of its own for `-s`
+       (`invalid suffix ' '`) - the empty one and one of spaces are invalid - since `SUFFIX` is the
+       whole name where `NAME` leaves nothing (24.4); then the two together, which are refused
+       where they make a name longer than 64 characters (`session name '...' is longer than 64
+       characters; give a shorter -n NAME or -s SUFFIX`). All of these are mistakes on the command
+       line, status 2, and come before any tool is looked for. A name made longer by the
+       repository's or directory's name, or by the index, is refused the same way with status 1,
+       as the command line alone does not decide it;
+    3. `NAME`'s default is the name of the directory that holds the repository's common git
+       directory, when that is `.git`, so that the subdirectories and linked worktrees of a
+       repository - `.claude/worktrees` among them - share it; otherwise, as for a worktree of a
+       bare repository or for a submodule, whose git directory is under the superproject's
+       `.git/modules`, it is the git directory's own name, without `.git`. One `git rev-parse
+       --is-inside-work-tree --git-common-dir` gives both, the directory as a path from the current
+       one or a whole path (see Findings). The remote's name was the other way, but a repository
+       without a remote would have none, and two clones of one remote would share their sessions'
+       names. Outside a work tree - in `.git` itself too - where git is not on the `PATH`, and
+       where it fails, the default is the name of the current directory as `os.Getwd` gives it:
+       the shell's `PWD` where that is the current directory, so the name `pwd` shows, a symbolic
+       link's rather than that of the directory it leads to. In `/root`, `cld new` makes
+       `cld-root-0`; only `-w` needs git. The index alone, as this decision first had it outside a
+       repository, was the other way: the maintainer asked for the directory's name, so that those
+       names say where their sessions started too;
     4. the repository's or directory's name is made a NAME rather than refused, as decision 1
        refuses a name that is typed: each run of the characters a NAME cannot have becomes `-`, and
        `-` and `_` go from either end - `my.site` is `my-site`, `.dotfiles` `dotfiles`. Where
-       nothing is left - the root directory, or a name in another script - the NAME is `INDEX` or
-       `SUFFIX` alone. Refusing it would have failed every `cld new` in a repository such as
-       `user.github.io`, which no option but `-n` could have helped. The NAME made is what `list`,
-       the title and claude's `--name` show, and what `-n` then takes;
-    5. `join` and `kill` have no default: without `-n` or `-s` they are refused, `join: missing -n
-       NAME or -s SUFFIX (see cld list)`, with status 2. `resume` takes either or SESSION: with
-       SESSION alone its session is named as `new` names one, and without any it is refused
-       alike, as no conversation has the name of an index not given yet. The maintainer chose this
-       over keeping `main`, which `new` no longer makes, and over the repository's only session:
-       `cld list` picks a session without its name (14). The usage lines name the choice in
-       parentheses where it is needed, `join (-n NAME | -s SUFFIX) [--detach-others]`, and in
-       brackets for `new` and `resume`; the test of the help's text takes a word in parentheses
-       starting with `-` for an option (12.4). `-s`'s column moves the usages of `new`, `resume`
-       and `kill` to the 25th, where `join`'s were (23.1);
-    6. `new -w` gives claude `--worktree cld-NAME`: the worktree `.claude/worktrees/cld-NAME` on the
-       branch `worktree-cld-NAME` (4), named as its session and apart from the worktrees claude
-       names itself - those of `claude --worktree` without a name, or of its subagents - as the
-       maintainer asked. The worktree of an earlier `new -n NAME -w`, `NAME`, stays; `resume -n
-       NAME` takes its conversation back there, as claude does whatever the worktree's name (16.3);
-    7. completion: `join -s` offers the SUFFIX of the sessions `list` shows whose names start with
-       `REPO-`, where it is one `join` takes - every name where `REPO` leaves nothing, as `-n`
-       does - so a TAB there runs `git rev-parse` besides `list`'s reads (17.4). `new -s`,
-       `resume -s` and `kill -s` offer none, as their `-n` does not (17.3);
-    8. the tests: the default names in a repository, outside one and in the root directory, with
+       nothing is left - the root directory, or a name in another script - `S` is `SUFFIX` alone.
+       Refusing it would have failed every `cld new` in a repository such as `user.github.io`,
+       which no option but `-n` could have helped. The name made is what `list`, the title and
+       claude's `--name` show;
+    5. `join` and `kill` need `-s` - `NAME` defaults as for `new`, but the next index names no
+       session - and are refused without it (`join: missing -s SUFFIX (see cld list)`, status 2);
+       `resume` needs `-s` or SESSION, with which its session gets the index `new` would give, as
+       no conversation has the name of an index not given yet. The maintainer chose this over
+       keeping `main`, which `new` no longer makes, over the only session of `NAME`, and over its
+       highest index: `cld list` picks a session without its name (14). The usage lines name
+       `-s SUFFIX` unbracketed where it is needed, `join [-n NAME] -s SUFFIX [--detach-others]`,
+       and the test of the help's text takes a plain word starting with `-` for an option, and the
+       word after it for its value (12.4). `-s`'s column moves the usages of `new`, `resume` and
+       `kill` to the 25th, where `join`'s were (23.1). From a directory other than its own, a
+       session takes `-n` as well; one whose name has no `-`, made where `NAME` leaves nothing,
+       takes `-s` alone only in such a directory, `/` say, or `cld list`, whose Enter and Ctrl+X
+       take every session - those of 0.7.1 and earlier, `main` among them, too;
+    6. cld's messages name a session as `join` and `kill` take it (`session.Options`): its name
+       split at its last `-`, `-n` what comes before and `-s` what follows, where both are NAMEs,
+       and else `-s` alone - `session 'api-fix' exists; attach to it with cld join -n api -s fix`.
+       So does the `pane-died` hint (5), which named the session through its window,
+       `cld kill -n #{window_name}`: cld writes the options into the hook as it makes the session,
+       and `join` into its own `display-message`, rather than have tmux take the window's name
+       apart;
+    7. `new -w` gives claude `--worktree cld-S`: the worktree `.claude/worktrees/cld-S` on the
+       branch `worktree-cld-S` (4), named as its session and apart from the worktrees claude names
+       itself - those of `claude --worktree` without a name, or of its subagents - as the maintainer
+       asked. The worktree of an earlier `new -n NAME -w`, `NAME`, stays; `resume` takes its
+       conversation back there, as claude does whatever the worktree's name (16.3);
+    8. completion: `join -n` offers, for the names `list` shows, what comes before their last `-`,
+       where that and what follows are NAMEs, once each, described by the number of its sessions;
+       `join -s` offers the SUFFIX of the sessions whose names start with `NAME-` - `-n`'s, or the
+       repository's or directory's - where `join` takes it, described by their states; where
+       `NAME` leaves nothing, every name. A TAB there runs `git rev-parse` besides `list`'s reads
+       (17.4). `new`, `resume` and `kill` offer none, as their `-n` did not (17.3);
+    9. the tests: the default names in a repository, outside one and in the root directory, with
        running sessions, a gap, a server without its session, a stale socket and the names of
-       another repository or directory, of none and in other letters; `resume SESSION` named
-       alike; the repository's name from its root, a subdirectory, a linked worktree, a bare
-       repository's worktree and a submodule, the directory's name outside one and in `.git`, a
-       symbolic link's with `PWD` and its target's without, and names made a NAME; `-s` in `new`,
-       `resume`, `join`, `kill` and completion; the option errors, the missing name and a NAME
-       made too long; `-w`'s worktree name.
+       another repository or directory, of none and in other letters, and with `-n`; `resume
+       SESSION` named alike; the repository's name from its root, a subdirectory, a linked
+       worktree, a bare repository's worktree and a submodule, the directory's name outside one and
+       in `.git`, a symbolic link's with `PWD` and its target's without, and names made a NAME; `-n`
+       and `-s` alone, together and in either order; the option errors, the missing `-s` and names
+       made too long; the messages and the hint; completion; `-w`'s worktree name. The sandbox's
+       work directory is named `_`, which leaves nothing, so that the tests that are not about
+       names name their sessions exactly with `-s`, as they did with `-n`.
 
     Out of scope: filling gaps, counting what outlives a session - its conversation, its worktree
-    - and completing `kill -n` and `kill -s`.
+    - and completing `kill`'s options.
 
 ## Implementation notes
 
@@ -1426,7 +1446,7 @@ Where the implementation departs from the plan above:
   tests), not a plain file (`socket`, which only the fake tmux reads). tmux says no server is
   running for either on Linux, whose `connect` refuses a connection to a file that is no socket
   as it refuses one to a socket nothing listens on; macOS's reports the file as no socket
-  (`ENOTSOCK`), and tmux fails with that, so `cld new` without `-n` ended there on the macOS
+  (`ENOTSOCK`), and tmux fails with that, so `cld new` without `-s` ended there on the macOS
   runner, before its session (#51). A file of that name that is no socket is nothing tmux or cld
   makes, and cld reports tmux's error for it, as `list` does (13.1).
 - The Go port (decision 11) is `cmd/cld`, the command line, and `internal/session`, the tmux
@@ -1742,7 +1762,7 @@ by hand in a nested tmux).
   bash-completion, so those tests skip there. Homebrew's `bash-completion@2`, and `compinit -i`
   where Homebrew's directories are group-writable, were not checked on a Mac, nor an update from
   a release that has `setup completion` to one that prints other scripts.
-- `new -w`'s worktree `cld-NAME` (24.6) was not run with the real `claude`: its name has the
+- `new -w`'s worktree `cld-NAME-SUFFIX` (24.7) was not run with the real `claude`: its name has the
   characters of the `wt` probed with 2.1.281 (see Findings). The repository's name is tested with
   git 2.47.3 in the Linux image, and with the git of the macOS runner.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
