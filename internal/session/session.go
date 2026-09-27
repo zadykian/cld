@@ -1,23 +1,25 @@
 // Package session is cld's tmux side: it runs Claude Code in named sessions, each on a private
 // tmux server of its own.
 //
-// `cld new -n NAME` creates the tmux session "cld-NAME" on the server cld-NAME
-// (tmux -L cld-NAME), running `claude --name cld-NAME` in the current directory, with Remote
-// Control on from the start, and attaches to it; with -w claude also gets --worktree cld-NAME,
-// makes git worktree cld-NAME from HEAD or reopens it, and works there. `-s SUFFIX` in place of
-// `-n NAME` names the session REPO-SUFFIX, where REPO is the name of the git repository the
-// current directory is in or, outside one, of the directory itself (see Prefix); `cld new`
-// without either names it REPO-0, or the index above the highest REPO-INDEX running (see
-// Tmux.Next). `cld resume -n NAME [SESSION]` creates the session the same way,
+// A session's name is NAME-SUFFIX, from -n NAME and -s SUFFIX: NAME by default the name of the
+// git repository the current directory is in or, outside one, of the directory itself (see
+// DefaultName) - where that leaves nothing, the name is SUFFIX alone - and SUFFIX, for new, by
+// default the index above the highest of the sessions NAME-INDEX running, or 0 (see Tmux.Next).
+// Below and in the code, NAME is a session's whole name, as that is all tmux sees, and so is the
+// parameter suffix, which follows "cld-": cld's own tmux session for session NAME.
+//
+// `cld new` creates the tmux session "cld-NAME" on the server cld-NAME (tmux -L cld-NAME), running
+// `claude --name cld-NAME` in the current directory, with Remote Control on from the start, and
+// attaches to it; with -w claude also gets --worktree cld-NAME, makes git worktree cld-NAME from
+// HEAD or reopens it, and works there. `cld resume [SESSION]` creates the session the same way,
 // without -w, and claude resumes the conversation named cld-NAME, or SESSION, instead of starting
 // one: it also gets --resume cld-NAME or --resume SESSION.
-// `cld join -n NAME` attaches to the session again, `cld kill -n NAME` ends it with its server
-// (see Tmux.Kill), each taking -s SUFFIX as new does, and `cld list` shows the sessions, asking
-// each server for its own (see Tmux.Sessions) - on a terminal as a list to pick one from with the
-// arrow keys, to join with Enter, as join does, or to kill with Ctrl+X pressed twice, as kill does
-// (see internal/picker). The shell completion that `cld completion SHELL` prints reads the same
-// sessions, where `cld join -n` completes the names `cld list` shows, and `cld join -s` the
-// SUFFIX of those named after the repository, or the directory.
+// `cld join` attaches to the session again, `cld kill` ends it with its server (see Tmux.Kill),
+// and `cld list` shows the sessions, asking each server for its own (see Tmux.Sessions) - on a
+// terminal as a list to pick one from with the arrow keys, to join with Enter, as join does, or to
+// kill with Ctrl+X pressed twice, as kill does (see internal/picker). The shell completion that
+// `cld completion SHELL` prints reads the same sessions, where `cld join -n` completes the NAME of
+// NAME-SUFFIX for the names `cld list` shows, and `cld join -s` their SUFFIX.
 //
 // cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
 // Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
@@ -37,7 +39,7 @@
 //     it knows the terminal supports them, and it does not recognise every terminal that does;
 //     Claude Code's docs recommend this for tmux. It goes to a fixed index past tmux's defaults:
 //     set -a would add another copy every time cld sets it on a server that has it, as two
-//     cld new -n NAME at once do
+//     cld new for one NAME at once do
 //   - mouse on, focus-events on: claude probes both and hints when they are off. With the mouse
 //     on, the wheel over a program that draws in the main screen without the mouse - claude
 //     outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
@@ -51,8 +53,9 @@
 //     away; /exit and claude's other ways out exit with status 0. An empty remain-on-exit-format
 //     keeps tmux from scrolling the pane for its own line, which would push a short error at the
 //     top out of sight; the pane-died hook shows how to end the session on the message line
-//     instead, until a key is pressed. It names the session through its one window, named NAME:
-//     the hook's formats know the pane and its window, not the session. The hook shows it only to
+//     instead, until a key is pressed. It names the session as cld kill takes it, -n and -s,
+//     written into the hook as the session is made: the hook's formats know the pane and its
+//     window, not the session. The hook shows it only to
 //     a terminal on that window - of several, the one used last: tmux would show it on the
 //     terminal of another session on the server - one claude made - or with none attached keep it
 //     and show it in view-mode over the session a terminal attaches to next, which then takes no
@@ -347,14 +350,17 @@ func number(digits string) int {
 	return n
 }
 
-// how says how claude exited; hint shows how to end a session whose claude failed, on the message
-// line until a key is pressed (see the package comment): the pane-died hook shows it to a
-// terminal attached then, join to one attaching later.
-const (
-	how  = "#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}"
-	hint = "display-message -d 0 'claude exited with " + how +
-		": C-q d detaches, cld kill -n #{window_name} ends the session'"
-)
+// how says how claude exited.
+const how = "#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}"
+
+// hint shows how to end session cld-SUFFIX, whose claude failed, on the message line until a key
+// is pressed (see the package comment): the pane-died hook shows it to a terminal attached then,
+// join to one attaching later. It names the session as cld kill takes it (see Options), in
+// characters that tmux's quotes and formats keep as they are.
+func hint(suffix string) string {
+	return "display-message -d 0 'claude exited with " + how +
+		": C-q d detaches, cld kill " + Options(suffix) + " ends the session'"
+}
 
 // settings are what new and resume pass claude with --settings, as JSON in this field order.
 type settings struct {
@@ -399,9 +405,9 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	if exists {
 		dead, _ := t.server(suffix, "list-panes", "-t", "="+name, "-F", "#{pane_dead}").Output()
 		if strings.TrimRight(string(dead), "\n") == "1" {
-			return fail.Runtime(fmt.Sprintf("session '%s' exists, but its claude exited; end it with cld kill -n %[1]s", suffix))
+			return fail.Runtime(fmt.Sprintf("session '%s' exists, but its claude exited; end it with cld kill %s", suffix, Options(suffix)))
 		}
-		return fail.Runtime(fmt.Sprintf("session '%s' exists; attach to it with cld join -n %[1]s", suffix))
+		return fail.Runtime(fmt.Sprintf("session '%s' exists; attach to it with cld join %s", suffix, Options(suffix)))
 	}
 	if server {
 		return t.lingering(context.Background(), suffix)
@@ -463,7 +469,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	argv = append(argv, ";",
 		"set", "-w", "-t", window, "remain-on-exit", "failed", ";",
 		"set", "-w", "-t", window, "remain-on-exit-format", "", ";",
-		"set-hook", "-w", "-t", window, "pane-died", "if -F '#{window_active_clients}' \""+hint+"\"")
+		"set-hook", "-w", "-t", window, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"")
 	// The server keeps the environment of the client that starts it, cld's (see the package
 	// comment).
 	return t.become(argv, slices.DeleteFunc(os.Environ(), func(variable string) bool {
@@ -517,7 +523,7 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 		return t.lingering(ctx, suffix)
 	}
 	if !exists {
-		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: "; create it with cld new -n " + suffix}
+		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: "; create it with cld new " + Options(suffix)}
 	}
 	return nil
 }
@@ -539,7 +545,7 @@ func (t *Tmux) Attach(suffix string, detachOthers bool) error {
 		attach = append(attach, "-d")
 	}
 	// After attach-session in one command list, the hint goes to this terminal, attached by then.
-	return t.become(append(attach, "-t", "="+name, ";", "if", "-F", "#{pane_dead}", hint), os.Environ())
+	return t.become(append(attach, "-t", "="+name, ";", "if", "-F", "#{pane_dead}", hint(suffix)), os.Environ())
 }
 
 // Kill ends session cld-SUFFIX with its server, for cld kill: End, whatever its panes' pids, with
@@ -793,11 +799,11 @@ func (t *Tmux) OwnPane() (string, bool) {
 	return suffix, slices.Contains(strings.Split(strings.TrimRight(string(live), "\n"), "\n"), strings.TrimRight(string(terminal), "\n"))
 }
 
-// Prefix is what the NAME that -s and new's default give starts with (see Next): the name of the
-// git repository the current directory is in (see repository) or, outside one, of the current
-// directory itself - /root gives root - made a NAME (see asName), then "-". Where nothing is left
-// of the name, as for the root directory, it is "".
-func Prefix() string {
+// DefaultName is the NAME of NAME-SUFFIX where -n gives none: the name of the git repository the
+// current directory is in (see repository) or, outside one, of the current directory itself -
+// /root gives root - made a NAME (see asName). Where nothing is left of the name, as for the root
+// directory, it is "", and the session's name is SUFFIX alone.
+func DefaultName() string {
 	name, found := repository()
 	if !found {
 		// Getwd gives the directory as the shell's PWD names it, where that is the directory: the
@@ -808,10 +814,17 @@ func Prefix() string {
 		}
 		name = filepath.Base(dir)
 	}
-	if name = asName(name); name != "" {
-		return name + "-"
+	return asName(name)
+}
+
+// Options is how -n and -s name session NAME on cld's command line: split at its last "-", -n
+// what comes before it and -s what follows, where both are NAMEs; otherwise -s NAME alone, which
+// names it where DefaultName is "" - in the root directory, say, where such a NAME is made.
+func Options(name string) string {
+	if i := strings.LastIndexByte(name, '-'); i > 0 && ValidName(name[:i]) && ValidName(name[i+1:]) {
+		return "-n " + name[:i] + " -s " + name[i+1:]
 	}
-	return ""
+	return "-s " + name
 }
 
 // notInName is a run of the characters a NAME cannot have.
@@ -860,7 +873,7 @@ func repository() (string, bool) {
 	return strings.TrimSuffix(name, ".git"), true
 }
 
-// Next is the NAME new gives a session without -n or -s: prefix, then the index above the highest
+// Next is the NAME new gives a session without -s: prefix, then the index above the highest
 // among the sessions named prefix and an index whose servers run - 0 where none does, and gaps
 // left as they are. A server that has outlived its session counts, since new would refuse its
 // name (see lingering). prefix is compared ignoring case, as a socket directory that ignores case

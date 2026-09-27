@@ -120,25 +120,28 @@ func listedCommands(help string) []string {
 	return names
 }
 
-// usageWord is a word of a usage line: one in brackets, such as [-n NAME], one in parentheses,
-// a choice to make, such as (-n NAME | -s SUFFIX), or a plain one.
-var usageWord = regexp.MustCompile(`\[[^]]*\]|\([^)]*\)|\S+`)
+// usageWord is a word of a usage line: one in brackets, such as [-n NAME], or a plain one.
+var usageWord = regexp.MustCompile(`\[[^]]*\]|\S+`)
 
 // optionsAfterArguments are the options that the usage lines of help name after an argument:
-// [flags], or one in brackets or parentheses starting with "-". An argument is a word in brackets
-// or in capitals, such as [COMMAND]; the others name cld and its command.
+// [flags], one in brackets starting with "-", or a plain one starting with "-", as the -s of
+// -s SUFFIX, whose value is the word after it. An argument is another word in brackets or in
+// capitals, such as [COMMAND]; the others name cld and its command.
 func optionsAfterArguments(help string) []string {
 	_, usage, _ := strings.Cut(help, "\nUsage:\n")
 	usage, _, _ = strings.Cut(usage, "\n\n")
 	var late []string
 	for _, line := range strings.Split(usage, "\n") {
-		argument := false
+		argument, value := false, false
 		for _, word := range usageWord.FindAllString(line, -1) {
 			switch {
-			case word == "[flags]" || strings.HasPrefix(word, "[-") || strings.HasPrefix(word, "(-"):
+			case value:
+				value = false
+			case word == "[flags]" || strings.HasPrefix(word, "[-") || strings.HasPrefix(word, "-"):
 				if argument {
 					late = append(late, word)
 				}
+				value = strings.HasPrefix(word, "-")
 			case strings.HasPrefix(word, "[") || strings.ToUpper(word) == word:
 				argument = true
 			}
@@ -166,9 +169,9 @@ func TestHelp(t *testing.T) {
 		{[]string{"help", "help"}, "help"},
 		{[]string{"new", "--help"}, "new"},
 		{[]string{"resume", "--help"}, "resume"},
-		{[]string{"resume", "-n", "x", "-h"}, "resume"},
+		{[]string{"resume", "-s", "x", "-h"}, "resume"},
 		{[]string{"resume", "-h", "a", "b"}, "resume"},
-		{[]string{"join", "-n", "x", "-h"}, "join"},
+		{[]string{"join", "-s", "x", "-h"}, "join"},
 		{[]string{"kill", "--help"}, "kill"},
 		{[]string{"list", "-h"}, "list"},
 		{[]string{"update", "-h"}, "update"},
@@ -302,10 +305,10 @@ func TestCompleteCommands(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	none := map[string]string{"PATH": s.Tools()}
-	commands := "new\tcreate session NAME in the current directory and attach to it\n" +
-		"resume\tcreate session NAME with claude resuming its conversation\n" +
-		"join\tattach to session NAME\n" +
-		"kill\tend session NAME and its tmux server\n" +
+	commands := "new\tcreate session NAME-SUFFIX in this directory and attach to it\n" +
+		"resume\tcreate session NAME-SUFFIX with claude resuming its conversation\n" +
+		"join\tattach to session NAME-SUFFIX\n" +
+		"kill\tend session NAME-SUFFIX and its tmux server\n" +
 		"list\tlist the sessions cld started; on a terminal, join or kill one\n" +
 		"setup\tset up claude in a project, its telemetry, or shell completion\n" +
 		"update\tupdate cld to the latest release\n" +
@@ -332,7 +335,7 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", ""}, commands + ":4\n"},
 		{[]string{"__complete", "c"}, "completion\tprint the completion script for a shell\n:4\n"},
 		{[]string{"__complete", "help", ""}, commands + ":4\n"},
-		{[]string{"__complete", "help", "j"}, "join\tattach to session NAME\n:4\n"},
+		{[]string{"__complete", "help", "j"}, "join\tattach to session NAME-SUFFIX\n:4\n"},
 		{[]string{"__complete", "help", "x"}, ":4\n"},
 		{[]string{"__complete", "help", "new", ""}, ":4\n"},
 		// After a command with commands of its own, help takes one of those, and nothing after it.
@@ -374,11 +377,11 @@ func TestCompleteCommands(t *testing.T) {
 		// cobra describes an option by the first line of its usage, backquotes included.
 		{[]string{"__complete", "join", "-"}, "--detach-others\tdetach any other terminal attached to the session\n" +
 			"--help\thelp for join\n-h\thelp for join\n" +
-			"--name\tsession `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n" +
-			"-n\tsession `NAME`: up to 64 letters, digits, \"_\" and \"-\",\n" +
-			"--suffix\tsession REPO-`SUFFIX`, REPO being the name of the git\n" +
-			"-s\tsession REPO-`SUFFIX`, REPO being the name of the git\n:4\n"},
-		{[]string{"__complete", "new", "-n", ""}, ":4\n"},
+			"--name\tthe session's `NAME`, before -SUFFIX: by default the\n" +
+			"-n\tthe session's `NAME`, before -SUFFIX: by default the\n" +
+			"--suffix\tthe session's `SUFFIX`, after NAME-\n" +
+			"-s\tthe session's `SUFFIX`, after NAME-\n:4\n"},
+		{[]string{"__complete", "new", "-s", ""}, ":4\n"},
 		{[]string{"__complete", "new", "-s", ""}, ":4\n"},
 		{[]string{"__complete", "list", ""}, ":4\n"},
 	} {
@@ -418,7 +421,7 @@ func TestRejectsUnknownCommands(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"review"}, "cld: unknown command 'review'; for session review: cld new -n review, cld join -n review\n"},
+		{[]string{"review"}, "cld: unknown command 'review'; for a session review-SUFFIX: cld new -n review, cld join -n review -s SUFFIX\n"},
 		{[]string{"-x"}, "cld: unknown command '-x' (see cld help)\n"},
 		{[]string{"a.b"}, "cld: unknown command 'a.b' (see cld help)\n"},
 		{[]string{"-v"}, "cld: unknown command '-v' (see cld help)\n"},
@@ -503,7 +506,7 @@ func TestNameLength(t *testing.T) {
 		{[]string{"new", "-n", accents}, "cld: invalid session name '" + accents + "' (see cld help)\n"},
 		{[]string{"new", "-n", tooManyAccents}, "cld: session name '" + tooManyAccents + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{tooLong}, "cld: unknown command '" + tooLong + "' (see cld help)\n"},
-		{[]string{longest}, "cld: unknown command '" + longest + "'; for session " + longest + ": cld new -n " + longest + ", cld join -n " + longest + "\n"},
+		{[]string{longest}, "cld: unknown command '" + longest + "'; for a session " + longest + "-SUFFIX: cld new -n " + longest + ", cld join -n " + longest + " -s SUFFIX\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -513,14 +516,15 @@ func TestNameLength(t *testing.T) {
 			}
 		})
 	}
+	// Where the directory's name leaves nothing, -s SUFFIX is the whole name.
 	for _, command := range []string{"new", "resume"} {
-		t.Run(command+" -n "+longest, func(t *testing.T) {
+		t.Run(command+" -s "+longest, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
 			result := s.RunCld(map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
-			}, command, "-n", longest)
+			}, command, "-s", longest)
 			if result.Code != 0 || result.Stderr != "" {
 				t.Fatalf("exit %d, stderr %q", result.Code, result.Stderr)
 			}
@@ -531,27 +535,29 @@ func TestNameLength(t *testing.T) {
 	}
 }
 
-// new, resume, join and kill name their session with -n NAME or -s SUFFIX, not both; join and kill
-// need one of them, and resume one or SESSION. SUFFIX is checked as NAME is, since outside a
-// repository it is the NAME: its length first, whatever its characters, then its characters - an
-// empty one and one of spaces are invalid too. Each is a mistake on the command line, exit status
-// 2, found before any tool is looked for: the PATH has none here.
+// new, resume, join and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX; join and
+// kill need -s, and resume -s or SESSION. -n is checked first, then -s, each its length first,
+// whatever its characters, then its characters - an empty one and one of spaces are invalid too;
+// SUFFIX is checked as NAME is, since where the directory's name leaves nothing it is the whole
+// name. Each is a mistake on the command line, exit status 2, found before any tool is looked for:
+// the PATH has none here.
 func TestNameOptions(t *testing.T) {
 	t.Parallel()
 	tooLong := strings.Repeat("s", 65)
-	both := ": -n NAME and -s SUFFIX both name the session; give one (see cld help)\n"
 	for _, test := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"join"}, "cld: join: missing -n NAME or -s SUFFIX (see cld list)\n"},
-		{[]string{"join", "--detach-others"}, "cld: join: missing -n NAME or -s SUFFIX (see cld list)\n"},
-		{[]string{"kill"}, "cld: kill: missing -n NAME or -s SUFFIX (see cld list)\n"},
-		{[]string{"resume"}, "cld: resume: missing -n NAME, -s SUFFIX or SESSION (see cld help)\n"},
-		{[]string{"new", "-n", "x", "-s", "y"}, "cld: new" + both},
-		{[]string{"resume", "--suffix=y", "--name=x", "SESSION"}, "cld: resume" + both},
-		{[]string{"join", "-s", "y", "-n", "x"}, "cld: join" + both},
-		{[]string{"kill", "-n", "", "-s", ""}, "cld: kill" + both},
+		{[]string{"join"}, "cld: join: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"join", "--detach-others"}, "cld: join: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"join", "-n", "x"}, "cld: join: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"kill"}, "cld: kill: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"kill", "--name", "x"}, "cld: kill: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"resume"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
+		{[]string{"resume", "-n", "x"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
+		{[]string{"kill", "-n", "", "-s", ""}, "cld: invalid session name '' (see cld help)\n"},
+		{[]string{"join", "-n", "a.b"}, "cld: invalid session name 'a.b' (see cld help)\n"},
+		{[]string{"new", "-n", "x", "-s", "a b"}, "cld: invalid suffix 'a b' (see cld help)\n"},
 		{[]string{"new", "-s", ""}, "cld: invalid suffix '' (see cld help)\n"},
 		{[]string{"new", "-s", " "}, "cld: invalid suffix ' ' (see cld help)\n"},
 		{[]string{"new", "-s", "a b"}, "cld: invalid suffix 'a b' (see cld help)\n"},
@@ -563,6 +569,10 @@ func TestNameOptions(t *testing.T) {
 		{[]string{"new", "-s", tooLong[:60] + "a.b.c"}, "cld: suffix '" + tooLong[:60] + "a.b.c' is longer than 64 characters (see cld help)\n"},
 		{[]string{"new", "-s"}, "cld: option '-s' needs a value (see cld help)\n"},
 		{[]string{"join", "--suffix"}, "cld: option '--suffix' needs a value (see cld help)\n"},
+		{[]string{"new", "-n", strings.Repeat("n", 62), "-s", "ab"},
+			"cld: session name '" + strings.Repeat("n", 62) + "-ab' is longer than 64 characters; give a shorter -n NAME or -s SUFFIX (see cld help)\n"},
+		{[]string{"kill", "-s", strings.Repeat("s", 30), "-n", strings.Repeat("n", 34)},
+			"cld: session name '" + strings.Repeat("n", 34) + "-" + strings.Repeat("s", 30) + "' is longer than 64 characters; give a shorter -n NAME or -s SUFFIX (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -575,10 +585,11 @@ func TestNameOptions(t *testing.T) {
 	}
 }
 
-// A NAME that -s or new's default makes from the name of the repository, or outside one of the
-// directory, has at most 64 characters too: past them it is refused, with exit status 1 - that
-// name decides it, not the command line alone - pointing at -n NAME. The fake tmux finds no
-// server, and gets a NAME of 64 characters.
+// A session's name that the name of the repository, or outside one of the directory, or new's
+// index makes with -n or -s has at most 64 characters too: past them it is refused, with exit
+// status 1 - that name or the index decides it, not the command line alone - pointing at -n and
+// -s. The fake tmux finds no server, and gets a name of 64 characters. (TestNameOptions has the
+// names -n and -s make together, too long with status 2.)
 func TestLongPrefix(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -600,9 +611,15 @@ func TestLongPrefix(t *testing.T) {
 		{62, false, []string{"new"}, "-0", true},
 		{63, false, []string{"new"}, "-0", false},
 		{60, false, []string{"join", "-s", "abcd"}, "-abcd", false},
+		// -n's NAME with the index: the repository's name no longer counts.
+		{63, true, []string{"new", "-n", strings.Repeat("n", 62)}, "", true},
+		{60, true, []string{"new", "-n", strings.Repeat("n", 63)}, "", false},
 	} {
 		repository := strings.Repeat("r", test.length)
 		name := repository + test.suffix
+		if test.suffix == "" {
+			name = test.args[len(test.args)-1] + "-0"
+		}
 		where := "repository"
 		if !test.repository {
 			where = "directory"
@@ -628,7 +645,7 @@ func TestLongPrefix(t *testing.T) {
 				}
 				return
 			}
-			want := "cld: session name '" + name + "' is longer than 64 characters; name the session with -n NAME (see cld help)\n"
+			want := "cld: session name '" + name + "' is longer than 64 characters; give a shorter -n NAME or -s SUFFIX (see cld help)\n"
 			if result.Code != 1 || result.Stderr != want || result.Stdout != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
 			}
@@ -657,9 +674,9 @@ func TestSocketPathTooLong(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"new", "-n", name}, want},
-		{[]string{"join", "-n", name}, want},
-		{[]string{"kill", "-n", name}, want},
+		{[]string{"new", "-s", name}, want},
+		{[]string{"join", "-s", name}, want},
+		{[]string{"kill", "-s", name}, want},
 		{[]string{"list"}, ""},
 	} {
 		result := s.RunCld(map[string]string{"TMUX_TMPDIR": dir}, test.args...)
@@ -671,7 +688,7 @@ func TestSocketPathTooLong(t *testing.T) {
 
 // list reads tmux's socket directory to find the servers, and one it cannot read ends it with
 // the reason, rather than show no session: here a file where tmux-UID would be. So does new
-// without -n and -s, which reads it for the next index. new, join and kill with a NAME end with
+// without -s, which reads it for the next index. new, join and kill with -s SUFFIX end with
 // tmux's message, as for a socket path too long (tmux 3.3a to 3.7c). Where
 // TMUX_TMPDIR is unset, empty or names nothing, cld reads /tmp/tmux-UID, as tmux falls back to it;
 // no test reaches that, which would read the user's own sockets.
@@ -685,9 +702,9 @@ func TestUnreadableSocketDirectory(t *testing.T) {
 	}{
 		{[]string{"list"}, "cld: cannot read " + s.SocketDir() + ": not a directory\n"},
 		{[]string{"new"}, "cld: cannot read " + s.SocketDir() + ": not a directory\n"},
-		{[]string{"new", "-n", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
-		{[]string{"join", "-n", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
-		{[]string{"kill", "-n", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
+		{[]string{"new", "-s", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
+		{[]string{"join", "-s", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
+		{[]string{"kill", "-s", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
 	} {
 		if result := s.RunCld(nil, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", test.args[0], result.Code, result.Stdout, result.Stderr, test.want)
@@ -991,11 +1008,11 @@ func TestRequiresTools(t *testing.T) {
 		{[]string{"new"}, []string{"tmux"}, "cld: claude is not installed\n"},
 		{[]string{"new", "-w"}, []string{"tmux", "claude"}, "cld: git is not installed\n"},
 		{[]string{"resume", "SESSION"}, []string{"claude"}, "cld: tmux is not installed\n"},
-		{[]string{"resume", "-n", "x", "SESSION"}, []string{"tmux"}, "cld: claude is not installed\n"},
-		{[]string{"join", "-n", "main"}, []string{"claude"}, "cld: tmux is not installed\n"},
-		{[]string{"join", "-n", "main"}, []string{"tmux"}, "cld: no session 'main'; create it with cld new -n main\n"},
+		{[]string{"resume", "-s", "x", "SESSION"}, []string{"tmux"}, "cld: claude is not installed\n"},
+		{[]string{"join", "-s", "main"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"join", "-s", "main"}, []string{"tmux"}, "cld: no session 'main'; create it with cld new -s main\n"},
 		{[]string{"kill", "-s", "x"}, []string{"claude"}, "cld: tmux is not installed\n"},
-		{[]string{"kill", "-s", "x"}, []string{"tmux"}, "cld: no session 'work-x' (see cld list)\n"},
+		{[]string{"kill", "-s", "x"}, []string{"tmux"}, "cld: no session 'x' (see cld list)\n"},
 		{[]string{"list"}, []string{"claude"}, "cld: tmux is not installed\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {
@@ -1022,8 +1039,8 @@ func TestIgnoresRelativePathEntries(t *testing.T) {
 		code    int
 		want    string
 	}{
-		{[]string{"join", "-n", "main"}, nil, 1, "cld: tmux is not installed\n"},
-		{[]string{"join", "-n", "main"}, []string{"tmux"}, 1, "cld: no session 'main'; create it with cld new -n main\n"},
+		{[]string{"join", "-s", "main"}, nil, 1, "cld: tmux is not installed\n"},
+		{[]string{"join", "-s", "main"}, []string{"tmux"}, 1, "cld: no session 'main'; create it with cld new -s main\n"},
 		{[]string{"new"}, []string{"tmux"}, 1, "cld: claude is not installed\n"},
 		{[]string{"new", "-w"}, []string{"tmux", "claude"}, 1, "cld: git is not installed\n"},
 		// tmux, claude --version and git, run from the absolute entry, find no session, a version
@@ -1236,7 +1253,7 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 			}
 			stdout := ""
 			if test.code == 0 {
-				stdout = "\x1b]0;✳ cld-work-0\x07"
+				stdout = "\x1b]0;✳ cld-0\x07"
 			}
 			if result.Code != test.code || result.Stdout != stdout || result.Stderr != test.stderr {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q",
@@ -1280,20 +1297,20 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		ran bool
 	}{
 		{[]string{"new"}, "tmux 3.7c", "", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
-		{[]string{"new", "-n", "main"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"new", "-s", "main"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
 		{[]string{"new", "-w"}, "tmux 3.7c", "", 1, "", "cld: git is not installed\n", false},
 		{[]string{"new"}, "tmux 3.6b", "", 1, "", "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
 		{[]string{"resume", "SESSION"}, "tmux 3.7c", "", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
-		{[]string{"resume", "-n", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
+		{[]string{"resume", "-s", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
 		{[]string{"resume", "-s", "x"}, "tmux 3.6b", "", 1, "", "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
-		{[]string{"join", "-n", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main'; create it with cld new -n main\n", false},
-		{[]string{"kill", "-n", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
+		{[]string{"join", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main'; create it with cld new -s main\n", false},
+		{[]string{"kill", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
 		{[]string{"list"}, "tmux 3.7c", "", 0, "", "", false},
-		{[]string{"__complete", "new", "-n", ""}, "tmux 3.6b", "", 0, ":4\n",
+		{[]string{"__complete", "new", "-s", ""}, "tmux 3.6b", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"__complete", "resume", "-n", ""}, "tmux 3.6b", "", 0, ":4\n",
+		{[]string{"__complete", "resume", "-s", ""}, "tmux 3.6b", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"__completeNoDesc", "join", "-n", ""}, "tmux 3.6b", "cld-main\tdetached\t0\t100\t/w", 0, "main\n:4\n",
+		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.6b", "cld-main\tdetached\t0\t100\t/w", 0, "main\n:4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "tmux 3.6b", "", 1, "", noDocker, false},
 		{[]string{"__complete", "setup", "telemetry", "--local", ""}, "tmux 3.6b", "", 0, ":4\n",
@@ -1365,7 +1382,7 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 			}
 			result := s.RunCld(map[string]string{"PATH": tools, "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new")
 			if test.accepted {
-				if title := "\x1b]0;\u2733 cld-work-0\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
+				if title := "\x1b]0;\u2733 cld-0\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 					t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 				}
 				if argv := s.FakeTmuxRecord().Argv; !slices.Contains(argv, s.Work) {
@@ -1385,7 +1402,7 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 
 // Completion makes none of the checks the other commands make before they run tmux, where they
 // would end cld with status 1 and nothing on stdout: with a tmux whose version they refuse, join
-// -n offers what that tmux lists. With no tmux, one that fails or cannot run, or a socket
+// -s offers what that tmux lists. With no tmux, one that fails or cannot run, or a socket
 // directory it cannot read, it offers no names, and no file names, and exits 0; what went wrong
 // goes to stderr, which the completion scripts discard. The tmux is asked through a socket cld-x,
 // as list asks it. That it never runs claude, whose version new and resume check,
@@ -1425,7 +1442,7 @@ func TestCompletionSkipsChecks(t *testing.T) {
 			} else {
 				socket(t, s, "cld-x")
 			}
-			result := s.RunCld(env, "__complete", "join", "-n", "")
+			result := s.RunCld(env, "__complete", "join", "-s", "")
 			if result.Code != 0 || result.Stdout != test.stdout || !strings.Contains(result.Stderr, test.stderr) {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q, stderr with %q", result.Code, result.Stdout, result.Stderr, test.stdout, test.stderr)
 			}
@@ -1437,10 +1454,12 @@ func TestCompletionSkipsChecks(t *testing.T) {
 }
 
 // endHint is how the pane-died hook that new and resume set, and join, show how to end a session
-// whose claude failed.
-const endHint = "display-message -d 0 'claude exited with " +
-	"#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}: " +
-	"C-q d detaches, cld kill -n #{window_name} ends the session'"
+// whose claude failed: with cld kill and options, which name the session.
+func endHint(options string) string {
+	return "display-message -d 0 'claude exited with " +
+		"#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}: " +
+		"C-q d detaches, cld kill " + options + " ends the session'"
+}
 
 // new and resume hand over to tmux with this command, word for word: the session's own server,
 // its options, the directory, claude - by the path of the one it checked - and its arguments as
@@ -1464,19 +1483,19 @@ func TestNewTmuxCommand(t *testing.T) {
 		// claude is claude and its arguments, as tmux gets them
 		claude []string
 	}{
-		{[]string{"new", "-n", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-n", "x", "-w"}, "", "", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
-		{[]string{"resume", "-n", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
-		{[]string{"resume", "-n", "x", "a b"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "a b"}},
-		{[]string{"resume", "-n", "x", "a;"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\;`}},
-		{[]string{"resume", "-n", "x", `a\;`}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\\;`}},
-		{[]string{"new", "-n", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-n", "x", "-w"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
-		{[]string{"resume", "-n", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
-		{[]string{"new", "-n", "x"}, `w\;`, `w\\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-n", "x"}, "C#S", "C##S", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-n", "x", "-w"}, "x#(touch ran)", "x##(touch ran)", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
-		{[]string{"resume", "-n", "x"}, "#{session_name}#;", `##{session_name}##\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+		{[]string{"new", "-s", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-s", "x", "-w"}, "", "", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+		{[]string{"resume", "-s", "x", "a b"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "a b"}},
+		{[]string{"resume", "-s", "x", "a;"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\;`}},
+		{[]string{"resume", "-s", "x", `a\;`}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\\;`}},
+		{[]string{"new", "-s", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-s", "x", "-w"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+		{[]string{"new", "-s", "x"}, `w\;`, `w\\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-s", "x"}, "C#S", "C##S", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
+		{[]string{"new", "-s", "x", "-w"}, "x#(touch ran)", "x##(touch ran)", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "#{session_name}#;", `##{session_name}##\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
 	} {
 		args, dir, c, claude := command.args, command.dir, command.c, command.claude
 		name := strings.Join(args, " ")
@@ -1513,7 +1532,7 @@ func TestNewTmuxCommand(t *testing.T) {
 			want = append(want, ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
-				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint+`"`)
+				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`)
 			record := s.FakeTmuxRecord()
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
@@ -1537,10 +1556,10 @@ func TestJoinTmuxCommand(t *testing.T) {
 		// attach is attach-session and its options, as tmux gets them
 		attach []string
 	}{
-		{[]string{"join", "-n", "x"}, []string{"attach-session"}},
-		{[]string{"join", "-n", "x", "--detach-others"}, []string{"attach-session", "-d"}},
-		{[]string{"join", "--detach-others", "-n", "x"}, []string{"attach-session", "-d"}},
-		{[]string{"join", "-n", "x", "--detach-others=false"}, []string{"attach-session"}},
+		{[]string{"join", "-s", "x"}, []string{"attach-session"}},
+		{[]string{"join", "-s", "x", "--detach-others"}, []string{"attach-session", "-d"}},
+		{[]string{"join", "--detach-others", "-s", "x"}, []string{"attach-session", "-d"}},
+		{[]string{"join", "-s", "x", "--detach-others=false"}, []string{"attach-session"}},
 	} {
 		args, attach := command.args, command.attach
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -1561,7 +1580,7 @@ func TestJoinTmuxCommand(t *testing.T) {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
 			record := s.FakeTmuxRecord()
-			want := slices.Concat([]string{"-L", "cld-x"}, attach, []string{"-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint})
+			want := slices.Concat([]string{"-L", "cld-x"}, attach, []string{"-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint("-s x")})
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 			}
@@ -1591,8 +1610,8 @@ func TestServerExitingWhileAsked(t *testing.T) {
 		stdout, stderr string
 	}{
 		{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\n" + "a     detached  /w\n", ""},
-		{[]string{"join", "-n", "b"}, 1, "", "cld: no session 'b'; create it with cld new -n b\n"},
-		{[]string{"kill", "-n", "b"}, 1, "", "cld: no session 'b' (see cld list)\n"},
+		{[]string{"join", "-s", "b"}, 1, "", "cld: no session 'b'; create it with cld new -s b\n"},
+		{[]string{"kill", "-s", "b"}, 1, "", "cld: no session 'b' (see cld list)\n"},
 	} {
 		if result := s.RunCld(fake, test.args...); result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.stderr {
 			t.Errorf("%s: exit %d, stderr %q, stdout\n%s\nwant exit %d, stderr %q, stdout\n%s",
@@ -1650,10 +1669,10 @@ func TestPassesTmuxFailuresThrough(t *testing.T) {
 		stderr          string
 	}{
 		{"-V exits 3", versionFails, []string{"list"}, 3, "tmux: broken\n"},
-		{"-V exits 3", versionFails, []string{"kill", "-n", "x"}, 3, "tmux: broken\n"},
+		{"-V exits 3", versionFails, []string{"kill", "-s", "x"}, 3, "tmux: broken\n"},
 		{"-V gets SIGTERM", versionDies, []string{"list"}, 128 + 15, ""},
-		{"-V gets SIGTERM", versionDies, []string{"join", "-n", "x"}, 128 + 15, ""},
-		{"the kill exits 5", killFails, []string{"kill", "-n", "x"}, 5, "tmux: cannot kill\n"},
+		{"-V gets SIGTERM", versionDies, []string{"join", "-s", "x"}, 128 + 15, ""},
+		{"the kill exits 5", killFails, []string{"kill", "-s", "x"}, 5, "tmux: cannot kill\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+", "+test.failure, func(t *testing.T) {
 			t.Parallel()
@@ -1703,14 +1722,14 @@ func TestCannotRunTmux(t *testing.T) {
 			stdout string
 		}{
 			{[]string{"list"}, "", false, ""},
-			{[]string{"join", "-n", "x"}, "", false, ""},
+			{[]string{"join", "-s", "x"}, "", false, ""},
 			{[]string{"kill", "-s", "x"}, "", false, ""},
 			{[]string{"list"}, "echo 'tmux 3.7c'", true, ""},
-			{[]string{"join", "-n", "x"}, "echo 'tmux 3.7c'", true, ""},
-			{[]string{"kill", "-n", "x"}, "echo 'tmux 3.7c'", true, ""},
-			{[]string{"new", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo 'no server running on /fake' >&2; trap 'exit 1' EXIT`, false, title},
-			{[]string{"join", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, title},
-			{[]string{"kill", "-n", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, ""},
+			{[]string{"join", "-s", "x"}, "echo 'tmux 3.7c'", true, ""},
+			{[]string{"kill", "-s", "x"}, "echo 'tmux 3.7c'", true, ""},
+			{[]string{"new", "-s", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo 'no server running on /fake' >&2; trap 'exit 1' EXIT`, false, title},
+			{[]string{"join", "-s", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, title},
+			{[]string{"kill", "-s", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, ""},
 		} {
 			stage := "at once"
 			if test.answers != "" {
@@ -1767,12 +1786,12 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 		code            int
 		stderr          string
 	}{
-		{[]string{"new", "-n", "x"}, []string{"claude"}, []string{"tmux"}, 126,
+		{[]string{"new", "-s", "x"}, []string{"claude"}, []string{"tmux"}, 126,
 			"cld: cannot run DENIED/claude: permission denied\n"},
-		{[]string{"new", "-n", "x", "-w"}, []string{"git"}, []string{"tmux", "claude"}, 1,
+		{[]string{"new", "-s", "x", "-w"}, []string{"git"}, []string{"tmux", "claude"}, 1,
 			"cld: --worktree needs a git repository, and WORK is not in one\n"},
-		{[]string{"new", "-n", "x", "-w"}, []string{"git"}, []string{"tmux", "claude", "git"}, 0, ""},
-		{[]string{"new", "-n", "x"}, []string{"tmux", "claude"}, []string{"tmux", "claude"}, 0, ""},
+		{[]string{"new", "-s", "x", "-w"}, []string{"git"}, []string{"tmux", "claude", "git"}, 0, ""},
+		{[]string{"new", "-s", "x"}, []string{"tmux", "claude"}, []string{"tmux", "claude"}, 0, ""},
 	} {
 		t.Run(strings.Join(test.args, " ")+", "+strings.Join(test.denied, ",")+" denied, "+strings.Join(test.present, ",")+" present", func(t *testing.T) {
 			t.Parallel()
@@ -1830,13 +1849,13 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"join", "-h"}, "", ""},
 		{[]string{"kill", "-h", "-x"}, "", ""},
 		{[]string{"version"}, "", ""},
-		{[]string{"new", "-n", "x"}, "", ""},
-		{[]string{"resume", "-n", "x"}, "", ""},
-		{[]string{"join", "-n", "x"}, "cld-x", ""},
+		{[]string{"new", "-s", "x"}, "", ""},
+		{[]string{"resume", "-s", "x"}, "", ""},
+		{[]string{"join", "-s", "x"}, "cld-x", ""},
 		{[]string{"completion", "bash"}, "", ""},
 		{[]string{"completion", "zsh", "--help"}, "", ""},
 		{[]string{"completion"}, "", ""},
-		{[]string{"__complete", "join", "-n", ""}, "cld-x\tdetached\t0\t100\t/w", "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
+		{[]string{"__complete", "join", "-s", ""}, "cld-x\tdetached\t0\t100\t/w", "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
 		{[]string{"help", "setup"}, "", ""},
 		{[]string{"setup", "-h", "telemetry"}, "", ""},
 		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "", ""},
@@ -1888,7 +1907,7 @@ func TestNothingToPrintWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stdout.Close()
-	cmd := exec.Command(sandbox.Cld, "kill", "-n", "a")
+	cmd := exec.Command(sandbox.Cld, "kill", "-s", "a")
 	// The fake tmux finds session a on its server, then records the kill.
 	cmd.Env = s.Environ(map[string]string{
 		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
@@ -1917,7 +1936,7 @@ func TestNewRefusesARemovedDirectory(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("getcwd in a removed directory is checked on Linux only")
 	}
-	for _, args := range [][]string{{"new", "-n", "x"}, {"new", "-n", "x", "-w"}, {"resume", "-n", "x"}} {
+	for _, args := range [][]string{{"new", "-s", "x"}, {"new", "-s", "x", "-w"}, {"resume", "-s", "x"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
@@ -1979,7 +1998,7 @@ func TestNewRefusesADirectoryItCannotEnter(t *testing.T) {
 				_ = os.Chmod(dir, 0o755)
 			})
 			script := `cd "$1" && chmod 000 "$2" && shift 2 && exec env ` + test.pwd + ` "$0" "$@"`
-			cmd := exec.Command("/bin/sh", "-c", script, sandbox.Cld, dir, test.locked, "new", "-n", "x")
+			cmd := exec.Command("/bin/sh", "-c", script, sandbox.Cld, dir, test.locked, "new", "-s", "x")
 			if os.Geteuid() == 0 {
 				const nobody = 65534
 				for _, path := range []string{s.Root, above, dir} {

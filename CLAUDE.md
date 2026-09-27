@@ -82,9 +82,9 @@ platform, `cld.sha256` and `install.sh`.
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
   nothing: break the texts by hand within 80 columns, which `TestHelpText` checks - all but
   cobra's own last line, which names the command (81 columns for `setup completion`).
-- Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the names
-  `list` shows, read as `list` reads them, `join -s` the SUFFIX of those that start with the
-  repository's or directory's name, `help` the commands it takes, `setup project` and
+- Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the NAME,
+  and `join -s` the SUFFIX, of the names `list` shows, read as `list` reads them, `help` the
+  commands it takes, `setup project` and
   `setup telemetry` among them, `setup project --mcp` its MCP servers, nothing offers file names
   (`--collector-config`'s `FILE` neither), and completion makes none of the startup checks,
   `setup telemetry`'s included, and never starts the interactive list (decisions 17 to 19 in
@@ -100,14 +100,17 @@ platform, `cld.sha256` and `install.sh`.
 - Sessions are always addressed as `=cld-NAME` (exact match); a bare target would prefix-match
   `cld-rev` to `cld-review`. `set` targets use `=cld-NAME:` because `set` takes a pane.
 - Names are validated (`^[A-Za-z0-9][A-Za-z0-9_-]*$`, at most 64 characters so that the socket
-  path fits in `sun_path`), never sanitised. `new`, `resume`, `join` and `kill` take `-n NAME` or
-  `-s SUFFIX`, the NAME `REPO-SUFFIX`; `new` without either, and `resume` with SESSION alone, name
-  the session `REPO-INDEX`, the index one above the highest of the sessions so named whose servers
-  run, and `join` and `kill` refuse to go without. `REPO` is the name of the directory holding the
-  git repository's common `.git` (`git rev-parse --git-common-dir`) or, outside a repository, of
-  the current directory (`os.Getwd`, which keeps `PWD`'s), made a NAME: the one name cld changes,
-  as nobody typed it; where nothing is left, as in `/`, the NAME is `SUFFIX` or `INDEX` alone
-  (decision 24). `-w` gives claude `--worktree cld-NAME`.
+  path fits in `sun_path`), never sanitised. On the command line a session's name is
+  `NAME-SUFFIX`, from `-n NAME` and `-s SUFFIX`, which `new`, `resume`, `join` and `kill` take
+  together: `NAME` is by default the name of the directory holding the git repository's common
+  `.git` (`git rev-parse --git-common-dir`) or, outside a repository, of the current directory
+  (`os.Getwd`, which keeps `PWD`'s), made a NAME - the one name cld changes, as nobody typed it -
+  and `SUFFIX`, for `new` and for `resume` with SESSION, the index one above the highest of the
+  sessions `NAME-INDEX` whose servers run; `join` and `kill` need `-s`, and `resume` `-s` or
+  SESSION. Where nothing is left of the default, as in `/`, the name is `SUFFIX` alone. cld's
+  messages and the `pane-died` hint name a session back as `-n NAME -s SUFFIX`, split at its last
+  `-` (`session.Options`; decision 24). Elsewhere, and in `internal/session`, NAME is a session's
+  whole name, all tmux sees. `-w` gives claude `--worktree cld-NAME-SUFFIX`.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
   the `PATH`; a word of cld's ending in `;` (resume's SESSION or the directory given with `-c`
@@ -175,7 +178,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   starts in and its restart count, whether it takes connections, the collector's log, a call that
   fails, a file that `run -d` writes.
 - `internal/sandbox` — an isolated world per test: its own short `TMUX_TMPDIR` (socket paths hit
-  the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset. Tests are
+  the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset, and a work
+  directory named `_`, of which nothing is left in a session's name, so that `-s x` names a
+  session `x` there. Tests are
   parallel and never touch the user's own cld sessions. `Tmux(server, ...)` runs tmux against one
   server (`cld-NAME` for session NAME); `Sessions()` and `Clients()` span every `cld-*` server,
   naming a session that is not on its own server `SERVER/SESSION`.

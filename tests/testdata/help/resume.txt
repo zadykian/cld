@@ -1,15 +1,15 @@
-create session NAME in the current directory and attach to it, as new does,
-with claude resuming the conversation named cld-NAME, or SESSION: whatever
-claude --resume takes, such as a session ID, a name, or a search term for
-claude's picker. SESSION comes after the options and does not start with "-".
-With SESSION and without -n and -s, NAME is the one new would give.
+create session NAME-SUFFIX in the current directory and attach to it, as new
+does, with claude resuming the conversation named cld-NAME-SUFFIX, or SESSION:
+whatever claude --resume takes, such as a session ID, a name, or a search term
+for claude's picker. SESSION comes after the options and does not start with
+"-". Without SESSION, -s is needed.
 
 Usage:
-  cld resume [-n NAME | -s SUFFIX] [flags] [SESSION]
+  cld resume [-n NAME] [-s SUFFIX] [flags] [SESSION]
 
 Flags:
   -h, --help            help for resume
-  -n, --name NAME       session NAME: up to 64 letters, digits, "_" and "-",
-                        starting with a letter or digit
-  -s, --suffix SUFFIX   session REPO-SUFFIX, REPO being the name of the git
-                        repository here, or outside one of the directory
+  -n, --name NAME       the session's NAME, before -SUFFIX: by default the
+                        git repository's name here, or else the directory's
+  -s, --suffix SUFFIX   the session's SUFFIX, after NAME-: with SESSION, by
+                        default the index new would give

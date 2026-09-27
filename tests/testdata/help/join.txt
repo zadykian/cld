@@ -1,14 +1,13 @@
-attach to session NAME, beside any terminal attached to it already: each shows
-claude, whose window takes the size of the terminal used last. With
+attach to session NAME-SUFFIX, beside any terminal attached to it already:
+each shows claude, whose window takes the size of the terminal used last. With
 --detach-others, those terminals are detached.
 
 Usage:
-  cld join (-n NAME | -s SUFFIX) [--detach-others] [flags]
+  cld join [-n NAME] -s SUFFIX [--detach-others] [flags]
 
 Flags:
       --detach-others   detach any other terminal attached to the session
   -h, --help            help for join
-  -n, --name NAME       session NAME: up to 64 letters, digits, "_" and "-",
-                        starting with a letter or digit
-  -s, --suffix SUFFIX   session REPO-SUFFIX, REPO being the name of the git
-                        repository here, or outside one of the directory
+  -n, --name NAME       the session's NAME, before -SUFFIX: by default the
+                        git repository's name here, or else the directory's
+  -s, --suffix SUFFIX   the session's SUFFIX, after NAME-

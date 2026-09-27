@@ -50,24 +50,25 @@ up by hand, for macOS's bash 3.2 among others.
 
 ## Usage
 
-Session `NAME` is the tmux session `cld-NAME` on a tmux server of its own, `tmux -L cld-NAME`,
-running `claude --name cld-NAME` with
+A session is named `NAME-SUFFIX`: it is the tmux session `cld-NAME-SUFFIX` on a tmux server of its
+own, `tmux -L cld-NAME-SUFFIX`, running `claude --name cld-NAME-SUFFIX` with
 [Remote Control](https://code.claude.com/docs/en/remote-control) on, so that you can also continue
 it from claude.ai or the Claude app.
 
-`-n NAME` names the session; `-s SUFFIX` names it `REPO-SUFFIX`, `REPO` being the name of the git
-repository you are in or, outside one, of the current directory. Without either, `cld new` names it
-`REPO-0`, or where sessions `REPO-INDEX` run, the index above the highest of them. In a repository
-`api`, `cld new` twice and `cld new -s fix` make the sessions `cld-api-0`, `cld-api-1` and
-`cld-api-fix`, which `cld join -s 1` and `cld kill -s fix` then reach; in `/root`, outside any
-repository, `cld new` makes `cld-root-0`. `cld resume SESSION` names its session as `cld new` does.
+`-n NAME` gives `NAME`, by default the name of the git repository you are in or, outside one, of
+the current directory; `-s SUFFIX` gives `SUFFIX`, which `cld new` otherwise makes an index: `0`, or
+where sessions `NAME-INDEX` run, the index above the highest of them. In a repository `api`,
+`cld new` twice, `cld new -s fix` and `cld new -n web` make the sessions `cld-api-0`, `cld-api-1`,
+`cld-api-fix` and `cld-web-0`, which `cld join -s 1` and `cld kill -n web -s 0` then reach; in
+`/root`, outside any repository, `cld new` makes `cld-root-0`. `cld join` and `cld kill` need `-s`,
+and `cld resume` `-s` or `SESSION`, with which it names its session as `cld new` does.
 
 | Command | Action |
 |---|---|
-| `cld new [-n NAME \| -s SUFFIX] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME` |
-| `cld resume [-n NAME \| -s SUFFIX] [SESSION]` | create the session with claude resuming the conversation `cld-NAME`, or `SESSION` |
-| `cld join (-n NAME \| -s SUFFIX) [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
-| `cld kill (-n NAME \| -s SUFFIX)` | end the session, its claude and its tmux server |
+| `cld new [-n NAME] [-s SUFFIX] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME-SUFFIX` |
+| `cld resume [-n NAME] [-s SUFFIX] [SESSION]` | create the session with claude resuming the conversation `cld-NAME-SUFFIX`, or `SESSION` |
+| `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
+| `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
 | `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
 | `cld setup project [--mcp SERVER]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
@@ -96,20 +97,22 @@ The [guide](docs/guide.md) has more on sessions, the list and what to do when cl
 ### Resuming a conversation
 
 A session's conversation outlives it: after `cld kill`, a reboot or a crash it stays in Claude
-Code's history as `cld-NAME`, and `cld resume -n NAME` resumes it in a new session. Run it in the
-conversation's directory, or anywhere in its git repository. `cld resume -n NAME SESSION` resumes
-another conversation: a session ID, a name, or a search term for claude's picker. Do not resume a
+Code's history as `cld-NAME-SUFFIX`, and `cld resume -n NAME -s SUFFIX` resumes it in a new
+session - `-s SUFFIX` alone where `NAME` is the repository's. Run it in the conversation's
+directory, or anywhere in its git repository. `cld resume SESSION` resumes another conversation: a
+session ID, a name, or a search term for claude's picker. Do not resume a
 conversation that is open elsewhere: two claudes would write to one transcript, their messages
 interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions) say. See the
 [guide](docs/guide.md#resuming-a-conversation) for what is not checked yet.
 
 ### Worktrees
 
-`cld new -w` runs `claude --worktree cld-NAME`, named as the session is: claude
-[creates the git worktree](https://code.claude.com/docs/en/worktrees) `.claude/worktrees/cld-NAME`
-on the branch `worktree-cld-NAME` - from your current `HEAD` - or reopens it, and works there.
-`cld kill` leaves the worktree, and `cld resume -n NAME`, run in the repository, takes the
-conversation back to it. See the [guide](docs/guide.md#worktrees).
+`cld new -w` runs `claude --worktree cld-NAME-SUFFIX`, named as the session is: claude
+[creates the git worktree](https://code.claude.com/docs/en/worktrees)
+`.claude/worktrees/cld-NAME-SUFFIX` on the branch `worktree-cld-NAME-SUFFIX` - from your current
+`HEAD` - or reopens it, and works there. `cld kill` leaves the worktree, and `cld resume -s SUFFIX`,
+run in the repository, takes the conversation back to it. See the
+[guide](docs/guide.md#worktrees).
 
 ### Project settings
 
@@ -157,7 +160,7 @@ Claude Code has its own tmux option, `claude --worktree [name] --tmux`, for a di
 |---|---|---|
 | Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
 | Working copy | the current directory, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
-| Coming back | `cld join -n NAME`; once the session has ended, `cld resume -n NAME` | not documented |
+| Coming back | `cld join -s SUFFIX`; once the session has ended, `cld resume -s SUFFIX` | not documented |
 | tmux configuration | a private server per session that ignores `~/.tmux.conf` and sets what claude needs | not documented; [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise settings for `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | native panes when available; `--tmux=classic` for regular tmux |
 

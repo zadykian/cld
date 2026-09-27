@@ -1,12 +1,11 @@
-end session NAME and its tmux server: claude exits as when its terminal closes,
-and what claude started through tmux ends too
+end session NAME-SUFFIX and its tmux server: claude exits as when its terminal
+closes, and what claude started through tmux ends too
 
 Usage:
-  cld kill (-n NAME | -s SUFFIX) [flags]
+  cld kill [-n NAME] -s SUFFIX [flags]
 
 Flags:
   -h, --help            help for kill
-  -n, --name NAME       session NAME: up to 64 letters, digits, "_" and "-",
-                        starting with a letter or digit
-  -s, --suffix SUFFIX   session REPO-SUFFIX, REPO being the name of the git
-                        repository here, or outside one of the directory
+  -n, --name NAME       the session's NAME, before -SUFFIX: by default the
+                        git repository's name here, or else the directory's
+  -s, --suffix SUFFIX   the session's SUFFIX, after NAME-
