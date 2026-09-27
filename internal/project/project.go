@@ -36,6 +36,7 @@ import (
 
 	"github.com/zadykian/cld/internal/configfile"
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/tool"
 )
 
@@ -218,7 +219,7 @@ func Setup(servers []Server) error {
 		}
 		written = append(written, c.file)
 	}
-	if err := fail.Print(report(changes)); err != nil {
+	if err := output.Print(report(changes)); err != nil {
 		return err
 	}
 	if pattern, source, line := ignoredBy(); pattern != "" {

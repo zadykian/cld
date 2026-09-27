@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/output"
 )
 
 // releases is where cld's releases are, unless CLD_RELEASES_URL says otherwise.
@@ -105,9 +106,9 @@ func (u *updater) run(ctx context.Context) error {
 	}
 	switch {
 	case latest == u.current:
-		return fail.Print(fmt.Sprintf("cld %s is the latest release\n", u.current))
+		return output.Print(fmt.Sprintf("cld %s is the latest release\n", u.current))
 	case latest.before(u.current):
-		return fail.Print(fmt.Sprintf("cld %s is newer than the latest release, %s\n", u.current, latest))
+		return output.Print(fmt.Sprintf("cld %s is newer than the latest release, %s\n", u.current, latest))
 	}
 	files := fmt.Sprintf("%s/download/v%s/", u.releases, latest)
 	var sums bytes.Buffer
@@ -163,7 +164,7 @@ func (u *updater) run(ctx context.Context) error {
 		return fail.Runtime("cannot replace " + u.file + ": " + reason(err))
 	}
 	u.renamed = true
-	return fail.Print(fmt.Sprintf("Updated cld %s to %s: %s\n", u.current, latest, u.file))
+	return output.Print(fmt.Sprintf("Updated cld %s to %s: %s\n", u.current, latest, u.file))
 }
 
 // latest is the latest release: the tag that the releases' latest redirects to.

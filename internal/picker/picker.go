@@ -68,6 +68,7 @@ import (
 	"golang.org/x/text/width"
 
 	"github.com/zadykian/cld/internal/fail"
+	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/session"
 )
 
@@ -192,7 +193,7 @@ func Run(source Source, sessions []session.Session) (picked string, last []sessi
 		return "", l.rows, err
 	}
 	l.measure()
-	if err := fail.Print(l.frame()); err != nil {
+	if err := output.Print(l.frame()); err != nil {
 		return "", l.rows, err
 	}
 	name, err := l.keys(in, tty)
@@ -309,7 +310,7 @@ func (l *list) keys(in *input, tty *terminal) (string, error) {
 		}
 		// Nothing is drawn halfway through a key, nor before the keys that came with it.
 		if len(pending) == 0 && !in.more() {
-			if err := fail.Print(l.frame()); err != nil {
+			if err := output.Print(l.frame()); err != nil {
 				return "", err
 			}
 		}
@@ -329,7 +330,7 @@ func (l *list) keys(in *input, tty *terminal) (string, error) {
 // question after the lookup.
 func handOver(in *input, tty *terminal, name string) error {
 	tty.shown = false
-	if err := fail.Print(closeScreen + session.Title(name) + askAttributes); err != nil {
+	if err := output.Print(closeScreen + session.Title(name) + askAttributes); err != nil {
 		return err
 	}
 	unanswered := time.After(answerWait)
@@ -389,7 +390,7 @@ func (t *terminal) makeRaw() error {
 // open brings up the alternate screen, with the cursor hidden, for the list to draw on.
 func (t *terminal) open() error {
 	t.shown = true
-	return fail.Print(openScreen)
+	return output.Print(openScreen)
 }
 
 // restore puts the terminal back as it was: the main screen, the cursor and the terminal's mode.
