@@ -1585,23 +1585,27 @@ func TestListJoin(t *testing.T) {
 		}
 	})
 
-	// The list draws once for a key, not once for each of its bytes: an arrow comes as three.
+	// The list draws once for a key, not once for each of its bytes: an arrow comes as three. It
+	// draws once for keys that come together too, as two typed one at a time may under load: each
+	// arrow is typed once the frame for the one before is in the output log.
 	t.Run("a frame a key", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a", "b", "c")
 		term := startCld(t, s, "tmux", nil, "list")
 		waitScreen(t, term, listHints)
-		term.Keys("Down", "Down")
-		// Each frame starts at the top left; the output log trails the screen.
-		var frames int
-		sandbox.WaitFor(t, 10*time.Second, "the frame with c selected in the output log", func() bool {
-			output := term.Output()
-			frames = bytes.Count(output, []byte("\x1b[1;1H"))
-			return bytes.Contains(output, []byte("\x1b[7m> c "))
-		})
-		if frames != 3 {
-			t.Errorf("%d frames for the list and two arrows, want 3", frames)
+		for arrows, row := range []string{"b", "c"} {
+			term.Keys("Down")
+			// Each frame starts at the top left; the output log trails the screen.
+			var frames int
+			sandbox.WaitFor(t, 10*time.Second, "the frame with "+row+" selected in the output log", func() bool {
+				output := term.Output()
+				frames = bytes.Count(output, []byte("\x1b[1;1H"))
+				return bytes.Contains(output, []byte("\x1b[7m> "+row+" "))
+			})
+			if want := arrows + 2; frames != want {
+				t.Errorf("%d frames up to the one with %s selected, want %d: the first and one an arrow", frames, row, want)
+			}
 		}
 	})
 
@@ -1835,7 +1839,8 @@ func TestListJoin(t *testing.T) {
 
 	// While Enter looks the session up, other keys do nothing: Down leaves the selection where it
 	// is, and a second Enter looks nothing up, so the first lookup joins its session once it ends.
-	// Each key the list takes draws a frame, which tells the test that the list has taken it.
+	// Each key, typed once the frame before it is in the output log, draws a frame, which tells the
+	// test that the list has taken it.
 	t.Run("keys during the lookup", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -2857,9 +2862,12 @@ func TestListKill(t *testing.T) {
 
 	// While the kill runs, keys other than those that leave do nothing: Down leaves the selection
 	// where it is, and Ctrl+X arms nothing - Down has ended the wait after the kill (see held
-	// down), which would keep Ctrl+X from doing anything too. Each key the list takes draws a
-	// frame, which tells the test that the list has taken it. A tmux first on the PATH holds the
-	// kill's lookup.
+	// down), which would keep Ctrl+X from doing anything too. The list draws a frame once it has
+	// taken the keys that have come, which tells the test that it has taken them: the two Ctrl+X
+	// that start the kill are pasted, in one write, and draw one frame, and each key after them is
+	// typed once the frame before it is in the output log. Typed one at a time, the two Ctrl+X may
+	// reach the list together under load, or over two seconds apart. A tmux first on the PATH
+	// holds the kill's lookup.
 	t.Run("keys during the kill", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -2867,13 +2875,13 @@ func TestListKill(t *testing.T) {
 		lookup := holdLookup(t, s, "a")
 		term := startCld(t, s, "tmux", lookup.env, "list")
 		waitScreen(t, term, listHints)
-		term.Keys("C-x", "C-x")
+		term.Paste("\x18\x18")
 		lookup.held(t)
-		waitFrames(t, term, 3)
+		waitFrames(t, term, 2)
 		term.Keys("Down")
-		waitFrames(t, term, 4)
+		waitFrames(t, term, 3)
 		term.Keys("C-x")
-		waitFrames(t, term, 5)
+		waitFrames(t, term, 4)
 		if row := selectedRow(term); row != "a" {
 			t.Errorf("row %q selected during the kill, want a", row)
 		}
@@ -3358,7 +3366,9 @@ const jobScript = `tty >"$0.tty"; stty -g >"$0.before"; ` +
 var attributesAnswer = regexp.MustCompile(`\x1b\[\?[0-9;]*c`)
 
 // waitFrames waits until the list has drawn count frames: each starts at the top left. The
-// output log trails the screen.
+// output log trails the screen. Keys that reach the list together draw one frame, as keys typed
+// one at a time may under load: a test that counts frames types a key once the frame before it
+// is in the log, or pastes keys meant to come together, in one write.
 func waitFrames(t *testing.T, term terminal.Terminal, count int) {
 	t.Helper()
 	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("%d frames in the output log", count), func() bool {
