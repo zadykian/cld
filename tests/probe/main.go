@@ -48,11 +48,11 @@
 //	run -d             starts it, with the port of its label cld.port, as
 //	                   $CLD_FAKE_DOCKER_STARTED, "STATUS [RESTARTS]" (default "running"); records
 //	                   whether that port is free on 127.0.0.1, as the collector needs it. A
-//	                   container started running takes connections on that port, as the
-//	                   collector's receiver, until rm -f or the end of the test (see receiver) -
-//	                   unless $CLD_FAKE_DOCKER_LISTEN is "no", or something else has the port. With
-//	                   $CLD_FAKE_DOCKER_WRITE, "FILE" and a newline, then the rest, it writes the
-//	                   rest to FILE, as another program may while the collector starts
+//	                   container started running has that port until rm -f or the end of the
+//	                   test, unless something else has it, and takes connections there, as the
+//	                   collector's receiver (see receiver) - unless $CLD_FAKE_DOCKER_LISTEN is
+//	                   "no". With $CLD_FAKE_DOCKER_WRITE, "FILE" and a newline, then the rest, it
+//	                   writes the rest to FILE, as another program may while the collector starts
 //	logs               prints $CLD_FAKE_DOCKER_LOGS on stderr, by default the collector's line
 //	                   saying it is ready
 //	update             takes the container's restart policy: prints its name, as Docker does
@@ -243,10 +243,10 @@ func fakeDocker() error {
 			if err := os.WriteFile(statePath, []byte(strings.Join(slices.Insert(started, 1, port), " ")), 0o644); err != nil {
 				return err
 			}
-			if started[0] != "running" || !free || os.Getenv("CLD_FAKE_DOCKER_LISTEN") == "no" {
+			if started[0] != "running" || !free {
 				return nil
 			}
-			return startReceiver(dir, port)
+			return startReceiver(dir, port, os.Getenv("CLD_FAKE_DOCKER_LISTEN") != "no")
 		}
 	case args[0] == "update":
 		out = func() error {
@@ -291,8 +291,9 @@ func fakeDocker() error {
 const receiverFile = "docker.receiver"
 
 // startReceiver starts the probe as the receiver of the collector on 127.0.0.1:port (see
-// receiver), and returns once the receiver listens there, or has found the port taken.
-func startReceiver(dir, port string) error {
+// receiver), one that takes connections if listen, and returns once the receiver has the port,
+// or has found it taken.
+func startReceiver(dir, port string, listen bool) error {
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -302,7 +303,11 @@ func startReceiver(dir, port string) error {
 		return err
 	}
 	defer started.Close()
-	cmd := exec.Command(executable, port, filepath.Join(dir, receiverFile))
+	mode := "hold"
+	if listen {
+		mode = "listen"
+	}
+	cmd := exec.Command(executable, port, filepath.Join(dir, receiverFile), mode)
 	cmd.Args[0] = "receiver"
 	cmd.ExtraFiles = []*os.File{done}
 	// A session of its own, with none of the pipes cld reads docker's output from: cld, and the
@@ -318,14 +323,38 @@ func startReceiver(dir, port string) error {
 	return err
 }
 
-// receiver stands in for the receiver of a collector that the fake docker started: it listens on
-// 127.0.0.1:PORT and takes connections, closing each, while the file FILE, which it writes with
-// the port, exists - the fake's rm -f removes it, and the end of the test the whole sandbox. It
-// closes descriptor 3 once it listens, or has found the port taken; a collector that cannot have
-// the port does not get ready, and nor does this one.
+// receiver stands in for the receiver of a collector that the fake docker started: as "receiver
+// PORT FILE listen" it listens on 127.0.0.1:PORT and takes connections, closing each, while the
+// file FILE, which it writes with the port, exists - the fake's rm -f removes it, and the end of
+// the test the whole sandbox. As "receiver PORT FILE hold", for a collector that takes no
+// connections, it binds the port without listening, and without SO_REUSEADDR: a connection there
+// is refused, as where nothing listens, but no other socket can have the port meanwhile, a
+// listener's neither (see Findings in docs/design.md). Left free, the port could be the kernel's
+// pick for another test's cld, whose listener or collector would then take the connections of the
+// cld that waits here, and it would find this collector ready. It closes descriptor 3 once it has
+// the port, or has found it taken; a collector that cannot have the port does not get ready, and
+// nor does this one.
 func receiver() error {
-	port, file := os.Args[1], os.Args[2]
-	listener, err := net.Listen("tcp4", "127.0.0.1:"+port)
+	port, file, mode := os.Args[1], os.Args[2], os.Args[3]
+	var release func() error
+	var err error
+	if mode == "hold" {
+		release, err = bind(port)
+	} else {
+		var listener net.Listener
+		if listener, err = net.Listen("tcp4", "127.0.0.1:"+port); err == nil {
+			release = listener.Close
+			go func() {
+				for {
+					conn, err := listener.Accept()
+					if err != nil {
+						return
+					}
+					_ = conn.Close()
+				}
+			}()
+		}
+	}
 	if err == nil {
 		err = os.WriteFile(file, []byte(port), 0o644)
 	}
@@ -333,22 +362,30 @@ func receiver() error {
 	if err != nil {
 		return err
 	}
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			_ = conn.Close()
-		}
-	}()
 	// No longer than go test's own limit, should a test end without removing its sandbox.
 	for deadline := time.Now().Add(10 * time.Minute); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if _, err := os.Stat(file); err != nil {
 			break
 		}
 	}
-	return listener.Close()
+	return release()
+}
+
+// bind binds a TCP socket to 127.0.0.1:port, without listening, and returns what closes it.
+func bind(port string) (func() error, error) {
+	number, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, err
+	}
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Bind(fd, &syscall.SockaddrInet4{Port: number, Addr: [4]byte{127, 0, 0, 1}}); err != nil {
+		_ = syscall.Close(fd)
+		return nil, err
+	}
+	return func() error { return syscall.Close(fd) }, nil
 }
 
 // stopReceiver stops the receiver of the container, if one runs (see receiver), and returns once

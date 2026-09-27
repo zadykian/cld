@@ -117,6 +117,8 @@ rows that name none were probed against tmux 3.6.
 | the collector's log while the `--local` endpoint is down | about 30 lines in 45 s after one span: gRPC reconnect warnings for each exporter's channel, backing off, and `Exporting failed. Will retry the request after interval.` |
 | a collector whose `--local` endpoint is its own receiver (`cld setup telemetry --local http://127.0.0.1:P --port P` before cld refused it), with the debug exporter added to its metrics pipeline, after `telemetrygen` sent it one metric | the debug exporter counted 1 batch after 2 s and 107 after 5 s, still growing, and `docker stats` showed the collector at 146% CPU: it sends what it receives back to itself, without end |
 | where a Go program (Go 1.27.1, Ubuntu 26.04 with systemd-resolved) connects, dialling port P with a listener on `127.0.0.1:P` alone | `127.0.0.1`, `0.0.0.0`, `::`, `::ffff:127.0.0.1`, `localhost` and `foo.localhost` reach the listener; `::1` and `127.0.0.2` are refused |
+| the ports the kernel picks, and what keeps a listener off a port (Linux 7.0.0-31-generic, Go 1.27.1; natively and in the image `tests/Dockerfile` builds, `ip_local_port_range` 32768 60999 in both): 5000 listeners on `127.0.0.1:0` one after another, 2000 connections to a listener, a port let go and 200000 listeners on port 0 after it, and sockets whose own range (`IP_LOCAL_PORT_RANGE`) is one port | the kernel picks from `ip_local_port_range` alone: a listener on port 0 got an odd port every time, a connection an even local port. A port let go came back to a listener on port 0 28 times in 200000 natively and 24 in the container, and a listener or a connection whose range was that port alone got it at once. `net.Listen` on `127.0.0.1` and a port - Go sets `SO_REUSEADDR` on a listener - fails with `EADDRINUSE` where a connection has that local port, open or in its 60 s of `TIME_WAIT` after it closed first, and where a socket is bound to it without listening and without `SO_REUSEADDR`, on `0.0.0.0` too. Such a socket refuses connections, and a listener or a connection limited to its port fails, with `EADDRINUSE` and `EADDRNOTAVAIL`; closed, it leaves the port free at once |
+| the telemetry tests with ports that a listener on `127.0.0.1:0` had and let go, given to cld as `--port` (while checking #44: four Docker containers and a native run at once, 8 CPUs; again, four containers of eight full suites each, tmux and JediTerm; and in a container whose range `docker run --sysctl` narrowed to 40000 40199) | cld found the port in use: `TestSetupTelemetrySettings/cannot_write` failed so in 1 of 10 suites, on 45187, and in 1 of 32, on 45895 - both odd, as a listener's. In the narrowed range 4 tests failed so in 3 runs of the telemetry tests, two of them given the same port, 40033; in 20 runs 115 tests failed, 85 of them so. With the ports from above the range, handed out in turn, and the fake collector holding the port of one that takes no connections, 2 failed in 20 runs there, both where cld chose the port and the fake collector found it taken as it started; handed out in turn from inside the range, 5 failed in 20 runs, one of them finding its port in use and one a collector ready that takes no connections; without the hold, the tests of the wait and the port, 10 runs at 120 ports, found such a collector ready once, and none with it |
 | `docker rm -f` on a missing container | prints `Error response from daemon: No such container: NAME`, exit 0; `docker container inspect` prints the same, exit 1 |
 | `encoding/json` on a settings file that is not valid JSON (Go 1.26.0 and 1.27.1) | `json.Decoder`, which cld reads the file with, gives a bare `EOF` for an object cut short (`{`) in 1.26, `unexpected end of JSON input` in 1.27; and the offset of a syntax error before the white space ahead of it in 1.26 - `line 3` for a `}` at the start of line 4 - and after the character in 1.27. `json.Unmarshal` gives the same `*json.SyntaxError`, offset included, in both. `go.mod` asks for Go 1.26, which the macOS job of CI builds with; the Linux image has 1.27 |
 | `docker pause` on the collector | `docker container inspect` says `paused`, and the receiver keeps its port: listening on `127.0.0.1:PORT` fails with `EADDRINUSE`, and the kernel accepts a connection there, with nothing to answer it. `docker rm -f` removes the paused container, and frees the port |
@@ -1438,6 +1440,22 @@ Where the implementation departs from the plan above:
   temporary file is written has no such cause, so the removal of that file is not tested. The
   limit on a `--collector-config` is checked against the kernel: the longest file passes to
   docker, and a program run with a variable one byte longer fails with `E2BIG`.
+- The ports the telemetry tests give cld with `--port`, or hold as another program's or a running
+  collector's, come from outside the kernel's ephemeral range (`testPort`): above it, else below
+  it from 1024. A port that a listener on port 0 had and let go, as the tests took them before, is
+  the kernel's pick again for any listener on port 0 or connection in the network namespace (see
+  Findings): another test's, or the cld of one where cld chooses the port, took it now and then
+  before the test's own cld listened there, which then found it in use. Outside the range only a
+  program that asks for the port by number takes it; the tests of a process get the ports in
+  turn, no two the same one, from a random start, passing over one that something listens on -
+  given the same port, two tests of a process had failed too. For the same reason the fake
+  docker's receiver holds the port of a container that takes no connections, bound without
+  listening: cld waits 10 s on that port, which it chose, and another test's cld could choose it
+  too, and take the connections. What is left is cld's own: in the few milliseconds between cld
+  letting go of a port it chose, or `rm -f` freeing the running collector's, and `run -d`, another
+  test's cld choosing its port can get that one, as any program can outside the tests. In the
+  range of 200 ports in Findings that failed 2 tests in 20 runs; the default range has 141 times
+  as many.
 
 ## What the tests found
 

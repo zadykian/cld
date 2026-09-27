@@ -145,10 +145,10 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   records any other command in `tmux.json`, or runs the real tmux `CLD_FAKE_TMUX_REAL` names.
   Invoked as `docker`, it records each call in `docker.jsonl`, keeps the state of the container
   `cld-telemetry` in `docker.container`, takes connections on the port of a container it starts
-  running (the probe again, as the collector's receiver, until `rm -f`), and takes
-  `CLD_FAKE_DOCKER_*` variables: the container before, the state one starts in and its restart
-  count, whether it takes connections, the collector's log, a call that fails, a file that
-  `run -d` writes.
+  running (the probe again, as the collector's receiver, until `rm -f`; one that takes none still
+  holds the port), and takes `CLD_FAKE_DOCKER_*` variables: the container before, the state one
+  starts in and its restart count, whether it takes connections, the collector's log, a call that
+  fails, a file that `run -d` writes.
 - `internal/sandbox` — an isolated world per test: its own short `TMUX_TMPDIR` (socket paths hit
   the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset. Tests are
   parallel and never touch the user's own cld sessions. `Tmux(server, ...)` runs tmux against one
