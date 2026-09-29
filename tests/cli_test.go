@@ -408,6 +408,7 @@ func TestCompleteCommands(t *testing.T) {
 			"-n\tthe session's `NAME`, before -SUFFIX: by default the\n" +
 			"--suffix\tthe session's `SUFFIX`, after NAME-\n" +
 			"-s\tthe session's `SUFFIX`, after NAME-\n:4\n"},
+		{[]string{"__complete", "resume", "--f"}, "--fork\tresume a copy of SESSION under a new session ID,\n:4\n"},
 		{[]string{"__complete", "new", "-s", ""}, ":4\n"},
 		{[]string{"__complete", "new", "-s", ""}, ":4\n"},
 		{[]string{"__complete", "list", ""}, ":4\n"},
@@ -565,11 +566,13 @@ func TestNameLength(t *testing.T) {
 
 // new, resume, join, detach and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX;
 // join and kill need -s - detach too, outside a pane of cld's servers, as here, -n alone
-// included - and resume -s or SESSION. -n is checked first, then -s, each its length first,
-// whatever its characters, then its characters - an empty one and one of spaces are invalid too;
-// SUFFIX is checked as NAME is, since where the directory's name leaves nothing it is the whole
-// name. Each is a mistake on the command line, exit status 2, found before any tool is looked for:
-// the PATH has none here.
+// included - and resume -s or SESSION - with --fork, SESSION, whose copy would otherwise take the
+// name of the conversation it copies, and one other than the name -n and -s make, in any case
+// (TestResumeForkOwnName has the name the directory or the index makes). -n is checked first,
+// then -s, each its length first, whatever its characters, then its characters - an empty one and
+// one of spaces are invalid too; SUFFIX is checked as NAME is, since where the directory's name
+// leaves nothing it is the whole name. Each is a mistake on the command line, exit status 2, found
+// before any tool is looked for: the PATH has none here.
 func TestNameOptions(t *testing.T) {
 	t.Parallel()
 	tooLong := strings.Repeat("s", 65)
@@ -587,6 +590,14 @@ func TestNameOptions(t *testing.T) {
 		{[]string{"detach", "-s", "a.b"}, "cld: invalid suffix 'a.b' (see cld help)\n"},
 		{[]string{"resume"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
 		{[]string{"resume", "-n", "x"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
+		{[]string{"resume", "--fork"}, "cld: resume: --fork needs SESSION, the conversation to copy (see cld help)\n"},
+		{[]string{"resume", "-s", "x", "--fork"}, "cld: resume: --fork needs SESSION, the conversation to copy (see cld help)\n"},
+		{[]string{"resume", "--fork", "-n", "x"}, "cld: resume: --fork needs SESSION, the conversation to copy (see cld help)\n"},
+		{[]string{"resume", "--fork", "-s", "a.b"}, "cld: invalid suffix 'a.b' (see cld help)\n"},
+		{[]string{"resume", "-n", "a", "-s", "x", "--fork", "cld-a-x"},
+			"cld: resume: --fork would give the copy SESSION's own name, cld-a-x; give another -s SUFFIX (see cld help)\n"},
+		{[]string{"resume", "-s", "x", "-n", "A", "--fork", " CLD-a-X "},
+			"cld: resume: --fork would give the copy SESSION's own name, cld-A-x; give another -s SUFFIX (see cld help)\n"},
 		{[]string{"kill", "-n", "", "-s", ""}, "cld: invalid name '' (see cld help)\n"},
 		{[]string{"join", "-n", "a.b"}, "cld: invalid name 'a.b' (see cld help)\n"},
 		{[]string{"new", "-n", "x", "-s", "a b"}, "cld: invalid suffix 'a b' (see cld help)\n"},
@@ -846,6 +857,10 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"resume", "-n", "x", ""}, "cld: resume: unexpected argument '' (see cld help)\n"},
 		{[]string{"resume", "", "--", "-p"}, "cld: resume: unexpected argument '' (see cld help)\n"},
 		{[]string{"resume", "-"}, "cld: resume: unexpected argument '-' (see cld help)\n"},
+		{[]string{"resume", "x", "--fork"}, "cld: resume: unexpected argument '--fork' (see cld help)\n"},
+		{[]string{"resume", "--fork=maybe", "x"}, "cld: resume: unexpected argument '--fork=maybe' (see cld help)\n"},
+		{[]string{"resume", "-f", "x"}, "cld: resume: unexpected argument '-f' (see cld help)\n"},
+		{[]string{"new", "--fork"}, "cld: new: unexpected argument '--fork' (see cld help)\n"},
 		// cobra would show its help and exit 0 for an unknown shell, fail with exit status 1 for
 		// an argument after it, and read an option after an argument.
 		{[]string{"completion", "tcsh"}, "cld: completion: unknown shell 'tcsh' (see cld help)\n"},
@@ -1656,16 +1671,17 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // options, the directory, claude - by the path of the one it checked - and its arguments as
 // separate words, what goes on claude's pane, and the tab's title on claude's session, naming
 // the tmux cld checked, as claude's hooks do. resume's claude gets new's arguments, never -w's,
-// then --resume; the words after "--" come last. A word ending in ";", which tmux would take for
-// the end of its command, goes with a "\" before the ";", which tmux drops: SESSION, a word after
-// "--", or the directory cld runs in. The directory goes with every "#" doubled, since tmux
-// expands -c as a format, in which "##" is a "#". The session's home - the repository, the work
-// directory, or a directory that is a repository of its own - goes with a "\" before a ";" at its
-// end too, but with no "#" doubled: set does not expand it. The fake tmux, which finds no server
-// running for the session, records the command, and the environment it gets: cld's own, without
-// the variables that name the terminal to claude (see TestVSCodeGit for VS Code's) and with an
-// empty TMUX where TMUX was set, which join's client needs (see TestNestsOnADeadPanesPty); a PS1,
-// which the script's bash dropped, passes too (decision 11 in docs/design.md).
+// then --resume, and with --fork --fork-session; the words after "--" come last. A word ending
+// in ";", which tmux would take for the end of its command, goes with a "\" before the ";", which
+// tmux drops: SESSION, a word after "--", or the directory cld runs in. The directory goes with
+// every "#" doubled, since tmux expands -c as a format, in which "##" is a "#". The session's
+// home - the repository, the work directory, or a directory that is a repository of its own -
+// goes with a "\" before a ";" at its end too, but with no "#" doubled: set does not expand it.
+// The fake tmux, which finds no server running for the session, records the command, and the
+// environment it gets: cld's own, without the variables that name the terminal to claude (see
+// TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set, which join's client
+// needs (see TestNestsOnADeadPanesPty); a PS1, which the script's bash dropped, passes too
+// (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -1690,6 +1706,9 @@ func TestNewTmuxCommand(t *testing.T) {
 		{[]string{"new", "-s", "x", "--", "--model", "a;", `a\;`, ""}, "", "", "", []string{"--model", `a\;`, `a\\;`, ""}},
 		{[]string{"new", "-s", "x", "-w", "--", "go"}, "", "", "", []string{"--worktree", "cld-x", "go"}},
 		{[]string{"resume", "-s", "x", "a", "--", "b;"}, "", "", "", []string{"--resume", "a", `b\;`}},
+		{[]string{"resume", "-s", "x", "--fork", "cld-a-0"}, "", "", "", []string{"--resume", "cld-a-0", "--fork-session"}},
+		{[]string{"resume", "-s", "x", "--fork", "a;"}, "", "", "", []string{"--resume", `a\;`, "--fork-session"}},
+		{[]string{"resume", "-s", "x", "--fork", "a", "--", "b;"}, "", "", "", []string{"--resume", "a", "--fork-session", `b\;`}},
 		{[]string{"new", "-s", "x"}, "w;", `w\;`, "", nil},
 		{[]string{"new", "-s", "x", "-w"}, "w;", `w\;`, "", []string{"--worktree", "cld-x"}},
 		{[]string{"resume", "-s", "x"}, "w;", `w\;`, "", []string{"--resume", "cld-x"}},

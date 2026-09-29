@@ -74,7 +74,7 @@ another repository or directory of the same name made.
 | Command | Action |
 |---|---|
 | `cld new [-n NAME] [-s SUFFIX] [-w] [-- ARGS...]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME-SUFFIX`; `ARGS` go to claude |
-| `cld resume [-n NAME] [-s SUFFIX] [SESSION] [-- ARGS...]` | create the session with claude resuming its conversation, where the session ran, or `SESSION`; `ARGS` go to claude |
+| `cld resume [-n NAME] [-s SUFFIX] [--fork] [SESSION] [-- ARGS...]` | create the session with claude resuming its conversation, where the session ran, or `SESSION`; with `--fork`, a copy of `SESSION`; `ARGS` go to claude |
 | `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
 | `cld detach [-n NAME] [-s SUFFIX]` | detach every terminal from the session; without `-n` and `-s`, as `! cld detach` in claude, the terminal used last, normally the one you typed it in |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
@@ -170,13 +170,19 @@ directory it ran in, from wherever you run it, whatever the conversation is name
 in `cld list` does the same. After a reboot, `cld list` shows every session that ran as `ended`,
 ready to resume. Without a record, `cld resume` goes by the conversation's name,
 `cld-NAME-SUFFIX`, where you run it. `cld resume SESSION` resumes another conversation: a session
-ID, a name, or a search term for claude's picker. Do not resume a
-conversation that is open elsewhere: two claudes would write to one transcript, their messages
-interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions) say. claude
-refuses one that runs in its background sessions, naming `claude attach ID`, which opens it
-outside cld, and `claude stop ID`, after which `cld resume` brings it back - after `cld kill`,
-where the session stays. See the [guide](docs/guide.md#resuming-a-conversation) for what is not
-checked yet.
+ID, a name, or a search term for claude's picker. The conversation takes the session's name for
+good. By name, where several conversations have it - after `/clear`, or a `cld new -s SUFFIX`
+that gave an ended session's name again - claude opens its picker instead: pick one there, or
+resume it by its session ID, `cld resume -s SUFFIX ID`; `Ctrl+R`, once `Enter` has left the
+picker's search box, renames the one selected. `cld resume --fork SESSION` resumes a copy of
+`SESSION` under a new session ID, named after the session, and leaves `SESSION` as it was; it
+refuses a `SESSION` that is the session's own name, which the copy would take too. Do not resume a
+conversation that is open elsewhere without `--fork`: two claudes would write to one transcript,
+their messages interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions)
+say. claude refuses one that runs in its background sessions, naming `claude attach ID`, which
+opens it outside cld, and `claude stop ID`, after which `cld resume` brings it back - after
+`cld kill`, where the session stays; `--fork` resumes a copy of it all the same. See the
+[guide](docs/guide.md#resuming-a-conversation) for more.
 
 ### Worktrees
 

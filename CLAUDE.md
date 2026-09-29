@@ -134,12 +134,13 @@ not push such a change. Rebase onto `main` before either.
   SESSION. Where nothing is left of the default, as in `/`, the name is `SUFFIX` alone. cld's
   messages and the `pane-died` hint and border line name a session back as `-n NAME -s SUFFIX`,
   split at its last `-` (`session.Options`; decision 24). Elsewhere, and in `internal/session`,
-  NAME is a session's whole name, all tmux sees. `-w` gives claude `--worktree cld-NAME-SUFFIX`.
-  `new` and `resume` record where they made a session, the repository's directory or the current
-  one, as `@cld-home` on claude's session; `join`, `detach` and `kill` without `-n`, where NAME's
-  default is not empty, refuse a session whose `@cld-home` is another directory (compared as
-  files), and `join -s` and `detach -s` offer only the sessions they take (`session.Home`;
-  decision 37).
+  NAME is a session's whole name, all tmux sees. `-w` gives claude `--worktree cld-NAME-SUFFIX`,
+  and `resume --fork`, which needs a SESSION other than the session's own name, `--fork-session`
+  (decision 45). `new` and `resume` record where they made a session, the repository's directory
+  or the current one, as `@cld-home` on claude's session; `join`, `detach` and `kill` without
+  `-n`, where NAME's default is not empty, refuse a session whose `@cld-home` is another directory
+  (compared as files), and `join -s` and `detach -s` offer only the sessions they take
+  (`session.Home`; decision 37).
 - cld keeps a **record of its sessions** in `$XDG_STATE_HOME/cld`, by default
   `~/.local/state/cld` (`internal/session/record.go`; decision 40): `sessions/NAME.json`, a line
   of JSON per session - its name, the directory claude started in and its conversation's ID -
@@ -336,8 +337,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   completion offers, and the keys a tmux cld runs inside keeps from claude;
   `record_test.go` — cld's record of its sessions: the entry, the hooks that give it the
   conversation's ID, `ended` sessions in `list`, `join`, `kill` and the interactive list,
-  `resume` by the ID (or the name) in the entry's directory, the indexes, expiry, the lock of two
-  `new` at once, `XDG_STATE_HOME` and a record cld cannot write;
+  `resume` by the ID (or the name) in the entry's directory, the copy's after `resume --fork`, the
+  indexes, expiry, the lock of two `new` at once, `XDG_STATE_HOME` and a record cld cannot write;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
   byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures

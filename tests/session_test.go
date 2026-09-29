@@ -335,16 +335,18 @@ func TestNewWorktree(t *testing.T) {
 
 // resume makes its session as new does, in the current directory, and claude gets new's arguments
 // - never -w's - then --resume with the conversation: the one named like the session, or SESSION,
-// as one word, whatever it holds; then the words after "--", after SESSION too, as new gives them.
-// tmux would end its command at a word ending in ";" (see literal in internal/session), and a git
-// repository makes no worktree session. Its name, "_", leaves nothing, so -s SUFFIX names the
-// session SUFFIX; with SESSION and without -s the session gets the index new would give it.
+// as one word, whatever it holds, and with --fork --fork-session after it; then the words after
+// "--", after SESSION too, as new gives them. tmux would end its command at a word ending in ";"
+// (see literal in internal/session), and a git repository makes no worktree session. Its name,
+// "_", leaves nothing, so -s SUFFIX names the session SUFFIX; with SESSION and without -s the
+// session gets the index new would give it.
 func TestResume(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args         []string
 		name, resume string
-		// after is what claude gets after --resume
+		// after is what claude gets after --resume: with --fork, --fork-session, then the words
+		// after "--"
 		after []string
 	}{
 		{[]string{"resume", "-s", "x"}, "x", "cld-x", nil},
@@ -361,6 +363,13 @@ func TestResume(t *testing.T) {
 		{[]string{"resume", "-s", "x", "--"}, "x", "cld-x", nil},
 		{[]string{"resume", "a", "--", "--fork-session", "go on;"}, "0", "a", []string{"--fork-session", "go on;"}},
 		{[]string{"resume", "-s", "x", "a", "--", "--"}, "x", "a", []string{"--"}},
+		{[]string{"resume", "--fork", "cld-a-0"}, "0", "cld-a-0", []string{"--fork-session"}},
+		{[]string{"resume", "-s", "b", "--fork", "cld-a-0"}, "b", "cld-a-0", []string{"--fork-session"}},
+		{[]string{"resume", "--fork", "-n", "a", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "a-0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", []string{"--fork-session"}},
+		{[]string{"resume", "-s", "x", "--fork=true", "fix;"}, "x", "fix;", []string{"--fork-session"}},
+		{[]string{"resume", "-s", "x", "--fork", "cld-x-0"}, "x", "cld-x-0", []string{"--fork-session"}},
+		{[]string{"resume", "-s", "x", "--fork=false"}, "x", "cld-x", nil},
+		{[]string{"resume", "-s", "x", "--fork", "a", "--", "--add-dir", "../y"}, "x", "a", []string{"--fork-session", "--add-dir", "../y"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -382,6 +391,49 @@ func TestResume(t *testing.T) {
 			list := fmt.Sprintf("%-*s  STATE     DIRECTORY\n%-*s  attached  %s\n", width, "NAME", width, test.name, s.Work)
 			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
 				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
+			}
+		})
+	}
+}
+
+// resume --fork refuses a SESSION that is the name its copy would take, cld-NAME, compared as
+// claude compares names - in any case, the spaces around it trimmed - since claude would resume a
+// copy of the conversation of that name and give the copy that name too. Where the directory's or
+// the repository's name, or the index, makes that name, the refusal comes with exit status 1
+// (TestNameOptions has -n and -s alone, with status 2): in repository api with no session of that
+// name running or recorded, a copy of cld-api-0 would be session api-0 again. No session is made,
+// and claude is run for its version only.
+func TestResumeForkOwnName(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		// repository is the git repository cld runs in, or where it is empty the work directory,
+		// whose name leaves nothing; name is the session's
+		repository, name string
+	}{
+		{[]string{"resume", "--fork", "cld-0"}, "", "0"},
+		{[]string{"resume", "-s", "x", "--fork", "cld-x"}, "", "x"},
+		{[]string{"resume", "-s", "x", "--fork", " CLD-X\t"}, "", "x"},
+		{[]string{"resume", "-n", "a", "--fork", "cld-a-0"}, "", "a-0"},
+		{[]string{"resume", "--fork", "cld-api-0"}, "api", "api-0"},
+		{[]string{"resume", "-s", "Fix", "--fork", "cld-API-fix"}, "api", "api-Fix"},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			dir := s.Work
+			if test.repository != "" {
+				dir = repository(t, s, test.repository)
+			}
+			want := "cld: resume: --fork would give the copy SESSION's own name, cld-" + test.name + "; give another -s SUFFIX (see cld help)\n"
+			if result := s.RunCldIn(dir, nil, test.args...); result.Code != 1 || result.Stderr != want || result.Stdout != "" {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+			}
+			if sessions := s.Sessions(); len(sessions) != 0 {
+				t.Errorf("sessions %q, want none", sessions)
+			}
+			if probes := s.Probes(); len(probes) != 0 {
+				t.Errorf("%d claude processes, want none", len(probes))
 			}
 		})
 	}

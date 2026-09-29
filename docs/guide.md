@@ -360,15 +360,36 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
   claude looks the name up there or, in a git repository, in any checkout of it; a session ID it
   finds from any directory. claude looks in the history of the shell's `CLAUDE_CONFIG_DIR`, if you
   set one.
-- By name, claude resumes the conversation when exactly one has the name. Several can have it:
-  `/clear` keeps the name for the conversation it starts, and a later `cld new -s SUFFIX` of the
-  same `S` gives it to a new one as well - whose ID cld's record then holds in place of the old
-  one's. claude then opens its picker with the name as the search term, which may not be an exact
-  filter: for `cld-rev` it may list `cld-review` too (not checked yet).
-- With `SESSION`, claude resumes in the current directory, and still gets `--name cld-S`, meant
-  to give the conversation the session's name, as cld's record gets its ID; how claude applies it
-  to a resumed conversation has not been checked yet. Without `-s`, the session gets the index
-  `cld new` would give it.
+- By name, claude resumes the conversation when exactly one has the name - whatever the case of
+  its letters. Several can have it: `/clear` keeps the name for the conversation it starts, and a
+  later `cld new -s SUFFIX` of the same `S` gives it to a new one as well - whose ID cld's record
+  then holds in place of the old one's; claude keeps a name unique only among the claudes
+  running. With several, or none, claude opens its picker with the name as the search term,
+  which lists the conversations whose name, git branch or tag contains it: for `cld-rev`,
+  `cld-review` too. Where the repository has more than one worktree - `cld new -w` makes one -
+  the picker starts with the conversations of the checkout claude runs in, although claude looked
+  the name up in every checkout. `Enter` or `↓` leaves the search box for the list, where
+  `Ctrl+W` shows every worktree's conversations, `Ctrl+A` every project's, and `Ctrl+R` renames
+  the one selected. Pick one there, or resume it by its session ID: `cld resume -s SUFFIX ID`.
+- With `SESSION`, claude resumes in the current directory, and still gets `--name cld-S`: the
+  conversation takes the session's name for good, as cld's record gets its ID - claude sets the
+  name before it restores the conversation's own, which it keeps only where none is set. Without
+  `-s`, the session gets the index `cld new` would give it.
+- `cld resume --fork SESSION` passes `--fork-session`: claude resumes a copy of the conversation
+  under a new session ID, named `cld-S`, and leaves the conversation as it was, its name included.
+  The copy starts where `cld resume` runs - claude does not take it back to a worktree - and
+  without the conversation's Remote Control session; cld's record gets the copy's ID, so that
+  `cld resume -n NAME -s SUFFIX` brings the copy back. It can run beside a session that has the
+  conversation open, as `cld resume -s b --fork cld-api-0` beside `api-0`, and claude resumes a
+  copy of a conversation that runs as one of its background sessions, which it otherwise refuses
+  to resume - both read from claude's code, not checked yet with claude running. `--fork` needs
+  `SESSION`, and refuses `cld-S` itself, whatever the case of its letters: the copy would take
+  the name of the conversation it copies, and a `cld resume` by that name would open the picker.
+  Without `-s`, the index can make it so - `cld resume --fork cld-api-0` in repository `api`,
+  where no session of that name runs or is recorded, would be session `api-0` again - so give
+  another `-s`. A `SESSION` that names the conversation another way, by its session ID or as the
+  one you pick in the picker, cld cannot tell, and it checks none of this for a `--fork-session`
+  given after `--`.
 - For a session ID that matches no conversation, claude prints
   `No conversation found with session ID: ...` and exits with an error; the session stays with the
   message.
@@ -406,7 +427,9 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
   until the copy stops, and while none runs the hooks fail after each tool, with a hook error (not
   checked yet). To bring the conversation back into cld, run `claude stop ID`, then
   `cld kill -n NAME -s SUFFIX` where the session stays, and `cld resume -n NAME -s SUFFIX` (not
-  checked yet: the old transcript has the name too). cld does not pass `--fork-session`.
+  checked yet: the old transcript has the name too). With `--fork`, cld passes `--fork-session`:
+  `cld resume -s OTHER --fork cld-S` resumes a copy in another session, as the message offers,
+  and leaves the background session running (not checked yet).
   claude's `disableAgentView` setting turns agent view off, `/bg` with it; `/config` has
   `← opens agents` to turn off the key alone.
 
@@ -421,9 +444,9 @@ branches from your current `HEAD`, not from the remote's default branch, whateve
   repository `api`, `cld new -w` makes `.claude/worktrees/cld-api-0`.
 - `cld new -s SUFFIX -w` again reopens the worktree with a new conversation; `cld resume -s SUFFIX`,
   run in the repository, resumes the conversation, and claude takes it back to its worktree - or,
-  if the worktree is gone, resumes where `cld new -w` ran and says so. `cld resume` has no `-w`,
-  and a worktree claude makes during a resumed session - for a subagent, say - branches as your
-  settings say.
+  if the worktree is gone, resumes where `cld new -w` ran and says so. A copy that `--fork` makes
+  stays where `cld resume` runs. `cld resume` has no `-w`, and a worktree claude makes during a
+  resumed session - for a subagent, say - branches as your settings say.
 - A worktree outlives its session, and `cld new -w` counts sessions, not worktrees: 30 days after
   session `api-0` last ran, the next `cld new -w` can be `api-0` again, and reopen its worktree.
   Give `-s` for a new one.
@@ -435,7 +458,7 @@ branches from your current `HEAD`, not from the remote's default branch, whateve
 
 `cld new ... -- ARGS` and `cld resume ... -- ARGS` start claude with `ARGS` after cld's own
 arguments: `--name cld-S` and `--settings`, then `--worktree cld-S` for `cld new -w`, and
-`--resume` for `cld resume`.
+`--resume` for `cld resume`, with `--fork-session` for `cld resume --fork`.
 
 - Each word goes to claude as it is, an empty one too. claude reads its options and a prompt to
   start with, and reports what it does not take: a claude that fails at startup stays with its

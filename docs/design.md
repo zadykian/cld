@@ -91,6 +91,7 @@ rows that name none were probed against tmux 3.6.
 | `claude --help` of 2.1.282 on resuming | `-r, --resume [value]`: "Resume a conversation by session ID, or open interactive picker with optional search term"; `-n, --name <name>`: "Set a display name for this session (shown in the prompt box, /resume picker, and terminal title)"; `--fork-session`: "When resuming, create a new session ID instead of reusing the original". The help says nothing of resuming by name, which Claude Code's docs describe, and names no restriction on giving `--name` with `--resume`. `--resume`'s value is optional (`[value]`): by the rule of commander, whose `.option()` calls the bundle holds, a word starting with `-` after it is read as the next option, not as its value (not run) |
 | how `claude` 2.1.282 resumes (read from its bundle, not run) | `--resume ID` with no conversation for the ID prints `No conversation found with session ID: ID` and exits 1. A conversation that runs as a background session (`claude --bg`) is refused, naming `claude attach` and `claude stop`, unless `--fork-session` is given; one open in an interactive claude is not. When Remote Control starts and another process on the machine holds the conversation's Remote Control session, claude leaves Remote Control off with a notice that starts `Remote Control not started here · another Claude Code on this machine ... already has Remote Control for this conversation` and ends `run /remote-control to move it to this terminal`. Not found in the bundle: whether a session that connected at startup, as cld's did until 42, records its Remote Control session in the conversation, and how `remoteControlAtStartup` on the command line combines with a recorded one |
 | how `claude` 2.1.283 moves a conversation to its background sessions (read from its bundle, not run, and again from 2.1.284's, which has the same strings; what cld then shows, the refused `cld resume`, and `←` then `cld kill` seen in sessions of cld's with the real claude 2.1.283 on tmux 3.7c, as #70 reports; the transcripts' `continued-in` entries read in claude's history; Claude Code's agent-view docs read; the hooks' tmux command run against a private tmux 3.7c server) | agent view, on unless `disableAgentView` or `CLAUDE_CODE_DISABLE_AGENT_VIEW=1` turns it off ("Disable agent view (`claude agents`, `--bg`, /background, the on-demand daemon)"), moves a conversation out of an interactive claude three ways: `/background` (`/bg`, "Send this session to the background and free the terminal"); "Move to background and exit" in the dialog `/exit` shows while background work runs, beside "Exit and stop tasks" and "Stay"; and `←` on an empty prompt, while `/config`'s `← opens agents` (`leftArrowOpensAgents`, on by default) is on. claude's daemon runs the conversation on as a copy, with a new session ID and the same name - which Claude Code's agent-view docs say it numbers, as `NAME (2)`, where a background session on the list has it already; the old transcript gets a `continued-in` entry with the copy's ID, and `/resume` passes it over (`filtered from /resume: continued in ID`). `/bg` and the dialog exit claude with status 0: under `remain-on-exit failed` the pane, the session and its server went, the terminal showed `[exited]` and `cld list` nothing. After `←` claude stays in the pane, in agent view; `cld kill` ends it, and the copy goes on. The docs say that `Esc` there returns to the conversation, and `Enter` or `→` on a row attaches to it, and that detaching (`←`, `Ctrl+Z`, `/exit`, `Ctrl+C` or `Ctrl+D` twice) never stops a background session (not run: `Esc`, `Enter` and `→`; `←` was seen). `--resume` by the name then finds the copy, which claude refuses while a live background process holds it, unless `--fork-session` is given: ``Session UUID is running as a background session (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.``, without a job ID ``Run `claude agents` to find its id, then ...``, status 1, which leaves a session of cld's `exited`; `/resume` inside claude refuses it without the last sentence. `claude stop ID`: "Stop a background session. Its conversation is kept: `claude attach <id>` opens it again, `claude --resume` works once it is stopped" in the command's description, and "... kept; resume it later with `claude attach <id>`." in its usage; `claude attach ID`: "Open the background session in this terminal". A worker runs with the `--settings` of the claude in the pane (see the hooks of a conversation claude runs in the background, below). A tmux 3.7c server whose last session ended - its program exited with status 0 under `remain-on-exit failed` - leaves its socket, and the hooks' `tmux -S SOCKET if -F -t =cld-NAME: ...` then prints `no server running on SOCKET`, status 1; once a new server on that socket has a session `cld-NAME`, as a later `cld new` of the name starts one, the same command exits 0 and sets the option on that session |
+| how `claude` names and finds a resumed conversation, and `--fork-session` (#75: 2.1.283's bundle, re-read in 2.1.284's, not run; Claude Code's changelog) | `--name` sets the session's title and agent name as claude starts, before `--resume` restores the conversation's metadata, which sets the title with `??=`, only where none is set: a conversation resumed by ID, by name, from the picker or as a copy takes `--name`'s, which claude writes to its transcript. `--resume VALUE` that is no session ID looks VALUE up among the conversations of the directory's git worktrees (`git worktree list`), comparing each one's custom title, or else its AI title, lower-cased and trimmed, with VALUE's: exactly one is resumed; none or several open the picker searching for VALUE, which keeps the conversations whose shown name (title, summary or first prompt), git branch, tag or pull request contains it, in any case, so `cld-rev` finds `cld-review` too. Where `git worktree list` names more than one worktree, the picker starts with the conversations of the worktree claude runs in - the longest worktree path that holds its directory - although the lookup took every worktree's; it filters by nothing else to start with, the git branch neither. It opens in its search box, which `Enter` or `↓` leaves for the list; there `Ctrl+W` shows every worktree's conversations, `Ctrl+A` every project's, `Ctrl+B` only the current branch's, and `Ctrl+R` renames the one selected - not from the search box, apart from `Ctrl+A` where claude found no conversation. A name that a claude running on the machine has already is given a variant as claude starts, `NAME-WORD-WORD`; a name no running claude has is taken as it is, and `/clear` keeps the name for the conversation it starts. `--fork-session` resumes under a new session ID, leaving the transcript it copies as it was; the copy takes the original's metadata without its worktree, its moved directory and its Remote Control session, so claude neither takes it back to a worktree nor reconnects that session. With `--fork-session` claude skips its refusal of a conversation that runs as a background session (`Session ID is running as a background session (JOB). ... Add --fork-session to branch off a copy instead.`), and the picker copies the conversation picked. The changelog names `--fork-session` at 2.0.73 |
 | an argv word that ends in `;` (tmux's `cmd_parse_from_arguments`, read in the 3.3a and 3.7c sources; run on 3.7c, and on 3.3a, 3.4, 3.5a and 3.7c by `TestResume` and `TestDirectoryTmuxWouldChange`) | ends the tmux command, the text before the `;` staying an argument: `a;` reaches the program as `a`, and the next word starts a new tmux command. A word ending in `\;` becomes the text with `;` - `a\;` arrives as `a;`, `a\\;` as `a\;` - and a `;` elsewhere in a word is left alone. The words of a command given to `new-session` are not format-expanded: `#{session_name}` arrives as it is |
 | an empty word and others in `new-session`'s command (tmux 3.5a and 3.7c, on a private server: `new-session -d -s s1 args.sh --model opus '' 'a b' '--append-system-prompt=x\;' '#{session_name}' -p x`, the script writing each argument it got to a file) | the program got 8 arguments: the empty one as an empty argument, `x\;` as `x;`, and `#{session_name}` as it is |
 | `claude --help` of 2.1.284 on its command line (run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`: it prints and exits, starting no conversation) | `Usage: claude [options] [command] [prompt]`, with commands such as `mcp`, `agents` and `attach`. Its short options are `-c, --continue`, `-d, --debug [filter]`, `-h, --help`, `-n, --name <name>`, `-p, --print` ("Print response and exit"), `-r, --resume [value]`, `-v, --version` and `-w, --worktree [name]`; `--bg` is also `--background` ("Start the session in the background and return immediately"); `--settings <file-or-json>`; `--tmux` "Create a tmux session for the worktree (requires --worktree)", `--tmux=classic` for plain tmux; `--teleport [session]` "Resume a teleport session"; `--from-pr [value]` "Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term"; `--bare` "Minimal mode: skip hooks (those defined in settings and by installed plugins; ...)", and `--safe-mode` starts with "hooks" among the customizations disabled. Hidden, in the bundle: `--init-only` "Run Setup and SessionStart:startup hooks, then exit", and `--rewind-files <user-message-id>` "Restore files to state at the specified user message and exit (requires --resume)" |
@@ -953,7 +954,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        delete removes the worktree Claude created. Killing several sessions at once, a stopped
        state and removing worktrees are not part of it.
 16. Resume (#26): `resume [-n NAME] [SESSION]` (since 24 `resume [-n NAME] [-s SUFFIX] [SESSION]`,
-    `-s` or SESSION needed, 24.5) joins the commands of decision 3. It brings back a
+    `-s` or SESSION needed, 24.5; `--fork`, 45) joins the commands of decision 3. It brings back a
     conversation whose session is gone - ended by `kill` or the list's Ctrl+X (15), a reboot or a
     crashed server - in a new session `cld-NAME`, made as `new` makes it: the same checks and
     refusals (the name, claude on the `PATH` and its version (6), a live pane of one of cld's
@@ -975,7 +976,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     2. `--name cld-NAME` goes with `--resume` always, SESSION or not: the session runs
        `claude --name cld-NAME`, as cld's help says, and a conversation resumed through SESSION
        is meant to take the session's name, so that the next `resume -n NAME` finds it - at the
-       cost of the name it had. How claude combines the two is not probed (see Status).
+       cost of the name it had. It does: claude sets `--name`'s before it restores the
+       conversation's own, which it keeps only where none is set (read in claude's bundle, not
+       run; see Findings).
     3. No `-w`: claude takes a worktree conversation back to its worktree itself, and the docs do
        not say how `--worktree` combines with `--resume`; so `resume` needs no git either. The
        worktree base (decision 4) is left out: it also governs the worktrees claude makes during a
@@ -1030,17 +1033,17 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         session, and `kill` ends it, not the copy that claude's daemon runs on, whether or not
         `Esc` took claude back to the conversation (see Findings). `resume` by the name - since 40
         by the ID of cld's record - finds the copy, which claude refuses while it runs: cld neither
-        stops it nor passes `--fork-session`, as it guards no conversation open elsewhere (16.6).
-        `list` does not mark a session whose conversation moved (since 40 it shows it as `ended`
-        once its server has gone, as any other): that would take `claude agents --json`, and
-        `list`, whose way of reading the names completion shares (17), runs no claude. The copy
-        keeps the title's hooks (25, 26), which name the server's socket and the session: until
-        the copy stops, they set the status of any session of the name that runs, a later `new`'s
-        too, and fail while none does; so it keeps the record's (40.2), which touch the session's
-        entry, and after a `/clear` there write it anew with the copy's conversation, a later
-        `new`'s entry too. cld leaves that as well. The README and the user guide say how to
-        bring the conversation back: `claude attach ID`, or `claude stop ID`, then `kill` where
-        the session stays, and `resume`.
+        stops it nor passes `--fork-session` unasked, as it guards no conversation open elsewhere
+        (16.6); since 45 `resume --fork` passes it, resuming a copy of the copy. `list` does not
+        mark a session whose conversation moved (since 40 it shows it as `ended` once its server
+        has gone, as any other): that would take `claude agents --json`, and `list`, whose way of
+        reading the names completion shares (17), runs no claude. The copy keeps the title's hooks
+        (25, 26), which name the server's socket and the session: until the copy stops, they set
+        the status of any session of the name that runs, a later `new`'s too, and fail while none
+        does; so it keeps the record's (40.2), which touch the session's entry, and after a
+        `/clear` there write it anew with the copy's conversation, a later `new`'s entry too. cld
+        leaves that as well. The README and the user guide say how to bring the conversation back:
+        `claude attach ID`, or `claude stop ID`, then `kill` where the session stays, and `resume`.
 17. Shell completion (#25): `cld completion SHELL` prints a completion script for bash, zsh or
     fish, with which `cld join -n <TAB>` offers the names `cld list` shows (since 24 `-n` their
     NAME and `-s` their SUFFIX, 24.8).
@@ -2352,11 +2355,12 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        past the first argument; cld takes the words after either. Before the `--`, `new` takes no
        argument and `resume` SESSION at most, checked as before (16.1); the other commands still
        refuse a `--`. The words go after cld's own - `--name`, `--settings`, then `--worktree` or
-       `--resume` - so that an option among them that takes the words after it, `--add-dir` say,
-       takes none of cld's; each as one argv word, through `literal` (16.8), an empty one too,
-       which tmux passes on (see Findings). `resume` without SESSION starts claude in the
-       directory of the session's entry (40), which is where claude reads a relative path among
-       the words from, not where `resume` ran: the guide says to give absolute paths;
+       `--resume` (since 45 with `--fork-session`) - so that an option among them that takes the
+       words after it, `--add-dir` say, takes none of cld's; each as one argv word, through
+       `literal` (16.8), an empty one too, which tmux passes on (see Findings). `resume` without
+       SESSION starts claude in the directory of the session's entry (40), which is where claude
+       reads a relative path among the words from, not where `resume` ran: the guide says to give
+       absolute paths;
     2. refused, naming the word and why, with status 2 before any tool is looked for: the options
        cld gives claude itself, of which claude keeps the last (see Findings) - `-n` and
        `--name`, `-w` and `--worktree` (for `new`, cld's `-w`; for `resume`, none: 16.3), and
@@ -2605,6 +2609,54 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        without `C-q d or cld detach`. `detach` joins `join` and `kill` in the tests of names,
        arguments, lookups, stale sockets and a socket directory open to others (38), a server that
        outlived its session, completion - ble.sh's included - failures and the help.
+
+45. Resuming a copy (#75): `resume [-n NAME] [-s SUFFIX] [--fork] [SESSION] [-- ARGS...]`.
+    `--fork` gives claude `--fork-session` after `--resume SESSION`, before the words after `--`
+    (41.1): claude resumes a copy of SESSION under a new session ID, named after the session as any
+    resumed conversation is (16.2), and leaves SESSION's transcript and name as they were. Before,
+    `resume` renamed the conversation it resumed for good, and resumed a copy only with
+    `--fork-session` among the words after `--` (41), unchecked: `resume -s b x --fork-session`
+    was refused as an unexpected argument. Settled with it:
+    1. `--fork` needs SESSION, and is refused without it, with status 2, once `-n` and `-s` are
+       checked: a copy of the session's own conversation - by the ID of its entry (40.4), or
+       `cld-NAME-SUFFIX` - would take the session's name too, and a `resume` by that name - with
+       SESSION, or of a session whose entry has no ID - would find two conversations of it and
+       open claude's picker (the maintainer chose to refuse). For the same reason a SESSION that
+       is that name is refused, compared as claude compares names, lower-cased and trimmed (see
+       Findings), with
+       `--fork would give the copy SESSION's own name, cld-NAME-SUFFIX; give another -s SUFFIX`:
+       where `-n` and `-s` make the name, status 2, before any tool is looked for; otherwise,
+       once the repository's or directory's name and the index make it, status 1, as for a name
+       too long (24.2) - `resume --fork cld-api-0` in repository `api` with no session of that
+       name running or recorded would be session `api-0` again. Not taken: passing over that
+       index, since an ended session's name can come back at any index (24.1; since 40, once its
+       entry has expired, 40.6). SESSION naming that conversation another way, by its ID or as the
+       conversation picked in claude's picker, cld cannot tell (16.4); nor does it check a
+       `--fork-session` among the words after `--`, which 41.4 lets through;
+    2. the copy can run beside the original, `resume -s b --fork cld-a-0` while `a-0` runs, where
+       `resume` alone would have two claudes write one transcript (16.6), and claude resumes a
+       copy of a conversation that runs as one of its background sessions, which it refuses to
+       resume in place (16.10; read in claude's bundle, not run; see Findings and Status);
+    3. claude takes a copy neither back to the conversation's worktree nor onto its Remote
+       Control session: the copy starts where `resume` runs, and where Remote Control is on (42)
+       gets a session of its own. `resume --fork` writes its session's entry with no ID, as for
+       any SESSION (40.4), and the `SessionStart` hook, which claude runs as it forks a
+       conversation (see Findings), writes the copy's (40.2): `resume` without SESSION then brings
+       the copy back, and SESSION's conversation stays SESSION's;
+    4. the minimum (6) stays: the changelog names `--fork-session` at 2.0.73;
+    5. names claude gives twice stay claude's to settle: it makes a name unique only among the
+       claudes running, and `/clear`, or a `new -s` that gives an ended session's name again
+       (40.6), leaves several conversations of one name. `resume` by that name then opens
+       claude's picker, where one is picked, or renamed with `Ctrl+R`; where the repository has
+       several worktrees, the picker starts with the conversations of the one claude runs in, and
+       `Ctrl+W` shows every worktree's. `resume -s SUFFIX ID` resumes one by its ID, as `resume`
+       without SESSION does by its entry's (40.4). cld reads no transcripts (16.4), so it neither
+       warns of a duplicate nor prevents one;
+    6. the tests: claude's arguments for `--fork` with a name, an ID and a SESSION ending in `;`,
+       and before the words after `--`, as the probe gets them and as tmux gets them; the
+       refusals, of a SESSION that is the session's own name too, with `-n` and `-s`, with the
+       index and in a repository; and the entry `resume --fork` writes, the copy's ID its hook
+       gives it, and `resume` bringing the copy back by that ID (`TestResumeForkRecorded`).
 
 ## Implementation notes
 
@@ -2859,7 +2911,11 @@ Where the implementation departs from the plan above:
 - `resume` (decision 16) is a cobra command whose `Tmux.Resume` shares `Tmux.New`'s code: both
   call one function, `create`, that makes the session on its own server, and differ in claude's
   arguments only, so what `new` passes later reaches `resume` too, apart from the worktree. The
-  contract tests (C1-C10) run through `new`, and cover `resume` with it.
+  contract tests (C1-C10) run through `new`, and cover `resume` with it. `Tmux.Resume` hands
+  `create` claude's words for the conversation: `--resume`, and with `--fork` (decision 45)
+  `--fork-session`. `ownName` in `cmd/cld` refuses a `--fork` SESSION that is the session's own
+  name (45.1): before any tool is looked for where `-n` and `-s` make the name
+  (`naming.givenName`), and otherwise once `naming.resolve` has made it.
 - `setup telemetry` (decision 18) is `internal/telemetry`. The settings edit needs no new
   dependency: `json.Decoder`'s tokens read the top-level object and `env` into lists of keys and
   raw values in the file's order, and the file is written back from them, the values byte for
@@ -3089,12 +3145,14 @@ into Enter, see Findings and 43).
   `cld new -n wt -w` conversation resumed from the main checkout and from a subdirectory, and
   what `cld list` shows; the directory another project's conversation resumes in by ID;
   `/resume cld-NAME` inside `cld new -n NAME`; whether a session that turned Remote Control on
-  at startup, as cld's did until 42, records its Remote Control session in the conversation; and
+  at startup, as cld's did until 42, records its Remote Control session in the conversation;
   `claude stop ID`, then `cld resume`, of a conversation that `/bg` or `←` moved - which of the
   two transcripts of the name claude resumes, or whether it opens its picker - and `Esc` in agent
-  view after `←` (16.10). Until then the user guide and decision 16 go by Claude Code's docs, and
-  by claude's `--help` and bundle (see Findings), and the user guide says which of it is not
-  checked.
+  view after `←` (16.10); and `--fork-session` (#75) on a conversation another claude has open,
+  and on a background session. Until then the user guide and decisions 16 and 45 go by Claude
+  Code's docs, and by claude's `--help` and bundle (see Findings) - which answer which name a
+  resumed or copied conversation keeps, and how claude finds one by name and breaks a tie - and
+  the user guide says which of it is not checked.
 - That a session follows claude's own Remote Control setting (42) was read in claude 2.1.284's
   bundle and Claude Code's docs (see Findings), not run: a check would connect a session to
   claude.ai, which the maintainer runs or allows.

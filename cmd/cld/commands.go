@@ -238,10 +238,11 @@ conversation, which cld resume does: -r, --resume, -c, --continue and
 		return tmux.New(claude, suffix, *worktree, words)
 	}
 
-	// resume makes its session the way new does, and has claude resume a conversation in it. Its
-	// usage line names its options before SESSION, as help's does before COMMAND.
+	// resume makes its session the way new does, and has claude resume a conversation in it - with
+	// --fork, a copy of it. Its usage line names its options before SESSION, as help's does before
+	// COMMAND.
 	resume := &cobra.Command{
-		Use:   "resume [-n NAME] [-s SUFFIX] [flags] [SESSION] [-- ARGS...]",
+		Use:   "resume [-n NAME] [-s SUFFIX] [--fork] [flags] [SESSION] [-- ARGS...]",
 		Short: "create session NAME-SUFFIX with claude resuming its conversation",
 		Long: `create session NAME-SUFFIX and attach to it, as new does, with claude resuming
 a conversation: without SESSION, the one the session had last, by the ID cld
@@ -252,6 +253,15 @@ session ID, a name, or a search term for claude's picker, in the current
 directory. SESSION comes after the options and does not start with "-".
 Without SESSION, -s is needed.
 
+The conversation resumed takes the session's name, cld-NAME-SUFFIX, for good.
+By name, claude resumes the one conversation of that name in the directory or
+any checkout of its git repository; with none or several, it opens its picker,
+searching for the name: pick one there, or give its session ID as SESSION;
+Ctrl+R, once Enter has left the picker's search box, renames the one selected.
+With --fork, claude resumes a copy of SESSION under a new session ID, named
+after the session, and SESSION keeps its own name: --fork needs SESSION, other
+than cld-NAME-SUFFIX.
+
 ARGS, after --, go to claude as with new, and cld refuses the same options. A
 resumed conversation does not keep --mcp-config, --plugin-dir, --add-dir and
 --fallback-model, which Claude Code's docs say to give again.`,
@@ -260,14 +270,28 @@ resumed conversation does not keep --mcp-config, --plugin-dir, --add-dir and
 	}
 	resumeNaming := addNaming(resume, "the session's `SUFFIX`, after NAME-: with SESSION, by\n"+
 		"default the index new would give")
+	fork := resume.Flags().Bool("fork", false, "resume a copy of SESSION under a new session ID,\n"+
+		"leaving SESSION as it is (claude --fork-session)")
 	resume.RunE = func(c *cobra.Command, args []string) error {
 		args, words := atDash(c, args)
 		missing := "-s SUFFIX or SESSION (see cld help)"
-		if len(args) > 0 {
+		if len(args) > 0 || *fork {
 			missing = ""
 		}
 		if err := resumeNaming.check(typed, missing); err != nil {
 			return err
+		}
+		// A copy of the session's own conversation would take its name too: a resume by that name
+		// would find two conversations of it, and open claude's picker. So would a copy of SESSION
+		// where SESSION is that name - with -n and -s a mistake on the command line alone, and
+		// otherwise one the repository's or directory's name, or the index, makes (see ownName).
+		if *fork && len(args) == 0 {
+			return fail.Usage(typed + ": --fork needs SESSION, the conversation to copy (see cld help)")
+		}
+		if name, given := resumeNaming.givenName(); *fork && given {
+			if err := ownName(typed, 2, args[0], name); err != nil {
+				return err
+			}
 		}
 		tmux, err := session.Check("claude")
 		if err != nil {
@@ -301,7 +325,12 @@ resumed conversation does not keep --mcp-config, --plugin-dir, --add-dir and
 				return err
 			}
 		}
-		return tmux.Resume(claude, suffix, conversation, words)
+		if *fork {
+			if err := ownName(typed, 1, args[0], suffix); err != nil {
+				return err
+			}
+		}
+		return tmux.Resume(claude, suffix, conversation, *fork, words)
 	}
 	if err := resume.RegisterFlagCompletionFunc("name", sessionNames(true)); err != nil {
 		panic(err)
@@ -1071,6 +1100,30 @@ func tooLong(status int, name string) error {
 		Advice:  "; give a shorter -n NAME or -s SUFFIX (see cld help)"}
 }
 
+// givenName is the session's name, NAME-SUFFIX, where the command line alone makes it: with -n
+// and -s.
+func (n naming) givenName() (string, bool) {
+	if !n.flags.Changed("name") || !n.flags.Changed("suffix") {
+		return "", false
+	}
+	return *n.name + "-" + *n.suffix, true
+}
+
+// ownName refuses, with status, resume --fork of conversation, SESSION, into session name where
+// SESSION is the name the copy takes, cld-NAME, as claude compares names: lower-cased, spaces
+// around them trimmed (see Findings in docs/design.md). claude would find the conversation of
+// that name and give its copy the same, so that a resume by that name found two. A SESSION that
+// names the conversation another way - its session ID, a pick in claude's picker - cld cannot
+// tell.
+func ownName(typed string, status int, conversation, name string) error {
+	if strings.ToLower(strings.TrimSpace(conversation)) != strings.ToLower("cld-"+name) {
+		return nil
+	}
+	return &fail.Error{Status: status,
+		Message: typed + ": --fork would give the copy SESSION's own name, cld-" + name,
+		Advice:  "; give another -s SUFFIX (see cld help)"}
+}
+
 // resolve is the session's name, NAME-SUFFIX, once tmux has been checked: -n's NAME, or else the
 // repository's or directory's, and -s's SUFFIX, or else the next index (see session.Tmux.Next).
 // One longer than a session's name can be is refused with status 1: the repository's or
@@ -1167,7 +1220,7 @@ func resumeEnded(tmux *session.Tmux, name string) error {
 	}
 	unlock := session.Lock()
 	defer unlock()
-	return tmux.Resume(claude, name, "", nil)
+	return tmux.Resume(claude, name, "", false, nil)
 }
 
 // Kill is kill's steps - the name, then End - with End's check that the session is still the one

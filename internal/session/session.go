@@ -23,8 +23,11 @@
 // one: without SESSION the one the session had last - by the ID of its entry in cld's record (see
 // below), or else by the name cld-NAME - in the directory the session ran in, or the current one
 // where cld keeps no record of the session, and with SESSION that, in the current directory. It
-// also gets --resume ID, --resume cld-NAME or --resume SESSION (see Tmux.Resume). The words given
-// to either after "--" go to claude after these, as they are.
+// also gets --resume ID, --resume cld-NAME or --resume SESSION (see Tmux.Resume). `cld resume
+// --fork SESSION` adds --fork-session: claude resumes a copy of SESSION under a new ID. The
+// conversation claude resumes, or the copy, takes the session's name: claude sets --name's before
+// it restores the conversation's own, which it keeps only where none is set. The words given to
+// either after "--" go to claude after these, as they are.
 // `cld join` attaches to the session again, `cld detach` detaches terminals from it without the
 // keys (see Tmux.Detach and DetachTerminal), `cld kill` ends it with its server (see Tmux.Kill),
 // and `cld list` shows the sessions, asking each server for its own (see Tmux.Sessions) - on a
@@ -638,17 +641,18 @@ func shellWord(text string) string {
 // claude gets args, the words given after "--", after cld's own arguments. It returns only when it
 // does not get as far.
 func (t *Tmux) New(c *Claude, suffix string, worktree bool, args []string) error {
-	return t.create(c, suffix, worktree, "", "", args)
+	return t.create(c, suffix, worktree, nil, "", args)
 }
 
 // Resume creates session cld-SUFFIX as New does, without a worktree, with claude resuming a
 // conversation instead of starting one: conversation where that is not empty, and otherwise the
 // one the session's entry in cld's record names by its ID (see recorded) - the one the session
-// had last, whatever its name now - or else the one named cld-SUFFIX; and args after cld's own
-// arguments. claude finds the conversation, and says so when it cannot: cld does not read
-// claude's transcripts, whose format claude keeps to itself. The caller has made the directory the
-// entry names the current one (see EnterRecorded). It returns only when it does not get as far.
-func (t *Tmux) Resume(c *Claude, suffix, conversation string, args []string) error {
+// had last, whatever its name now - or else the one named cld-SUFFIX; with fork, a copy of it
+// under a new ID, which leaves the conversation as it was; and args after cld's own arguments.
+// claude finds the conversation, and says so when it cannot: cld does not read claude's
+// transcripts, whose format claude keeps to itself. The caller has made the directory the entry
+// names the current one (see EnterRecorded). It returns only when it does not get as far.
+func (t *Tmux) Resume(c *Claude, suffix, conversation string, fork bool, args []string) error {
 	id := ""
 	if conversation == "" {
 		conversation = "cld-" + suffix
@@ -656,17 +660,22 @@ func (t *Tmux) Resume(c *Claude, suffix, conversation string, args []string) err
 			conversation, id = r.Conversation, r.Conversation
 		}
 	}
-	return t.create(c, suffix, false, conversation, id, args)
+	resume := []string{"--resume", conversation}
+	if fork {
+		resume = append(resume, "--fork-session")
+	}
+	return t.create(c, suffix, false, resume, id, args)
 }
 
 // create makes session cld-SUFFIX for New and Resume, which differ only in claude's arguments:
-// with worktree claude works in git worktree cld-SUFFIX, and with a conversation it resumes that,
-// whose ID id is where Resume took it from the session's entry. args come after cld's own
-// arguments, so that no word of cld's is taken for the value of an option among them, such as
-// --add-dir, which takes the words that follow it; it refuses those that would make tmux's
-// command longer than tmux takes (see commandLimit). It writes the session's entry as it goes
-// (see remember), under the record's lock, which the caller holds (see Lock).
-func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id string, args []string) error {
+// with worktree claude works in git worktree cld-SUFFIX, and with resume, claude's --resume and
+// what goes with it, it resumes a conversation, whose ID id is where Resume took it from the
+// session's entry. args come after cld's own arguments, so that no word of cld's is taken for the
+// value of an option among them, such as --add-dir, which takes the words that follow it; it
+// refuses those that would make tmux's command longer than tmux takes (see commandLimit). It
+// writes the session's entry as it goes (see remember), under the record's lock, which the caller
+// holds (see Lock).
+func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, id string, args []string) error {
 	kept, err := t.readyClient()
 	if err != nil {
 		return err
@@ -690,7 +699,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 		return fail.Runtime(err.Error())
 	}
 	command := "new"
-	if conversation != "" {
+	if len(resume) > 0 {
 		command = "resume"
 	}
 	// build is tmux's command, whose claude gets the hooks that keep the session's entry in file
@@ -725,15 +734,13 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 			return nil, 0, fail.Runtime(err.Error())
 		}
 		// claude gets the session's name when it resumes too: a conversation resumed by another
-		// name is to take the session's, so that the next resume finds it (decision 16 in
-		// docs/design.md).
+		// name, or a copy of it, takes the session's, so that the next resume finds it (decisions
+		// 16 and 45 in docs/design.md).
 		claude := []string{c.path, "--name", name, "--settings", strings.TrimSuffix(encoded.String(), "\n")}
 		if worktree {
 			claude = append(claude, "--worktree", name)
 		}
-		if conversation != "" {
-			claude = append(claude, "--resume", conversation)
-		}
+		claude = append(claude, resume...)
 		claude = append(claude, args...)
 		// claude and its arguments go to tmux as separate words: tmux then executes them directly
 		// instead of through sh -c, and each reaches claude as given, an empty one too, as the

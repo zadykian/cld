@@ -179,6 +179,37 @@ func TestResumeRecorded(t *testing.T) {
 	}
 }
 
+// resume --fork writes its session's entry with no conversation, as resume with SESSION does, not
+// with SESSION's ID: claude resumes a copy under a new ID, which its SessionStart hook writes into
+// the entry. resume without SESSION then brings the copy back by that ID, without --fork-session.
+func TestResumeForkRecorded(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	dir := filepath.Join(s.Root, "project")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	startCldIn(t, s, "tmux", dir, nil, "resume", "-n", "api", "-s", "1", "--fork", firstID)
+	copied := s.WaitProbes(1)[0]
+	waitClients(t, s, 1)
+	if got, want := readEntry(s, "api-1"), entry("api-1", dir, ""); got != want {
+		t.Errorf("entry as claude starts %q, want %q", got, want)
+	}
+	copied.Hook("SessionStart", `{"session_id":"`+secondID+`","source":"resume"}`)
+	if got, want := readEntry(s, "api-1"), entry("api-1", dir, secondID); got != want {
+		t.Errorf("entry after SessionStart %q, want %q", got, want)
+	}
+	if result := s.RunCldIn(dir, nil, "kill", "-n", "api", "-s", "1"); result.Code != 0 {
+		t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
+	}
+	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !copied.Alive() })
+	startCldIn(t, s, "tmux", dir, nil, "resume", "-n", "api", "-s", "1")
+	resumed := s.WaitProbes(2)[1]
+	if want := []string{"--name", "cld-api-1", "--settings", sessionSettings(s, "cld-api-1", dir), "--resume", secondID}; !slices.Equal(resumed.Argv, want) {
+		t.Errorf("claude arguments %q, want %q", resumed.Argv, want)
+	}
+}
+
 // A session whose entry has no conversation - its claude, or its tmux, failed before claude
 // started one - is resumed by its name, cld-NAME, but in the directory it ran in, from wherever
 // resume runs, as one with a conversation is. The fake tmux says that no server runs, and records
