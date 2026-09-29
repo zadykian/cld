@@ -173,6 +173,10 @@ rows that name none were probed against tmux 3.6.
 | claude's links under tmux, and what tmux passes on (the bundles of claude 2.1.283 and 2.1.284, read, not run; tmux 3.7c's `tty-features.c`, `tty-term.c`, `tty.c` and `hyperlinks.c` read, and run in the image `tests/Dockerfile` builds, a client attached from a pty of `script`, which answers no query, XTVERSION included, with ncurses 6.6's terminfo) | claude marks file paths and URLs as OSC 8 links, `ESC ] 8 ; ; URI BEL TEXT ESC ] 8 ; ; BEL`, where `TERM_PROGRAM` is `tmux` and `TERM_PROGRAM_VERSION` 3.4 or newer. tmux keeps a link with the pane's cells, and writes it to a terminal only where that has the `hyperlinks` feature - the capability `Hls`, which no terminfo entry of ncurses 6.6 has, nor those WezTerm and Alacritty ship - as `ESC ] 8 ; id=tmuxN ; URI ESC \`, the text and `ESC ] 8 ; ; ESC \`. Its table of terminals known by XTVERSION gives the feature to iTerm2, foot and tmux; WezTerm, XTerm, mintty and rxvt-unicode are in it without. An OSC 8 printed in a pane reached a client with `TERM=xterm-256color`, under cld's `terminal-features` entry `xterm*:extkeys`, as its text alone (features `bpaste,ccolour,clipboard,cstyle,extkeys,focus,title`), and whole under `xterm*:extkeys:hyperlinks`; with `TERM=wezterm` or `TERM=alacritty` only under an entry for that `TERM`, `wezterm:hyperlinks` or `alacritty:hyperlinks`. An entry's features are separated by `:`: `xterm*:extkeys,hyperlinks` added neither, as tmux stops at a feature it does not know. Entries set twice at their indexes, as two `cld new` at once set them, stayed one each |
 | which terminals take OSC 8 links, and under which `TERM` (OSC 8's spec, [egmontkob's gist](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda), and the list [OSC8-Adoption](https://github.com/Alhadis/OSC8-Adoption), read 2026-09-29; WezTerm's docs `term.md` and `hyperlinks.md`; Alacritty's changelog and `alacritty_terminal/src/tty/mod.rs`; the classes of jediterm-core 3.76; xterm 411's `misc.c`) | kitty (`xterm-kitty`), Ghostty (`xterm-ghostty`), WezTerm (`xterm-256color`, or `wezterm` where its `term` says so), Alacritty since 0.11 (`alacritty` where that terminfo entry is installed, otherwise `xterm-256color`), VTE's terminals, Konsole (off by default), Windows Terminal, VS Code, mintty, foot, iTerm2 and JediTerm, whose emulator handles OSC 8 (`setLinkUriStarted`), take links. A terminal that parses OSC as ECMA-48 and takes no links shows the text alone - xterm 411 has no OSC 8, and ignores it as it ignores any code it does not know; the spec names VTE up to 0.48.1, Windows Terminal up to 0.9, Emacs's terminal and screen (for URIs of 700 characters or more) as garbling them |
 | `new-session` and `attach-session` without a terminal to attach from (tmux 3.7c, Ubuntu's snap, on a private socket: stdin `/dev/null`, and a pty from `script` with `TERM` `dumb`, empty, unset and `nosuchterm`; `cld new`, `resume` and `join` before 31, in `TestRefusesWithoutATerminal`) | status 1 each time, with tmux's message alone: `open terminal failed: not a terminal` for stdin `/dev/null`, `open terminal failed: terminal does not support clear` for `dumb`, empty and unset, `missing or unsuitable terminal: nosuchterm` for a `TERM` terminfo does not know. `new-session` starts the server before it looks at the terminal, and the socket stays behind, where `tmux -L NAME ls` then finds no server running; `attach-session` leaves the session and its server as they were. cld had printed the title to stdout first, whatever stdout was. With stdin a terminal and stdout a pipe, tmux draws on stdin's terminal and writes only `[exited]` to the pipe as it ends |
+| `history-limit` and a pane that prints 5000 lines a second after it starts (tmux 3.5, 3.6a and 3.7c, each on a private server in the image `tests/Dockerfile` builds with it; 3.7c also natively, the snap) | by default `show -gv history-limit` is `2000`, and the pane keeps 1977 lines of history: tmux drops a tenth of the limit when it is reached. With `set -g history-limit 50000` before `new-session` in one command, `#{history_limit}` is `50000` and the pane keeps 4977 lines on all three. With the option after `new-session`, in the same command or a later one, 3.7c gives the pane `50000` too, and it keeps 4977 lines; 3.5 and 3.6a keep `2000` and 1977 lines. tmux(1) of 3.5 and 3.6a says the option "applies only to new windows", that of 3.7c "Set the maximum number of lines held in pane history" |
+| a terminal attached to a session (tmux 3.7c, the snap: a client of a private server in a pane of another, which stands for the terminal, `script -f` recording what the client writes) | the outer pane has `alternate_on=1 history_size=0` while the inner one, after `seq 3000`, has 2978 lines of history: the terminal's scrollback gets nothing. `OSC 133 ; A` and `; C`, `; D`, written in the inner pane, reach the terminal not at all; tmux marks the lines, and copy mode's `next-prompt` goes to them, but no key is bound to it or to `previous-prompt` by default |
+| what a full history costs (tmux 3.7c, the snap: `history-limit` 50000, a 120x40 pane printing 60000 lines of 100 characters, the server's resident size) | from 3.6 MB to 35 MB for plain ASCII; to 156 MB where every character has an RGB colour, a new one every ten characters; the same coloured lines under the default 2000 took 10 MB |
+| claude's renderers, and scrollback ([fullscreen rendering](https://code.claude.com/docs/en/fullscreen) and [screen readers](https://code.claude.com/docs/en/accessibility) in Claude Code's docs, read 2026-09-29; the bundle of 2.1.284, read, not run) | the classic renderer draws in the main screen and "keeps the conversation in your terminal's native scrollback so `Cmd+f` and tmux copy mode work as usual"; the fullscreen renderer draws in the alternate screen and scrolls its own transcript, which `Ctrl+O`, then `/`, searches, and `Ctrl+O`, then `[`, writes into the scrollback. Which one starts depends on the `tui` setting (`/tui default`, `/tui fullscreen`), `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`, feature flags and when claude was first used. Screen-reader mode (`--ax-screen-reader`, `CLAUDE_AX_SCREEN_READER=1`, `axScreenReader`) always runs the classic renderer, and relies on the terminal's scrollback for reading back and on OSC 133 marks for jumping between turns: the bundle writes `A` as a turn starts and `C`, `D` as it ends in that mode, but in WezTerm, with no exception for tmux |
 
 ## Distribution
 
@@ -1947,6 +1951,30 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        Ctrl+click and an Alt+right-click and waits for the press and the release of each in
        claude's input, on each terminal.
 
+36. Scrollback (#77): a server keeps 50000 lines of a pane's history (`history-limit`), where
+    tmux keeps 2000. While a terminal is attached, tmux draws in its alternate screen, and the
+    terminal's scrollback gets nothing (see Findings): what claude's classic renderer leaves in
+    the scrollback without tmux - the whole conversation - is in the pane's history alone, which
+    the wheel (C4) and `C-q [` open in copy mode. The fullscreen renderer scrolls its own
+    transcript, and fills the history only when `Ctrl+O`, then `[`, writes it out. Settled with
+    it:
+    1. the option goes with the server's options, before `new-session`: tmux 3.7 gives a pane
+       that exists a new limit, but 3.5 and 3.6 keep a pane's limit from when it was made (see
+       Findings), so that it holds under a lower minimum (6) too;
+    2. 50000 lines, as the issue proposed: the server's memory grows with the history, to
+       about 35 MB for 50000 lines of 100 plain characters and 156 MB where each has an RGB colour
+       (see Findings), and is freed with the session. The sessions claude makes on its server get
+       it too;
+    3. the README says which renderer the wheel and the history are for, and the user guide how
+       to read the history back, for screen readers too: Claude Code's screen-reader mode, always
+       the classic renderer, relies on the terminal's scrollback and on OSC 133 marks, which tmux
+       keeps to itself (see Findings);
+    4. not done: binding copy mode's `previous-prompt` and `next-prompt`, which would jump between
+       the turns that claude marks in screen-reader mode; and keeping tmux out of the terminal's
+       alternate screen (`terminal-overrides` without `smcup`), not tried;
+    5. the tests: `TestServerOptions` pins the option and the limit of claude's pane, and
+       `TestNewTmuxCommand` the option's place in tmux's command.
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -2360,6 +2388,9 @@ by hand in a nested tmux).
   whatever `LC_ALL`, `LC_CTYPE` and `LANG` say was read in 2.1.284's bundle (see Findings). Only
   a stub claude was run under one, by hand on tmux 3.7c and in the tests through `cld new`,
   `resume`, `join` and the list's Enter. A terminal that does not take UTF-8 was not tried.
+- The history of 50000 lines (36) was checked with programs that print lines, on tmux 3.5, 3.6a
+  and 3.7c (see Findings); the real claude's classic renderer filling it, and reading it back with
+  a screen reader, were not.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

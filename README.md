@@ -107,6 +107,12 @@ turn in place of the `✳`, as claude's own title does outside tmux; while claud
 git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
 [guide](docs/guide.md#sessions) says what they miss.
 
+While attached, the terminal shows tmux, and its own scrollback and search see nothing of the
+session. In claude's classic renderer, which draws in the terminal's main screen, what scrolls off
+goes to tmux's history instead, the last 50000 lines, which the mouse wheel or `C-q [` opens in
+tmux's copy mode; claude's fullscreen renderer (`/tui fullscreen`) takes the wheel itself and
+scrolls its own transcript. See the [guide](docs/guide.md#scrollback), for screen readers too.
+
 ### Notifications
 
 claude notifies you when it finishes a task or waits for a permission while you are away - under
