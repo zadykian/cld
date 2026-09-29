@@ -157,8 +157,12 @@ not push such a change. Rebase onto `main` before either.
   hooks keep `@cld-worktree`, 1 while claude's directory is in a linked git worktree; they run git
   by the path cld found, and are left out where it finds none (decision 26). The hook events must
   exist in the minimum claude.
-- `TERMINAL_EMULATOR` is removed from the environment `new` and `resume` exec tmux with, so from
-  the server's; claude trusts it over `TERM_PROGRAM=tmux`.
+- The variables that name the terminal to claude, which it trusts over `TERM_PROGRAM=tmux` -
+  `TERMINAL_EMULATOR`, `__CFBundleIdentifier`, `CURSOR_TRACE_ID`, `VisualStudioVersion` and
+  `VSCODE_GIT_ASKPASS_MAIN` - are removed from the environment `new` and `resume` exec tmux with,
+  so from the server's; the rest of VS Code's askpass goes with `VSCODE_GIT_ASKPASS_MAIN`, and
+  its git editor with it: `VSCODE_GIT_ASKPASS_*`, `VSCODE_GIT_EDITOR_*`, `VSCODE_GIT_IPC_HANDLE`,
+  and a `GIT_ASKPASS` or `GIT_EDITOR` naming a script beside its `MAIN` (decision 33).
 - claude's notifications go through the server's `allow-passthrough on`, or as a bell under
   tmux's default `bell-action`, on the channel its `preferredNotifChannel` names; its default,
   `auto`, sends none under tmux. cld sets no channel in `--settings`, which would override the

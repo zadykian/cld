@@ -1680,20 +1680,41 @@ func TestServerOptions(t *testing.T) {
 	}
 }
 
-// claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux, and a server keeps the environment of
-// the client that started it: unless cld left TERMINAL_EMULATOR out of the environment it runs
-// tmux with, a session created in a JetBrains terminal would hand it to its claude, joined from
-// anywhere, and to whatever claude starts through tmux on its server.
-func TestClaudeNeverSeesTerminalEmulator(t *testing.T) {
+// claude trusts TERMINAL_EMULATOR, and the other variables that name a terminal to it, over
+// TERM_PROGRAM=tmux, and a server keeps the environment of the client that started it: unless
+// cld left them out of the environment it runs tmux with, a session created in a JetBrains
+// terminal, or in Cursor's, would hand them to its claude, joined from anywhere, and to whatever
+// claude starts through tmux on its server. VS Code's askpass goes with VSCODE_GIT_ASKPASS_MAIN,
+// and its editor with it (see TestVSCodeGit).
+func TestClaudeNeverSeesTheTerminal(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", map[string]string{"TERMINAL_EMULATOR": "JetBrains-JediTerm"}, "new", "-s", "ide")
-	probe := s.WaitProbes(1)[0]
-	if value, found := probe.Env["TERMINAL_EMULATOR"]; found {
-		t.Errorf("claude sees TERMINAL_EMULATOR=%s", value)
+	const dist = "/home/u/.cursor-server/bin/1/extensions/git/dist/"
+	given := map[string]string{
+		"TERMINAL_EMULATOR":             "JetBrains-JediTerm",
+		"__CFBundleIdentifier":          "com.jetbrains.goland",
+		"CURSOR_TRACE_ID":               "0123456789abcdef",
+		"VisualStudioVersion":           "17.0",
+		"VSCODE_GIT_ASKPASS_MAIN":       dist + "askpass-main.js",
+		"VSCODE_GIT_ASKPASS_NODE":       "/home/u/.cursor-server/bin/1/node",
+		"VSCODE_GIT_ASKPASS_EXTRA_ARGS": "",
+		"VSCODE_GIT_IPC_HANDLE":         "/run/user/1000/vscode-git-1.sock",
+		"GIT_ASKPASS":                   dist + "askpass.sh",
+		"VSCODE_GIT_EDITOR_MAIN":        dist + "git-editor-main.js",
+		"VSCODE_GIT_EDITOR_NODE":        "/home/u/.cursor-server/bin/1/node",
+		"VSCODE_GIT_EDITOR_EXTRA_ARGS":  "",
+		"GIT_EDITOR":                    `"` + dist + `git-editor.sh"`,
 	}
-	if global := s.MustTmux("cld-ide", "show-environment", "-g"); strings.Contains(global, "TERMINAL_EMULATOR") {
-		t.Errorf("the server's environment has TERMINAL_EMULATOR:\n%s", global)
+	startCld(t, s, "tmux", given, "new", "-s", "ide")
+	probe := s.WaitProbes(1)[0]
+	global := strings.Split(s.MustTmux("cld-ide", "show-environment", "-g"), "\n")
+	for _, name := range slices.Sorted(maps.Keys(given)) {
+		if value, found := probe.Env[name]; found {
+			t.Errorf("claude sees %s=%s", name, value)
+		}
+		if slices.ContainsFunc(global, func(variable string) bool { return strings.HasPrefix(variable, name+"=") }) {
+			t.Errorf("the server's environment has %s:\n%s", name, strings.Join(global, "\n"))
+		}
 	}
 }
 

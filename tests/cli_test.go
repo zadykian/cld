@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
@@ -1488,10 +1489,11 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // goes with a "\" before the ";", which tmux drops: SESSION, or the directory cld runs in. The
 // directory goes with every "#" doubled, since tmux expands -c as a format, in which "##" is a
 // "#". The fake tmux, which finds no server running for the session, records the command, and
-// the environment it gets: cld's own, without TERMINAL_EMULATOR and with an empty TMUX where TMUX
-// was set - join's client needs it (see TestNestsOnADeadPanesPty), and with it tmux still takes
-// new's terminal for UTF-8 (see TestNestsInsideAnotherTmux); a PS1, which the script's bash
-// dropped, passes too (decision 11 in docs/design.md).
+// the environment it gets: cld's own, without the variables that name the terminal to claude
+// (see TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set - join's client
+// needs it (see TestNestsOnADeadPanesPty), and with it tmux still takes new's terminal for UTF-8
+// (see TestNestsInsideAnotherTmux); a PS1, which the script's bash dropped, passes too (decision
+// 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -1535,6 +1537,9 @@ func TestNewTmuxCommand(t *testing.T) {
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
 				"TERMINAL_EMULATOR":     "JetBrains-JediTerm",
+				"__CFBundleIdentifier":  "com.jetbrains.goland",
+				"CURSOR_TRACE_ID":       "0123456789abcdef",
+				"VisualStudioVersion":   "17.0",
 				"TMUX":                  filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
 				"PS1":                   `\u@\h$ `,
 			}
@@ -1565,10 +1570,85 @@ func TestNewTmuxCommand(t *testing.T) {
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 			}
-			checkEnv(t, record.Env, passedOn(s, given, "TERMINAL_EMULATOR"))
+			checkEnv(t, record.Env, passedOn(s, given, "TERMINAL_EMULATOR", "__CFBundleIdentifier", "CURSOR_TRACE_ID", "VisualStudioVersion"))
 			if want := filepath.Join(s.Work, dir); record.Cwd != want {
 				t.Errorf("tmux runs in %s, want %s", record.Cwd, want)
 			}
+		})
+	}
+}
+
+// A terminal of VS Code, or of one of its forks, gives git helpers that ask in its window: an
+// askpass, GIT_ASKPASS naming a script beside VSCODE_GIT_ASKPASS_MAIN, which names Cursor,
+// Windsurf or Antigravity to claude, and with git.terminalGitEditor an editor, GIT_EDITOR naming
+// a script, quoted, beside VSCODE_GIT_EDITOR_MAIN; both ask through VSCODE_GIT_IPC_HANDLE. new and
+// resume leave out each helper whole, with the other variables of its script and
+// VSCODE_GIT_IPC_HANDLE, and keep a GIT_ASKPASS or GIT_EDITOR elsewhere, the user's own. The fake
+// tmux records the environment it gets.
+func TestVSCodeGit(t *testing.T) {
+	t.Parallel()
+	const (
+		dist          = "/home/u/.cursor-server/bin/1/extensions/git/dist/"
+		node          = "/home/u/.cursor-server/bin/1/node"
+		handle        = "/run/user/1000/vscode-git-1.sock"
+		yourAskpass   = "/usr/lib/ssh/x11-ssh-askpass"
+		yourEditor    = "/usr/bin/vim"
+		vscodeEditor  = `"` + dist + `git-editor.sh"`
+		vscodeAskpass = dist + "askpass.sh"
+	)
+	askpass := map[string]string{
+		"VSCODE_GIT_ASKPASS_MAIN":       dist + "askpass-main.js",
+		"VSCODE_GIT_ASKPASS_NODE":       node,
+		"VSCODE_GIT_ASKPASS_EXTRA_ARGS": "",
+		"VSCODE_GIT_IPC_HANDLE":         handle,
+	}
+	editor := map[string]string{
+		"VSCODE_GIT_EDITOR_MAIN":       dist + "git-editor-main.js",
+		"VSCODE_GIT_EDITOR_NODE":       node,
+		"VSCODE_GIT_EDITOR_EXTRA_ARGS": "",
+		"VSCODE_GIT_IPC_HANDLE":        handle,
+	}
+	for _, test := range []struct {
+		name string
+		// vscode are VS Code's variables that come with GIT_ASKPASS and GIT_EDITOR, and kept
+		// those of the two that reach tmux
+		vscode          []map[string]string
+		askpass, editor string
+		kept            []string
+	}{
+		{"VS Code's", []map[string]string{askpass, editor}, vscodeAskpass, vscodeEditor, nil},
+		{"VS Code's without its window", []map[string]string{askpass, editor},
+			dist + "askpass-empty.sh", `"` + dist + `git-editor-empty.sh"`, nil},
+		{"VS Code's askpass and your own editor", []map[string]string{askpass},
+			vscodeAskpass, yourEditor, []string{"GIT_EDITOR"}},
+		{"your own beside VS Code's", []map[string]string{askpass, editor},
+			yourAskpass, yourEditor, []string{"GIT_ASKPASS", "GIT_EDITOR"}},
+		{"your own", nil, yourAskpass, yourEditor, []string{"GIT_ASKPASS", "GIT_EDITOR"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			given := map[string]string{
+				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+				"GIT_ASKPASS":           test.askpass,
+				"GIT_EDITOR":            test.editor,
+			}
+			var dropped []string
+			for _, vscode := range test.vscode {
+				maps.Copy(given, vscode)
+				dropped = slices.AppendSeq(dropped, maps.Keys(vscode))
+			}
+			for _, name := range []string{"GIT_ASKPASS", "GIT_EDITOR"} {
+				if !slices.Contains(test.kept, name) {
+					dropped = append(dropped, name)
+				}
+			}
+			result := s.RunCldOnTerminal(given, "new", "-s", "x")
+			if title := "\x1b]0;✳ cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
+			}
+			checkEnv(t, s.FakeTmuxRecord().Env, passedOn(s, given, dropped...))
 		})
 	}
 }

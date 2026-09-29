@@ -52,7 +52,16 @@ install it as `cld`, executable, in a directory on your `PATH`.
   directory - `cd / && cld kill -s S` - or `cld list`, whose `Enter` and `Ctrl+X` take any
   session.
 - Each claude gets the environment of the shell that ran `cld new` or `cld resume` -
-  `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like.
+  `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like - but for the variables that
+  would have claude take itself to be in that shell's terminal, whichever terminal joins, and
+  Shift+Enter for Enter: those of JetBrains IDEs, Cursor and Visual Studio, macOS's
+  `__CFBundleIdentifier`, and the askpass and editor that VS Code and its forks give git, which
+  would ask in a window that may have closed. A `GIT_ASKPASS` or `GIT_EDITOR` of your own stays.
+- claude keeps that environment for its life: `cld join` from another ssh connection gives tmux
+  its `SSH_AUTH_SOCK` and `DISPLAY`, for what starts on the session later, not claude, so after a
+  reconnect claude's `git push` finds no agent. An agent socket at a path that stays -
+  `SSH_AUTH_SOCK` naming a link that `~/.ssh/rc` points at each login's socket, say - or
+  `cld kill` then `cld resume` is the way around it.
 - Whatever claude runs - its Bash tool, a hook - reaches the session's server with a plain `tmux`,
   and `tmux -L cld-S ls` lists what runs there. cld sees only `cld-S`; `cld kill` ends the
   rest with the server.
@@ -421,6 +430,11 @@ a cld session, `/bg` or `←` on an empty prompt moves the conversation to a bac
   that the claude in the pane shows: there every hook failed, after each tool, with
   `PostToolUse:Bash hook error` and `no current session`, and the title stayed `✳`. End such a
   session with `cld kill` and bring its conversation back with `cld resume`.
+- **Shift+Enter in a session made in an IDE.** In cld 0.8.2 and earlier, a session made in the
+  terminal of Cursor, Windsurf, Antigravity or Visual Studio, or on macOS of a JetBrains IDE or
+  VSCodium, handed that terminal's variables to its claude, which then took Shift+Enter for Enter
+  from any terminal. End such a session with `cld kill` and bring its conversation back with
+  `cld resume`.
 - **Project settings.** `cld setup project` of cld 0.4.0 to 0.8.2 wrote `/.claude/*` and
   `!/.claude/settings.json` to `.gitignore`, which keep what a project shares under `.claude` -
   commands, agents, skills - out of git, and to `.claude/settings.json` `theme`,

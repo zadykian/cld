@@ -86,11 +86,15 @@
 // new, resume and join hand tmux the terminal of cld's stdin: without one, or with TERM unset,
 // empty or dumb, they refuse once their other checks pass, before tmux starts a server that would
 // fail on it (see checkTerminal), and they print the title only where stdout is a terminal.
-// claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux, and its environment comes from the
-// client that started its server: a session created in the JetBrains terminal would keep its
-// claude, and whatever claude starts through tmux, acting as if in JediTerm (extended keys off, so
-// Shift+Enter submits) even when joined from iTerm2 - hence new and resume leave
-// TERMINAL_EMULATOR out of the environment they run tmux with.
+// claude trusts TERMINAL_EMULATOR, and the other variables that name a terminal to it, over
+// TERM_PROGRAM=tmux (see terminalVariables), and its environment comes from the client that
+// started its server: a session created in the JetBrains terminal, or Cursor's, would keep its
+// claude, and whatever claude starts through tmux, acting as if in that terminal (extended keys
+// off, so Shift+Enter submits) even when joined from iTerm2 - hence new and resume leave those
+// variables out of the environment they run tmux with (see withoutTerminal). The rest stays as
+// the shell that ran new or resume had it for claude's life: join gives tmux the
+// update-environment variables of its terminal, SSH_AUTH_SOCK and DISPLAY among them, for what
+// starts on the session later, not claude.
 package session
 
 import (
@@ -592,9 +596,64 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 		"set", "-t", window, "set-titles", "on")
 	// The server keeps the environment of the client that starts it, cld's (see the package
 	// comment).
-	return t.become(argv, slices.DeleteFunc(os.Environ(), func(variable string) bool {
-		return strings.HasPrefix(variable, "TERMINAL_EMULATOR=")
-	}))
+	return t.become(argv, withoutTerminal(os.Environ()))
+}
+
+// terminalVariables are the variables claude reads before TERM_PROGRAM, which tmux sets to "tmux"
+// in a pane as it sets TERM, to tell the terminal it runs in (claude 2.1.282 to 2.1.284):
+// Cursor's CURSOR_TRACE_ID; VS Code's VSCODE_GIT_ASKPASS_MAIN, where its path names Cursor,
+// Windsurf or Antigravity; macOS's __CFBundleIdentifier, the app the shell runs in, where that is
+// a JetBrains IDE, VSCodium, Windsurf or Android Studio; Visual Studio's VisualStudioVersion; and
+// JetBrains' TERMINAL_EMULATOR. claude knows none of those terminals for extended keys: it asks
+// tmux, which does not answer, and turns them off, so Shift+Enter submits. Each goes whatever its
+// value: it names the terminal the session started in, not the one on it. VSCODE_GIT_ASKPASS_MAIN
+// goes with VS Code's askpass (see withoutTerminal).
+var terminalVariables = []string{"CURSOR_TRACE_ID", "__CFBundleIdentifier", "VisualStudioVersion", "TERMINAL_EMULATOR"}
+
+// vsCodeGit are the helpers a terminal of VS Code, or of one of its forks, gives git, each a
+// script that git runs, named by the variable git, beside the file that the variable prefix+MAIN
+// names: the askpass and, with git.terminalGitEditor, the editor, whose script VS Code names
+// quoted. The script runs node, prefix+NODE, on prefix+MAIN with prefix+EXTRA_ARGS, which asks
+// the window through VSCODE_GIT_IPC_HANDLE, and fails at once without it.
+var vsCodeGit = []struct{ git, prefix string }{
+	{"GIT_ASKPASS", "VSCODE_GIT_ASKPASS_"},
+	{"GIT_EDITOR", "VSCODE_GIT_EDITOR_"},
+}
+
+// withoutTerminal is environ without terminalVariables and VS Code's helpers for git (see
+// vsCodeGit), each as a unit, since a part left without the rest fails: VSCODE_GIT_IPC_HANDLE,
+// the socket of the window that asks, every variable of a helper's prefix, and GIT_ASKPASS and
+// GIT_EDITOR where they name a script beside their helper's MAIN. A GIT_ASKPASS or GIT_EDITOR
+// elsewhere is the user's own, and stays.
+func withoutTerminal(environ []string) []string {
+	scripts := map[string]string{}
+	for _, helper := range vsCodeGit {
+		for _, variable := range environ {
+			if main, found := strings.CutPrefix(variable, helper.prefix+"MAIN="); found && main != "" {
+				scripts[helper.git] = filepath.Dir(main)
+			}
+		}
+	}
+	return slices.DeleteFunc(environ, func(variable string) bool {
+		name, value, _ := strings.Cut(variable, "=")
+		if slices.Contains(terminalVariables, name) || name == "VSCODE_GIT_IPC_HANDLE" {
+			return true
+		}
+		for _, helper := range vsCodeGit {
+			if strings.HasPrefix(name, helper.prefix) {
+				return true
+			}
+			if name == helper.git {
+				script := value
+				if len(script) > 1 && script[0] == '"' && script[len(script)-1] == '"' {
+					script = script[1 : len(script)-1]
+				}
+				dir, found := scripts[name]
+				return found && filepath.Dir(script) == dir
+			}
+		}
+		return false
+	})
 }
 
 // literal is word as tmux takes it back from its command line: tmux ends a command at a word
