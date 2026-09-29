@@ -298,7 +298,9 @@ each shows claude, whose window takes the size of the terminal used last. With
 		Use:   "kill [-n NAME] -s SUFFIX",
 		Short: "end session NAME-SUFFIX and its tmux server",
 		Long: `end session NAME-SUFFIX and its tmux server: claude exits as when its terminal
-closes, and what claude started through tmux ends too`,
+closes, and what claude started through tmux ends too. claude runs its
+SessionEnd hooks with the reason "other", and may still run them when cld kill
+returns.`,
 	}
 	killNaming := addNaming(kill, "the session's `SUFFIX`, after NAME-")
 	kill.RunE = func(*cobra.Command, []string) error {

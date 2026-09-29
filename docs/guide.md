@@ -56,6 +56,13 @@ install it as `cld`, executable, in a directory on your `PATH`.
 - Whatever claude runs - its Bash tool, a hook - reaches the session's server with a plain `tmux`,
   and `tmux -L cld-S ls` lists what runs there. cld sees only `cld-S`; `cld kill` ends the
   rest with the server.
+- `cld kill`, and `Ctrl+X` in `cld list`, end claude as a terminal that closes does: claude
+  kills the shell commands it still runs, runs its `SessionEnd` hooks with the reason `other`
+  (`/exit` gives `prompt_input_exit`), and exits. It gives the hooks 1.5 s, longer where one has
+  a longer `timeout`, 60 s at most; `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` sets it outright.
+  What it prints on the way out, its resume hint among it, is lost. `cld kill` returns once tmux
+  has ended the session, without waiting for claude, whose hooks may still run for a moment:
+  `cld kill -s 1 && cld resume -s 1` can briefly run the old claude beside the new one.
 - Joining from a second terminal leaves the first attached: both show the same claude, and keys
   from either reach it. The window takes the size of the terminal you used last, and a larger one
   shows the rest of its screen dotted. `cld join --detach-others` detaches the other terminals

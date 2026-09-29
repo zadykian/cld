@@ -95,6 +95,8 @@ rows that name none were probed against tmux 3.6.
 | a `list-sessions` client that connects as the server exits with its last session: `new-session -d`, `kill-session`, then `list-sessions -f`, 400 times (tmux 3.3a, 3.4, 3.7c) | the client printed `no server running on ...`, but for `server exited unexpectedly`, failing, in one round on 3.4 and one on 3.7c, and nothing in one on 3.3a and one on 3.7c. cld took the first for no session and reported the second as an error, `cld join` as the list's footer; since 13 it takes both for no server (see the row on a server that exits as it is asked). `TestListJoin`'s last-row case waits for the server to have exited before Enter |
 | `kill-session`, then `list-sessions` at once, 400 rounds (tmux 3.3a, 3.4, 3.5a, 3.7c; Docker, 3.7c also natively) | with another session left, `list-sessions` never showed the killed one. With the last one killed, it reported `no server running on ...` every time; under load, eight such loops at once (2400 rounds in Docker), it failed with `server exited unexpectedly` in 40 on 3.3a, 19 on 3.4, none on 3.5a and 10 on 3.7c, and printed nothing, succeeding, in 53, 17, 0 and 1: tmux had not finished exiting. A `list-sessions` right after each failure reported no server. Natively on 3.7c (Linux 7.0, eight loops of 400) all 3200 reported no server |
 | `kill-server`, then `list-sessions` at once, 400 rounds (tmux 3.3a, 3.4, 3.5a, 3.7c; Docker) | `no server running on ...` every time on 3.5a and 3.7c, but for `server exited unexpectedly` in 31 rounds on 3.3a and 44 on 3.4. Under load, eight such loops at once (2400 rounds), 3.5a failed so in 5 and 3.7c in 30; a `list-sessions` right after each failure reported no server. Since 13 cld takes both for no server, so the session list's read after a kill passes over the killed session's server as it exits (15.5) |
+| what `claude` 2.1.283 and 2.1.284 do on SIGHUP (read from their bundles, not run) | an interactive claude shuts down as for SIGTERM, but with the status 129 (143 for SIGTERM): it prints its resume hint where its stdout is a terminal, runs its cleanups, waits for its pending writes, kills the shell commands still running, runs its `SessionEnd` hooks, then exits. The hooks get the reason of the shutdown, `other` unless its caller names one - of `clear`, `resume`, `logout`, `prompt_input_exit` (`/exit`) and `other` - and are aborted after `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` or, unset, after 1.5 s or the longest `timeout` of a `SessionEnd` hook, 60 s at most. A failsafe forces the exit, giving claude's output 0.5 s first, and claude moves it as the shutdown goes on: armed with the signal for that budget plus 5 s, 5 s at least; armed again once the cleanups have ended, or had their 2 s, for the budget plus 5 s, 15 s at least, where writes are still pending; put off 2 s, twice at most, while a refresh of the OAuth token is held; and armed again after the hooks, as claude drains its output, for 2 s - longer for the bytes left to write, at 256 KiB/s, 30 s at most - plus 1.5 s. So until the drain it falls due 6.5 s after the signal with the default budget, 17 s where writes are pending, 21 s with the refresh held too, and 65, 67 and 71 s where a hook's `timeout` is 60 s; the drain sets it anew, 3.5 to 31.5 s past the drain's start (`shutdown`, `armShutdownFailsafe`, `waitForHeldOAuthRefresh` and `armFailsafeAndDrainStdout` in the bundles). A conversation claude runs in the background (`CLAUDE_BG_BACKEND=daemon`) ignores SIGHUP unless it owns its controlling terminal |
+| `cld kill` of a session whose program stands in for claude: a bash script that, on SIGHUP, sleeps 1.5 s for a `SessionEnd` hook, writes a line to its terminal and exits 129 (Ubuntu's tmux 3.7c snap, natively; cld of main 18f63ab) | `cld kill` returned after 0.52 s with status 0, and `tmux -L cld-S ls` then said `no server running`. The script, its parent now PID 1, went on: its hook ended 1.56 s after `cld kill` returned, and its line failed with `Input/output error`, the pty's master being closed |
 | `#{session_created}`, `#{session_id}` and `#{pane_pid}` in `list-sessions -F` (tmux 3.3a, 3.4, 3.5a, 3.7c) | `session_created` counts whole seconds: a session killed and made again within the second has the same value. `session_id` starts again at `$0` on a new server - after the last session was killed, say - so a session made again under the name can have the killed one's id; with another session left it gets the next id. `pane_pid` is the pid of the program tmux started in the session's pane, which a dead pane (`remain-on-exit`) keeps; `kill-session` ends such a session, with status 0 (no terminal attached). For a session, `pane_pid` is the active pane's in its current window: after `split-window -d` and `select-pane` onto the new pane it is the new pane's program's. `#{W:#{P:#{pane_pid} }}` gives every pane's, in every window, the active one or not, a dead one's too |
 | Ctrl+X in Claude Code's agent view (`claude agents`): [its docs](https://code.claude.com/docs/en/agent-view), read 2026-09-25, and the hints of 2.1.282, read from its bundle, not run | the docs: `Ctrl+X` "Stop the session; press again within two seconds to delete it", and "Press `Esc` to dismiss the confirmation without deleting"; the second press deletes even when the stop failed. A deleted session leaves the list, its transcript stays for `claude --resume`, and agent view removes a worktree Claude created for it, uncommitted changes included - but keeps the worktree and the session when another session uses or has locked it, or it has commits Claude Code cannot confirm are saved elsewhere. The hints: `ctrl+x to stop` or `ctrl+x to delete` among a selected row's hints; `stopped · ctrl+x again to delete · esc to keep` and `ctrl+x again to delete · esc to keep` dim, as other hints; `stopped · ctrl+x again to delete` and `ctrl+x again to delete` in the error colour. Which shows when was not observed |
 | a directory whose name holds control characters (0x01, ESC), in `#{pane_current_path}` of `list-sessions -F` and `list-panes -F` (tmux 3.3a, 3.4, 3.5a, 3.7c), for a client under `LANG=C.UTF-8` and `LANG=C` | 3.3a and 3.7c write the characters as they are to a UTF-8 client - under `C.UTF-8`, or with `-u` - and each as `_` under `C` without `-u`; 3.4 and 3.5a write them as octal escapes, `\001` and `\033`, under either, with `-u` or not |
@@ -1755,6 +1757,28 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        terminal open for reading only. The tests that ran them without a terminal for a refusal
        that comes first still do, and pin the order (2).
 
+32. What a kill does to claude (#66): `kill`, and the list's Ctrl+X (15), end claude as a terminal
+    that closes does, and say so. The SIGHUP of its pty hanging up is claude's graceful shutdown:
+    it kills the shell commands still running, runs its `SessionEnd` hooks with the reason
+    `other` - for 1.5 s, longer where a hook's `timeout` asks, 60 s at most - and exits 129 (see
+    Findings). The kill's tmux command does not wait for claude, and claude, orphaned, may still
+    run its hooks once `cld kill` returns: those of a script standing in for claude ran 1.5 s
+    past its return, and what the script wrote to its terminal on the way out failed. `kill`'s
+    help, the user guide and `End`'s comment say so. Settled with it:
+    1. `End` does not wait for claude. It could wait for the pids it reads (`#{pane_pid}`, 15.3)
+       to exit, bounded only by claude's failsafe, which claude moves as it goes (see Findings):
+       some 70 s past the signal where a hook's `timeout` asks for 60 s, and half a minute more
+       while its output drains, or more where `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` sets
+       more. But `cld kill`, and the list, would then hang for as long as claude takes to shut
+       down, which no terminal that closes does. The overlap that waiting would avoid, a
+       `cld kill && cld resume` whose new claude starts beside the old one's hooks, is named in
+       the user guide;
+    2. no `send-keys /exit` before the kill, for the reason `prompt_input_exit`: the keys land
+       wherever claude's input is - a dialog, a prompt half typed - and in a `-w` session `/exit`
+       opens the dialog that asks whether to keep the worktree;
+    3. the tests: none of claude's shutdown, which the tests' probe does not have; `TestHelpText`
+       compares `kill`'s help, with its new sentence, with `testdata/help`.
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -2136,6 +2160,9 @@ by hand in a nested tmux).
 - Notifications (29): what each channel writes was read in claude's bundle, and the contract
   checks that the baseline terminal and JediTerm get it; a real claude notifying in a session,
   and iTerm2, kitty and Ghostty showing it, were not seen.
+- claude's shutdown on `cld kill` (32) was read from the bundles of 2.1.283 and 2.1.284, and
+  `cld kill` probed with a script in claude's place (see Findings); a real claude's `SessionEnd`
+  hooks on `cld kill` were not run.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

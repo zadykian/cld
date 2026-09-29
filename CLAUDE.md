@@ -136,7 +136,9 @@ not push such a change. Rebase onto `main` before either.
   claude runs inherits `TMUX` and reaches claude's own server, where a session it makes has another
   name; there is no mark. `list` reads the sockets `cld-*` in `${TMUX_TMPDIR:-/tmp}/tmux-UID` and
   asks each server; stale sockets answer "no server running" and are passed over, never removed.
-  `kill` runs `kill-session`, then `kill-server`, in one tmux command; `new`, `resume`, `join` and
+  `kill` runs `kill-session`, then `kill-server`, in one tmux command, and does not wait for
+  claude, whose `SessionEnd` hooks (reason `other`) may still run after it returns (decision 32);
+  `new`, `resume`, `join` and
   `kill` refuse a name whose server runs without its session, and where that server's
   `#{socket_path}` names another NAME that differs only in case (a socket directory that ignores
   case, as on macOS), they name that session instead of pointing at `kill-server`.

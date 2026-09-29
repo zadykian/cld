@@ -689,6 +689,10 @@ func (t *Tmux) Kill(suffix string) error {
 // (fail.Error's Advice), and so is a server that runs without it (see lingering). A kill that
 // fails is its exit status (fail.Status), after what tmux wrote to stdout and stderr. Once ctx is
 // done, its tmux is killed.
+//
+// claude shuts down on the SIGHUP: it runs its SessionEnd hooks with the reason "other", and
+// exits. End does not wait for it: claude, orphaned, may still run its hooks when End returns,
+// and what it prints then is lost (see docs/design.md, decision 32).
 func (t *Tmux) End(ctx context.Context, suffix string, pids []string, stdout, stderr io.Writer) error {
 	server, exists, found, err := t.lookup(ctx, suffix)
 	if err != nil {

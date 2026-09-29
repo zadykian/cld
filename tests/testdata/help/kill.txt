@@ -1,5 +1,7 @@
 end session NAME-SUFFIX and its tmux server: claude exits as when its terminal
-closes, and what claude started through tmux ends too
+closes, and what claude started through tmux ends too. claude runs its
+SessionEnd hooks with the reason "other", and may still run them when cld kill
+returns.
 
 Usage:
   cld kill [-n NAME] -s SUFFIX [flags]
