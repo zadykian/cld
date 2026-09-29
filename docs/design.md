@@ -96,6 +96,8 @@ rows that name none were probed against tmux 3.6.
 | `list-sessions` on a server that exits as it asks - its last session ends, or `kill-server` runs (tmux 3.3a, 3.4, 3.5a, 3.7c; servers started and ended in a loop beside a loop of `cld list`, for 15 s) | the client connects, and the server closes the connection without an answer: tmux fails with `server exited unexpectedly`, status 1 (`CLIENT_EXIT_LOST_SERVER` in tmux's `client.c`). Until `list` passed over it, it failed so in 24 of 173 runs (3.3a), 46 of 294 (3.4), 19 of 310 (3.5a) and 6 of 147 (3.7c); since, in none of 311, 224, 368 and 381. A client that the server tells it is shutting down exits with no output and status 0 instead (read from `client.c`, not seen) |
 | the socket of `tmux -L NAME` (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux never removes it: not when the server exits with its last session, not on `kill-server`, not on SIGKILL. `list-sessions` on such a stale socket fails with `no server running on DIR/NAME`, on a name never used with `error connecting to DIR/NAME (No such file or directory)`, both with status 1; `new-session` on a stale socket starts a fresh server there. The socket is in `tmux-UID` under `TMUX_TMPDIR`, or under `/tmp` where `TMUX_TMPDIR` is unset, empty or names nothing that exists; tmux resolves a symlink in it. A socket path of 107 bytes works on Linux, one of 108 fails with `File name too long`. Where `tmux-UID` is a file, not a directory, every command fails with `DIR/tmux-UID is not a directory`, status 1 |
 | what a server per session costs (tmux 3.3a, 3.4, 3.5a, 3.7c, in Docker, on a host busy with other builds) | 3.8 MB (3.3a) to 5.1 MB (3.5a) resident per server, the same with 10 sessions on it, next to about 400 MB for claude; one `list-sessions` took 6-12 ms, and one per socket over 36 sockets, 16 of them stale, 136-282 ms. #22's plan measured 3-6 ms and 115-170 ms on an idle machine (3.3a, 3.7c) |
+| `connect(2)` to the sockets of `tmux -L NAME` from Go, as tmux's client connects first (Go 1.27.1, Linux 7.0.0-31-generic, Ubuntu's tmux 3.7c snap, and for #74's floor tmux 3.5a and 3.7c in the images `tests/Dockerfile` builds; tmux 3.7c's `client.c`, `tmux.c`, `server.c` and `server-client.c` read, and 3.5a's `client_connect`, `make_label` and `expand_paths`) | a stale socket refuses the connection (`ECONNREFUSED`) where `list-sessions` says `no server running on`, a name never used has no socket (`ENOENT`) where it says `error connecting to ... (No such file or directory)`, and a plain file refuses it too, on Linux. A running server takes the connection, loses the client as Go closes it - as it loses a tmux command's, on the same path (`server_accept`, `server_client_lost`) - and keeps its session, with no client listed. tmux's client takes those two errors alone for no server (`client_connect`), after refusing a path that leaves no room for the NUL in `sun_path` (`File name too long`; Go's `connect` fails there with `EINVAL`) and a socket directory other than a directory of the user's that others cannot use: `make_label` resolves the symlinks of `TMUX_TMPDIR` or `/tmp`, then `lstat`s `tmux-UID` in it, and a `tmux-UID` of mode 755 got `directory DIR has unsafe permissions` from `list-sessions`, on a live server's socket too, where `-V` still answered. Connecting to 61 sockets, 51 of them stale or plain files, took 1.1-3.6 ms in all. In the images, 3.5a answered as 3.7c did in every case - a stale socket, a name never used and a plain file, Go's connection to a live server, a `tmux-UID` of mode 755, a path too long (`error connecting to ... (File name too long)`) and a `tmux-UID` that is a symlink (`DIR is not a directory`) - and its three functions do what 3.7c's do: `client_connect` is the same, and `make_label` and `expand_paths` differ in form alone (3.7c tests the mode against `TMUX_SOCK_PERM`, `S_IRWXO`'s 7 but on Cygwin, and both pass over a path `realpath` fails on) |
+| what stale sockets cost `cld list` and `cld new`, and asking servers at once (the same, 8 CPUs, busy with other builds; a private `TMUX_TMPDIR` holding 50 stale sockets, a plain file and 10 servers and, for `new` in `/`, 31 more stale sockets `cld-100` to `cld-130`, two of them then live) | at a load of about 4, one tmux took 100-180 ms, `tmux -V` or `list-sessions` alike; `list-sessions` on the 10 servers took 1.2-1.5 s one after another, 0.33-0.36 s four at a time, 0.24-0.26 s eight at a time and 0.21-0.24 s all ten at once (`xargs -P`), and `cld list` to a file 7.2-8.6 s, one tmux a socket, and 0.35-0.44 s once cld connected first and asked eight servers at a time, printing the same. At a load of 4 to 23: `cld list` 7.8-8.3 s and 0.43-0.46 s; `cld join -s` of a stale socket's name 0.21-0.32 s and 0.14-0.18 s, its `tmux -V` left; `cld new` 4.2-4.5 s and 0.28 s with no live server among the 31, 0.41 s with two, the higher asked alone - each until the `new-session` it handed over to failed without a terminal. #65 measured 7-8 s for `cld list` over 50 stale sockets, and 5.3 s for `cld new` over 31 |
 | a program's rows in the main screen of a 40-column pane that narrows to 20 (tmux 3.3a, 3.7c) | tmux reflows them: three 39-character rows under two short lines became six lines, and the two lines above them and the first half of the first row went into the history; a cursor left at the start of the first row ended at the top left of the screen, on that row's second half. A program that redraws its lines in place, relative to where it left the cursor, then draws over the wrong lines, and can recover only by clearing the screen, and what the shell showed above it with it |
 | a tmux client starting on a terminal (`tty_start_tty` in `tty.c`, read in tmux 3.3a, 3.4 and 3.7c) | tmux sets the terminal's mode and then calls `tcflush(TCOFLUSH)`, which throws away output the terminal has not read yet. What the list wrote last before it became `tmux attach-session` - leaving the alternate screen, the cursor shown, the title - was lost now and then under load (tmux 3.3a and 3.4 in Docker, `TestListJoin`'s enter case and C10's join): the tab kept its old title. A stopped (SIGSTOP) outer tmux did not lose it (3.7c, Linux 7.0), so it takes a loaded machine too. A terminal answers primary device attributes (DA1, `CSI c`) once it has read what came before: tmux with `CSI ? 1 ; 2 c` (3.3a; 3.7c built with sixel `CSI ? 1 ; 2 ; 4 c`), JediTerm 3.76 with `CSI ? 6 c` |
 | a DA1 answer later than the list's wait for it, the list having become `tmux attach-session` (tmux 3.7c; the terminal frozen for 1.5 s against a one-second wait) | tmux asks for DA1 itself as it starts and takes the first answer for its own; the next, its own, reached claude's pane as keys (`CSI ? 1 ; 2 c` in the probe's input). Answered in time, the probe read no answer. Other versions were not checked |
@@ -608,8 +610,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     so sessions need no mark (see Findings; 34 marks servers). 9's reasons against this no longer
     hold: a session made by hand on server `cld-NAME` has another name too, unless it spells out
     cld's scheme on purpose (`tmux -L cld-x new -s cld-x`), and the mark did not guard against
-    intent either; and `list` finds the servers with one read of a directory and one
-    `list-sessions` a socket (see Findings). It also fixes the environment: tmux starts a pane
+    intent either; and `list` finds the servers with one read of a directory and one `list-sessions`
+    a socket (since 38, a server; see Findings). It also fixes the environment: tmux starts a pane
     with the environment of the client that started the server, but for `PATH` and the
     `update-environment` variables, so on the shared server every claude had the first session's
     `CLAUDE_CONFIG_DIR`, `VIRTUAL_ENV`, `AWS_PROFILE`, `LANG` and the like; now each has the
@@ -618,8 +620,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     1. `list` reads tmux's socket directory, `tmux-UID` under `TMUX_TMPDIR` - or under `/tmp` where
        that is unset, empty or names nothing, as tmux falls back (see Findings) - and asks the
        server of each socket `cld-NAME` whose NAME is valid for its session `cld-NAME`, one after
-       another, with `-u` as before; it shows them in the order of their names, as tmux listed the
-       sessions of one server. A stale socket says no server is running there and is passed over, as
+       another (since 38, eight at a time), with `-u` as before; it shows them in the order of
+       their names, as tmux listed the sessions of one server. A stale socket says no server is
+       running there (since 38 its refused connection says so, without tmux) and is passed over, as
        is a server that exits while `list` asks it - its claude exits, a `cld kill` runs - which
        tmux reports as `server exited unexpectedly` (see Findings); on one shared server, only the
        last session's end ended the server. Sockets pile up, one for each name ever used, until
@@ -1012,7 +1015,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        version, which would cost a `tmux -V` on every TAB: with a tmux the check refuses it
        offers what that tmux lists, and `join` then refuses the tmux. So a TAB costs what
        `cld list` costs but for that `tmux -V`: a read of the socket directory and one
-       `list-sessions` a socket (13.1; see Findings). It never runs claude, `claude --version`
+       `list-sessions` a server (13.1, 38; see Findings). It never runs claude, `claude --version`
        included, which `new` and `resume` alone run as they start claude: completing their
        arguments checks no claude either. It starts no server - `list-sessions` does not - and
        never opens the session list (14): it reads the sessions itself rather than run `list`,
@@ -1454,8 +1457,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `NAME-INDEX` run, one above the highest `INDEX` among them. The maintainer asked for the
        highest plus one rather than the lowest free index: a gap stays, so the names keep the order
        they were given in. `new` reads the socket directory as `list` does (13.1) and asks only the
-       servers of sockets `cld-NAME-DIGITS`, one after another: a server that has outlived its
-       session counts, since `new` would refuse its name (13), and a stale socket does not. `NAME`
+       servers of sockets `cld-NAME-DIGITS`, one after another (since 38 from the highest index
+       down, until one runs): a server that has outlived its session counts, since `new` would
+       refuse its name (13), and a stale socket does not. `NAME`
        is compared ignoring case, since a socket directory that ignores case reaches one server for
        both spellings (13.6). Only running sessions count: a name comes back once its session has
        ended, and its conversation then shares the name with the next (16), and the next `new -w`
@@ -2062,6 +2066,57 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     Out of scope: showing the home in `cld list`, a home for the sessions of older clds, and
     `new`'s index, which the repositories of one name still share.
 
+38. Stale sockets cost no tmux (#65): tmux removes no socket and cld removes none (13.1), so
+    `tmux-UID` keeps a socket `cld-NAME` for every name used since `/tmp` was last cleaned, and
+    `list`, completion, the session list's read after a kill and `new` without `-s` (24.1) ran a
+    `list-sessions` a socket, one after another: 6-20 ms each natively, and 100-200 ms through
+    Ubuntu's snap, which has tmux 3.7 - the release the README recommends (6) - on Ubuntu 26.04,
+    whose package has 3.6a; there 50 stale sockets made `cld list` take 7-8 s and 31 made `cld new`
+    take 5.3 s (see Findings). Settled with it:
+    1. before cld runs tmux on a socket, it connects to it, as tmux's client does first, and where
+       tmux would find no server - the connection refused, as a stale socket refuses it, or no
+       socket - it has none, with no tmux run (`serverless`; see Findings). Only where tmux would
+       get as far as that connection: in a `tmux-UID` that is a directory of cld's user, not a
+       symbolic link, that others cannot use, and on a path, `TMUX_TMPDIR`'s symlinks resolved,
+       that leaves room for the NUL in `sun_path`. The client of 3.5a, the oldest tmux cld runs on
+       (6), connects and checks as 3.7c's does, and answered each case alike (see Findings), so
+       nothing here goes by tmux's version. Anywhere else, and for any other error, tmux runs and
+       says what is wrong, as before (13.1, 13.2): `directory DIR has unsafe permissions`, say. A
+       server that takes the connection loses it at once, as it loses the client of every tmux
+       command. `Sessions` and `lookup` make it, and so `list`, completion, the session list,
+       `new`, `resume`, `join` and `kill`;
+    2. `list` asks the servers that take the connection at once, eight at a time, starting them
+       in the order of their names, and shows their sessions in that order, as before: through the
+       snap, 10 servers took 1.2-1.5 s one after another, 0.24-0.26 s eight at a time and
+       0.21-0.24 s all ten at once (see Findings). Once one fails, no more are asked - where tmux
+       refuses its directory (1), every one would fail alike - and of those that failed, the first
+       in that order gives the error, as the first asked did;
+    3. `new` without `-s` looks up the servers of its candidates from the highest index down, and
+       stops at the first that runs: the highest alone counts (24.1), so in the common case one
+       server is asked, where asking every one at once would run a tmux for each. A socket that
+       tmux fails on - a file there that is no socket, on macOS (see Implementation notes) - still
+       ends `new` with tmux's message where it is asked, but one below the highest running server
+       no longer is;
+    4. the stale sockets stay (13.1): removing them under tmux's lock - `flock` on
+       `cld-NAME.lock`, which a tmux starting a server there takes, never removing the lock file;
+       #65 lost none of 3000 live sockets that way - on every `list`, in `kill` alone or behind a
+       `list --prune`, was left out of this change. A stale socket now costs a connection, some
+       microseconds;
+    5. the tests: `TestStaleSocketsRunNoTmux` has `list`, `join`, `kill` and `new`'s index over
+       running servers, one that outlives its session and stale sockets, with a tmux that writes
+       down what it runs: no `list-sessions` for a stale socket or a name without one, `list`'s
+       order over more servers than it asks at once, `new` asking one server, and the sockets
+       left; `TestListAsksServersAtOnce` holds `list`'s asks of 12 servers: eight begin, and no
+       more until they are let go, and the sessions show in the order of their names;
+       `TestUnsafeSocketDirectory` a `tmux-UID` open to others, holding 12 stale sockets, where
+       `list`, `new`, `join` and `kill` end with tmux's message, `list` after eight asks at most.
+       `TestListKill`'s case of a server exiting after the kill leaves it taking connections, as
+       an exiting server does for a moment (13). The fake tmux's servers are sockets that take
+       connections (`socket` in the tests; see Implementation notes).
+
+    Out of scope: the `tmux -V` every command but completion runs (6), and the tmux each of the
+    title's hooks runs (25).
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -2090,12 +2145,14 @@ Where the implementation departs from the plan above:
   redraws and sizes (a colour reset can land before or after a line break); the reattach test
   compares cells - characters and attributes - rather than the captured sequences.
 - A stale socket that the real tmux reads is a socket nothing listens on (`staleSocket` in the
-  tests), not a plain file (`socket`, which only the fake tmux reads). tmux says no server is
-  running for either on Linux, whose `connect` refuses a connection to a file that is no socket
-  as it refuses one to a socket nothing listens on; macOS's reports the file as no socket
-  (`ENOTSOCK`), and tmux fails with that, so `cld new` without `-s` ended there on the macOS
-  runner, before its session (#51). A file of that name that is no socket is nothing tmux or cld
-  makes, and cld reports tmux's error for it, as `list` does (13.1).
+  tests), not a plain file. tmux says no server is running for either on Linux, whose `connect`
+  refuses a connection to a file that is no socket as it refuses one to a socket nothing listens
+  on; macOS's reports the file as no socket (`ENOTSOCK`), and tmux fails with that, so `cld new`
+  without `-s` ended there on the macOS runner, before its session (#51). A file of that name
+  that is no socket is nothing tmux or cld makes, and cld reports tmux's error for it, as `list`
+  does (13.1). The fake tmux's servers are sockets that take connections, which the test holds
+  open until it ends (`socket`): since 38 cld connects to a socket before it asks tmux there, and
+  on Linux passes over a plain file.
 - The Go port (decision 11) is `cmd/cld`, the command line, and `internal/session`, the tmux
   side, whose package comment is the script's header comment. Errors carry an exit status up to
   `main` (`internal/fail`), the only place that exits; `new`, `resume` and `join` end in
@@ -2170,7 +2227,12 @@ Where the implementation departs from the plan above:
   `server exited unexpectedly` (the server exited while tmux asked it); any other error connecting,
   `File name too long` above all, ends cld with tmux's message. `Sessions` reads the socket
   directory with `os.ReadDir`, which sorts by name, and takes from each server's answer only a line
-  for the session named like the server. `OwnPane` asks the server `TMUX` names with `-S` and that
+  for the session named like the server. Since 38 it connects to each socket first (`serverless`,
+  with `net.Dialer`, which gives up once the list's context is done), then asks the servers that
+  took the connection in goroutines, started in the order of the names, `asks` at a time, each
+  into a slot of its own, read in that order, and starts none once one has failed; each tmux has
+  cld's stdin, the list's terminal among them, which `list-sessions` leaves alone. `OwnPane`
+  asks the server `TMUX` names with `-S` and that
   path, whatever `TMUX_TMPDIR` is now. In the tests, `Sandbox.Tmux` takes the server to run against;
   `Sessions` and `Clients` go over every socket `cld-*`, and `Sessions` names a session that is not
   on the server named like it `SERVER/SESSION`, so that one on the wrong server shows. The fake tmux
@@ -2420,6 +2482,10 @@ by hand in a nested tmux).
 - Links (30) are tested as tmux writes them to the baseline terminal and to JediTerm's emulator,
   and were probed with `TERM` `wezterm` and `alacritty` on a pty that answers nothing (see
   Findings). No real terminal was seen showing them, nor which click opens one.
+- The connection cld makes before it runs tmux on a socket (38) was probed on Linux, against
+  Ubuntu's tmux 3.7c snap and tmux 3.5a and 3.7c in Docker; the tests run it on 3.5a and 3.7c in
+  CI. On macOS, tmux's client code takes the same two errors for no server, and the tests run it
+  on the macOS runner, but it was not probed there by hand.
 - `setup telemetry` is tested against a fake docker on Linux, and on macOS only for its refusal;
   it was checked by hand against the real collector image (see Findings), with collectors of the
   debug exporter in the plugin's place: the plugin itself, and claude sending through the

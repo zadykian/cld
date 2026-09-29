@@ -1104,6 +1104,123 @@ func TestStaleSocket(t *testing.T) {
 	}
 }
 
+// A stale socket costs no tmux, however many tmux-UID keeps: cld connects to a socket before it
+// runs tmux there, and passes over one that refuses the connection, and a name with no socket, as
+// tmux would say no server is running. list asks only the servers that take the connection -
+// more of them here than it asks at once - and shows their sessions in the order of their names;
+// join and kill of a stale socket's name run no tmux but tmux -V; new without -s looks from the
+// highest index down, only until a server runs, here one that outlives its session. The sockets
+// stay. A tmux first on the PATH writes down what it runs.
+func TestStaleSocketsRunNoTmux(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	logged, asked := loggedTmux(t, s)
+	var running, stale []string
+	// Each on a server marked as cld marks its own (see TestLeavesAForeignServerAlone).
+	for i := range 11 {
+		name := "cld-work-" + strconv.Itoa(i)
+		s.MustTmux(name, "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", name, "-c", s.Work, "sleep", "600")
+		running = append(running, name)
+	}
+	s.MustTmux("cld-work-11", "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", "other", "sleep", "600")
+	servers := append(slices.Clone(running), "cld-work-11")
+	for i := 12; i < 30; i++ {
+		stale = append(stale, "cld-work-"+strconv.Itoa(i))
+	}
+	stale = append(stale, "cld-work-99")
+	for _, name := range stale {
+		staleSocket(t, s, name)
+	}
+
+	slices.Sort(running)
+	want := "NAME     STATE     DIRECTORY\n"
+	for _, name := range running {
+		want += fmt.Sprintf("%-9sdetached  %s\n", strings.TrimPrefix(name, "cld-"), s.Work)
+	}
+	if result := s.RunCld(logged, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
+	}
+	if got := asked(); !slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(servers))) {
+		t.Errorf("list asked %q, want %q", got, servers)
+	}
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"join", "-s", "work-20"}, "cld: no session 'work-20'; create it with cld new -n work -s 20\n"},
+		{[]string{"kill", "-s", "work-99"}, "cld: no session 'work-99' (see cld list)\n"},
+		{[]string{"join", "-s", "work-50"}, "cld: no session 'work-50'; create it with cld new -n work -s 50\n"},
+	} {
+		if result := s.RunCld(logged, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", strings.Join(test.args, " "), result.Code, result.Stdout, result.Stderr, test.want)
+		}
+		if got := asked(); len(got) != 0 {
+			t.Errorf("%s asked %q, want none", strings.Join(test.args, " "), got)
+		}
+	}
+
+	startCld(t, s, "tmux", logged, "new", "-n", "work")
+	if name := s.WaitProbes(1)[0].Argv[1]; name != "cld-work-12" {
+		t.Errorf("claude named %s, want cld-work-12", name)
+	}
+	if got := asked(); !slices.Equal(got, []string{"cld-work-11"}) {
+		t.Errorf("new asked %q, want [cld-work-11]", got)
+	}
+	for _, name := range stale {
+		if _, err := os.Stat(filepath.Join(s.SocketDir(), name)); err != nil {
+			t.Errorf("stale socket %s: %v", name, err)
+		}
+	}
+}
+
+// list asks the servers at once, eight at a time: a tmux first on the PATH holds every
+// list-sessions until the test lets them go, and eight of the 12 begin, and no more while they are
+// held; the rest begin once they are let go, and list shows the sessions in the order of their
+// names, whichever server answered first.
+func TestListAsksServersAtOnce(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	var names []string
+	// Each on a server marked as cld marks its own (see TestLeavesAForeignServerAlone).
+	for i := range 12 {
+		name := "cld-a" + strconv.Itoa(i)
+		s.MustTmux(name, "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", name, "-c", s.Work, "sleep", "600")
+		names = append(names, strings.TrimPrefix(name, "cld-"))
+	}
+	asks := holdTmux(t, s, "list's asks", "*list-sessions*")
+	asks.start(t)
+	var stdout, stderr bytes.Buffer
+	argv := s.CldArgv("list")
+	list := exec.Command(argv[0], argv[1:]...)
+	list.Env, list.Dir, list.Stdout, list.Stderr = s.Environ(asks.env), s.Work, &stdout, &stderr
+	if err := list.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = list.Process.Kill()
+		_ = list.Wait()
+	})
+	sandbox.WaitFor(t, 10*time.Second, "eight asks to begin", func() bool { return asks.begun(t) >= 8 })
+	// The rest would begin within this, were they not held back.
+	time.Sleep(time.Second)
+	if begun := asks.begun(t); begun != 8 {
+		t.Errorf("%d asks began at once, want 8", begun)
+	}
+	asks.release(t)
+	err := list.Wait()
+	slices.Sort(names)
+	want := "NAME  STATE     DIRECTORY\n"
+	for _, name := range names {
+		want += fmt.Sprintf("%-6sdetached  %s\n", name, s.Work)
+	}
+	if err != nil || stdout.String() != want || stderr.String() != "" {
+		t.Errorf("list: %v, stderr %q, stdout\n%s\nwant\n%s", err, stderr.String(), stdout.String(), want)
+	}
+	if begun := asks.begun(t); begun != 12 {
+		t.Errorf("%d asks began, want 12", begun)
+	}
+}
+
 // cld 0.3.0 and earlier ran every session on one server, -L cld. cld leaves it alone: list does
 // not show its sessions, join and kill find none there, and new makes a session of that name on
 // a server of its own.
@@ -3723,15 +3840,18 @@ func TestListKill(t *testing.T) {
 	// The killed session's server exits after the kill, and a read of the sessions that meets it
 	// exiting is told now and then that the server exited unexpectedly (see Findings in
 	// docs/design.md): the list passes over that server, as cld list does. A tmux first on the PATH
-	// fails the first read of the killed session's server after the kill as tmux does then.
+	// leaves the killed session's server running, taking connections as an exiting one still does
+	// for a moment - where it has gone, the list runs no tmux there (see
+	// TestStaleSocketsRunNoTmux) - and fails the first read of it after the kill as tmux does then.
 	t.Run("server exiting", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a", "b")
 		exiting := filepath.Join(s.Root, "exiting")
-		env := wrapTmux(t, s, "case \"$*\" in *'-L cld-a list-sessions '*'#{?pane_dead,exited'*)\n"+
-			"\tif [ -e '"+exiting+"' ]; then rm '"+exiting+"'; echo 'server exited unexpectedly' >&2; exit 1; fi ;;\n"+
-			"esac\n")
+		env := wrapTmux(t, s, "if [ -e '"+exiting+"' ]; then case \"$*\" in\n"+
+			"\t*'-L cld-a kill-session '*) exit 0 ;;\n"+
+			"\t*'-L cld-a list-sessions '*'#{?pane_dead,exited'*) rm '"+exiting+"'; echo 'server exited unexpectedly' >&2; exit 1 ;;\n"+
+			"esac; fi\n")
 		term := startCld(t, s, "tmux", env, "list")
 		waitScreen(t, term, listHints)
 		s.WriteFile(exiting, "")
@@ -4187,6 +4307,32 @@ func wrapTmux(t *testing.T, s *sandbox.Sandbox, script string) map[string]string
 	return map[string]string{"PATH": bin + string(os.PathListSeparator) + s.Env["PATH"]}
 }
 
+// loggedTmux puts a tmux first on the PATH of the environment it returns (see wrapTmux) that
+// writes down what it runs, and returns with it asked, which gives the servers it ran
+// list-sessions on since asked was last called, as they ran.
+func loggedTmux(t *testing.T, s *sandbox.Sandbox) (env map[string]string, asked func() []string) {
+	t.Helper()
+	ran := filepath.Join(s.Root, "tmux ran")
+	env = wrapTmux(t, s, "echo \"$*\" >>'"+ran+"'\n")
+	return env, func() []string {
+		t.Helper()
+		out, err := os.ReadFile(ran)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
+		if err := os.Remove(ran); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
+		var servers []string
+		for _, line := range strings.Split(string(out), "\n") {
+			if words := strings.Fields(line); slices.Contains(words, "list-sessions") {
+				servers = append(servers, words[slices.Index(words, "-L")+1])
+			}
+		}
+		return servers
+	}
+}
+
 // heldTmux holds the tmux commands of a kind that cld run with env runs, from when the test holds
 // them until it releases them or ends: a tmux first on the PATH (see wrapTmux) waits as long as
 // the file hold is there. It also counts the commands that begin, held or not, a line each in
@@ -4258,7 +4404,7 @@ func (h heldTmux) release(t *testing.T) {
 func (h heldTmux) begun(t *testing.T) int {
 	t.Helper()
 	data, err := os.ReadFile(h.hold + ".begun")
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal(err)
 	}
 	return bytes.Count(data, []byte("\n"))

@@ -148,7 +148,9 @@ not push such a change. Rebase onto `main` before either.
   cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}` and cld's
   mark. Anything claude runs inherits `TMUX` and reaches claude's own server, where a session it
   makes has another name. `list` reads the sockets `cld-*` in `${TMUX_TMPDIR:-/tmp}/tmux-UID` and
-  asks each server; stale sockets answer "no server running" and are passed over, never removed.
+  asks each server, eight at a time; stale sockets are passed over, never removed. Before cld runs
+  tmux on a socket it connects to it, and a refused connection or no socket is no server, with no
+  tmux run - only where tmux would get as far, in a `tmux-UID` it takes (decision 38).
   `kill` runs `kill-session`, then `kill-server`, in one tmux command, and does not wait for
   claude, whose `SessionEnd` hooks (reason `other`) may still run after it returns (decision 32).
   Where the server runs without its session, `kill` ends it with `kill-server` alone if it has
@@ -239,7 +241,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   `CLD_PROBE_FAIL` makes it fail at startup. `claude --version` answers first, writing nothing,
   with `CLD_FAKE_CLAUDE_VERSION` (`99.0.0 (Claude Code)` when unset). Invoked as `tmux`, it fakes
   `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS` (unset:
-  no server running; `CLD_FAKE_TMUX_EXITED` names servers that exit as they are asked), and
+  no server running; `CLD_FAKE_TMUX_EXITED` names servers that exit as they are asked; where
+  `tmux-UID` exists, cld asks it only on a socket that takes connections, as `socket` in the
+  tests makes), and
   records any other command in `tmux.json`, or runs the real tmux `CLD_FAKE_TMUX_REAL` names.
   Invoked as `docker`, it records each call in `docker.jsonl`, keeps the state of the container
   `cld-telemetry` in `docker.container`, takes connections on the port of a container it starts

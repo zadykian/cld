@@ -489,6 +489,12 @@ to bring the conversation back into cld.
 - **`File name too long`.** The server's socket, `$TMUX_TMPDIR/tmux-UID/cld-S` with its symlinks
   resolved (on macOS `/tmp` is `/private/tmp`), must stay within 103 bytes on macOS and 107 on
   Linux: under a long `TMUX_TMPDIR`, use a shorter name.
+- **A slow cld.** Each command runs tmux a few times - `tmux -V`, but for completion, a command
+  for each running server it asks, and then the tmux that starts, joins or kills the session - and
+  each run takes as long as tmux takes to start: 6-20 ms built from source or from most packages,
+  100-200 ms from Ubuntu's tmux snap. `cld list` and a TAB ask every server of cld's that runs,
+  eight at a time: over 10 sessions, under half a second through the snap. The sockets that ended
+  sessions leave in `tmux-UID`, which neither tmux nor cld removes, cost no tmux.
 
 ## Upgrading
 

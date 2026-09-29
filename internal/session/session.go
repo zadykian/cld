@@ -129,6 +129,7 @@ package session
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -136,6 +137,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -143,6 +145,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -877,15 +881,18 @@ type Session struct {
 
 // Sessions reads the sessions cld started, in the order of their names; none where no server
 // runs. Each has a server of its own: Sessions asks every server with a socket cld-NAME in tmux's
-// directory (see socketDir) for its session cld-NAME, one tmux command a socket. It passes over a
-// socket whose NAME no session can have, a server that cld did not start (see mark), and the
-// socket cld, of the one server earlier versions of cld shared. tmux never removes a socket - not
-// when its server exits, is killed or dies - and on a stale one says that no server is running,
-// which Sessions passes over too, as it passes over a server that exits while it asks, when a
-// claude exits or a cld kill runs. cld removes none either: tmux replaces a stale socket under a
-// lock, which cld would not hold, so cld could remove the socket of a server that a cld new had
-// just started there. Sessions starts no server: it is list's read of the sessions, and
-// completion's, on every TAB. Once ctx is done, its tmux is killed.
+// directory (see socketDir) for its session cld-NAME, one tmux command a server that takes the
+// connection (see serverless), up to asks servers at once, in the order of the names. It passes
+// over a socket whose NAME no session can have, a server that cld did not start (see mark), and
+// the socket cld, of the one server earlier versions of cld shared. tmux never removes a socket -
+// not when its server exits, is killed or dies - and on a stale one says that no server is
+// running: Sessions passes over it without running tmux, as it passes over a server that exits
+// while it asks, when a claude exits or a cld kill runs. cld removes none either: tmux replaces a
+// stale socket under a lock, which cld would not hold, so cld could remove the socket of a server
+// that a cld new had just started there. Once a server fails otherwise, Sessions asks no more -
+// where tmux refuses its directory, every server would fail alike - and of those that failed, the
+// first in the order of the names gives the error. Sessions starts no server: it is list's read of
+// the sessions, and completion's, on every TAB. Once ctx is done, its tmux is killed.
 func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 	dir := socketDir()
 	sockets, err := os.ReadDir(dir)
@@ -899,39 +906,83 @@ func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 		}
 		return nil, fail.Runtime(fmt.Sprintf("cannot read %s: %v", dir, err))
 	}
+	connect := tmuxDir()
+	var suffixes []string
+	for _, socket := range sockets {
+		suffix, found := strings.CutPrefix(socket.Name(), "cld-")
+		if found && ValidName(suffix) && !serverless(ctx, connect, suffix) {
+			suffixes = append(suffixes, suffix)
+		}
+	}
+	// Each ask takes a place in asking before it starts, in the order of the names, and gives it
+	// back once it has its answer, in a slot of its own; one that fails first says so in failing,
+	// and no ask starts after that. Those under way finish: each comes before the ones not
+	// started, and may fail too.
+	found := make([]*Session, len(suffixes))
+	failed := make([]error, len(suffixes))
+	asking := make(chan struct{}, asks)
+	var failing atomic.Bool
+	var wait sync.WaitGroup
+	for i, suffix := range suffixes {
+		asking <- struct{}{}
+		if failing.Load() {
+			break
+		}
+		wait.Go(func() {
+			defer func() { <-asking }()
+			if found[i], failed[i] = t.session(ctx, suffix); failed[i] != nil {
+				failing.Store(true)
+			}
+		})
+	}
+	wait.Wait()
+	var sessions []Session
+	for i := range suffixes {
+		if failed[i] != nil {
+			return nil, failed[i]
+		}
+		if found[i] != nil {
+			sessions = append(sessions, *found[i])
+		}
+	}
+	return sessions, nil
+}
+
+// asks is how many servers Sessions asks at once. Through Ubuntu's snap, where a tmux took
+// 100-180 ms to start on 8 CPUs at a load of about 4, 10 servers took 1.2-1.5 s one after another,
+// 0.24-0.26 s eight at a time and 0.21-0.24 s all at once (see docs/design.md, Findings).
+const asks = 8
+
+// session asks the server of socket cld-SUFFIX for its session cld-SUFFIX, for Sessions: nil
+// where no server runs there, or runs without it.
+func (t *Tmux) session(ctx context.Context, suffix string) (*Session, error) {
 	// pane_current_path is the directory claude is in now, not the one its session started in;
 	// once claude has exited there is none, and list shows where the session started. The
 	// session's home comes right before it, both paths, which can hold a tab: the home's length in
 	// bytes (n:) goes before them, and the directory takes the rest of the line.
 	state := "#{?pane_dead,exited,#{?session_attached,attached,detached}}"
 	path := "#{n:@cld-home}\t#{@cld-home}#{?pane_dead,#{session_path},#{pane_current_path}}"
-	var sessions []Session
-	for _, socket := range sockets {
-		suffix, found := strings.CutPrefix(socket.Name(), "cld-")
-		if !found || !ValidName(suffix) {
-			continue
+	// tmux writes to a client whose LC_ALL, LC_CTYPE or LANG does not name UTF-8 - unset or C, as
+	// over ssh, in containers and cron - with "_" for each character it cannot print: the tabs,
+	// and any non-ASCII letter in a directory. -u marks the client UTF-8, so the output arrives as
+	// it is.
+	out, err := combinedOutput(t.commandContext(ctx, "-u", "-L", "cld-"+suffix, "list-sessions",
+		"-f", only(suffix), "-F", "#{session_name}\t"+state+"\t#{session_attached}\t"+panePIDs+"\t"+path))
+	if err != nil {
+		if noServer(out) {
+			return nil, nil
 		}
-		// tmux writes to a client whose LC_ALL, LC_CTYPE or LANG does not name UTF-8 - unset or C,
-		// as over ssh, in containers and cron - with "_" for each character it cannot print: the
-		// tabs, and any non-ASCII letter in a directory. -u marks the client UTF-8, so the output
-		// arrives as it is.
-		out, err := combinedOutput(t.commandContext(ctx, "-u", "-L", "cld-"+suffix, "list-sessions",
-			"-f", only(suffix), "-F", "#{session_name}\t"+state+"\t#{session_attached}\t"+panePIDs+"\t"+path))
-		if err != nil {
-			if noServer(out) {
-				continue
-			}
-			return nil, fail.Runtime(out)
-		}
-		line, _, _ := strings.Cut(out, "\n")
-		if field := fields(line, 6); field[0] == "cld-"+suffix {
-			clients, _ := strconv.Atoi(field[2])
-			home, directory := cutHome(field[4], field[5])
-			sessions = append(sessions, Session{Name: suffix, State: field[1], Attached: clients > 0, PIDs: strings.Fields(field[3]),
-				Directory: directory, Home: home})
-		}
+		return nil, fail.Runtime(out)
 	}
-	return sessions, nil
+	line, _, _ := strings.Cut(out, "\n")
+	field := fields(line, 6)
+	if field[0] != "cld-"+suffix {
+		return nil, nil
+	}
+	clients, _ := strconv.Atoi(field[2])
+	home, directory := cutHome(field[4], field[5])
+	return &Session{Name: suffix, State: field[1], Attached: clients > 0, PIDs: strings.Fields(field[3]),
+		Directory: directory, Home: home}, nil
 }
 
 // socketDir is the directory tmux keeps the sockets of -L in: tmux-UID in TMUX_TMPDIR, or in /tmp
@@ -943,6 +994,57 @@ func socketDir() string {
 		base = "/tmp"
 	}
 	return filepath.Join(base, "tmux-"+strconv.Itoa(os.Getuid()))
+}
+
+// tmuxDir is the socket directory (see socketDir) as tmux's socket paths name it, for serverless:
+// with its symbolic links resolved, as tmux resolves them, and absolute. It is "" where tmux would
+// not connect to a socket there: a directory tmux refuses - one that is a symbolic link or no
+// directory, one of another user's, or one that others can use ("directory ... has unsafe
+// permissions") - or none, which tmux makes first.
+func tmuxDir() string {
+	dir := socketDir()
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || info.Mode().Perm()&0o007 != 0 {
+		return ""
+	}
+	if owner, ok := info.Sys().(*syscall.Stat_t); !ok || int(owner.Uid) != os.Getuid() {
+		return ""
+	}
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return ""
+	}
+	if resolved, err = filepath.Abs(resolved); err != nil {
+		return ""
+	}
+	return resolved
+}
+
+// serverless reports whether no server runs on socket cld-SUFFIX in dir, tmuxDir's, found as
+// tmux finds it, without running tmux: a tmux takes 6-20 ms to start, and one from Ubuntu's snap
+// 100-200 ms, where a connection takes microseconds (see docs/design.md, Findings). tmux's client
+// first connects to the socket, and takes a refused connection (ECONNREFUSED: a socket whose
+// server has gone) or no socket (ENOENT) for no server - "no server running on" and "error
+// connecting to ... (No such file or directory)", which noServer takes. serverless makes that
+// connection, and closes it at once: a server that takes it loses a client, as it does after each
+// tmux command. Anything else leaves it to tmux, which says what is wrong: a server takes the
+// connection, dir is "", the path is too long for sun_path and its NUL - which tmux checks before
+// it connects - or the connection fails otherwise.
+func serverless(ctx context.Context, dir, suffix string) bool {
+	if dir == "" {
+		return false
+	}
+	path := filepath.Join(dir, "cld-"+suffix)
+	if len(path) >= len(unix.RawSockaddrUnix{}.Path) {
+		return false
+	}
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "unix", path)
+	if err == nil {
+		_ = conn.Close()
+		return false
+	}
+	return errors.Is(err, unix.ECONNREFUSED) || errors.Is(err, unix.ENOENT)
 }
 
 // fields splits a line of Sessions' output into count fields: runs of tabs separate them, tabs
@@ -992,10 +1094,14 @@ const panePIDs = "#{W:#{P:#{pane_pid} }}"
 
 // lookup reports whether the server of session cld-SUFFIX is running, whether the session is on
 // it and, if it is, the pids of its panes (see Session) and where it was made (Session's Home). No
-// server, no session, and none on a server that cld did not start (see only). The home, a path,
-// comes last, after a tab, and takes the rest; -u, as for Sessions, has tmux write the tab, and
-// any other character, as it is. Once ctx is done, its tmux is killed.
+// server, no session, and none on a server that cld did not start (see only); where the socket
+// says there is no server, no tmux runs (see serverless). The home, a path, comes last, after a
+// tab, and takes the rest; -u, as for Sessions, has tmux write the tab, and any other character,
+// as it is. Once ctx is done, its tmux is killed.
 func (t *Tmux) lookup(ctx context.Context, suffix string) (server, session bool, pids []string, home string, err error) {
+	if serverless(ctx, tmuxDir(), suffix) {
+		return false, false, nil, "", nil
+	}
 	found, err := combinedOutput(t.commandContext(ctx, "-u", "-L", "cld-"+suffix, "list-sessions", "-f", only(suffix),
 		"-F", "#{session_name} "+panePIDs+"\t#{@cld-home}"))
 	if err != nil {
@@ -1263,9 +1369,11 @@ func repository() (name, dir string, found bool) {
 // left as they are. A server that has outlived its session counts, and so does one that cld did
 // not start, since new would refuse either name (see lingering). prefix is compared ignoring case,
 // as a socket directory that ignores case would: its socket for a prefix in other letters would
-// reach that server. Next reads the socket directory as Sessions does, and asks only the servers
-// whose sockets have such a name. Two new at once can take the same NAME: tmux's new-session then
-// fails for the second, which ends with tmux's message. Once ctx is done, its tmux is killed.
+// reach that server. Next reads the socket directory as Sessions does, and looks up only the
+// servers whose sockets have such a name, from the highest index down, until one runs: that one
+// decides, and in the common case it is the only server asked, as lookup runs no tmux for a stale
+// socket. Two new at once can take the same NAME: tmux's new-session then fails for the second,
+// which ends with tmux's message. Once ctx is done, its tmux is killed.
 func (t *Tmux) Next(ctx context.Context, prefix string) (string, error) {
 	dir := socketDir()
 	sockets, err := os.ReadDir(dir)
@@ -1276,7 +1384,11 @@ func (t *Tmux) Next(ctx context.Context, prefix string) (string, error) {
 		}
 		return "", fail.Runtime(fmt.Sprintf("cannot read %s: %v", dir, err))
 	}
-	next := 0
+	type indexed struct {
+		suffix string
+		index  int
+	}
+	var named []indexed
 	for _, socket := range sockets {
 		suffix, found := strings.CutPrefix(socket.Name(), "cld-")
 		if !found || !ValidName(suffix) || len(suffix) <= len(prefix) || !strings.EqualFold(suffix[:len(prefix)], prefix) {
@@ -1288,18 +1400,22 @@ func (t *Tmux) Next(ctx context.Context, prefix string) (string, error) {
 		}
 		// An index too large for an int, or the largest, which no index is above, is none.
 		index, err := strconv.Atoi(digits)
-		if err != nil || index == math.MaxInt || index < next {
+		if err != nil || index == math.MaxInt {
 			continue
 		}
-		server, _, _, _, err := t.lookup(ctx, suffix)
+		named = append(named, indexed{suffix, index})
+	}
+	slices.SortStableFunc(named, func(a, b indexed) int { return cmp.Compare(b.index, a.index) })
+	for _, socket := range named {
+		server, _, _, _, err := t.lookup(ctx, socket.suffix)
 		if err != nil {
 			return "", err
 		}
 		if server {
-			next = index + 1
+			return prefix + strconv.Itoa(socket.index+1), nil
 		}
 	}
-	return prefix + strconv.Itoa(next), nil
+	return prefix + "0", nil
 }
 
 // inWorkTree reports whether the current directory is in a git work tree.

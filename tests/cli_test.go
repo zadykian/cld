@@ -726,6 +726,33 @@ func TestUnreadableSocketDirectory(t *testing.T) {
 	}
 }
 
+// tmux refuses a socket directory that others can use, before it connects to a socket there, and
+// cld ends with its message: where tmux would not get as far, cld takes neither a stale socket nor
+// a missing one for no server, as it does without running tmux elsewhere (see
+// TestStaleSocketsRunNoTmux). Here tmux-UID, open to others, holds 12 stale sockets, cld-0 to
+// cld-11: list asks no more servers once they fail, and so no more than the eight it asks at once,
+// which a tmux first on the PATH writes down.
+func TestUnsafeSocketDirectory(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	for i := range 12 {
+		staleSocket(t, s, "cld-"+strconv.Itoa(i))
+	}
+	if err := os.Chmod(s.SocketDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logged, asked := loggedTmux(t, s)
+	want := "cld: directory " + s.SocketDir() + " has unsafe permissions\n"
+	for _, args := range [][]string{{"list"}, {"new"}, {"new", "-s", "a"}, {"join", "-s", "0"}, {"kill", "-s", "a"}} {
+		if result := s.RunCld(logged, args...); result.Code != 1 || result.Stdout != "" || result.Stderr != want {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", strings.Join(args, " "), result.Code, result.Stdout, result.Stderr, want)
+		}
+		if got := asked(); args[0] == "list" && len(got) > 8 {
+			t.Errorf("list asked %d servers %q, want 8 at most", len(got), got)
+		}
+	}
+}
+
 // Arguments are read left to right, and the first wrong one decides the message: an option after
 // an argument is not read, and -- ends nothing. help and version are named as typed, completion's
 // commands with their SHELL. help takes one argument, a command of cld's; resume takes one,
@@ -2268,14 +2295,20 @@ func TestNewRefusesADirectoryItCannotEnter(t *testing.T) {
 	}
 }
 
-// socket makes a file where tmux keeps the sandbox's socket of server, for list to find: its
-// lookups go to a fake tmux, which answers whatever the file is. The real tmux needs staleSocket.
+// socket makes the sandbox's socket of server as a running server has it, for list to find: a
+// socket that takes connections, until the test ends, since cld connects to a socket before it
+// runs tmux there and passes over one that refuses. Its lookups go to a fake tmux, which answers
+// whatever the socket is. A stale one is staleSocket's.
 func socket(t *testing.T, s *sandbox.Sandbox, server string) {
 	t.Helper()
 	if err := os.MkdirAll(s.SocketDir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	s.WriteFile(filepath.Join(s.SocketDir(), server), "")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(s.SocketDir(), server), Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
 }
 
 // staleSocket makes the sandbox's socket of server as a server that has died leaves it: a socket
