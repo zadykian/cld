@@ -83,8 +83,10 @@
 //     a terminal on that window - of several, the one used last: tmux would show it on the
 //     terminal of another session on the server - one claude made - or with none attached keep it
 //     and show it in view-mode over the session a terminal attaches to next, which then takes no
-//     keys until q; join shows it instead. These go to claude's window only, not the server, so
-//     that the sessions claude makes there close as tmux would close them (see Tmux.create)
+//     keys until q; join shows it instead. These go to claude's pane only, not its window or the
+//     server, so that the other panes of its window - a teammate's that claude splits off, one
+//     split by hand - and the sessions claude makes there close as tmux would close them, rather
+//     than stay on screen as a claude that exited (see Tmux.create)
 //
 // The tab's title is the session's name after claude's marker, as claude's own title has it
 // outside tmux: ◐ and ◑ in turn while claude is busy, ✳ otherwise. Under tmux - TMUX set, which
@@ -592,13 +594,15 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// (see literal and unexpanded). claude goes by the path CheckClaude checked: tmux would look
 	// the bare word up in the PATH, relative entries included, and could start another claude.
 	// What follows new-session in the same tmux command - remain-on-exit and the pane-died hook,
-	// which go to claude's window only, so that a session claude makes on its server closes as
-	// tmux would close it - takes effect before tmux sees claude exit, however soon; tmux cuts the
-	// command short when new-session fails, as when another cld new or cld resume -n NAME got
-	// there first. The title's options go to claude's session only, for the same reason (see
-	// titles). The targets end in ":" because set takes a pane, which "=NAME" does not find. -u
-	// takes the terminal for UTF-8 whatever the locale (see the package comment).
-	window := "=" + name + ":"
+	// which go to claude's pane only, so that another pane of its window, split by claude for a
+	// teammate or by hand, and a session claude makes on its server close as tmux would close
+	// them - takes effect before tmux sees claude exit, however soon; tmux cuts the command short
+	// when new-session fails, as when another cld new or cld resume -n NAME got there first. The
+	// title's options go to claude's session only, for the same reason (see titles). The targets
+	// end in ":" because set takes a pane, which "=NAME" does not find: "=NAME:" is the active
+	// pane of the session's window, claude's, its only one yet. -u takes the terminal for UTF-8
+	// whatever the locale (see the package comment).
+	target := "=" + name + ":"
 	argv := []string{"tmux", "-u", "-L", name, "-f", "/dev/null",
 		"set", "-s", "@cld", "1", ";",
 		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys:hyperlinks", ";",
@@ -615,13 +619,13 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 		argv = append(argv, literal(word))
 	}
 	argv = append(argv, ";",
-		"set", "-w", "-t", window, "remain-on-exit", "failed", ";",
-		"set", "-w", "-t", window, "remain-on-exit-format", "", ";",
-		"set-hook", "-w", "-t", window, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"", ";",
-		"set", "-t", window, "@cld-tmux", literal(t.path), ";",
-		"set", "-t", window, "@cld-busy", busyMarker, ";",
-		"set", "-t", window, "set-titles-string", titles(suffix), ";",
-		"set", "-t", window, "set-titles", "on")
+		"set", "-p", "-t", target, "remain-on-exit", "failed", ";",
+		"set", "-p", "-t", target, "remain-on-exit-format", "", ";",
+		"set-hook", "-p", "-t", target, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"", ";",
+		"set", "-t", target, "@cld-tmux", literal(t.path), ";",
+		"set", "-t", target, "@cld-busy", busyMarker, ";",
+		"set", "-t", target, "set-titles-string", titles(suffix), ";",
+		"set", "-t", target, "set-titles", "on")
 	// The server keeps the environment of the client that starts it, cld's (see the package
 	// comment).
 	return t.become(argv, withoutTerminal(os.Environ()))

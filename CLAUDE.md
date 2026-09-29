@@ -155,9 +155,9 @@ not push such a change. Rebase onto `main` before either.
   completion pass over it, `new`, `resume` and `join` nest in its panes, and they and `kill`
   refuse its name, pointing at another name, never at `kill` (decision 34).
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
-  window, and the tab's title (`set-titles`, `set-titles-string`, `@cld-busy`, `@cld-tmux`) on
-  claude's session, not the server, so the sessions claude makes on its server behave as plain
-  tmux would.
+  pane (`set -p`, `set-hook -p`), and the tab's title (`set-titles`, `set-titles-string`,
+  `@cld-busy`, `@cld-tmux`) on claude's session, not the window or the server, so the other panes
+  of claude's window and the sessions claude makes on its server behave as plain tmux would.
 - The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn while claude is busy (claude keeps its
   own at `✳` under tmux), and ` [w]` after it in a linked git worktree. `new` and `resume` give
   claude hooks in `--settings` that set `@cld-status` on its session - `tmux -S SOCKET if -F -t

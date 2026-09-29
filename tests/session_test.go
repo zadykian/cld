@@ -1374,7 +1374,8 @@ func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 
 // A claude that fails keeps its session: the terminal stays attached and shows claude's last
 // words and how to end the session, list says claude exited, and new and resume refuse the name
-// until kill ends the session. A resume whose claude finds no conversation fails that way.
+// until kill ends the session. A resume whose claude finds no conversation fails that way. A pane
+// split off in claude's window that fails while claude runs closes, with no hint.
 func TestFailedClaudeKeepsSession(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -1408,6 +1409,16 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 			term := startCld(t, s, "tmux", extra, test.args...)
 			if test.fail != nil {
 				waitClients(t, s, 1)
+				// Another pane of claude's window that fails - one claude splits off for a
+				// teammate, say - closes as tmux closes it, with no hint: what cld sets for a
+				// failed claude goes to claude's pane only.
+				s.MustTmux("cld-bad", "split-window", "-d", "-t", "=cld-bad:", "exit 5")
+				sandbox.WaitFor(t, 10*time.Second, "the split pane to close", func() bool {
+					return s.Format("cld-bad", "#{pane_dead}") == "0"
+				})
+				if strings.Contains(term.Screen(), "claude exited") {
+					t.Errorf("a split pane that failed shows the hint:\n%s", term.Screen())
+				}
 				test.fail(t, s)
 			}
 			if test.startup != "" {
@@ -1730,15 +1741,18 @@ func TestServerOptions(t *testing.T) {
 	if limit := s.Format("cld-0", "#{history_limit}"); limit != "50000" {
 		t.Errorf("claude's pane keeps %q lines of history, want 50000", limit)
 	}
-	// What cld sets for a failed claude goes to claude's window, and the tab's title - the tmux the
-	// title's job runs is the one cld checked - to claude's session; the sessions claude makes on
-	// its server keep tmux's.
+	// What cld sets for a failed claude goes to claude's pane, not its window, and the tab's title -
+	// the tmux the title's job runs is the one cld checked - to claude's session; the other panes of
+	// claude's window, and the sessions claude makes on its server, keep tmux's (see
+	// TestFailedClaudeKeepsSession). show without -v prints an option only where it is set.
 	for _, option := range []struct {
 		args  []string
 		value string
 	}{
-		{[]string{"-wv", "-t", "=cld-0:", "remain-on-exit"}, "failed"},
-		{[]string{"-Awv", "-t", "=cld-0:", "remain-on-exit-format"}, ""},
+		{[]string{"-pv", "-t", "=cld-0:", "remain-on-exit"}, "failed"},
+		{[]string{"-p", "-t", "=cld-0:", "remain-on-exit-format"}, "remain-on-exit-format ''"},
+		{[]string{"-w", "-t", "=cld-0:", "remain-on-exit"}, ""},
+		{[]string{"-w", "-t", "=cld-0:", "remain-on-exit-format"}, ""},
 		{[]string{"-gwv", "remain-on-exit"}, "off"},
 		{[]string{"-v", "-t", "=cld-0:", "set-titles"}, "on"},
 		{[]string{"-v", "-t", "=cld-0:", "set-titles-string"}, "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-0#{?@cld-worktree, [w],}"},
@@ -1751,10 +1765,13 @@ func TestServerOptions(t *testing.T) {
 		}
 	}
 	if hooks := s.MustTmux("cld-0", "show-hooks", "-g", "pane-died"); strings.Contains(hooks, "[") {
-		t.Errorf("global pane-died hooks, want none: they go to claude's window\n%s", hooks)
+		t.Errorf("global pane-died hooks, want none: they go to claude's pane\n%s", hooks)
 	}
-	if hooks := strings.Split(s.MustTmux("cld-0", "show-hooks", "-w", "-t", "=cld-0:", "pane-died"), "\n"); len(hooks) != 1 || !strings.Contains(hooks[0], "window_active_clients") {
-		t.Errorf("pane-died hooks of claude's window, want one:\n%s", strings.Join(hooks, "\n"))
+	if hooks := s.MustTmux("cld-0", "show-hooks", "-w", "-t", "=cld-0:", "pane-died"); hooks != "" {
+		t.Errorf("pane-died hooks of claude's window, want none: they go to claude's pane\n%s", hooks)
+	}
+	if hooks := strings.Split(s.MustTmux("cld-0", "show-hooks", "-p", "-t", "=cld-0:", "pane-died"), "\n"); len(hooks) != 1 || !strings.Contains(hooks[0], "window_active_clients") {
+		t.Errorf("pane-died hooks of claude's pane, want one:\n%s", strings.Join(hooks, "\n"))
 	}
 	// Two cld new at once can both take NAME 0 and set the options on one server: the lookup of
 	// each finds no server, and the tmux command of the second reaches the server the first one

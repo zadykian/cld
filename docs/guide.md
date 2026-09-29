@@ -76,6 +76,9 @@ install it as `cld`, executable, in a directory on your `PATH`.
   What it prints on the way out, its resume hint among it, is lost. `cld kill` returns once tmux
   has ended the session, without waiting for claude, whose hooks may still run for a moment:
   `cld kill -s 1 && cld resume -s 1` can briefly run the old claude beside the new one.
+- Only claude's own pane stays on screen when it fails: a pane split off in its window - by
+  claude for a teammate, or with `C-q %` - closes when its program ends, as in plain tmux,
+  whatever its exit status.
 - Joining from a second terminal leaves the first attached: both show the same claude, and keys
   from either reach it. The window takes the size of the terminal you used last, and a larger one
   shows the rest of its screen dotted. `cld join --detach-others` detaches the other terminals
@@ -508,6 +511,11 @@ to bring the conversation back into cld.
   VSCodium, handed that terminal's variables to its claude, which then took Shift+Enter for Enter
   from any terminal. End such a session with `cld kill` and bring its conversation back with
   `cld resume`.
+- **A pane split off in claude's window.** A session keeps what cld set for a failed claude when
+  it started. In cld 0.8.2 and earlier that went to claude's window, so a pane split off there -
+  by claude for a teammate, or with `C-q %` - whose program fails stays on screen, and the message
+  line says `claude exited` while claude runs on. End such a session with `cld kill` and bring
+  its conversation back with `cld resume`.
 - **Project settings.** `cld setup project` of cld 0.4.0 to 0.8.2 wrote `/.claude/*` and
   `!/.claude/settings.json` to `.gitignore`, which keep what a project shares under `.claude` -
   commands, agents, skills - out of git, and to `.claude/settings.json` `theme`,
