@@ -29,9 +29,9 @@
 // that started the server, but for PATH and the update-environment variables, so on one server
 // for every session each claude had the first one's. new and resume refuse a NAME whose server
 // outlives its session - claude exited, and the tmux sessions it made keep the server running -
-// rather than start claude there with that server's environment, and join and kill refuse it the
-// same way (see lingering). A private server (-f /dev/null: no ~/.tmux.conf) keeps these options
-// away from any other tmux use:
+// rather than start claude there with that server's environment, and join refuses it the same
+// way, each pointing at kill, which ends such a server (see lingering). A private server
+// (-f /dev/null: no ~/.tmux.conf) keeps these options away from any other tmux use:
 //
 //   - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
 //     modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
@@ -514,7 +514,8 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 		return fail.Runtime(fmt.Sprintf("session '%s' exists; attach to it with cld join %s", suffix, Options(suffix)))
 	}
 	if server {
-		return t.lingering(context.Background(), suffix)
+		_, refused := t.lingering(context.Background(), suffix)
+		return refused
 	}
 	dir, err := workingDirectory()
 	if err != nil {
@@ -699,7 +700,8 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 		return err
 	}
 	if !exists && server {
-		return t.lingering(ctx, suffix)
+		_, refused := t.lingering(ctx, suffix)
+		return refused
 	}
 	if !exists {
 		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: "; create it with cld new " + Options(suffix)}
@@ -745,9 +747,15 @@ func (t *Tmux) Kill(suffix string) error {
 // session only if one of its panes' pids (#{pane_pid}) is among them - claude's, read with the
 // session (see Session) - so that a session made again under the name since they were read
 // counts as no session. No session is an error, with the advice for the command line kept apart
-// (fail.Error's Advice), and so is a server that runs without it (see lingering). A kill that
-// fails is its exit status (fail.Status), after what tmux wrote to stdout and stderr. Once ctx is
-// done, its tmux is killed.
+// (fail.Error's Advice). A server that has outlived the session - claude exited, and the tmux
+// sessions it made keep the server running - End ends with kill-server alone, whatever pids: no
+// pane of the session is left to check, and whichever claude of that name left the server, the
+// kill of its session would have ended it. The kill-server runs under lingering's check, made
+// again in the same tmux command (see outlives): where it no longer holds - a session cld-SUFFIX
+// made since, on a fresh server that a cld new started on the socket, say - the kill ends
+// nothing, and End says nothing, as where the kill had come first. A server that runs without
+// the session otherwise is an error too (see lingering). A kill that fails is its exit status
+// (fail.Status), after what tmux wrote to stdout and stderr. Once ctx is done, its tmux is killed.
 //
 // claude shuts down on the SIGHUP: it runs its SessionEnd hooks with the reason "other", and
 // exits. End does not wait for it: claude, orphaned, may still run its hooks when End returns,
@@ -757,13 +765,17 @@ func (t *Tmux) End(ctx context.Context, suffix string, pids []string, stdout, st
 	if err != nil {
 		return err
 	}
-	if !exists && server {
-		return t.lingering(ctx, suffix)
-	}
-	if !exists || len(pids) > 0 && !slices.ContainsFunc(found, func(pid string) bool { return slices.Contains(pids, pid) }) {
+	command := []string{"kill-session", "-t", "=cld-" + suffix, ";", "kill-server"}
+	switch {
+	case !exists && server:
+		if outlived, refused := t.lingering(ctx, suffix); !outlived {
+			return refused
+		}
+		command = []string{"if", "-F", outlives(suffix), "kill-server"}
+	case !exists || len(pids) > 0 && !slices.ContainsFunc(found, func(pid string) bool { return slices.Contains(pids, pid) }):
 		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: " (see cld list)"}
 	}
-	kill := t.serverContext(ctx, suffix, "kill-session", "-t", "=cld-"+suffix, ";", "kill-server")
+	kill := t.serverContext(ctx, suffix, command...)
 	kill.Stdout, kill.Stderr = stdout, stderr
 	if err := kill.Run(); err != nil {
 		return t.exitStatus(err)
@@ -895,28 +907,53 @@ func (t *Tmux) lookup(ctx context.Context, suffix string) (server, session bool,
 }
 
 // lingering is how new, resume, join and kill refuse session cld-SUFFIX when its server runs
-// without it. Mostly the server has outlived it: claude exited, and the tmux sessions it made keep
-// the server running. new and resume would start claude there with the environment of the cld
-// that started the server, not their own, and cld leaves what claude made to the user. But where
-// tmux's socket directory ignores case, as macOS's does by default, the socket cld-SUFFIX can be
-// that of another session's server, whose NAME differs only in case: tmux -L cld-A reaches the
-// server of session a, which the socket path it was started with names. That session may well be
-// running, so cld refuses the name and names the session, rather than point at a kill-server that
-// would end it. The advice for the command line is kept apart (fail.Error's Advice). Once ctx is
-// done, its tmux is killed.
-func (t *Tmux) lingering(ctx context.Context, suffix string) error {
-	socket := t.serverContext(ctx, suffix, "list-sessions", "-F", "#{socket_path}")
-	socket.Stderr = nil
-	out, _ := socket.Output()
-	path, _, _ := strings.Cut(string(out), "\n")
+// without it, and whether the server has outlived the session, which kill ends instead (see End).
+// Mostly it has: claude exited, and the tmux sessions it made keep the server running. new and
+// resume would start claude there with the environment of the cld that started the server, not
+// their own, and join finds no session there, so they refuse the name, pointing at kill. The
+// server has outlived the session where it has sessions, none of them cld-SUFFIX, and its socket
+// is that of server cld-SUFFIX (see outlives). A server with none is one a cld new is starting,
+// before new-session makes its session, or one exiting, and one with session cld-SUFFIX by now
+// has had it made since the lookup, by the cld new starting the server, say: kill refuses the
+// name there as well, pointing at no kill. A session of claude's that was
+// renamed - by hand, or by a tmux rename-session that claude runs, which renames the session of
+// its pane - is not the one its server is named after, and counts as ended: kill ends its server,
+// claude with it. And where tmux's socket directory ignores case, as macOS's does by default, the
+// socket cld-SUFFIX can be that of another session's server, whose NAME differs only in case:
+// tmux -L cld-A reaches the server of session a, which the socket path it was started with
+// (#{socket_path}) names. That session may well be running, so cld refuses the name and names the
+// session, rather than end the server or point at a kill that would. The advice for the command
+// line is kept apart (fail.Error's Advice). Once ctx is done, its tmux is killed.
+func (t *Tmux) lingering(ctx context.Context, suffix string) (outlived bool, refused error) {
+	// A space, not a tab, which tmux writes as "_" to a client whose locale is not UTF-8 (see
+	// Sessions); the check is 1 or 0, and the path follows it.
+	read := t.serverContext(ctx, suffix, "display-message", "-p", outlives(suffix)+" #{socket_path}")
+	read.Stderr = nil
+	out, _ := read.Output()
+	check, path, _ := strings.Cut(strings.TrimSuffix(string(out), "\n"), " ")
 	if other, found := strings.CutPrefix(filepath.Base(path), "cld-"); found && other != suffix && strings.EqualFold(other, suffix) {
-		return &fail.Error{Status: 1,
+		return false, &fail.Error{Status: 1,
 			Message: fmt.Sprintf("session name '%s' clashes with session '%s': tmux's socket directory ignores case here, so both names reach server cld-%[2]s", suffix, other),
 			Advice:  fmt.Sprintf(" (see tmux -L cld-%s ls)", other)}
 	}
-	return &fail.Error{Status: 1,
+	refusal := &fail.Error{Status: 1,
 		Message: fmt.Sprintf("session '%s' has ended, but its tmux server still runs", suffix),
-		Advice:  fmt.Sprintf(" (see tmux -L cld-%[1]s ls); end it with tmux -L cld-%[1]s kill-server", suffix)}
+		Advice:  fmt.Sprintf(" (see tmux -L cld-%s ls)", suffix)}
+	if check != "1" {
+		return false, refusal
+	}
+	refusal.Advice += "; end it with cld kill " + Options(suffix)
+	return true, refusal
+}
+
+// outlives is a format that tmux makes 1 on a server that has outlived session cld-SUFFIX, and 0
+// on any other: the server has sessions, none of them cld-SUFFIX - N/s compares whole names, as
+// only does - and the base of its socket path, the one it was started on, is cld-SUFFIX.
+// lingering reads it, and End's kill-server runs under it, in the same tmux command, so that the
+// check and the kill see the same server. && takes two operands, and there is no !, before tmux
+// 3.6.
+func outlives(suffix string) string {
+	return "#{&&:#{S:1},#{&&:#{==:#{N/s:cld-" + suffix + "},0},#{==:#{b:socket_path},cld-" + suffix + "}}}"
 }
 
 // noServer reports whether tmux failed, saying message, because the server is not running: its

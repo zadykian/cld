@@ -81,6 +81,8 @@ rows that name none were probed against tmux 3.6.
 | a bare `tmux new-session -d -s cld-x` inside a pane of server `cld-c` (tmux 3.3a, 3.4, 3.5a, 3.7c) | the session lands on `cld-c`, whose socket the pane's `TMUX` names; `tmux -L cld-x` finds no socket (`error connecting to ... (No such file or directory)`). `kill-session -t =cld-c` leaves the server running with `cld-x`; `kill-server` ends both. The pane's program gets SIGHUP from either, as when its terminal closes. Once `kill-server` has returned, the server answered no more in 200 tries (3.3a, 3.7c); once `kill-session` of a server's last session had, the server still answered 1 or 2 times in 200 |
 | a terminal attached to session `cld-a` when its server, `cld-a`, is killed, with and without another session on the server (tmux 3.3a, 3.4, 3.5a, 3.7c) | `kill-server` alone ends the terminal's client with `[server exited]` and status 1: tmux tells its clients that the server is shutting down, which the client takes for an error. `kill-session -t =cld-a \; kill-server`, one command, ends it with `[exited]` and status 0, as `kill-session` did on the shared server: the client hears that its session exited before the server shuts down. The pane's program and the other session's get SIGHUP, and once the command has returned the server answered no more in 200 tries (3.3a, 3.7c). But `kill-server` only signals the server (`kill(getpid(), SIGTERM)`), which then closes each new connection at once until its clients have gone and it exits (`server_accept` and `server_loop` in `server.c`, 3.3a, 3.4, 3.7c): a client that connects meanwhile fails with `server exited unexpectedly`. With a terminal attached, `list-sessions` run the moment the command returned failed so in 4 of 86 rounds and `new-session` in 1 (3.7c; none in 99 with 3.3a), and a `new-session` run the moment a `list-sessions` had failed so failed the same way (14 times with 3.7c, once with 3.3a). `cld kill -n r` with a terminal attached, then at once `cld new -n r`, reached a fresh server in 100 of 100 rounds (3.3a, 3.7c) |
 | a socket directory that ignores case: a casefold tmpfs (Linux 7.0, `chattr +F` on the directory) as `TMUX_TMPDIR`, with session `cld-a` on server `cld-a` (tmux 3.7c) | `tmux -L cld-A` reaches server `cld-a`, whose socket file is the one `cld-a`; `#{socket_path}` there is the path the server was started on, `.../cld-a`. Until cld read it, `new`, `join` and `kill -n A` took the server for one that outlived session `A` and pointed at `tmux -L cld-A kill-server`, which ended `a`. Over a stale socket `cld-a`, `new-session` on `cld-A` starts a fresh server, and the socket is `cld-A` from then on. macOS, whose default APFS ignores case, was not checked |
+| a server that outlives its session, and one without a session (tmux 3.7c, the snap, on a private socket; `server.c` of 3.7c read) | session `cld-x`, with `remain-on-exit failed`, ran `sh -c 'tmux new-session -d -s side sleep 6011; sleep 0.5; exit 0'`: its bare `tmux` made `side` on `cld-x`, and once the program exited with status 0 the server ran on with `side` alone. `list-sessions -F '#{socket_path}'` printed `.../cld-x` once for each session, two lines for two, with status 0; through a symlink `cld-X` to the socket `cld-x`, `.../cld-x` too. `kill-server` returned 0 and ended the server and `side`'s `sleep`; `list-sessions` then said `no server running`, and a `new-session` on the socket started a fresh server, with another `#{pid}`. A server started with `start-server \; set -s exit-empty off` answered `list-sessions` with nothing and status 0. So would the server a `cld new` starts, to a client that came before `new-session` had made its session: `server_start` listens on the socket, and releases the lock that clients starting a server take, before the server runs the starting client's command (read, not seen: 40 rounds of such a `new-session` beside a loop of `list-sessions`, whose clients take 150 ms to start with the snap, gave 218 answers naming the session and 22 no server) |
+| a format that tells a server that outlived session `cld-x` (tmux 3.5, 3.5a, 3.6a, 3.7c in Docker; 3.7c, the snap, on a private socket) | `display-message -p '#{&&:#{S:1},#{&&:#{==:#{N/s:cld-x},0},#{==:#{b:socket_path},cld-x}}}'` on `-L cld-x`, from a client attached to nothing, printed 1 on a server with `side` alone, one with `cld-xx` alone, and one whose `cld-x` was renamed with `rename-session`; 0 on one with `cld-x` beside `side`, one without a session (`start-server \; set -s exit-empty off`), and server `cld-y`, with `side`, reached through a symlink `cld-x` to its socket (`#{b:socket_path}` is `cld-y`, the path it was started on). `if -F` with it and `kill-server` ended the server where it printed 1, with status 0, and left it running with status 0 where it printed 0: the format is expanded, and the command it picks is put after it in the client's queue, which the server runs on before it takes another client's commands (`cmd_if_shell_exec`, `cmdq_next`, read in 3.7c). `N/s:` compares whole names. Before 3.6 there is no `#{!:}`, which 3.5 and 3.5a expanded to nothing, and `#{&&:}` takes two operands, `a,b,c` as `a` and `b,c`, so that `#{&&:1,1,0}` was 1 (0 on 3.6a and 3.7c). A tab in the format came out as `_` to a client without a UTF-8 locale, as in Docker |
 | `list-sessions` on a server that exits as it asks - its last session ends, or `kill-server` runs (tmux 3.3a, 3.4, 3.5a, 3.7c; servers started and ended in a loop beside a loop of `cld list`, for 15 s) | the client connects, and the server closes the connection without an answer: tmux fails with `server exited unexpectedly`, status 1 (`CLIENT_EXIT_LOST_SERVER` in tmux's `client.c`). Until `list` passed over it, it failed so in 24 of 173 runs (3.3a), 46 of 294 (3.4), 19 of 310 (3.5a) and 6 of 147 (3.7c); since, in none of 311, 224, 368 and 381. A client that the server tells it is shutting down exits with no output and status 0 instead (read from `client.c`, not seen) |
 | the socket of `tmux -L NAME` (tmux 3.3a, 3.4, 3.5a, 3.7c) | tmux never removes it: not when the server exits with its last session, not on `kill-server`, not on SIGKILL. `list-sessions` on such a stale socket fails with `no server running on DIR/NAME`, on a name never used with `error connecting to DIR/NAME (No such file or directory)`, both with status 1; `new-session` on a stale socket starts a fresh server there. The socket is in `tmux-UID` under `TMUX_TMPDIR`, or under `/tmp` where `TMUX_TMPDIR` is unset, empty or names nothing that exists; tmux resolves a symlink in it. A socket path of 107 bytes works on Linux, one of 108 fails with `File name too long`. Where `tmux-UID` is a file, not a directory, every command fails with `DIR/tmux-UID is not a directory`, status 1 |
 | what a server per session costs (tmux 3.3a, 3.4, 3.5a, 3.7c, in Docker, on a host busy with other builds) | 3.8 MB (3.3a) to 5.1 MB (3.5a) resident per server, the same with 10 sessions on it, next to about 400 MB for claude; one `list-sessions` took 6-12 ms, and one per socket over 36 sockets, 16 of them stale, 136-282 ms. #22's plan measured 3-6 ms and 115-170 ms on an idle machine (3.3a, 3.7c) |
@@ -611,9 +613,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        socket, where the shared server kept `a` and `A` apart: `tmux -L cld-A` reaches the server
        of session `a`, which has no session `cld-A` (see Findings). `new`, `join` and `kill` - and
        `resume` (16) - would take it for a server that outlived session `A` and point at
-       `tmux -L cld-A kill-server`, which ends `a`. So where the server they reach runs without its session, they ask it for
+       `tmux -L cld-A kill-server`, which ends `a` - or, in `kill`, end it (see below). So where the server they reach runs without its session, they ask it for
        the socket it was started on (`#{socket_path}`), and if that names a NAME that differs only
-       in case, they refuse the name as clashing with that session, pointing at no `kill-server`.
+       in case, they refuse the name as clashing with that session, pointing at no kill.
        Names stay case-sensitive: where the directory keeps case, as on Linux, `a` and `A` are two
        sessions.
 
@@ -628,10 +630,25 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     run the moment `cld kill` returned started a fresh server every time it was tried (see
     Findings). A server that outlives its session - claude exited, and the tmux sessions it made
     keep the server running - is not reused: `new` refuses the name, and so does `resume` (16),
-    pointing at `tmux -L cld-NAME ls` and `tmux -L cld-NAME kill-server`, so that every claude gets
+    pointing at `tmux -L cld-NAME ls` and `cld kill -n NAME -s SUFFIX`, so that every claude gets
     the environment of the shell that ran `cld new` or `cld resume`; `list` shows nothing for such a
-    server, and `join` and `kill` refuse the name the same way, rather than send the user to a
-    `cld new` that refuses it (but see cost 6 for a server that is another session's). `new`,
+    server, whose session has ended, and `join` refuses the name the same way. `kill` ends the
+    server, with `kill-server` alone since there is no session to end first, and prints nothing,
+    as for a session: what claude started through tmux ends with it, as `kill`'s help says, and
+    as it did where claude failed and its dead pane kept the session. cld 0.8.2 and earlier refused
+    the name in `kill` too, and all four pointed at `tmux -L cld-NAME kill-server` (#69). `kill`
+    ends only a server that has sessions, none of them `cld-NAME`, and whose `#{socket_path}` is
+    `.../cld-NAME`, a format tmux expands (see Findings): a server without a session is one that a
+    `cld new` is starting - it answers before `new-session` has made the session - or one exiting,
+    and one with `cld-NAME` by then has had it made since the lookup; `kill` leaves them, and all
+    four refuse the name, pointing at `tmux -L cld-NAME ls` alone. Its `kill-server` runs under
+    the same format, `if -F` in its tmux command, so that a server that has changed since `kill`
+    read it - a fresh one a `cld new` started on the socket, with its session - is left, and `kill`
+    ends nothing and says nothing, as where it had come first. A session renamed - by hand, or by
+    a `tmux rename-session` claude runs, which renames its pane's session - is not the one its
+    server is named after (as in cost 4), and `kill` ends its server, claude with it. Cost 6 has
+    a server that is another session's. The interactive list's Ctrl+X ends such a server too, on
+    the row of the session it outlived (15.3). `new`,
     `resume` and `join` refuse a terminal that is a live pane of any of cld's servers (see 2),
     found through the socket `TMUX` names, and say whose session's server it is; the terminal of any other tmux nests without a check. The
     options stay as they were, the fixed `terminal-features` indexes too: `new` sets them on a
@@ -804,10 +821,14 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        made the session look gone. `#{session_created}`, in whole seconds, and `#{session_id}`,
        which starts again at `$0` on a new server - as a session made again gets one since 13 - do
        not tell a session made again from the one killed. The check narrows the window to the one
-       `cld kill` has between its lookup and the kill. `cld kill -n NAME` goes on killing by name;
+       `cld kill` has between its lookup and the kill. `cld kill -n NAME` goes on killing by name.
+       A server that has outlived the session on the row (13) has no pane of it left to check: the
+       list ends it as `cld kill` does, whichever claude of that name left it - a kill of that
+       claude's session would have ended the server all the same;
     4. one kill step: the list and `cld kill` run the same code, `End` in `internal/session` -
-       after the name's check, the lookup and the refusal of a server that runs without its
-       session (13), then `kill-session -t =cld-NAME` and `kill-server` in one tmux command. `End`
+       after the name's check, the lookup, then `kill-session -t =cld-NAME` and `kill-server` in
+       one tmux command, or `kill-server` alone, under `if -F`, on a server that has outlived the
+       session and a refusal of any other server that runs without it (13). `End`
        returns its errors, and `cld kill` prints them and exits as before: a lookup that fails
        with its message and status 1, a kill that fails with tmux's own message and status. The
        list shows the lookup's errors in the footer, without the advice meant for the command
@@ -1924,7 +1945,12 @@ Where the implementation departs from the plan above:
   them, which gives the same bytes.
 - A server per session (decision 13): `lookup` reports whether a session's server runs and whether
   the session is on it, and `new`, `resume`, `join` and `kill` need both, to refuse a server that
-  outlives its session. `noServer` takes three of tmux's messages for no server: `no server running on` (a stale
+  outlives its session, or in `kill` to end it: `lingering` asks such a server, with
+  `display-message -p`, for a format (`outlives`) that is 1 where the server has sessions, none
+  `cld-NAME`, and its `#{socket_path}` is `.../cld-NAME`, and for that path, which tells a name
+  that clashes in case; `End`'s `kill-server` runs under `if -F` with the same format, so that the
+  check and the kill see one server. The format keeps to what tmux had before 3.6: `&&` of two
+  operands, and `==` with 0 for a `!`. `noServer` takes three of tmux's messages for no server: `no server running on` (a stale
   socket), `error connecting to` with `No such file or directory` (none), and
   `server exited unexpectedly` (the server exited while tmux asked it); any other error connecting,
   `File name too long` above all, ends cld with tmux's message. `Sessions` reads the socket

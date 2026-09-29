@@ -137,11 +137,14 @@ not push such a change. Rebase onto `main` before either.
   name; there is no mark. `list` reads the sockets `cld-*` in `${TMUX_TMPDIR:-/tmp}/tmux-UID` and
   asks each server; stale sockets answer "no server running" and are passed over, never removed.
   `kill` runs `kill-session`, then `kill-server`, in one tmux command, and does not wait for
-  claude, whose `SessionEnd` hooks (reason `other`) may still run after it returns (decision 32);
-  `new`, `resume`, `join` and
-  `kill` refuse a name whose server runs without its session, and where that server's
-  `#{socket_path}` names another NAME that differs only in case (a socket directory that ignores
-  case, as on macOS), they name that session instead of pointing at `kill-server`.
+  claude, whose `SessionEnd` hooks (reason `other`) may still run after it returns (decision 32).
+  Where the server runs without its session, `kill` ends it with `kill-server` alone if it has
+  outlived the session - it has sessions, none `cld-NAME`, and its `#{socket_path}` is
+  `.../cld-NAME`, a format checked before the kill and again under `if -F` in its command - and
+  refuses the name otherwise; `new`, `resume` and `join` refuse the name, pointing at `kill` where
+  it would end the server and at `tmux -L cld-NAME ls` alone otherwise. Where that path names
+  another NAME that differs only in case (a socket directory that ignores case, as on macOS), all
+  four name that session instead.
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
   window, and the tab's title (`set-titles`, `set-titles-string`, `@cld-busy`, `@cld-tmux`) on
   claude's session, not the server, so the sessions claude makes on its server behave as plain

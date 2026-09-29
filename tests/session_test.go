@@ -786,11 +786,14 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 }
 
 // A server outlives its session when claude exits while the tmux sessions it made keep the
-// server running. list shows nothing for it, and new, resume, join and kill refuse the name,
-// pointing at the server: new and resume would start claude there with the environment of the
-// cld that started the server, join finds no session to attach to, and kill leaves what claude
-// made to the user. Once the server is gone new starts a fresh one.
-func TestRefusesALingeringServer(t *testing.T) {
+// server running. list shows nothing for it, and new, resume and join refuse the name, pointing
+// at kill: new and resume would start claude there with the environment of the cld that started
+// the server, and join finds no session to attach to. kill ends the server, and what claude made
+// with it, as it prints nothing, and new then starts a fresh one. A server that runs without any
+// session - one a cld new is starting, or one exiting - kill leaves as it is, and refuses the name;
+// so it does a server where session cld-NAME has been made since its lookup, and where it has
+// been made since kill read the server, the kill's own tmux command ends nothing.
+func TestLingeringServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	term := startCld(t, s, "tmux", nil, "new", "-s", "a")
@@ -805,41 +808,79 @@ func TestRefusesALingeringServer(t *testing.T) {
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a/side"}) {
 		t.Fatalf("sessions %q, want [cld-a/side]", sessions)
 	}
+	lingering := s.MustTmux("cld-a", "list-sessions", "-F", "#{pid}")
 
-	const lingering = "cld: session 'a' has ended, but its tmux server still runs (see tmux -L cld-a ls); end it with tmux -L cld-a kill-server\n"
+	const refused = "cld: session 'a' has ended, but its tmux server still runs (see tmux -L cld-a ls); end it with cld kill -s a\n"
 	for _, test := range []struct {
 		args []string
 		code int
 		want string
 	}{
 		{[]string{"list"}, 0, ""},
-		{[]string{"join", "-s", "a"}, 1, lingering},
-		{[]string{"kill", "-s", "a"}, 1, lingering},
-		{[]string{"new", "-s", "a"}, 1, lingering},
-		{[]string{"resume", "-s", "a"}, 1, lingering},
-		{[]string{"resume", "-s", "a", "SESSION"}, 1, lingering},
+		{[]string{"join", "-s", "a"}, 1, refused},
+		{[]string{"new", "-s", "a"}, 1, refused},
+		{[]string{"resume", "-s", "a"}, 1, refused},
+		{[]string{"resume", "-s", "a", "SESSION"}, 1, refused},
+		{[]string{"kill", "-s", "a"}, 0, ""},
 	} {
 		if result := s.RunCld(nil, test.args...); result.Code != test.code || result.Stdout != "" || result.Stderr != test.want {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit %d, stderr %q",
 				strings.Join(test.args, " "), result.Code, result.Stdout, result.Stderr, test.code, test.want)
 		}
 	}
-	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a/side"}) || len(s.Probes()) != 1 {
-		t.Errorf("sessions %q, %d claude processes; want [cld-a/side] and the first one", sessions, len(s.Probes()))
+	if sessions := s.Sessions(); len(sessions) != 0 || len(s.Probes()) != 1 {
+		t.Errorf("sessions %q, %d claude processes; want none and the first one", sessions, len(s.Probes()))
 	}
 
-	s.MustTmux("cld-a", "kill-server")
 	startCld(t, s, "tmux", nil, "new", "-s", "a")
 	s.WaitProbes(2)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
 		t.Errorf("sessions %q, want [cld-a]", sessions)
+	}
+	if server := s.MustTmux("cld-a", "list-sessions", "-F", "#{pid}"); server == lingering {
+		t.Errorf("new reached the server %s that outlived a, want a fresh one", server)
+	}
+
+	s.MustTmux("cld-b", "start-server", ";", "set", "-s", "exit-empty", "off")
+	const empty = "cld: session 'b' has ended, but its tmux server still runs (see tmux -L cld-b ls)\n"
+	for _, command := range []string{"kill", "join"} {
+		if result := s.RunCld(nil, command, "-s", "b"); result.Code != 1 || result.Stdout != "" || result.Stderr != empty {
+			t.Errorf("%s -s b: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", command, result.Code, result.Stdout, result.Stderr, empty)
+		}
+	}
+	if _, err := s.Tmux("cld-b", "list-sessions"); err != nil {
+		t.Errorf("the server without a session: %v, want it running", err)
+	}
+
+	// Session cld-NAME made on a server that looks like one that outlived it - a fresh server of
+	// a cld new's, say - after the lookup, by the time kill reads the server (display-message), or
+	// after that read, by the time of the kill (kill-server). A tmux first on the PATH makes it.
+	for _, test := range []struct {
+		name, at string
+		code     int
+		want     string
+	}{
+		{"c", "display-message", 1, "cld: session 'c' has ended, but its tmux server still runs (see tmux -L cld-c ls)\n"},
+		{"d", "kill-server", 0, ""},
+	} {
+		s.MustTmux("cld-"+test.name, "new-session", "-d", "-s", "side", "sleep", "600")
+		env := wrapTmux(t, s, "case \"$*\" in *"+test.at+"*)\n"+
+			"\ttmux -L cld-"+test.name+" new-session -d -s cld-"+test.name+" sleep 600 ;;\n"+
+			"esac\n")
+		if result := s.RunCld(env, "kill", "-s", test.name); result.Code != test.code || result.Stdout != "" || result.Stderr != test.want {
+			t.Errorf("kill -s %s, the session made before %s: exit %d, stdout %q, stderr %q, want exit %d, stderr %q",
+				test.name, test.at, result.Code, result.Stdout, result.Stderr, test.code, test.want)
+		}
+		if sessions := s.MustTmux("cld-"+test.name, "list-sessions", "-F", "#{session_name}"); sessions != "cld-"+test.name+"\nside" {
+			t.Errorf("sessions on server cld-%s %q, want cld-%[1]s and side", test.name, sessions)
+		}
 	}
 }
 
 // Where tmux's socket directory ignores case, as macOS's does by default, names that differ only
 // in case share one socket: tmux -L cld-A reaches the server of session a, which has no session
 // cld-A. new, resume, join and kill refuse A and name session a, rather than take its server for
-// one that outlived session A and point at a kill-server that would end a - also once a's claude
+// one that outlived session A and end it, or point at a kill that would - also once a's claude
 // has exited and a session it made keeps the server running. list shows a once. Where the
 // sandbox's socket directory ignores case, as on macOS, the name cld-A finds a's socket already
 // and the test runs against the real thing; elsewhere a symlink cld-A to a's socket plays such a
@@ -3318,8 +3359,8 @@ func TestListKill(t *testing.T) {
 	})
 
 	// A session whose server runs on without it - claude exited, and the tmux session it made keeps
-	// the server running - is refused as cld kill refuses it: the server stays, and the list says
-	// why without the command line's advice.
+	// the server running - is ended with the server, as cld kill ends it, although no pane is left
+	// to check against the pids the list read.
 	t.Run("lingering server", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3342,9 +3383,9 @@ func TestListKill(t *testing.T) {
 			"  a     detached  "+s.Work,
 			"> c     detached  "+s.Work,
 			"",
-			"session 'b' has ended, but its tmux server still runs")
-		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b/side", "cld-c"}) {
-			t.Errorf("sessions %q, want [cld-a cld-b/side cld-c]", sessions)
+			listHints)
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-c"}) {
+			t.Errorf("sessions %q, want [cld-a cld-c]", sessions)
 		}
 	})
 

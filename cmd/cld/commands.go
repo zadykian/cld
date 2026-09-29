@@ -298,9 +298,9 @@ each shows claude, whose window takes the size of the terminal used last. With
 		Use:   "kill [-n NAME] -s SUFFIX",
 		Short: "end session NAME-SUFFIX and its tmux server",
 		Long: `end session NAME-SUFFIX and its tmux server: claude exits as when its terminal
-closes, and what claude started through tmux ends too. claude runs its
-SessionEnd hooks with the reason "other", and may still run them when cld kill
-returns.`,
+closes, and what claude started through tmux ends too, also where it keeps the
+server running after claude has exited. claude runs its SessionEnd hooks with
+the reason "other", and may still run them when cld kill returns.`,
 	}
 	killNaming := addNaming(kill, "the session's `SUFFIX`, after NAME-")
 	kill.RunE = func(*cobra.Command, []string) error {
@@ -997,9 +997,9 @@ func (l listSource) Joinable(ctx context.Context, name string) error {
 }
 
 // Kill is kill's steps - the name, then End - with End's check that the session is still the one
-// whose panes' pids the list read. What tmux says when the kill - kill-session, then kill-server -
-// fails becomes the error, for the list's footer, rather than going to the terminal the list draws
-// on.
+// whose panes' pids the list read. What tmux says when the kill - kill-session, then kill-server,
+// or kill-server alone on a server that has outlived the session (see End) - fails becomes the
+// error, for the list's footer, rather than going to the terminal the list draws on.
 func (l listSource) Kill(ctx context.Context, name string, pids []string) error {
 	if _, err := sessionName(name); err != nil {
 		return err

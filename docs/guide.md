@@ -64,7 +64,7 @@ install it as `cld`, executable, in a directory on your `PATH`.
   `cld kill` then `cld resume` is the way around it.
 - Whatever claude runs - its Bash tool, a hook - reaches the session's server with a plain `tmux`,
   and `tmux -L cld-S ls` lists what runs there. cld sees only `cld-S`; `cld kill` ends the
-  rest with the server.
+  rest with the server, also once claude has exited (see [Troubleshooting](#troubleshooting)).
 - `cld kill`, and `Ctrl+X` in `cld list`, end claude as a terminal that closes does: claude
   kills the shell commands it still runs, runs its `SessionEnd` hooks with the reason `other`
   (`/exit` gives `prompt_input_exit`), and exits. It gives the hooks 1.5 s, longer where one has
@@ -116,7 +116,8 @@ held down does not go on to kill the next session.
 
 - The list reads the sessions when it opens and after a kill: a session made or ended elsewhere
   shows when you run `cld list` again. If the selected session has ended when you press `Enter` or
-  the second `Ctrl+X`, the list says so and reads them again.
+  the second `Ctrl+X`, the list says so and reads them again; where what claude started keeps its
+  server running, `Ctrl+X` ends that server, as `cld kill` does.
 - The state `attached` counts terminals only: someone on the session through Remote Control does
   not show, and a kill ends the session for them too.
 - A kill leaves a `cld new -w` worktree where it is, and the conversation stays: after a kill by
@@ -394,8 +395,10 @@ a cld session, `/bg` or `←` on an empty prompt moves the conversation to a bac
   not the terminal - or with `TERM` unset, empty or `dumb`. Over ssh, `ssh -t host cld new` gives
   them one.
 - **A server without its session.** If claude exits while what it started through tmux keeps its
-  server running, `cld new`, `cld resume`, `cld join` and `cld kill` refuse the name: end the
-  server with `tmux -L cld-S kill-server`.
+  server running, `cld list` does not show the session, and `cld new`, `cld resume` and `cld join`
+  refuse the name: `tmux -L cld-S ls` shows what runs there, and `cld kill` ends it with the
+  server. So it goes where the session was renamed (`tmux rename-session`): claude may still run
+  there, and `cld kill` ends it too.
 - **Names that differ only in case.** Where tmux's socket directory ignores case, as on macOS's
   default file system, `A` and `a` share one socket: while one of them runs, cld refuses the other.
 - **`File name too long`.** The server's socket, `$TMUX_TMPDIR/tmux-UID/cld-S` with its symlinks

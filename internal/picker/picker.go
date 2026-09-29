@@ -22,9 +22,12 @@
 // there, or else to the one above. With no rows left, the header stays over "no sessions". The
 // second Ctrl+X runs cld kill's steps, with a check that the session is still the one on the row,
 // with the same claude (see Source): the list then reads the sessions again, the selection moving
-// by the same rule, and shows why the kill ended nothing, if it did - the session gone, made again
-// under its name, or ended with its server running on. The list reads the sessions only when it opens and after its own
-// actions, never on a timer, so a row does not change under a key. While Enter looks the session
+// by the same rule, and shows why the kill ended nothing, if it did - the session gone, made
+// again under its name, or a server running on without it that cld kill refuses too (see
+// session.Tmux.End); a session that has ended with its server running on - what its claude
+// started through tmux keeps it running - is ended with the server, as cld kill ends it. The list
+// reads the sessions only when it opens and after its own actions, never on a timer, so a row
+// does not change under a key. While Enter looks the session
 // up, or the kill runs, and the list reads the sessions again, Esc, Ctrl+C and the signals below
 // still leave - its tmux is killed - and other keys do nothing: a lookup that hangs, on a server
 // that does, does not hold the list. A session the kill has ended by then is not in the sessions
@@ -80,8 +83,8 @@ type Source interface {
 	// Joinable is nil when join can attach to session NAME, and otherwise why it cannot.
 	Joinable(ctx context.Context, name string) error
 	// Kill ends session NAME, as cld kill -n NAME does, if it is still the session the list read,
-	// one of whose panes' pids is among pids (see session.Session), and otherwise says why it
-	// ended nothing.
+	// one of whose panes' pids is among pids (see session.Session), or a server that has outlived
+	// it (see session.Tmux.End), and otherwise says why it ended nothing.
 	Kill(ctx context.Context, name string, pids []string) error
 }
 
@@ -766,9 +769,9 @@ func (l *list) settle(result outcome) string {
 
 // abandon ends Enter's lookup or the kill if it is still running, killing its tmux, and waits for
 // it. Its outcome then counts for the rows, as settle takes it, but for joining: a kill that ended
-// the session - its tmux command, kill-session and kill-server, returned - takes the row away, and
-// a read of the sessions that ended gives the rows. A kill cut short may or may not have ended the
-// session, whose row stays.
+// the session - its tmux command, kill-session and kill-server, or kill-server alone, returned -
+// takes the row away, and a read of the sessions that ended gives the rows. A kill cut short may
+// or may not have ended the session, whose row stays.
 func (l *list) abandon() {
 	if l.acting == nil {
 		return
