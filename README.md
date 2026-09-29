@@ -158,6 +158,17 @@ and `--remote` metrics only, such as a team's collector; give either, or both.
 `--collector-config FILE` merges your YAML over the collector's config, for headers or TLS. Linux
 only. See the [guide](docs/guide.md#telemetry), turning it off included.
 
+## cld and Claude Code's background sessions
+
+Claude Code keeps conversations running without a terminal too, and without tmux: `claude --bg`,
+or `/bg` or `←` in a conversation, hands one to a supervisor process; `claude attach ID` opens it
+again, and [agent view](https://code.claude.com/docs/en/agent-view), `claude agents`, lists them
+all on one screen. cld keeps claude as you run it in a terminal: a session goes by a name, not an
+ID, and TAB completes it; claude keeps running until you end it, idle or not; and it renders as
+your settings say, where an attached background session is always fullscreen. The
+[guide](docs/guide.md#cld-and-claude-codes-background-sessions) compares the two point by point,
+and says how they combine.
+
 ## cld and `claude --tmux`
 
 Claude Code has its own tmux option, `claude --worktree [name] --tmux`, for a different problem:

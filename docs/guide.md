@@ -283,6 +283,30 @@ cld removes nothing: to undo it, delete the script, and for zsh the lines in `.z
   where set), the directory fish looks in first, where the script used to be written by hand:
   cld replaces such a script.
 
+## cld and Claude Code's background sessions
+
+Claude Code runs conversations without a terminal itself: `claude --bg PROMPT` starts one, and
+`/bg` (`/background`) or `←` on an empty prompt hands the one you are in to a supervisor process.
+`claude attach ID` opens such a background session in any terminal, and
+[agent view](https://code.claude.com/docs/en/agent-view), `claude agents`, lists them. As of
+Claude Code 2.1.284 - agent view is a research preview, and its docs say what changed since:
+
+| | cld | Background sessions |
+|---|---|---|
+| Needs | cld and tmux, of the version the [README](../README.md#install) names | nothing but claude; the `disableAgentView` setting, or `CLAUDE_CODE_DISABLE_AGENT_VIEW`, turns agent view off, and `--bg` and `/bg` with it |
+| Address | a name - `-s SUFFIX` in its repository - which TAB completes | an ID of 8 hex digits, or its start: `claude attach 7c5d`; for a name, claude says `No job matching 'NAME'` |
+| Coming back | claude as you left it, in the renderer you chose with `/tui`; in the classic one, the wheel scrolls the pane's history in tmux's copy mode | always fullscreen, whatever `/tui` chose; the terminal's scrollback and tmux's copy mode see only the screen |
+| Idle | claude keeps running until you end it | the supervisor stops claude once it is done, or waits for your next message, and has been unattached for about an hour, unless the session is pinned (`Ctrl+T` in agent view); attaching resumes the conversation |
+| claude crashes | the session stays, with claude's last screen and how it exited, `exited` in `cld list` | the supervisor starts claude again; `claude logs ID` shows its recent output |
+| Reboot | claude stops; `cld resume` resumes the conversation in a new session | claude stops; the session shows failed - stopped after 48 hours - and attaching resumes the conversation |
+| Listing | `cld list`: name, state and directory; join or kill | `claude agents`: state, activity and age; attach, peek, reply, dispatch, stop |
+
+A cld session is not one of them: `claude agents --json` lists it as `"kind": "interactive"`, named
+`cld-NAME-SUFFIX` and without the `id` that `claude attach`, `claude logs` and `claude stop` take,
+and agent view does not show it; nor does `cld list` show background sessions. The two combine: in
+a cld session, `/bg` or `←` on an empty prompt moves the conversation to a background session, and
+`/fork` copies it into one while the original stays in the session.
+
 ## Troubleshooting
 
 - **claude too old.** `cld new` and `cld resume` name the version they found. Update claude the way

@@ -257,8 +257,9 @@ or claude behaviour, record the probe and the versions in Findings.
 
 `README.md` is the overview: what cld does, installing it, the commands, a paragraph per feature.
 `docs/guide.md` has the details a user may need beyond it and `cld help`: caveats, what is not
-checked yet, troubleshooting, upgrading. Neither explains how cld works inside; that is for
-`docs/design.md` and the package comments.
+checked yet, the comparison with Claude Code's background sessions (dated by the claude release it
+was checked on; the README keeps a paragraph of it), troubleshooting, upgrading. Neither explains
+how cld works inside; that is for `docs/design.md` and the package comments.
 
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
 a header `type(scope): description`, then a body, then optional footers, each separated by a blank
