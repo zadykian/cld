@@ -51,6 +51,20 @@ install it as `cld`, executable, in a directory on your `PATH`.
   its last `-`. A name without one, made where `NAME` leaves nothing, takes `-s S` in such a
   directory - `cd / && cld kill -s S` - or `cld list`, whose `Enter` and `Ctrl+X` take any
   session.
+- Repositories of one name share `NAME` and its indexes - two clones of a project, a fork beside
+  its upstream, `api` in two places - and so do directories of one name outside a repository.
+  `cld new` and `cld resume` record where they made a session: the repository's directory, or
+  outside one the current directory. Without `-n`, `cld join` and `cld kill` refuse a session made
+  in another - the repository's worktrees and subdirectories are its own - and say where:
+
+  ```
+  cld: session 'api-0' belongs to /work/api, not to this repository; name it with cld kill -n api -s 0
+  ```
+
+  With `-n`, and with `-s S` where `NAME` leaves nothing, they take the session from anywhere, as
+  `cld list` does; they take a session that cld 0.8.2 or earlier made, which records nothing,
+  from anywhere too. `cld new` and `cld resume` name the directory of a session whose name they
+  refuse, and `cld join -s` completes only the sessions `cld join` takes.
 - Each claude gets the environment of the shell that ran `cld new` or `cld resume` -
   `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like - but for the variables that
   would have claude take itself to be in that shell's terminal, whichever terminal joins, and
@@ -367,11 +381,12 @@ cld reads the file when it runs: edits apply when you run it again. The containe
 
 `cld join -n <TAB>` offers the `NAME` of the sessions' names, with how many sessions have it;
 `cld join -s <TAB>` offers the `SUFFIX` of each session whose `NAME` is `-n`'s, or else that of the
-repository or directory you are in, with its state; `--mcp` the next server after a comma; and
-`--permissions` its sets. No file names are offered, and `cld new`, `cld resume`, `cld kill` and
-the values of `cld setup telemetry` offer nothing. The script runs `cld` on every TAB, so the
-names are always current. `CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states
-and the other descriptions.
+repository or directory you are in and that was made there (or by cld 0.8.2 or earlier), with its
+state; `--mcp` the next server after a comma; and `--permissions` its sets. No file names are
+offered, and `cld new`, `cld resume`, `cld kill` and the values of `cld setup telemetry` offer
+nothing. The script runs `cld` on every TAB, so the names are always current.
+`CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states and the other
+descriptions.
 
 `cld setup completion SHELL` writes the script that `cld completion SHELL` prints where the shell
 reads it, making its directories, and says what it wrote; start a new shell for it to take effect.

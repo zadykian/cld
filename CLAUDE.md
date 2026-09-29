@@ -125,15 +125,21 @@ not push such a change. Rebase onto `main` before either.
   SESSION. Where nothing is left of the default, as in `/`, the name is `SUFFIX` alone. cld's
   messages and the `pane-died` hint name a session back as `-n NAME -s SUFFIX`, split at its last
   `-` (`session.Options`; decision 24). Elsewhere, and in `internal/session`, NAME is a session's
-  whole name, all tmux sees. `-w` gives claude `--worktree cld-NAME-SUFFIX`.
+  whole name, all tmux sees. `-w` gives claude `--worktree cld-NAME-SUFFIX`. `new` and `resume`
+  record where they made a session, the repository's directory or the current one, as
+  `@cld-home` on claude's session; `join` and `kill` without `-n`, where NAME's default is not
+  empty, refuse a session whose `@cld-home` is another directory (compared as files), and
+  `join -s` offers only the sessions they take (`session.Home`; decision 37).
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
-  the `PATH`; a word of cld's ending in `;` (resume's SESSION or the directory given with `-c`
-  can) goes with a `\` before the `;`, since tmux would end its command there. The directory also
-  goes with every `#` doubled: tmux expands `-c` as a format, where `#(...)` runs a shell command.
-- The clients that attach - `new`'s, `resume`'s, `join`'s and the list's Enter's - and `list`'s
-  reads of the sessions run `tmux -u`: under a locale that names no UTF-8 (`LC_ALL`, `LC_CTYPE`,
-  `LANG`), tmux would otherwise write what is not ASCII, most of claude's UI, as `_`.
+  the `PATH`; a word of cld's ending in `;` (resume's SESSION, the directory given with `-c` or
+  the session's home can) goes with a `\` before the `;`, since tmux would end its command there.
+  The directory also goes with every `#` doubled: tmux expands `-c` as a format, where `#(...)`
+  runs a shell command.
+- The clients that attach - `new`'s, `resume`'s, `join`'s and the list's Enter's - and the reads
+  of the sessions, `list`'s and the lookup of one (for its `@cld-home`), run `tmux -u`: under a
+  locale that names no UTF-8 (`LC_ALL`, `LC_CTYPE`, `LANG`), tmux would otherwise write what is
+  not ASCII, most of claude's UI, as `_`.
 - A server per session: session `cld-NAME` lives on server `cld-NAME` (`tmux -L cld-NAME`), and
   cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}` and cld's
   mark. Anything claude runs inherits `TMUX` and reaches claude's own server, where a session it
@@ -257,8 +263,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   claude exiting, the session list's keys), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, the names `new` gives from the
-  repository and the index, the hooks that keep claude's status and its worktree for the title,
-  and the names completion offers;
+  repository and the index, the sessions of another repository of the same name, the hooks that
+  keep claude's status and its worktree for the title, and the names completion offers;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
   byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures

@@ -213,7 +213,7 @@ letters, digits, "_" and "-", each starting with a letter or digit, and make
 		if err != nil {
 			return err
 		}
-		suffix, err := newNaming.resolve(tmux)
+		suffix, _, err := newNaming.resolve(tmux)
 		if err != nil {
 			return err
 		}
@@ -252,7 +252,7 @@ for claude's picker. SESSION comes after the options and does not start with
 		if err != nil {
 			return err
 		}
-		suffix, err := resumeNaming.resolve(tmux)
+		suffix, _, err := resumeNaming.resolve(tmux)
 		if err != nil {
 			return err
 		}
@@ -269,7 +269,8 @@ for claude's picker. SESSION comes after the options and does not start with
 		Short: "attach to session NAME-SUFFIX",
 		Long: `attach to session NAME-SUFFIX, beside any terminal attached to it already:
 each shows claude, whose window takes the size of the terminal used last. With
---detach-others, those terminals are detached.`,
+--detach-others, those terminals are detached. Without -n, a session made in
+another repository or directory of the same name is refused.`,
 	}
 	joinNaming := addNaming(join, "the session's `SUFFIX`, after NAME-")
 	detachOthers := join.Flags().Bool("detach-others", false, "detach any other terminal attached to the session")
@@ -281,11 +282,11 @@ each shows claude, whose window takes the size of the terminal used last. With
 		if err != nil {
 			return err
 		}
-		suffix, err := joinNaming.resolve(tmux)
+		suffix, home, err := joinNaming.resolve(tmux)
 		if err != nil {
 			return err
 		}
-		return tmux.Join(suffix, *detachOthers)
+		return tmux.Join(suffix, home, *detachOthers)
 	}
 	if err := join.RegisterFlagCompletionFunc("name", sessionNames); err != nil {
 		panic(err)
@@ -300,7 +301,8 @@ each shows claude, whose window takes the size of the terminal used last. With
 		Long: `end session NAME-SUFFIX and its tmux server: claude exits as when its terminal
 closes, and what claude started through tmux ends too, also where it keeps the
 server running after claude has exited. claude runs its SessionEnd hooks with
-the reason "other", and may still run them when cld kill returns.`,
+the reason "other", and may still run them when cld kill returns. Without -n,
+a session made in another repository or directory of the same name is refused.`,
 	}
 	killNaming := addNaming(kill, "the session's `SUFFIX`, after NAME-")
 	kill.RunE = func(*cobra.Command, []string) error {
@@ -311,11 +313,11 @@ the reason "other", and may still run them when cld kill returns.`,
 		if err != nil {
 			return err
 		}
-		suffix, err := killNaming.resolve(tmux)
+		suffix, home, err := killNaming.resolve(tmux)
 		if err != nil {
 			return err
 		}
-		return tmux.Kill(suffix)
+		return tmux.Kill(suffix, home)
 	}
 
 	// list is interactive on a terminal it can draw on, other than a pane of one of cld's servers,
@@ -802,18 +804,26 @@ func sessionNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completio
 
 // sessionSuffixes completes the SUFFIX of join -s: for the sessions list shows whose names are
 // NAME-SUFFIX with the NAME join takes - -n's, or else the repository's or directory's (see
-// session.DefaultName) - their SUFFIX, where it starts with what was typed and join takes it, in
-// list's order, each described by its state. Where NAME is "", every name is a SUFFIX.
+// defaultName) - their SUFFIX, where it starts with what was typed and join takes it, in list's
+// order, each described by its state. Without -n, join takes none made in another repository or
+// directory of the same name (see session.Home.Takes), so none is offered. Where NAME is "", every
+// name is a SUFFIX.
 func sessionSuffixes(c *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	name := session.DefaultName()
+	var name string
+	var home session.Home
 	if c.Flags().Changed("name") {
 		name, _ = c.Flags().GetString("name")
+	} else {
+		name, home = defaultName()
 	}
 	if name != "" {
 		name += "-"
 	}
 	var suffixes []cobra.Completion
 	for _, s := range listed() {
+		if !home.Takes(s.Home) {
+			continue
+		}
 		if suffix, found := strings.CutPrefix(s.Name, name); found && strings.HasPrefix(suffix, typed) && session.ValidName(suffix) {
 			suffixes = append(suffixes, cobra.CompletionWithDesc(suffix, s.State))
 		}
@@ -889,7 +899,8 @@ const nameUsage = "the session's `NAME`, before -SUFFIX: by default the\ngit rep
 // is -n's, or else the name of the git repository the current directory is in, or of the
 // directory (see session.DefaultName) - where that leaves nothing, the session is SUFFIX alone -
 // and SUFFIX -s's, or else, for new and for resume with SESSION, the next index (see
-// session.Tmux.Next). join and kill, and resume without SESSION, need -s.
+// session.Tmux.Next). join and kill, and resume without SESSION, need -s; without -n, join and kill
+// take no session made in another repository or directory of the same name (see session.Home).
 type naming struct {
 	flags        *pflag.FlagSet
 	name, suffix *string
@@ -944,11 +955,12 @@ func tooLong(status int, name string) error {
 // resolve is the session's name, NAME-SUFFIX, once tmux has been checked: -n's NAME, or else the
 // repository's or directory's, and -s's SUFFIX, or else the next index (see session.Tmux.Next).
 // One longer than a session's name can be is refused with status 1: the repository's or
-// directory's name, or the index, makes it so, not the command line alone (see check).
-func (n naming) resolve(tmux *session.Tmux) (string, error) {
-	name := *n.name
+// directory's name, or the index, makes it so, not the command line alone (see check). With it
+// comes the home that join and kill take the session from (see defaultName).
+func (n naming) resolve(tmux *session.Tmux) (string, session.Home, error) {
+	name, home := *n.name, session.Home{}
 	if !n.flags.Changed("name") {
-		name = session.DefaultName()
+		name, home = defaultName()
 	}
 	if name != "" {
 		name += "-"
@@ -958,13 +970,24 @@ func (n naming) resolve(tmux *session.Tmux) (string, error) {
 	} else {
 		var err error
 		if name, err = tmux.Next(context.Background(), name); err != nil {
-			return "", err
+			return "", session.Home{}, err
 		}
 	}
 	if len(name) > session.MaxName {
-		return "", tooLong(1, name)
+		return "", session.Home{}, tooLong(1, name)
 	}
-	return name, nil
+	return name, home, nil
+}
+
+// defaultName is the NAME of NAME-SUFFIX where -n gives none, and the home that join and kill,
+// and join -s's completion, take a session of it from (see session.DefaultName): none where NAME
+// is "", as in the root directory, where -s names any session whole.
+func defaultName() (string, session.Home) {
+	name, home := session.DefaultName()
+	if name == "" {
+		return "", session.Home{}
+	}
+	return name, home
 }
 
 // sessionName is the NAME given with -n, checked once the options have been read: first its
@@ -982,7 +1005,8 @@ func sessionName(name string) (string, error) {
 
 // listSource is what the interactive list reads and acts through: the sessions to list, join's
 // checks, which Enter makes while the list is open - the name, then the lookup - and kill's steps,
-// which the second Ctrl+X takes.
+// which the second Ctrl+X takes. The list names a session whole, as -n does, and takes it from
+// anywhere.
 type listSource struct{ tmux *session.Tmux }
 
 func (l listSource) Sessions(ctx context.Context) ([]session.Session, error) {
@@ -993,7 +1017,7 @@ func (l listSource) Joinable(ctx context.Context, name string) error {
 	if _, err := sessionName(name); err != nil {
 		return err
 	}
-	return l.tmux.Joinable(ctx, name)
+	return l.tmux.Joinable(ctx, name, session.Home{})
 }
 
 // Kill is kill's steps - the name, then End - with End's check that the session is still the one
@@ -1005,7 +1029,7 @@ func (l listSource) Kill(ctx context.Context, name string, pids []string) error 
 		return err
 	}
 	var said bytes.Buffer
-	err := l.tmux.End(ctx, name, pids, &said, &said)
+	err := l.tmux.End(ctx, name, session.Home{}, pids, &said, &said)
 	var status fail.Status
 	if errors.As(err, &status) {
 		if message := strings.TrimSpace(said.String()); message != "" {

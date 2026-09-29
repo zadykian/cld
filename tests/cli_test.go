@@ -1324,7 +1324,7 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 		{[]string{"__complete", "resume", "-s", ""}, "tmux 3.6b", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.6b", "cld-main\tdetached\t0\t100\t/w", 0, "main\n:4\n",
+		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.6b", "cld-main\tdetached\t0\t100\t0\t/w", 0, "main\n:4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "tmux 3.6b", "", 1, "", noDocker, false},
 		{[]string{"__complete", "setup", "telemetry", "--local", ""}, "tmux 3.6b", "", 0, ":4\n",
@@ -1447,7 +1447,7 @@ func TestCompletionSkipsChecks(t *testing.T) {
 			case "fake", "unreadable":
 				env["PATH"] = s.Tools("tmux")
 				env["CLD_FAKE_TMUX_VERSION"] = "tmux 3.2a"
-				env["CLD_FAKE_TMUX_SESSIONS"] = "cld-x\tdetached\t0\t100\t/w"
+				env["CLD_FAKE_TMUX_SESSIONS"] = "cld-x\tdetached\t0\t100\t0\t/w"
 			default:
 				s.WriteProgram(filepath.Join(env["PATH"], "tmux"), test.script, test.mode)
 			}
@@ -1489,11 +1489,13 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // then --resume. A word ending in ";", which tmux would take for the end of its command,
 // goes with a "\" before the ";", which tmux drops: SESSION, or the directory cld runs in. The
 // directory goes with every "#" doubled, since tmux expands -c as a format, in which "##" is a
-// "#". The fake tmux, which finds no server running for the session, records the command, and
-// the environment it gets: cld's own, without the variables that name the terminal to claude
-// (see TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set, which join's client
-// needs (see TestNestsOnADeadPanesPty); a PS1, which the script's bash dropped, passes too
-// (decision 11 in docs/design.md).
+// "#". The session's home - the repository, the work directory, or a directory that is a
+// repository of its own - goes with a "\" before a ";" at its end too, but with no "#" doubled:
+// set does not expand it. The fake tmux, which finds no server running for the session, records
+// the command, and the environment it gets: cld's own, without the variables that name the
+// terminal to claude (see TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set,
+// which join's client needs (see TestNestsOnADeadPanesPty); a PS1, which the script's bash
+// dropped, passes too (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -1501,25 +1503,30 @@ func TestNewTmuxCommand(t *testing.T) {
 		args []string
 		// dir is where in the work tree cld runs, and c what tmux gets with -c there
 		dir, c string
+		// home is what tmux gets for the session's home, in the work directory where dir is a
+		// repository of its own - whose name leaves nothing, as the work directory's does - and
+		// the work directory itself where it is empty
+		home string
 		// after is what claude gets after its settings, as tmux gets it; -w's settings also
 		// branch the worktree from HEAD
 		after []string
 	}{
-		{[]string{"new", "-s", "x"}, "", "", nil},
-		{[]string{"new", "-s", "x", "-w"}, "", "", []string{"--worktree", "cld-x"}},
-		{[]string{"resume", "-s", "x"}, "", "", []string{"--resume", "cld-x"}},
-		{[]string{"resume", "-s", "x", "a b"}, "", "", []string{"--resume", "a b"}},
-		{[]string{"resume", "-s", "x", "a;"}, "", "", []string{"--resume", `a\;`}},
-		{[]string{"resume", "-s", "x", `a\;`}, "", "", []string{"--resume", `a\\;`}},
-		{[]string{"new", "-s", "x"}, "w;", `w\;`, nil},
-		{[]string{"new", "-s", "x", "-w"}, "w;", `w\;`, []string{"--worktree", "cld-x"}},
-		{[]string{"resume", "-s", "x"}, "w;", `w\;`, []string{"--resume", "cld-x"}},
-		{[]string{"new", "-s", "x"}, `w\;`, `w\\;`, nil},
-		{[]string{"new", "-s", "x"}, "C#S", "C##S", nil},
-		{[]string{"new", "-s", "x", "-w"}, "x#(touch ran)", "x##(touch ran)", []string{"--worktree", "cld-x"}},
-		{[]string{"resume", "-s", "x"}, "#{session_name}#;", `##{session_name}##\;`, []string{"--resume", "cld-x"}},
+		{[]string{"new", "-s", "x"}, "", "", "", nil},
+		{[]string{"new", "-s", "x", "-w"}, "", "", "", []string{"--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "", "", "", []string{"--resume", "cld-x"}},
+		{[]string{"resume", "-s", "x", "a b"}, "", "", "", []string{"--resume", "a b"}},
+		{[]string{"resume", "-s", "x", "a;"}, "", "", "", []string{"--resume", `a\;`}},
+		{[]string{"resume", "-s", "x", `a\;`}, "", "", "", []string{"--resume", `a\\;`}},
+		{[]string{"new", "-s", "x"}, "w;", `w\;`, "", nil},
+		{[]string{"new", "-s", "x", "-w"}, "w;", `w\;`, "", []string{"--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "w;", `w\;`, "", []string{"--resume", "cld-x"}},
+		{[]string{"new", "-s", "x"}, `w\;`, `w\\;`, "", nil},
+		{[]string{"new", "-s", "x"}, "C#S", "C##S", "", nil},
+		{[]string{"new", "-s", "x", "-w"}, "x#(touch ran)", "x##(touch ran)", "", []string{"--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "#{session_name}#;", `##{session_name}##\;`, "", []string{"--resume", "cld-x"}},
+		{[]string{"new", "-s", "x"}, "#;", `##\;`, `#\;`, nil},
 	} {
-		args, dir, c, after := command.args, command.dir, command.c, command.after
+		args, dir, c, home, after := command.args, command.dir, command.c, command.home, command.after
 		name := strings.Join(args, " ")
 		if dir != "" {
 			name += " in " + dir
@@ -1532,6 +1539,9 @@ func TestNewTmuxCommand(t *testing.T) {
 				if err := os.Mkdir(filepath.Join(s.Work, dir), 0o755); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if home != "" {
+				runGit(t, s, s.Work, "init", "-q", dir)
 			}
 			given := map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
@@ -1567,6 +1577,7 @@ func TestNewTmuxCommand(t *testing.T) {
 				"set", "-p", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
 				"set-hook", "-p", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`, ";",
 				"set", "-t", "=cld-x:", "@cld-tmux", sandbox.FakeTmux, ";",
+				"set", "-t", "=cld-x:", "@cld-home", filepath.Join(s.Work, home), ";",
 				"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",
 				"set", "-t", "=cld-x:", "set-titles-string", "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-x#{?@cld-worktree, [w],}", ";",
 				"set", "-t", "=cld-x:", "set-titles", "on")
@@ -1822,7 +1833,7 @@ func TestServerExitingWhileAsked(t *testing.T) {
 	fake := map[string]string{
 		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
-		"CLD_FAKE_TMUX_SESSIONS": "cld-a\tdetached\t0\t100\t/w",
+		"CLD_FAKE_TMUX_SESSIONS": "cld-a\tdetached\t0\t100\t0\t/w",
 		"CLD_FAKE_TMUX_EXITED":   "cld-b",
 	}
 	for _, test := range []struct {
@@ -2064,7 +2075,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		// before is what cobra writes to stderr first.
 		before string
 	}{
-		{[]string{"list"}, "cld-x\tdetached\t0\t100\t/w", ""},
+		{[]string{"list"}, "cld-x\tdetached\t0\t100\t0\t/w", ""},
 		{[]string{"help"}, "", ""},
 		{[]string{"help", "new"}, "", ""},
 		{[]string{"new", "-h"}, "", ""},
@@ -2077,7 +2088,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"completion", "bash"}, "", ""},
 		{[]string{"completion", "zsh", "--help"}, "", ""},
 		{[]string{"completion"}, "", ""},
-		{[]string{"__complete", "join", "-s", ""}, "cld-x\tdetached\t0\t100\t/w", "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
+		{[]string{"__complete", "join", "-s", ""}, "cld-x\tdetached\t0\t100\t0\t/w", "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
 		{[]string{"help", "setup"}, "", ""},
 		{[]string{"setup", "-h", "telemetry"}, "", ""},
 		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "", ""},

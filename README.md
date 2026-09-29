@@ -63,7 +63,9 @@ where sessions `NAME-INDEX` run, the index above the highest of them. In a repos
 `cld new` twice, `cld new -s fix` and `cld new -n web` make the sessions `cld-api-0`, `cld-api-1`,
 `cld-api-fix` and `cld-web-0`, which `cld join -s 1` and `cld kill -n web -s 0` then reach; in
 `/root`, outside any repository, `cld new` makes `cld-root-0`. `cld join` and `cld kill` need `-s`,
-and `cld resume` `-s` or `SESSION`, with which it names its session as `cld new` does.
+and `cld resume` `-s` or `SESSION`, with which it names its session as `cld new` does. Repositories
+of one name share `NAME`: without `-n`, `cld join` and `cld kill` refuse a session that another
+repository or directory of the same name made.
 
 | Command | Action |
 |---|---|
