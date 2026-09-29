@@ -90,6 +90,13 @@
 // @cld-worktree, and the title ends in " [w]" while claude works in a linked git worktree. claude's
 // own title stays in its pane. A terminal that detaches keeps the title tmux set last.
 //
+// The clients of new, resume and join - and of the list's Enter, which joins - take the terminal
+// for UTF-8 (tmux -u), as list's reads of the sessions do (see Tmux.Sessions): tmux by itself does
+// so only where TMUX is set or LC_ALL, LC_CTYPE or LANG names UTF-8, and otherwise draws each
+// character that is not ASCII as "_" - most of claude's UI, over ssh to a host whose sshd takes no
+// LANG, in a container, from cron. claude draws it in UTF-8 whatever the locale, as cld prints the
+// title.
+//
 // join attaches beside any other terminal on the session, which stays attached: the window takes
 // the size of the terminal used last (window-size latest), and a larger one shows the rest of its
 // screen dotted. With --detach-others it attaches with -d, detaching the others.
@@ -584,9 +591,10 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// tmux would close it - takes effect before tmux sees claude exit, however soon; tmux cuts the
 	// command short when new-session fails, as when another cld new or cld resume -n NAME got
 	// there first. The title's options go to claude's session only, for the same reason (see
-	// titles). The targets end in ":" because set takes a pane, which "=NAME" does not find.
+	// titles). The targets end in ":" because set takes a pane, which "=NAME" does not find. -u
+	// takes the terminal for UTF-8 whatever the locale (see the package comment).
 	window := "=" + name + ":"
-	argv := []string{"tmux", "-L", name, "-f", "/dev/null",
+	argv := []string{"tmux", "-u", "-L", name, "-f", "/dev/null",
 		"set", "-s", "@cld", "1", ";",
 		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys:hyperlinks", ";",
 		"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
@@ -737,7 +745,8 @@ func (t *Tmux) Attach(suffix string, detachOthers bool) error {
 	if err := printTitle(suffix); err != nil {
 		return err
 	}
-	attach := []string{"tmux", "-L", name, "attach-session"}
+	// -u takes the terminal for UTF-8 whatever the locale, as new's client does.
+	attach := []string{"tmux", "-u", "-L", name, "attach-session"}
 	if detachOthers {
 		attach = append(attach, "-d")
 	}

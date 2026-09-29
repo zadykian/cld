@@ -62,6 +62,10 @@ install it as `cld`, executable, in a directory on your `PATH`.
   reconnect claude's `git push` finds no agent. An agent socket at a path that stays -
   `SSH_AUTH_SOCK` naming a link that `~/.ssh/rc` points at each login's socket, say - or
   `cld kill` then `cld resume` is the way around it.
+- cld takes the terminal for UTF-8, as claude does, whatever `LC_ALL`, `LC_CTYPE` and `LANG` say:
+  tmux would draw what is not ASCII - most of claude's UI - as `_` where they name no UTF-8, as
+  over ssh to a host whose sshd takes no `LANG`, in a container or from cron. A terminal that
+  does not take UTF-8 shows claude garbled, under cld or not.
 - Whatever claude runs - its Bash tool, a hook - reaches the session's server with a plain `tmux`,
   and `tmux -L cld-S ls` lists what runs there. cld sees only `cld-S`; `cld kill` ends the
   rest with the server, also once claude has exited (see [Troubleshooting](#troubleshooting)).

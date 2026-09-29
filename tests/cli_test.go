@@ -542,8 +542,8 @@ func TestNameLength(t *testing.T) {
 			if result.Code != 0 || result.Stderr != "" {
 				t.Fatalf("exit %d, stderr %q", result.Code, result.Stderr)
 			}
-			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:2], []string{"-L", "cld-" + longest}) {
-				t.Errorf("tmux arguments start %q, want -L cld-%s", argv[:2], longest)
+			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:3], []string{"-u", "-L", "cld-" + longest}) {
+				t.Errorf("tmux arguments start %q, want -u -L cld-%s", argv[:3], longest)
 			}
 		})
 	}
@@ -654,8 +654,8 @@ func TestLongPrefix(t *testing.T) {
 				if result.Code != 0 || result.Stderr != "" {
 					t.Fatalf("exit %d, stderr %q", result.Code, result.Stderr)
 				}
-				if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:2], []string{"-L", "cld-" + name}) {
-					t.Errorf("tmux arguments start %q, want -L cld-%s", argv[:2], name)
+				if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:3], []string{"-u", "-L", "cld-" + name}) {
+					t.Errorf("tmux arguments start %q, want -u -L cld-%s", argv[:3], name)
 				}
 				return
 			}
@@ -1481,8 +1481,9 @@ func endHint(options string) string {
 const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 	"#((sleep 1; #{q:@cld-tmux} -S #{q:socket_path} refresh-client -S -t #{q:client_name}) >/dev/null 2>&1 &)"
 
-// new and resume hand over to tmux with this command, word for word: the session's own server,
-// its options, the directory, claude - by the path of the one it checked - and its arguments as
+// new and resume hand over to tmux with this command, word for word: a client that takes the
+// terminal for UTF-8 whatever the locale (see TestClientsTakeUTF8), the session's own server, its
+// options, the directory, claude - by the path of the one it checked - and its arguments as
 // separate words, what goes on claude's window, and the tab's title on claude's session, naming
 // the tmux cld checked, as claude's hooks do. resume's claude gets new's arguments, never -w's,
 // then --resume. A word ending in ";", which tmux would take for the end of its command,
@@ -1490,10 +1491,9 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // directory goes with every "#" doubled, since tmux expands -c as a format, in which "##" is a
 // "#". The fake tmux, which finds no server running for the session, records the command, and
 // the environment it gets: cld's own, without the variables that name the terminal to claude
-// (see TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set - join's client
-// needs it (see TestNestsOnADeadPanesPty), and with it tmux still takes new's terminal for UTF-8
-// (see TestNestsInsideAnotherTmux); a PS1, which the script's bash dropped, passes too (decision
-// 11 in docs/design.md).
+// (see TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set, which join's client
+// needs (see TestNestsOnADeadPanesPty); a PS1, which the script's bash dropped, passes too
+// (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -1547,7 +1547,7 @@ func TestNewTmuxCommand(t *testing.T) {
 			if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
-			want := []string{"-L", "cld-x", "-f", "/dev/null",
+			want := []string{"-u", "-L", "cld-x", "-f", "/dev/null",
 				"set", "-s", "@cld", "1", ";",
 				"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys:hyperlinks", ";",
 				"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
@@ -1656,10 +1656,11 @@ func TestVSCodeGit(t *testing.T) {
 	}
 }
 
-// join hands over to tmux with this command, word for word - attach-session with -d only for
-// --detach-others - and with the environment it got but for an empty TMUX where TMUX was set:
-// TERMINAL_EMULATOR too, which only new and resume leave out, and a PS1, which the script's bash
-// dropped. The fake tmux finds session x on its server, then records the command.
+// join hands over to tmux with this command, word for word - a client that takes the terminal for
+// UTF-8, attach-session with -d only for --detach-others - and with the environment it got but
+// for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which only new and resume leave
+// out, and a PS1, which the script's bash dropped. The fake tmux finds session x on its server,
+// then records the command.
 func TestJoinTmuxCommand(t *testing.T) {
 	t.Parallel()
 	for _, command := range []struct {
@@ -1691,7 +1692,7 @@ func TestJoinTmuxCommand(t *testing.T) {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
 			record := s.FakeTmuxRecord()
-			want := slices.Concat([]string{"-L", "cld-x"}, attach, []string{"-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint("-s x")})
+			want := slices.Concat([]string{"-u", "-L", "cld-x"}, attach, []string{"-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint("-s x")})
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 			}

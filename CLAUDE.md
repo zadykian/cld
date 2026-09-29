@@ -131,6 +131,9 @@ not push such a change. Rebase onto `main` before either.
   the `PATH`; a word of cld's ending in `;` (resume's SESSION or the directory given with `-c`
   can) goes with a `\` before the `;`, since tmux would end its command there. The directory also
   goes with every `#` doubled: tmux expands `-c` as a format, where `#(...)` runs a shell command.
+- The clients that attach - `new`'s, `resume`'s, `join`'s and the list's Enter's - and `list`'s
+  reads of the sessions run `tmux -u`: under a locale that names no UTF-8 (`LC_ALL`, `LC_CTYPE`,
+  `LANG`), tmux would otherwise write what is not ASCII, most of claude's UI, as `_`.
 - A server per session: session `cld-NAME` lives on server `cld-NAME` (`tmux -L cld-NAME`), and
   cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}` and cld's
   mark. Anything claude runs inherits `TMUX` and reaches claude's own server, where a session it
