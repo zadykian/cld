@@ -130,12 +130,12 @@ not push such a change. Rebase onto `main` before either.
   and `SUFFIX`, for `new` and for `resume` with SESSION, the index one above the highest of the
   sessions `NAME-INDEX` whose servers run; `join` and `kill` need `-s`, and `resume` `-s` or
   SESSION. Where nothing is left of the default, as in `/`, the name is `SUFFIX` alone. cld's
-  messages and the `pane-died` hint name a session back as `-n NAME -s SUFFIX`, split at its last
-  `-` (`session.Options`; decision 24). Elsewhere, and in `internal/session`, NAME is a session's
-  whole name, all tmux sees. `-w` gives claude `--worktree cld-NAME-SUFFIX`. `new` and `resume`
-  record where they made a session, the repository's directory or the current one, as
-  `@cld-home` on claude's session; `join` and `kill` without `-n`, where NAME's default is not
-  empty, refuse a session whose `@cld-home` is another directory (compared as files), and
+  messages and the `pane-died` hint and border line name a session back as `-n NAME -s SUFFIX`,
+  split at its last `-` (`session.Options`; decision 24). Elsewhere, and in `internal/session`,
+  NAME is a session's whole name, all tmux sees. `-w` gives claude `--worktree cld-NAME-SUFFIX`.
+  `new` and `resume` record where they made a session, the repository's directory or the current
+  one, as `@cld-home` on claude's session; `join` and `kill` without `-n`, where NAME's default
+  is not empty, refuse a session whose `@cld-home` is another directory (compared as files), and
   `join -s` offers only the sessions they take (`session.Home`; decision 37).
 - cld keeps a **record of its sessions** in `$XDG_STATE_HOME/cld`, by default
   `~/.local/state/cld` (`internal/session/record.go`; decision 40): `sessions/NAME.json`, a line
@@ -196,6 +196,9 @@ not push such a change. Rebase onto `main` before either.
   pane (`set -p`, `set-hook -p`), and the tab's title (`set-titles`, `set-titles-string`,
   `@cld-busy`, `@cld-tmux`) on claude's session, not the window or the server, so the other panes
   of claude's window and the sessions claude makes on its server behave as plain tmux would.
+  Once claude has failed, the hook sets `pane-border-status bottom` on claude's window, which
+  tmux reads from the window alone, and `pane-border-format` on claude's pane, so that another
+  pane there keeps tmux's own line.
 - The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn while claude is busy (claude keeps its
   own at `✳` under tmux), and ` [w]` after it in a linked git worktree. `new` and `resume` give
   claude hooks in `--settings` that set `@cld-status` on its session - `tmux -S SOCKET if -F -t

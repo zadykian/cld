@@ -1589,12 +1589,32 @@ func TestCompletionSkipsChecks(t *testing.T) {
 	}
 }
 
-// endHint is how the pane-died hook that new and resume set, and join, show how to end a session
-// whose claude failed: with cld kill and options, which name the session.
+// endText says how claude exited and how to end its session, with cld kill and options, which
+// name the session, as much of it as fits the pane's width whole: without C-q d where all of it
+// does not fit, and without the command where that does not fit either. The widths count how
+// claude exited as its widest, signal vtalrm, and the border line's spaces and 4 cells of border.
+func endText(options string) string {
+	exited := "claude exited with #{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}"
+	width := func(text string) string {
+		return strconv.Itoa(len("claude exited with signal vtalrm"+text) + 6)
+	}
+	kill := ": cld kill " + options + " ends the session"
+	return "#{?#{e|<:#{pane_width}," + width(": C-q d detaches, cld kill "+options+" ends the session") + "}," +
+		"#{?#{e|<:#{pane_width}," + width(kill) + "}," + exited + "," + exited + kill + "}," +
+		exited + ": C-q d detaches#, cld kill " + options + " ends the session}"
+}
+
+// endHint is how the pane-died hook that new and resume set, and join, show endText on the
+// message line.
 func endHint(options string) string {
-	return "display-message -d 0 'claude exited with " +
-		"#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}: " +
-		"C-q d detaches, cld kill " + options + " ends the session'"
+	return "display-message -d 0 '" + endText(options) + "'"
+}
+
+// endHook is the pane-died hook that new and resume set: it keeps endText on a line of the pane's
+// border, below the dead pane, and shows endHint to a terminal on claude's window.
+func endHook(options string) string {
+	return "set -w pane-border-status bottom ; set -p pane-border-format ' " + endText(options) + " ' ; " +
+		`if -F '#{window_active_clients}' "` + endHint(options) + `"`
 }
 
 // busyMarker is the marker new and resume have tmux put before the session's name in the tab's
@@ -1700,7 +1720,7 @@ func TestNewTmuxCommand(t *testing.T) {
 			want = append(want, ";",
 				"set", "-p", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
 				"set", "-p", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
-				"set-hook", "-p", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`, ";",
+				"set-hook", "-p", "-t", "=cld-x:", "pane-died", endHook("-s x"), ";",
 				"set", "-t", "=cld-x:", "@cld-tmux", sandbox.FakeTmux, ";",
 				"set", "-t", "=cld-x:", "@cld-home", filepath.Join(s.Work, home), ";",
 				"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",

@@ -96,8 +96,8 @@ made.
 | `Esc`, `Ctrl+C` | leave, printing the table |
 
 Leaving claude (`/exit`, `Ctrl+C` twice) ends its session, which `cld list` then shows as
-`ended`. If claude exits with an error, the session stays with its message on screen, as `exited`
-in `cld list`, until `cld kill` ends it.
+`ended`. If claude exits with an error, the session stays, as `exited` in `cld list`, with its
+message on screen and a line below it that says how to end the session, until `cld kill` ends it.
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
 `/background` (`/bg`), and "Move to background and exit" where `/exit` offers it, end the session

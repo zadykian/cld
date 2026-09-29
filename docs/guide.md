@@ -92,6 +92,13 @@ install it as `cld`, executable, in a directory on your `PATH`.
   What it prints on the way out, its resume hint among it, is lost. `cld kill` returns once tmux
   has ended the session, without waiting for claude, whose hooks may still run for a moment:
   `cld kill -s 1 && cld resume -s 1` can briefly run the old claude beside the new one.
+- A session whose claude failed keeps what claude printed on screen, with a line below it that
+  says how claude exited - `status 1`, say, or `signal 15` - and how to end the session. The line
+  stays through keys, `C-q d` and `cld join`; until the first key, the message line at the bottom
+  says the same. It takes the screen's last row: where claude's output fills the screen, what was
+  on that row goes if claude's cursor was above it, and otherwise the top line moves up out of
+  sight. In a narrow terminal the line leaves out `C-q d detaches`, and then the command, rather
+  than show them cut short. A session that an older cld started has the message line only.
 - Only claude's own pane stays on screen when it fails: a pane split off in its window - by
   claude for a teammate, or with `C-q %` - closes when its program ends, as in plain tmux,
   whatever its exit status.
@@ -374,10 +381,10 @@ arguments: `--name cld-S` and `--settings`, then `--worktree cld-S` for `cld new
   then keeps its `✳` while claude works, and shows no ` [w]`; and cld's record gets neither the
   conversation's ID - `cld resume` then goes by the session's name, or by the ID it resumed - nor
   the times claude answers, so that cld forgets the session 30 days after it started.
-- tmux takes a command of 16364 bytes at most, of which cld's own arguments for claude take some
-  5 to 6 KB, and cld refuses words that would make it longer, saying so. Long text goes to claude
-  in a file: `--append-system-prompt-file`, `--system-prompt-file`, or a prompt that names a file
-  for claude to read.
+- tmux takes a command of 16364 bytes at most, of which cld's own words take some 6 to 7 KB, and
+  cld refuses words that would make it longer, saying so. Long text goes to claude in a file:
+  `--append-system-prompt-file`, `--system-prompt-file`, or a prompt that names a file for claude
+  to read.
 
 ## Project settings
 

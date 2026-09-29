@@ -1788,9 +1788,11 @@ func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 }
 
 // A claude that fails keeps its session: the terminal stays attached and shows claude's last
-// words and how to end the session, list says claude exited, and new and resume refuse the name
-// until kill ends the session. A resume whose claude finds no conversation fails that way. A pane
-// split off in claude's window that fails while claude runs closes, with no hint.
+// words and how to end the session, on the message line and, once a key has cleared it, on a line
+// of the pane's border below claude's words, which stay at the top; list says claude exited, and
+// new and resume refuse the name until kill ends the session. A resume whose claude finds no
+// conversation fails that way. A pane split off in claude's window that fails while claude runs
+// closes, with no hint.
 func TestFailedClaudeKeepsSession(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -1841,10 +1843,16 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 			}
 			hint := ": C-q d detaches, cld kill -s bad ends the session"
 			waitScreen(t, term, hint)
-			if !slices.ContainsFunc(test.how, func(how string) bool {
+			how := slices.IndexFunc(test.how, func(how string) bool {
 				return strings.Contains(term.Screen(), "claude exited with "+how+hint)
-			}) {
-				t.Errorf("the hint does not say claude exited with %s:\n%s", strings.Join(test.how, " or "), term.Screen())
+			})
+			if how < 0 {
+				t.Fatalf("the hint does not say claude exited with %s:\n%s", strings.Join(test.how, " or "), term.Screen())
+			}
+			term.Keys("x")
+			waitBorderLine(t, term, "claude exited with "+test.how[how]+hint)
+			if screen := term.Screen(); !strings.HasPrefix(screen, test.startup) {
+				t.Errorf("claude's words are not at the top:\n%s", screen)
 			}
 			if !term.Running() {
 				t.Error("the terminal was detached")
@@ -1874,17 +1882,28 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 
 // A claude that fails with no terminal attached leaves the hint to join, which shows it on the
 // message line: from the hook, tmux would keep it and show it in view-mode over the next session
-// any terminal attaches to. Joining a live session shows no hint.
+// any terminal attaches to. The line of the pane's border is there all the same, and stays once a
+// key has cleared the message line; it goes to claude's window, not to a session claude made on
+// its server. Joining a live session shows no hint.
 func TestClaudeFailingDetached(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	first := startCld(t, s, "tmux", nil, "new", "-s", "bad")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
+	probe.Send("tmux new-session -d -s side sleep 600")
+	sandbox.WaitFor(t, 10*time.Second, "claude's tmux to make a session", func() bool {
+		return slices.Contains(s.Sessions(), "cld-bad/side")
+	})
 	first.Keys("C-q", "d")
 	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !first.Running() })
 	probe.Send("exit 1")
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return s.Format("cld-bad", "#{pane_dead}") == "1" })
+	for session, want := range map[string]string{"cld-bad": "bottom", "side": ""} {
+		if status := s.MustTmux("cld-bad", "show", "-wv", "-t", "="+session+":", "pane-border-status"); status != want {
+			t.Errorf("pane-border-status of %s's window %q, want %q", session, status, want)
+		}
+	}
 
 	other := startCld(t, s, "tmux", nil, "new", "-s", "other")
 	s.WaitProbes(2)
@@ -1902,11 +1921,37 @@ func TestClaudeFailingDetached(t *testing.T) {
 	if mode := s.Format("cld-bad", "#{pane_mode}"); mode != "" {
 		t.Errorf("the joined session is in %s", mode)
 	}
+	joined.Keys("x")
+	waitBorderLine(t, joined, hint)
 
 	live := startCld(t, s, "tmux", nil, "join", "-s", "other")
 	waitScreen(t, live, "probe --name cld-other")
 	if screen := live.Screen(); strings.Contains(screen, "claude exited") {
 		t.Errorf("joining a live session shows the hint:\n%s", screen)
+	}
+}
+
+// The lines that say how claude exited and how to end the session say what fits the terminal's
+// width whole, rather than be cut at it: a command cut short could name another session, -s 1 of
+// -s 12, and the border line stays on screen. As the terminal narrows, the line leaves out C-q d,
+// and then the command.
+func TestFailedClaudeLinesFit(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	term := startCld(t, s, "tmux", nil, "new", "-n", "my-awesome-proj", "-s", "12")
+	waitClients(t, s, 1)
+	s.WaitProbes(1)[0].Send("exit 1")
+	exited := "claude exited with status 1"
+	kill := exited + ": cld kill -n my-awesome-proj -s 12 ends the session"
+	all := exited + ": C-q d detaches, cld kill -n my-awesome-proj -s 12 ends the session"
+	waitScreen(t, term, all)
+	term.Keys("x")
+	for _, width := range []struct {
+		columns int
+		text    string
+	}{{120, all}, {90, kill}, {80, exited}} {
+		term.Resize(width.columns, 40)
+		waitBorderLine(t, term, width.text)
 	}
 }
 
@@ -4401,6 +4446,25 @@ func waitScreen(t *testing.T, term terminal.Terminal, text string) {
 	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("%q on the screen", text), func() bool {
 		return strings.Contains(term.Screen(), text)
 	})
+}
+
+// waitBorderLine waits until the screen's last line is a line of the pane's border with text in
+// it, as the pane-died hook leaves it below a claude that failed: text between the border's ─, not
+// the message line, which starts with the text.
+func waitBorderLine(t *testing.T, term terminal.Terminal, text string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		screen := term.Screen()
+		last := screen[strings.LastIndexByte(screen, '\n')+1:]
+		if strings.HasPrefix(last, "─") && strings.Trim(last, "─ ") == text {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out after 10s waiting for the last line to be the pane's border with %q; the screen shows\n%s", text, screen)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // waitModes waits until the terminal's modes are as ok wants them, and reports them otherwise: the

@@ -95,17 +95,24 @@
 //     it does not trust - leaves its pane on screen with its message, instead of taking both
 //     away; /exit and claude's other ways out exit with status 0. An empty remain-on-exit-format
 //     keeps tmux from scrolling the pane for its own line, which would push a short error at the
-//     top out of sight; the pane-died hook shows how to end the session on the message line
-//     instead, until a key is pressed. It names the session as cld kill takes it, -n and -s,
+//     top out of sight; the pane-died hook says how claude exited and how to end the session
+//     instead, on a line of the pane's border below it, and on the message line until a key is
+//     pressed. The border line - pane-border-status bottom on the window, pane-border-format on
+//     the dead pane, so that a pane beside it keeps tmux's own - takes the pane's last row, and
+//     stays through keys, detach and join. For that row tmux deletes the pane's last where the
+//     cursor is above it, whatever it holds - an empty one below a short error - and otherwise
+//     scrolls the top line into the history. Both lines say as much as fits whole (see ending),
+//     and name the session as cld kill takes it, -n and -s,
 //     written into the hook as the session is made: the hook's formats know the pane and its
-//     window, not the session. The hook shows it only to
+//     window, not the session. The hook shows the message only to
 //     a terminal on that window - of several, the one used last: tmux would show it on the
 //     terminal of another session on the server - one claude made - or with none attached keep it
 //     and show it in view-mode over the session a terminal attaches to next, which then takes no
 //     keys until q; join shows it instead. These go to claude's pane only, not its window or the
 //     server, so that the other panes of its window - a teammate's that claude splits off, one
 //     split by hand - and the sessions claude makes there close as tmux would close them, rather
-//     than stay on screen as a claude that exited (see Tmux.create)
+//     than stay on screen as a claude that exited (see Tmux.create). The border line's options,
+//     set once claude has died, reach no other window
 //
 // The tab's title is the session's name after claude's marker, as claude's own title has it
 // outside tmux: ◐ and ◑ in turn while claude is busy, ✳ otherwise. Under tmux - TMUX set, which
@@ -442,16 +449,48 @@ func number(digits string) int {
 	return n
 }
 
-// how says how claude exited.
-const how = "#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}"
+// how says how claude exited, and widest is how many cells it takes at most: tmux numbers a status
+// up to 255 and a signal up to 64, or names the signal where the C library has sys_signame, as
+// macOS does, vtalrm the longest.
+const (
+	how    = "#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}"
+	widest = len("signal vtalrm")
+)
 
-// hint shows how to end session cld-SUFFIX, whose claude failed, on the message line until a key
-// is pressed (see the package comment): the pane-died hook shows it to a terminal attached then,
-// join to one attaching later. It names the session as cld kill takes it (see Options), in
-// characters that tmux's quotes and formats keep as they are.
+// ending says how claude exited and how to end session cld-SUFFIX, whose claude failed, as a tmux
+// format. It names the session as cld kill takes it (see Options), in characters that tmux's
+// quotes and formats keep as they are. It says what fits the pane's width whole: all of it, or
+// where that does not fit, all but C-q d, or where the command does not fit either, how claude
+// exited alone; tmux would cut the text at the width, and a command cut short could name
+// another session, -s 1 of -s 12.
+func ending(suffix string) string {
+	exited := "claude exited with " + how
+	kill := exited + ": cld kill " + Options(suffix) + " ends the session"
+	all := exited + ": C-q d detaches#, cld kill " + Options(suffix) + " ends the session"
+	return fits(all, fits(kill, exited))
+}
+
+// fits is the format text where the pane is wide enough for it, and instead where it is not. It
+// reckons with the line of the pane's border, the narrower of the two places ending goes: its
+// text, between spaces, gets the pane's width less 4 cells (tmux 3.5a; 3.7c less 2), and how
+// takes the widest it can. In text, #, is a comma, which would otherwise end the branch.
+func fits(text, instead string) string {
+	width := len(strings.NewReplacer(how, strings.Repeat(" ", widest), "#,", ",").Replace(text)) + 6
+	return "#{?#{e|<:#{pane_width}," + strconv.Itoa(width) + "}," + instead + "," + text + "}"
+}
+
+// hint shows ending on the message line until a key is pressed (see the package comment): the
+// pane-died hook shows it to a terminal attached then, join to one attaching later.
 func hint(suffix string) string {
-	return "display-message -d 0 'claude exited with " + how +
-		": C-q d detaches, cld kill " + Options(suffix) + " ends the session'"
+	return "display-message -d 0 '" + ending(suffix) + "'"
+}
+
+// died is the pane-died hook of claude's pane in session cld-SUFFIX: it keeps ending on a line
+// of the pane's border, below the pane, which no key clears, and shows the hint (see the package
+// comment). Its set has no -t: in the hook, set takes the pane that died and its window.
+func died(suffix string) string {
+	return "set -w pane-border-status bottom ; set -p pane-border-format ' " + ending(suffix) + " ' ; " +
+		"if -F '#{window_active_clients}' \"" + hint(suffix) + "\""
 }
 
 // settings are what new and resume pass claude with --settings, as JSON in this field order.
@@ -707,7 +746,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 		argv = append(argv, ";",
 			"set", "-p", "-t", target, "remain-on-exit", "failed", ";",
 			"set", "-p", "-t", target, "remain-on-exit-format", "", ";",
-			"set-hook", "-p", "-t", target, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"", ";",
+			"set-hook", "-p", "-t", target, "pane-died", died(suffix), ";",
 			"set", "-t", target, "@cld-tmux", literal(t.path), ";",
 			"set", "-t", target, "@cld-home", literal(home.Dir), ";",
 			"set", "-t", target, "@cld-busy", busyMarker, ";",
@@ -815,10 +854,11 @@ func withoutTerminal(environ []string) []string {
 // sends the words after its options, each followed by a NUL, behind their count, an int, as one
 // message of at most 16384 bytes, 16 of them the message's header (MAX_IMSGSIZE and
 // IMSG_HEADER_SIZE in tmux's compat/imsg.h), and fails otherwise with "command too long" or
-// "failed to send command". Of new's command, cld's own words take some 5 to 6 KB, most of it
+// "failed to send command". Of new's command, cld's own words take some 6 to 7 KB, most of it
 // claude's settings, whose hooks name tmux and the server's socket by their paths, and the file
-// of the session's entry in cld's record; the rest is for the words given to claude, resume's
-// SESSION among them.
+// of the session's entry in cld's record, and some 1 KB the pane-died hook, which names the
+// session in each text it fits to the pane's width (see died); the rest is for the words given to
+// claude, resume's SESSION among them.
 const commandLimit = 16384 - 16 - 4
 
 // commandSize is the size of command as a tmux client hands it to its server, without the count:
