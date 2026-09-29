@@ -30,18 +30,22 @@ import (
 // How cld uses its tmux server, independent of the outer terminal: cld runs in the baseline
 // terminal (a pane of an outer tmux server).
 
-// remoteControl is the --settings every new claude gets from a cld that finds the sandbox's tmux
-// and git (see settings).
-func remoteControl() string { return settings(sandbox.RealTmux, sandbox.RealGit, false) }
+// remoteControl is the --settings the claude of session name gets in s from a cld that finds the
+// sandbox's tmux and git (see settings).
+func remoteControl(s *sandbox.Sandbox, name string) string {
+	return settings(s, sandbox.RealTmux, sandbox.RealGit, name, false)
+}
 
-// settings is the --settings a new claude gets from a cld that found tmux and git at those paths:
-// Remote Control on from the start and, with fromHead, new -w's worktree branched from HEAD, then
-// the hooks that keep claude's status and whether it is in a linked worktree on its session, for
-// the tab's title (see TestStatusHooks and TestWorktreeHooks). Each runs that tmux on the server
-// of claude's pane.
-func settings(tmux, git string, fromHead bool) string {
+// settings is the --settings the claude of session name, cld-NAME, gets in s from a cld that found
+// tmux and git at those paths: Remote Control on from the start and, with fromHead, new -w's
+// worktree branched from HEAD, then the hooks that keep claude's status and whether it is in a
+// linked worktree on its session, for the tab's title (see TestStatusHooks, TestWorktreeHooks and
+// TestHooksOutsideThePane). Each runs that tmux on the session's server, by the socket in the
+// sandbox's directory, and names the session.
+func settings(s *sandbox.Sandbox, tmux, git, name string, fromHead bool) string {
+	socket := filepath.Join(s.SocketDir(), name)
 	set := func(option, value string) string {
-		return `'` + tmux + `' if -F -t \"$TMUX_PANE\" \"#{!=:#{` + option + `},` + value + `}\" \"set ` + option + ` ` + value + `\"`
+		return `'` + tmux + `' -S '` + socket + `' if -F -t '=` + name + `:' \"#{!=:#{` + option + `},` + value + `}\" \"set -t =` + name + `: ` + option + ` ` + value + `\"`
 	}
 	status := func(value string) string { return set("@cld-status", value) }
 	dir := func(which string) string {
@@ -109,7 +113,7 @@ func TestSessionNames(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{test.session}) {
 				t.Errorf("sessions %q, want [%s]", sessions, test.session)
 			}
-			if want := []string{"--name", test.session, "--settings", remoteControl()}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", test.session, "--settings", remoteControl(s, test.session)}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != dir {
@@ -150,7 +154,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 			s.WriteProgram(filepath.Join(dir, "claude"), test.script, 0o755)
 			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "new")
 			probe := s.WaitProbes(1)[0]
-			if want := []string{"--name", "cld-0", "--settings", remoteControl()}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", "cld-0", "--settings", remoteControl(s, "cld-0")}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if args, err := os.ReadFile(filepath.Join(s.ProbeDir, "relative claude ran")); err == nil {
@@ -165,17 +169,17 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 // it then makes or reopens the worktree itself and moves into it. The repository is named work.
 func TestNewWorktree(t *testing.T) {
 	t.Parallel()
-	fromHead := settings(sandbox.RealTmux, sandbox.RealGit, true)
 	for _, test := range []struct {
 		args []string
-		want []string
+		// session is claude's --name and --worktree
+		session string
 	}{
-		{[]string{"new", "-w"}, []string{"--name", "cld-work-0", "--settings", fromHead, "--worktree", "cld-work-0"}},
-		{[]string{"new", "-n", "feat", "--worktree"}, []string{"--name", "cld-feat-0", "--settings", fromHead, "--worktree", "cld-feat-0"}},
-		{[]string{"new", "-w", "--name=feat"}, []string{"--name", "cld-feat-0", "--settings", fromHead, "--worktree", "cld-feat-0"}},
-		{[]string{"new", "-wn", "feat"}, []string{"--name", "cld-feat-0", "--settings", fromHead, "--worktree", "cld-feat-0"}},
-		{[]string{"new", "-s", "feat", "-w"}, []string{"--name", "cld-work-feat", "--settings", fromHead, "--worktree", "cld-work-feat"}},
-		{[]string{"new", "-ws", "x", "-n", "feat"}, []string{"--name", "cld-feat-x", "--settings", fromHead, "--worktree", "cld-feat-x"}},
+		{[]string{"new", "-w"}, "cld-work-0"},
+		{[]string{"new", "-n", "feat", "--worktree"}, "cld-feat-0"},
+		{[]string{"new", "-w", "--name=feat"}, "cld-feat-0"},
+		{[]string{"new", "-wn", "feat"}, "cld-feat-0"},
+		{[]string{"new", "-s", "feat", "-w"}, "cld-work-feat"},
+		{[]string{"new", "-ws", "x", "-n", "feat"}, "cld-feat-x"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -186,8 +190,9 @@ func TestNewWorktree(t *testing.T) {
 			}
 			startCldIn(t, s, "tmux", sub, nil, test.args...)
 			probe := s.WaitProbes(1)[0]
-			if !slices.Equal(probe.Argv, test.want) {
-				t.Errorf("claude arguments %q, want %q", probe.Argv, test.want)
+			fromHead := settings(s, sandbox.RealTmux, sandbox.RealGit, test.session, true)
+			if want := []string{"--name", test.session, "--settings", fromHead, "--worktree", test.session}; !slices.Equal(probe.Argv, want) {
+				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != sub {
 				t.Errorf("claude starts in %s, want %s", probe.Cwd, sub)
@@ -229,7 +234,7 @@ func TestResume(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-" + test.name}) {
 				t.Errorf("sessions %q, want [cld-%s]", sessions, test.name)
 			}
-			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl(), "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl(s, "cld-"+test.name), "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != s.Work {
@@ -253,16 +258,18 @@ func TestResume(t *testing.T) {
 func TestDirectoryTmuxWouldChange(t *testing.T) {
 	t.Parallel()
 	for _, command := range []struct {
-		args, argv []string
+		// after is what claude gets after its settings
+		args, after []string
 	}{
-		{[]string{"new", "-n", "a", "-s", "x"}, []string{"--name", "cld-a-x", "--settings", remoteControl()}},
-		{[]string{"resume", "-n", "a", "-s", "x"}, []string{"--name", "cld-a-x", "--settings", remoteControl(), "--resume", "cld-a-x"}},
+		{[]string{"new", "-n", "a", "-s", "x"}, nil},
+		{[]string{"resume", "-n", "a", "-s", "x"}, []string{"--resume", "cld-a-x"}},
 	} {
 		for _, name := range []string{"w;", "C#S", "x#(touch ran)", "#{session_name};"} {
-			args, argv := command.args, command.argv
+			args, after := command.args, command.after
 			t.Run(strings.Join(args, " ")+" in "+name, func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
+				argv := append([]string{"--name", "cld-a-x", "--settings", remoteControl(s, "cld-a-x")}, after...)
 				dir := filepath.Join(s.Work, name)
 				if err := os.Mkdir(dir, 0o755); err != nil {
 					t.Fatal(err)
@@ -761,7 +768,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 		t.Errorf("new -n inside started claude with %q", probe.Argv)
 	}
 	startCld(t, s, "tmux", nil, "resume", "-s", "a-x")
-	resumed := []string{"--name", "cld-a-x", "--settings", remoteControl(), "--resume", "cld-a-x"}
+	resumed := []string{"--name", "cld-a-x", "--settings", remoteControl(s, "cld-a-x"), "--resume", "cld-a-x"}
 	if probes := s.WaitProbes(3); !slices.ContainsFunc(probes, func(p *sandbox.Probe) bool { return slices.Equal(p.Argv, resumed) }) {
 		t.Errorf("resume -n a-x started no claude with %q", resumed)
 	}
@@ -1424,7 +1431,8 @@ func TestIgnoresUserTmuxConfig(t *testing.T) {
 // tmux: busy from a prompt on, and after a question answered; waiting while claude asks - a
 // permission, an MCP server's question; idle once the turn is done, or failed, or a tool of it was
 // interrupted, or claude says it has been idle a while. claude runs each hook in its own
-// environment, whose TMUX and TMUX_PANE take tmux to its pane.
+// environment, here with the TMUX and TMUX_PANE of its pane, which the hooks do not need (see
+// TestHooksOutsideThePane).
 func TestStatusHooks(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1535,6 +1543,63 @@ func TestWorktreeHooksWithoutGit(t *testing.T) {
 	if want := []string{"Elicitation", "ElicitationResult", "Notification", "PermissionRequest", "PostToolUse",
 		"PostToolUseFailure", "Stop", "StopFailure", "UserPromptSubmit"}; !slices.Equal(events, want) {
 		t.Errorf("hooks for %q, want %q", events, want)
+	}
+}
+
+// claude does not always run the hooks in its pane: it can run a conversation in a background
+// worker of its daemon, which the claude in the pane shows, and the worker runs the hooks without
+// TMUX and TMUX_PANE (claude 2.1.284). The hooks name the server and the session themselves, so
+// they keep the status and the worktree on claude's session all the same - not on a session
+// claude made on its server, nor on one of the default server, where a bare tmux goes without
+// TMUX and where it failed with "no current session" while that server had none.
+func TestHooksOutsideThePane(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	startCld(t, s, "tmux", nil, "new", "-s", "x")
+	probe := s.WaitProbes(1)[0]
+	s.MustTmux("cld-x", "new-session", "-d", "-s", "made")
+	s.MustTmux("default", "new-session", "-d", "-s", "other")
+	probe.Send("unsetenv TMUX TMUX_PANE")
+	for _, step := range []struct{ event, input, option, want string }{
+		{"SessionStart", `{"source":"resume"}`, "@cld-worktree", "0"},
+		{"UserPromptSubmit", `{"prompt":"go"}`, "@cld-status", "busy"},
+		{"PermissionRequest", `{"tool_name":"Bash"}`, "@cld-status", "waiting"},
+		{"PostToolUse", `{"tool_name":"Bash"}`, "@cld-status", "busy"},
+		{"Stop", `{}`, "@cld-status", "idle"},
+	} {
+		probe.Hook(step.event, step.input)
+		if got := s.Format("cld-x", "#{"+step.option+"}"); got != step.want {
+			t.Errorf("%s is %q after %s %s, want %q", step.option, got, step.event, step.input, step.want)
+		}
+	}
+	for _, other := range []struct{ server, session string }{{"cld-x", "made"}, {"default", "other"}} {
+		if got := s.MustTmux(other.server, "list-panes", "-s", "-t", "="+other.session, "-F", "#{@cld-status}#{@cld-worktree}"); got != "" {
+			t.Errorf("session %s on server %s has %q of the hooks' options, want none", other.session, other.server, got)
+		}
+	}
+}
+
+// The hooks name the server's socket by an absolute path also where TMUX_TMPDIR is relative,
+// which tmux takes from the directory cld runs in: they run in claude's, which claude changes.
+func TestHooksUnderRelativeTmuxTmpdir(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	result := s.RunCld(map[string]string{
+		"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+		"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+		"TMUX_TMPDIR":           "..",
+	}, "new", "-s", "x")
+	if result.Code != 0 {
+		t.Fatalf("exit %d, stderr %q, want exit 0", result.Code, result.Stderr)
+	}
+	argv := s.FakeTmuxRecord().Argv
+	i := slices.Index(argv, "--settings")
+	if i < 0 {
+		t.Fatalf("no --settings in tmux's arguments %q", argv)
+	}
+	// The work directory's parent is the sandbox's TMUX_TMPDIR.
+	if want := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", false); argv[i+1] != want {
+		t.Errorf("settings\n%s\nwant\n%s", argv[i+1], want)
 	}
 }
 
@@ -3495,7 +3560,7 @@ func TestListResumedSession(t *testing.T) {
 	})
 	resumed.Keys("C-q", "d")
 	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !resumed.Running() })
-	argv := []string{"--name", "cld-b", "--settings", remoteControl(), "--resume", "cld-b"}
+	argv := []string{"--name", "cld-b", "--settings", remoteControl(s, "cld-b"), "--resume", "cld-b"}
 	claude := func(other *sandbox.Probe) *sandbox.Probe {
 		for _, probe := range s.Probes() {
 			if slices.Equal(probe.Argv, argv) && (other == nil || probe.PID != other.PID) {

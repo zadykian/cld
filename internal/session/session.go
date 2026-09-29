@@ -410,14 +410,24 @@ type hookCommand struct {
 // tool.LookPath): the hook runs in claude's directory, where a relative entry would find a git of
 // the project's own. Where cld finds no git, the hooks leave @cld-worktree alone.
 //
-// Each hook runs tmux, by the path cld checked, on the server of claude's pane, which claude's
-// TMUX names; tmux sets an option only where it changes, since setting any option redraws every
-// terminal on the server. Nothing is printed for claude to take up: what a UserPromptSubmit or a
-// SessionStart hook prints goes to the model.
-func statusHooks(tmux, git string) map[string][]hook {
+// Each hook runs tmux, by the path cld checked, on the server of session cld-SUFFIX by its
+// socket, and sets the option on that session by name, both written in as the session is made;
+// tmux sets an option only where it changes, since setting any option redraws every terminal on
+// the server. The hooks do not go by claude's TMUX and TMUX_PANE: claude does not always run them
+// in its pane. It can run a conversation in a background worker of its daemon, which the claude in
+// the pane shows (claude 2.1.284), and the worker runs the hooks without either - a bare tmux there
+// goes to the default server, where set fails with "no current session", or sets the option on a
+// session of that server. The set names the session too: without -t it would take the session of
+// the pane in the client's TMUX_PANE or, without one, the session used last, which may be one
+// claude made. The socket goes as an absolute path, since the hooks run in claude's directory.
+// Nothing is printed for claude to take up: what a UserPromptSubmit or a SessionStart hook prints
+// goes to the model.
+func statusHooks(tmux, git, socket, suffix string) map[string][]hook {
+	session := "=cld-" + suffix + ":"
 	// set sets option to value, a word of sh that the shell expands.
 	set := func(option, value string) string {
-		return shellWord(tmux) + ` if -F -t "$TMUX_PANE" "#{!=:#{` + option + `},` + value + `}" "set ` + option + ` ` + value + `"`
+		return shellWord(tmux) + ` -S ` + shellWord(socket) + ` if -F -t ` + shellWord(session) +
+			` "#{!=:#{` + option + `},` + value + `}" "set -t ` + session + ` ` + option + ` ` + value + `"`
 	}
 	on := func(matcher, command string) []hook {
 		return []hook{{Matcher: matcher, Hooks: []hookCommand{{Type: "command", Command: command}}}}
@@ -498,7 +508,11 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// claude still keeps it off where org policy or the project's own settings turn it off. A
 	// resumed conversation does not keep the settings it was started with: they go again.
 	git, _ := tool.LookPath("git")
-	given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path, git)}
+	socket, err := filepath.Abs(filepath.Join(socketDir(), name))
+	if err != nil {
+		return fail.Runtime(err.Error())
+	}
+	given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path, git, socket, suffix)}
 	if worktree {
 		// cld reports a missing repository in the terminal; claude would report it in a session
 		// left to kill.

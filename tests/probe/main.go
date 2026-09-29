@@ -25,6 +25,10 @@
 //	                              event's notification_type, or tool_name; once they have run,
 //	                              append a line to PID.hooks: EVENT, and after a ": " why where
 //	                              one failed or printed anything
+//	            unsetenv NAMES    unset the variables NAMES, split at spaces, in the environment
+//	                              the probe runs hooks and tmux with from then on, as claude
+//	                              runs the hooks of a conversation it runs in the background:
+//	                              without TMUX and TMUX_PANE
 //	            exit [N]          exit at once with status N (default 0), leaving the terminal
 //	                              modes on
 //
@@ -535,6 +539,12 @@ func obey(control *os.File, write func(string), base string) {
 			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "probe:", err)
+			}
+		case "unsetenv":
+			for _, name := range strings.Fields(argument) {
+				if err := os.Unsetenv(name); err != nil {
+					fmt.Fprintln(os.Stderr, "probe:", err)
+				}
 			}
 		case "exit":
 			status, _ := strconv.Atoi(argument)

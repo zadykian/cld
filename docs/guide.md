@@ -319,6 +319,12 @@ cld removes nothing: to undo it, delete the script, and for zsh the lines in `.z
   session named as `cld new` names one; a worktree made before, `NAME`, stays where it is, and
   claude takes the conversation back there. `git worktree remove .claude/worktrees/NAME` removes
   it once you are done with it.
+- **The tab's title in a background conversation.** A session's claude keeps the hooks it started
+  with. In cld 0.8.0 and 0.8.1 they found the session through claude's `TMUX` and `TMUX_PANE`,
+  which claude does not give a conversation it runs in the background, in a worker of its daemon
+  that the claude in the pane shows: there every hook failed, after each tool, with
+  `PostToolUse:Bash hook error` and `no current session`, and the title stayed `✳`. End such a
+  session with `cld kill` and bring its conversation back with `cld resume`.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from

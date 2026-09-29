@@ -145,10 +145,12 @@ not push such a change. Rebase onto `main` before either.
   tmux would.
 - The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn while claude is busy (claude keeps its
   own at `✳` under tmux), and ` [w]` after it in a linked git worktree. `new` and `resume` give
-  claude hooks in `--settings` that set `@cld-status` on its session - `tmux if -F -t
-  "$TMUX_PANE"`, by the path cld checked, only where it changes, printing nothing - and tmux sets
-  the title from it; a `#()` job in `@cld-busy` refreshes the terminal a second later to turn the
-  marker, since `status off` leaves tmux no timer (decision 25). `SessionStart` and `CwdChanged`
+  claude hooks in `--settings` that set `@cld-status` on its session - `tmux -S SOCKET if -F -t
+  =cld-NAME:`, by the path cld checked, with the server's socket and the session written in (a
+  conversation claude runs in the background runs them without `TMUX` and `TMUX_PANE`), only
+  where it changes, printing nothing - and tmux sets the title from it; a `#()` job in
+  `@cld-busy` refreshes the terminal a second later to turn the marker, since `status off` leaves
+  tmux no timer (decision 25). `SessionStart` and `CwdChanged`
   hooks keep `@cld-worktree`, 1 while claude's directory is in a linked git worktree; they run git
   by the path cld found, and are left out where it finds none (decision 26). The hook events must
   exist in the minimum claude.
@@ -191,7 +193,7 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
   FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `hook`,
-  `exit`); `hook EVENT JSON` runs the hooks of its `--settings` as claude would.
+  `unsetenv`, `exit`); `hook EVENT JSON` runs the hooks of its `--settings` as claude would.
   `CLD_PROBE_FAIL` makes it fail at startup. `claude --version` answers first, writing nothing,
   with `CLD_FAKE_CLAUDE_VERSION` (`99.0.0 (Claude Code)` when unset). Invoked as `tmux`, it fakes
   `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS` (unset:

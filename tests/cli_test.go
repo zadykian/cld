@@ -1482,31 +1482,29 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
-	// cld finds the fake tmux, which the hooks then name.
-	remoteControl := settings(sandbox.FakeTmux, sandbox.RealGit, false)
-	fromHead := settings(sandbox.FakeTmux, sandbox.RealGit, true)
 	for _, command := range []struct {
 		args []string
 		// dir is where in the work tree cld runs, and c what tmux gets with -c there
 		dir, c string
-		// claude is claude and its arguments, as tmux gets them
-		claude []string
+		// after is what claude gets after its settings, as tmux gets it; -w's settings also
+		// branch the worktree from HEAD
+		after []string
 	}{
-		{[]string{"new", "-s", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-s", "x", "-w"}, "", "", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
-		{[]string{"resume", "-s", "x"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
-		{[]string{"resume", "-s", "x", "a b"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "a b"}},
-		{[]string{"resume", "-s", "x", "a;"}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\;`}},
-		{[]string{"resume", "-s", "x", `a\;`}, "", "", []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", `a\\;`}},
-		{[]string{"new", "-s", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-s", "x", "-w"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
-		{[]string{"resume", "-s", "x"}, "w;", `w\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
-		{[]string{"new", "-s", "x"}, `w\;`, `w\\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-s", "x"}, "C#S", "C##S", []string{probe, "--name", "cld-x", "--settings", remoteControl}},
-		{[]string{"new", "-s", "x", "-w"}, "x#(touch ran)", "x##(touch ran)", []string{probe, "--name", "cld-x", "--settings", fromHead, "--worktree", "cld-x"}},
-		{[]string{"resume", "-s", "x"}, "#{session_name}#;", `##{session_name}##\;`, []string{probe, "--name", "cld-x", "--settings", remoteControl, "--resume", "cld-x"}},
+		{[]string{"new", "-s", "x"}, "", "", nil},
+		{[]string{"new", "-s", "x", "-w"}, "", "", []string{"--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "", "", []string{"--resume", "cld-x"}},
+		{[]string{"resume", "-s", "x", "a b"}, "", "", []string{"--resume", "a b"}},
+		{[]string{"resume", "-s", "x", "a;"}, "", "", []string{"--resume", `a\;`}},
+		{[]string{"resume", "-s", "x", `a\;`}, "", "", []string{"--resume", `a\\;`}},
+		{[]string{"new", "-s", "x"}, "w;", `w\;`, nil},
+		{[]string{"new", "-s", "x", "-w"}, "w;", `w\;`, []string{"--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "w;", `w\;`, []string{"--resume", "cld-x"}},
+		{[]string{"new", "-s", "x"}, `w\;`, `w\\;`, nil},
+		{[]string{"new", "-s", "x"}, "C#S", "C##S", nil},
+		{[]string{"new", "-s", "x", "-w"}, "x#(touch ran)", "x##(touch ran)", []string{"--worktree", "cld-x"}},
+		{[]string{"resume", "-s", "x"}, "#{session_name}#;", `##{session_name}##\;`, []string{"--resume", "cld-x"}},
 	} {
-		args, dir, c, claude := command.args, command.dir, command.c, command.claude
+		args, dir, c, after := command.args, command.dir, command.c, command.after
 		name := strings.Join(args, " ")
 		if dir != "" {
 			name += " in " + dir
@@ -1537,7 +1535,9 @@ func TestNewTmuxCommand(t *testing.T) {
 				"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 				"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
 				"new-session", "-s", "cld-x", "-n", "x", "-c", filepath.Join(s.Work, c)}
-			want = append(want, claude...)
+			// cld finds the fake tmux, which the hooks then name.
+			claude := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", slices.Contains(args, "-w"))
+			want = append(append(want, probe, "--name", "cld-x", "--settings", claude), after...)
 			want = append(want, ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
 				"set", "-w", "-t", "=cld-x:", "remain-on-exit-format", "", ";",

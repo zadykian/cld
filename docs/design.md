@@ -143,6 +143,7 @@ rows that name none were probed against tmux 3.6.
 | `claude` 2.1.283's own title (read from its bundle; and the `#{pane_title}` of a claude working in a session of cld's, read every 50 ms for 45 s) | `MARKER NAME`, the marker from claude's status: `◐` and `◑` in turn, every 960 ms, while it is `busy`; `✳` while it is `idle` or `waiting` - a permission dialog, an MCP server's question. Where `TMUX`, `STY` or `ZELLIJ` is set and the feature flag `tengu_static_title_under_mux` (on by default) holds, the marker stays `✳`: the pane's title read `✳ cld-NAME` throughout. claude also writes its status to `~/.claude/sessions/PID.json` (`status`, `statusUpdatedAt`), which no documentation names, and sends no OSC 9;4 that tmux records: `#{pane_pb_state}` stayed `hidden` |
 | claude's hook events (the linux-x64 bundles of 2.1.232 and 2.1.283, read, not run) | both have `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` ("When a permission dialog is displayed"), `Elicitation`, `ElicitationResult`, `Notification` - of the types `permission_prompt`, `idle_prompt`, `elicitation_dialog` and others - `Stop` and `StopFailure` ("Fires instead of Stop when an API error ... ended the turn"). `PostToolUseFailure`'s input has `is_interrupt`. No event comes when the user interrupts claude as it writes |
 | hooks given with `--settings` (the real `claude` 2.1.283, alone on a scratch tmux server, in a directory whose trust was accepted, Remote Control off; a second `UserPromptSubmit` hook exited 2, which blocks the prompt, so nothing reached the API) | claude ran them - `SessionStart` as it started, `UserPromptSubmit` on Enter - in its own environment, with `TMUX` naming the server and `TMUX_PANE` its pane: `tmux if -F -t "$TMUX_PANE" '#{!=:#{@cld-status},busy}' 'set @cld-status busy'` set the option on claude's session. No `Stop` followed the blocked prompt: the option stayed `busy` |
+| hooks of a conversation claude runs in the background (the real `claude` 2.1.284 on Linux, in a session cld 0.8.1 made on tmux 3.7c; read with `ps`, `/proc/PID/environ`, the daemon's log and the transcript - not made to happen by hand) | two seconds after cld started claude, `claude daemon run` - started the day before, from a claude in the default tmux server - logged `bg spawned ID (slash)` and ran the conversation in a worker of its own: `claude bg-pty-host`, running claude `--session-id ID` with the `--settings` of the claude in the pane word for word. The claude in the pane showed the conversation, whose transcript entries say `"sessionKind":"bg"`. The worker's environment had no `TMUX` and no `TMUX_PANE` - the daemon's had those of its tmux - and its directory was the session's. Every hook failed there: `tmux if -F -t "$TMUX_PANE" ...` went to the default server, which ran with no session; `if -t ''` found no target, which `if` allows, and its `set`, without one either, said `no current session`, exit 1. claude showed that after each tool (`PostToolUse:Bash hook error`), 141 times in two hours, and `@cld-status` stayed unset. Without a target tmux takes the pane in the client's `TMUX_PANE`, and without that the session with the latest activity (`cmd-find.c`, tmux 3.7c): with a session on the default server, the option would have gone there. `tmux -S SOCKET if -F -t =cld-NAME: '#{!=:#{@X},x}' 'set -t =cld-NAME: @X x'`, run from `/tmp` without either variable, set the option on the session, and nothing on the default server |
 | where claude runs a hook, and what `SessionStart` and `CwdChanged` see (the real `claude` 2.1.283 started in a linked worktree whose trust was accepted, alone on a scratch tmux server, Remote Control off; bash mode's `!cd /tmp`, `!cd` to the main worktree and `!cd` back - which claude answered with the model all the same, three short replies) | `SessionStart` ran in claude's directory, with it as its input's `cwd`. `!cd /tmp` fired `CwdChanged` with `new_cwd` `/tmp`, and `!cd` to the main worktree one with that; each time claude then took its shell back to the worktree the session works in ("Shell cwd was reset"), with no event, and the hooks' own directory, their `cwd` and `#{pane_current_path}` stayed the worktree throughout. `!cd` back to it fired nothing, the shell being there already |
 | where claude sets its directory (claude 2.1.283's bundle, read, not run) | a hook runs in the host's project root where a launch sets one, and otherwise in claude's current directory. claude sets that - `process.chdir` and the session's `setCwd`, whose change fires `CwdChanged` - for `--worktree` as it starts; for `EnterWorktree` and `ExitWorktree`, the latter back to the directory it came from; and for a resumed conversation that recorded a worktree. A `WorktreeCreate` hook replaces claude's own making of a worktree (its stdout names the directory), so it is no event to listen to |
 | `set-titles` under `status off` (tmux 3.7c: `server-client.c`, `format.c`, `options.c`, `status.c` and `cmd-refresh-client.c` read, and probed with a client in a pane of another server, whose `#{pane_title}` is the title that client sets) | tmux expands `set-titles-string`, a session option, with strftime whenever it redraws a client, and writes the title only where it changed; it restores no title on detach. Setting any option, a user option too, redraws every client on the server: `set @cld-status busy` turned `✳ NAME` into `◐ NAME` at once. With `status off` no timer expands the title again, and a `#()` job in it redraws nothing when it ends - only the status line's jobs do - but a job that runs `refresh-client -S`, which redraws the status alone, that is the title, a second later in the background kept it turning: `◐` and `◑` swapped every 1.0 to 1.3 s until the option changed, with the job naming a tmux whose path has a space, `#`, `%` and parentheses through `#{q:@OPTION}`. tmux runs a title's job at most once a second for each client. With `set-titles` on tmux also hands the active pane's directory (OSC 7) to the terminals it credits with `osc7`, iTerm2 and foot among them: an empty one for claude, which sets none |
@@ -1453,11 +1454,18 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        leaves it busy. An interrupt as claude writes has no event: the title stays busy until the
        next prompt, or until claude, idle for a minute (its default), notifies `idle_prompt`.
        Waiting shows `✳`, as claude's title does;
-    3. a hook runs `tmux if -F -t "$TMUX_PANE"`, by the path cld checked, quoted for sh, on the
-       server claude's `TMUX` names, and sets `@cld-status` on claude's session only where it
-       changes: setting any option redraws every terminal on the server, and `PostToolUse` comes
-       with every tool. It prints nothing, since what a `UserPromptSubmit` hook prints goes to the
-       model; a tmux that fails says so, which claude shows the user;
+    3. a hook runs tmux, by the path cld checked, quoted for sh, on claude's server by its socket
+       and for claude's session by name, both written in as the session is made - `tmux -S
+       SOCKET if -F -t =cld-NAME: ... "set -t =cld-NAME: ..."` - and sets `@cld-status` on that
+       session only where it changes: setting any option redraws every terminal on the server,
+       and `PostToolUse` comes with every tool. claude does not always run a hook in its pane: a
+       conversation it runs in the background runs them without `TMUX` and `TMUX_PANE` (see
+       Findings), where `-t "$TMUX_PANE"` on the server `TMUX` names, as cld 0.8.0 had it,
+       reached the default server - and failed there, or would have set the option on a session
+       of it. The `set` names the session too: without `-t` tmux takes the session used last,
+       which may be one claude made. The socket goes as an absolute path, since the hook runs in
+       claude's directory. It prints nothing, since what a `UserPromptSubmit` hook prints goes to
+       the model; a tmux that fails says so, which claude shows the user;
     4. `set-titles` on, `set-titles-string`
        `#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-NAME`, the marker
        `@cld-busy` and the path `@cld-tmux` go on claude's session, not the server, as 5's options
@@ -1480,8 +1488,11 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        JSON`), and fails a test on one that fails or prints anything; the events one by one, and
        the status each leaves; C1 with `✳`, then `◐` and `◑` in turn and `✳` again, and `✳` for a
        claude that fails in a turn, on each terminal; the title's options on claude's session and
-       not the server's; the settings and the tmux command word for word, with the tmux cld found.
-       The probe draws its settings as `{...}`, which with the hooks no longer fit a line.
+       not the server's; the settings and the tmux command word for word, with the tmux cld found;
+       the hooks run without `TMUX` and `TMUX_PANE` (the probe's `unsetenv`), as a conversation in
+       the background runs them, beside a session claude made and one on the default server, which
+       get neither option; the socket's absolute path under a relative `TMUX_TMPDIR`. The probe
+       draws its settings as `{...}`, which with the hooks no longer fit a line.
 
     Out of scope: a marker for `waiting` of its own (claude's title has none), a title that shows
     more than the marker, and the title a terminal keeps after it detaches.
@@ -1916,7 +1927,11 @@ by hand in a nested tmux).
   iTerm2, and the empty OSC 7 tmux sends it, were not seen. Of the worktree's hooks (26),
   `SessionStart` in a linked worktree and `CwdChanged` for bash mode's `cd` were seen with the
   real claude; `--worktree`, `EnterWorktree`, `ExitWorktree` and a resumed worktree conversation
-  were read in its bundle, not run.
+  were read in its bundle, not run. The hooks of a conversation claude 2.1.284 ran in the
+  background were seen failing as cld 0.8.1 wrote them (see Findings); the hooks as they are now
+  were run by hand without `TMUX` and `TMUX_PANE`, not by a real background worker. What makes
+  claude run a conversation in the background, and whether its worker outlives `cld kill` - its
+  hooks would then say that no server runs - were not checked.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not
