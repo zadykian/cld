@@ -1553,7 +1553,9 @@ func TestNewTmuxCommand(t *testing.T) {
 				"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
 				"set", "-s", "terminal-features[102]", "alacritty:hyperlinks", ";",
 				"set", "-s", "focus-events", "on", ";",
-				"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
+				"set", "-g", "mouse", "on", ";",
+				"unbind", "-n", "C-MouseDown1Pane", ";", "unbind", "-n", "M-MouseDown3Pane", ";",
+				"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 				"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
 				"new-session", "-s", "cld-x", "-n", "x", "-c", filepath.Join(s.Work, c)}
 			// cld finds the fake tmux, which the hooks then name.

@@ -187,6 +187,14 @@ func (o *tmuxTerminal) WheelUp() {
 	o.send(xtermInput["wheel-up"])
 }
 
+// Click types the press and the release as an xterm reports them in SGR mode, which tmux asks
+// for, over the cell the wheel turns over.
+func (o *tmuxTerminal) Click(key string) {
+	o.t.Helper()
+	button := strconv.Itoa(mouseButton(o.t, key))
+	o.send("\x1b[<" + button + ";10;10M" + "\x1b[<" + button + ";10;10m")
+}
+
 func (o *tmuxTerminal) Focus(focused bool) {
 	o.t.Helper()
 	if focused {

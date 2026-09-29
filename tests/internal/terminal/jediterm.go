@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -119,6 +120,18 @@ func (j *jediTerm) WheelUp() {
 	j.t.Helper()
 	sandbox.WaitFor(j.t, 10*time.Second, "mouse reporting to scroll the wheel in jediterm", func() bool {
 		return string(j.call("wheel-up")) == "true"
+	})
+}
+
+// Click waits for mouse reporting, as WheelUp does: the driver's click sends nothing while it is
+// off, or the press alone where it goes off in between, which the next try follows with a whole
+// click.
+func (j *jediTerm) Click(key string) {
+	j.t.Helper()
+	button := mouseButton(j.t, key)
+	code, modifiers := strconv.Itoa(button&3), strconv.Itoa(button&^3)
+	sandbox.WaitFor(j.t, 10*time.Second, "mouse reporting to click in jediterm", func() bool {
+		return string(j.call("click", code, modifiers)) == "true"
 	})
 }
 

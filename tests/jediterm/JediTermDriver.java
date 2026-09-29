@@ -1,6 +1,7 @@
 import com.jediterm.core.input.InputEvent;
 import com.jediterm.core.input.KeyEvent;
 import com.jediterm.core.input.KeyInputEvent;
+import com.jediterm.core.input.MouseEvent;
 import com.jediterm.core.input.MouseWheelEvent;
 import com.jediterm.core.util.TermSize;
 import com.jediterm.terminal.CursorShape;
@@ -52,6 +53,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * paste BASE64              paste the text, the way JediTerm's UI does
  * wheel-up                  scroll the mouse wheel up over the screen: true, or false, sending
  *                           nothing, while the program has mouse reporting off
+ * click BUTTON MODIFIERS    press mouse button BUTTON (0 left, 1 middle, 2 right) over the screen
+ *                           and let it go, with MODIFIERS held as xterm reports them (8 Alt,
+ *                           16 Ctrl): true, or false while the program has mouse reporting off,
+ *                           having sent nothing or, where it went off in between, the press
  * focus                     unsupported: the emulator ignores focus reporting
  * clipboard                 unsupported: the emulator does not handle OSC 52
  * title | screen | modes
@@ -121,6 +126,8 @@ public final class JediTermDriver {
         // xterm's button 64 (wheel up).
         MouseWheelEvent up = new MouseWheelEvent(MouseButtonCodes.SCROLLDOWN, 0, -1);
         return String.valueOf(terminal.onMouseEvent(10, 10, up, settings));
+      case "click":
+        return String.valueOf(click(Integer.parseInt(command[1]), Integer.parseInt(command[2])));
       case "focus":
         throw new UnsupportedOperationException("the emulator ignores focus reporting (DECSET 1004)");
       case "clipboard":
@@ -144,6 +151,19 @@ public final class JediTermDriver {
       default:
         throw new IllegalArgumentException("unknown command " + command[0]);
     }
+  }
+
+  /**
+   * Presses the button and lets it go where the wheel turns, as JediTerm's UI hands the emulator a
+   * click: the modifiers in the bits xterm reports them in, which the emulator adds to the button.
+   * With Shift (4) it sends nothing: JediTerm keeps the mouse with Shift held for its own selection.
+   */
+  private boolean click(int button, int modifiers) {
+    MouseEventProcessingSettings settings =
+      new MouseEventProcessingSettings(true, buffer.isUsingAlternateBuffer(), false);
+    MouseEvent pressed = new MouseEvent(MouseEvent.Type.PRESSED, button, modifiers);
+    MouseEvent released = new MouseEvent(MouseEvent.Type.RELEASED, button, modifiers);
+    return terminal.onMouseEvent(10, 10, pressed, settings) && terminal.onMouseEvent(10, 10, released, settings);
   }
 
   private void start(String directory, boolean shiftEnterSendsEscCr, String[] argv) throws IOException {

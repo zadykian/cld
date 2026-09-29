@@ -51,6 +51,14 @@
 //     on, the wheel over a program that draws in the main screen without the mouse - claude
 //     outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
 //     gets the wheel either way, as tmux passes claude's own mouse reporting on to the terminal
+//   - C-MouseDown1Pane and M-MouseDown3Pane unbound: of tmux's mouse bindings on a pane, only
+//     these two - swap-pane, the pane menu - take the press without asking whether the program
+//     there takes the mouse, so claude got a Ctrl+click, with which it opens a link, as a release
+//     alone. tmux hands a mouse key it has no binding for to the pane. The session has one pane
+//     unless claude splits it, as its agent teams do for teammates in tmux panes, and key tables
+//     are the server's, so the panes and sessions claude makes there lose the two as well: C-q {
+//     and C-q } still swap panes, C-q > opens the pane menu, and so does a right-click over a
+//     program that does not take the mouse
 //   - allow-passthrough on: claude wraps its notifications (but the bell, which tmux's default
 //     bell-action passes on) and OSC 52 copies in tmux passthrough. It sends notifications only
 //     on the channel its setting preferredNotifChannel names: its default, auto, goes by
@@ -584,7 +592,9 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 		"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
 		"set", "-s", "terminal-features[102]", "alacritty:hyperlinks", ";",
 		"set", "-s", "focus-events", "on", ";",
-		"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
+		"set", "-g", "mouse", "on", ";",
+		"unbind", "-n", "C-MouseDown1Pane", ";", "unbind", "-n", "M-MouseDown3Pane", ";",
+		"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 		"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
 		"new-session", "-s", name, "-n", suffix, "-c", literal(unexpanded(dir))}
 	for _, word := range claude {

@@ -250,8 +250,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   JediTerm emulates on a thread of its own, so a test waits for modes that change while cld runs
   (`waitModes`); once `Running` is false, what the terminal shows is final.
 - `contract_test.go` — the terminal contract (C1–C10 in `docs/design.md`: title, client features,
-  Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, notifications, links, paste, claude
-  exiting, the session list's keys), run per terminal.
+  Shift+Enter, Ctrl keys, detach, wheel, clicks, focus, clipboard, notifications, links, paste,
+  claude exiting, the session list's keys), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, the names `new` gives from the
   repository and the index, the hooks that keep claude's status and its worktree for the title,
