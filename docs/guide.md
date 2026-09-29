@@ -548,7 +548,7 @@ to bring the conversation back into cld.
   `tmux -L cld kill-session -t =cld-NAME`, or all of them with `tmux -L cld kill-server`. Names
   with non-ASCII letters or digits, such as `café`, which 0.3.0 took under a UTF-8 locale, are now
   refused.
-- **Staying on tmux 3.3 to 3.6.** cld 0.3.0 is the last release that runs on them:
+- **Staying on tmux 3.3 or 3.4.** cld 0.3.0 is the last release that runs on them:
 
   ```sh
   curl -fsSL https://github.com/zadykian/cld/releases/download/v0.3.0/cld -o ~/.local/bin/cld && chmod +x ~/.local/bin/cld

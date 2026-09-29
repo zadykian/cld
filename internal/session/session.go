@@ -176,18 +176,21 @@ type Tmux struct {
 	path string
 }
 
-// The oldest tmux and claude cld runs. tmux's is the one the tests run on; claude's is the first
-// release that takes everything new and resume pass it and does what cld relies on. Both are
-// raised by hand (see docs/design.md, decision 6).
+// The oldest tmux and claude cld runs. tmux's is the oldest release the tests run on, 3.5a, its
+// letter a third number (see tmuxVersion): 3.5 wrote keys with Shift wrongly with extended keys,
+// and ran #() jobs, the title's among them, with the user's shell instead of /bin/sh. claude's is
+// the first release that takes everything new and resume pass it and does what cld relies on.
+// Both are raised by hand (see docs/design.md, decision 6).
 var (
-	minTmux   = version{3, 7}
+	minTmux   = version{3, 5, 1}
 	minClaude = version{2, 1, 232}
 )
 
 // tmuxVersion and claudeVersion match the start of a version that tmux -V and claude --version
-// report: "3.7c", "2.1.282 (Claude Code)".
+// report: "3.7c", "2.1.282 (Claude Code)". tmux's letter, which marks a bug-fix release, is its
+// third number (see parseVersion): 3.5a is 3.5.1, and 3.5 is 3.5.0.
 var (
-	tmuxVersion   = regexp.MustCompile(`^([0-9]+)\.([0-9]+)`)
+	tmuxVersion   = regexp.MustCompile(`^([0-9]+)\.([0-9]+)([a-z]?)`)
 	claudeVersion = regexp.MustCompile(`^([0-9]+)\.([0-9]+)\.([0-9]+)`)
 )
 
@@ -195,15 +198,23 @@ var (
 type version []int
 
 // parseVersion reads a version from the start of text, as pattern matches it; false when text
-// does not start with one.
+// does not start with one. A letter counts as its place in the alphabet, and a group that matched
+// nothing as 0.
 func parseVersion(pattern *regexp.Regexp, text string) (version, bool) {
 	match := pattern.FindStringSubmatch(text)
 	if match == nil {
 		return nil, false
 	}
 	var v version
-	for _, digits := range match[1:] {
-		v = append(v, number(digits))
+	for _, part := range match[1:] {
+		switch {
+		case part == "":
+			v = append(v, 0)
+		case part[0] >= 'a':
+			v = append(v, int(part[0]-'a')+1)
+		default:
+			v = append(v, number(part))
+		}
 	}
 	return v, true
 }
@@ -217,6 +228,15 @@ func (v version) String() string {
 		numbers[i] = strconv.Itoa(n)
 	}
 	return strings.Join(numbers, ".")
+}
+
+// tmuxRelease names v as tmux names its releases, the third number as a letter: 3.5.1 is 3.5a.
+func tmuxRelease(v version) string {
+	name := fmt.Sprintf("%d.%d", v[0], v[1])
+	if v[2] > 0 {
+		name += string(rune('a' + v[2] - 1))
+	}
+	return name
 }
 
 // Find finds tmux on the PATH (see tool.LookPath) and checks nothing else: completion reads the
@@ -242,9 +262,9 @@ func Check(tools ...string) (*Tmux, error) {
 			return nil, fail.Runtime(name + " is not installed")
 		}
 	}
-	// Only the major and minor version count: a letter marks a bug-fix release, so 3.7 and 3.7c
-	// alike are 3.7. Development builds pass: "tmux next-3.9" reads as 3.9, "tmux 3.8-rc2" as
-	// 3.8, and "tmux master" has no version to compare.
+	// The major and minor version count, and the letter of a bug-fix release after them: 3.5a
+	// passes, and 3.5 does not. Development builds pass: "tmux next-3.9" reads as 3.9,
+	// "tmux 3.8-rc2" as 3.8, and "tmux master" has no version to compare.
 	out, err := t.command("-V").Output()
 	if err != nil {
 		return nil, t.exitStatus(err)
@@ -252,7 +272,7 @@ func Check(tools ...string) (*Tmux, error) {
 	found := strings.TrimRight(string(out), "\n")
 	reported := strings.TrimPrefix(found[strings.LastIndex(found, " ")+1:], "next-")
 	if v, ok := parseVersion(tmuxVersion, reported); ok && v.before(minTmux) {
-		return nil, fail.Runtime(fmt.Sprintf("tmux %s or newer is required, found '%s'", minTmux, found))
+		return nil, fail.Runtime(fmt.Sprintf("tmux %s or newer is required, found '%s'", tmuxRelease(minTmux), found))
 	}
 	return t, nil
 }
