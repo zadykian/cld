@@ -87,6 +87,7 @@ rows that name none were probed against tmux 3.6.
 | a tmux client starting on a terminal (`tty_start_tty` in `tty.c`, read in tmux 3.3a, 3.4 and 3.7c) | tmux sets the terminal's mode and then calls `tcflush(TCOFLUSH)`, which throws away output the terminal has not read yet. What the list wrote last before it became `tmux attach-session` - leaving the alternate screen, the cursor shown, the title - was lost now and then under load (tmux 3.3a and 3.4 in Docker, `TestListJoin`'s enter case and C10's join): the tab kept its old title. A stopped (SIGSTOP) outer tmux did not lose it (3.7c, Linux 7.0), so it takes a loaded machine too. A terminal answers primary device attributes (DA1, `CSI c`) once it has read what came before: tmux with `CSI ? 1 ; 2 c` (3.3a; 3.7c built with sixel `CSI ? 1 ; 2 ; 4 c`), JediTerm 3.76 with `CSI ? 6 c` |
 | a DA1 answer later than the list's wait for it, the list having become `tmux attach-session` (tmux 3.7c; the terminal frozen for 1.5 s against a one-second wait) | tmux asks for DA1 itself as it starts and takes the first answer for its own; the next, its own, reached claude's pane as keys (`CSI ? 1 ; 2 c` in the probe's input). Answered in time, the probe read no answer. Other versions were not checked |
 | what tmux writes to the terminal as a client attaches to a session whose program asks for all-motion mouse reporting (tmux 3.7c, the probe as claude; the output of the baseline terminal and of JediTerm 3.76) | tmux turns every mouse mode off (`CSI ? 1006 l`, `? 1000 l`, `? 1002 l`, `? 1003 l`) and then on again as it wants them, after it has drawn: several times as the client attaches, and the last time after the pane's text, as the program's request comes in. A terminal that takes in the output a piece at a time while it is asked about it, as the JediTerm driver's emulator does on a thread of its own, shows the pane's text with mouse reporting off for a moment: C7 read the modes there once, under load (`{AltScreen:true Mouse:false}`), and the driver had no mouse reporting to send the wheel through |
+| tmux's default wheel binding, the `WheelUpPane` line of `list-keys -T root` on a server started with `-f /dev/null` (Debian's 3.5a and 3.6b, from trixie and trixie-backports, and 3.7c built from source, in Docker; tmux's `CHANGES` and `key-bindings.c` read at 3.5a, 3.6 and 3.7c) | 3.5a hands the wheel to the pane (`send-keys -M`) where it is in a mode (`#{pane_in_mode}`) or its program asked for the mouse (`#{mouse_any_flag}`), and otherwise enters copy mode; 3.6b and 3.7c add `#{alternate_on}`, so a program in the alternate screen gets the wheel whether or not it asked for the mouse. `CHANGES` lists it under 3.5a to 3.6: "Don't enter copy mode on mouse wheel in alternate screen (issue 3705)". `list-keys -T root WheelUpPane` printed the binding on 3.5a and 3.6b, and nothing on 3.7c, with status 0: 3.7c shows a single binding found as a message on the client's status line (`cmd-list-keys.c`), and without a client only in the server's messages (`status.c`) |
 | a program exiting on a pty4j pty (pty4j 0.13.13, read from its source; the JediTerm driver) | pty4j's reaper thread waits for the process and then wakes the reader (`breakRead`): `isAlive()` is false from then on, while the pty may still hold what the program wrote last. Reads return that, and then the end of the stream. The driver's emulator thread takes it all in, but can be behind: C9 read the modes once `isAlive()` was false, before the emulator had taken in the last of what tmux wrote, which turns them off |
 | two Ctrl+X (0x18) typed into a pane whose program reads in raw mode, `dd bs=64 count=1` in a loop, a line of hex a read (tmux 3.7c, natively and in the image `tests/Dockerfile` builds): by two tmux clients 50 ms apart, as the baseline terminal's `Keys` types them; by one command list, `send-keys C-x \; send-keys C-x`; and pasted with `paste-buffer -p -S` | from two clients, two reads of a byte each, in 20 rounds of 20 natively and 50 of 50 in the image; from the command list and from the paste, one read of both bytes, every round. tmux adds what a command types to the pane's buffer (`bufferevent_write` in `input-keys.c` and `cmd-paste-buffer.c`, read in the 3.7c source) and writes it out once its event loop comes round, in one write. What two clients type goes in two writes, which a program that has not read the first by the second reads at once all the same, as `cld list` stopped (SIGSTOP) until both had come did (see Implementation notes) |
 | SIGTSTP in a Go program that has had it through `os/signal` (Go 1.27.1, Linux 7.0) | after `signal.Stop` or `signal.Reset`, `kill -TSTP` of the process did nothing: `sigdisable` leaves Go's handler in place for any signal that `sigInstallGoHandler` accepts, and the handler drops a `_SigNotify` signal that no channel wants. Never notified, SIGTSTP keeps its default action, since `initsig` skips `_SigDefault` signals. `kill(getpid(), SIGSTOP)` returned before the process stopped, under dash with `set -m`, and it stopped soon after; the SIGCONT of `fg` then reached `os/signal` |
@@ -178,8 +179,8 @@ rows that name none were probed against tmux 3.6.
 
 ### Layers
 
-1. **Static**: gofmt and go vet; ShellCheck and shfmt for `tests/jediterm/fetch-deps`, the one
-   shell script left.
+1. **Static**: gofmt and go vet; ShellCheck and shfmt for the two shell scripts, `install.sh` and
+   `tests/jediterm/fetch-deps`.
 2. **Behaviour against real tmux**: tmux is local and cheap, so it is not faked. Only `claude` is
    replaced, by a *probe* that behaves like claude towards the terminal (the modes above), logs
    its argv, cwd, environment and raw input bytes, and emits OSC sequences on request; and
@@ -222,7 +223,7 @@ than skipped, so a terminal gaining or losing support flips a test.
   `TERMINAL_EMULATOR=JetBrains-JediTerm`, feeds `JediEmulator` + `JediTerminal` with a recording
   display, and encodes keys with JediTerm's own encoder. It covers JediTerm's emulator, not the IDE
   around it (keymap interception stays a manual check).
-- **iTerm2 (real app, macOS runner, nightly and tags)**:
+- **iTerm2 (planned: real app, macOS runner, nightly and tags; not built, see 8 and Status)**:
   - level 0 - launch only: a Dynamic Profile whose command runs `cld`; assertions come from tmux and
     the probe (C2, C6);
   - level 1 - Python API: title, screen, detach state (C1, C5, C7). External clients need an
@@ -238,8 +239,9 @@ than skipped, so a terminal gaining or losing support flips a test.
 - every push and pull request: lint; contract x tmux on one pinned tmux release (3.7c, built from
   source, in a Linux container) and on Homebrew's current tmux on macOS; contract x JediTerm; the
   completion tests in bash with ble.sh, in the same image built on Ubuntu (27.5);
-- nightly, on tags and on demand: contract x iTerm2 on macOS, uploading screenshots and logs on
-  failure; non-blocking until it proves stable;
+- planned with the iTerm2 driver, and not in `ci.yml` (see 8 and Status): nightly, on tags and on
+  demand, contract x iTerm2 on macOS, uploading screenshots and logs on failure; non-blocking
+  until it proves stable;
 - tags: release.
 
 The Linux job runs the same Docker image a developer runs locally.
@@ -312,9 +314,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
    Claude Code 2.1.232 or newer, the first release that does what cld passes and relies on. Both
    are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
-   for every command but `help`, `version`, completion (17.4), `setup telemetry` and `setup
-   project`, which run no tmux (18, 19), and refuses an older tmux with `cld: tmux 3.7 or newer
-   is required, found 'tmux 3.6b'` and status 1.
+   for every command but `help`, `version`, completion (17.4), `setup telemetry`, `setup
+   project`, `update` and `setup completion`, which run no tmux (18, 19, 21, 22), and refuses an
+   older tmux with `cld: tmux 3.7 or newer is required, found 'tmux 3.6b'` and status 1.
    - It reads `tmux -V`: the major and minor version, after `next-` for a development build
      (`next-3.9` is 3.9, `3.8-rc2` 3.8); a version without them (`master`) passes. Letters mark
      bug-fix releases and are not compared, so 3.7 to 3.7c all pass, and there is no upper bound.
@@ -1365,7 +1367,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        them together, for simplicity. Each is checked as a whole name was (1, 13.2), `-n` first,
        its length, whatever its characters, then its characters, with messages of its own for `-s`
        (`invalid suffix ' '`) - the empty one and one of spaces are invalid - since `SUFFIX` is the
-       whole name where `NAME` leaves nothing (24.4); then the two together, which are refused
+       whole name where `NAME` leaves nothing (24.4), and `-n`'s calling its value a name
+       (`invalid name 'a.b'`), no longer a session's; then the two together, which are refused
        where they make a name longer than 64 characters (`session name '...' is longer than 64
        characters; give a shorter -n NAME or -s SUFFIX`). All of these are mistakes on the command
        line, status 2, and come before any tool is looked for. A name made longer by the
@@ -1437,7 +1440,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 
     Out of scope: filling gaps, counting what outlives a session - its conversation, its worktree
     - and completing `kill`'s options.
-25. The tab's title follows claude's status: `✳ cld-NAME`, and `◐` and `◑` in turn in place of
+25. The tab's title follows claude's status: `✳ cld-S`, and `◐` and `◑` in turn in place of
     `✳` while claude is busy - the markers claude's own title has outside tmux; under tmux it keeps
     them at `✳` (see Findings). claude tells tmux through hooks that `new` and `resume` give it with
     `--settings`, and tmux sets the title of every terminal on the session from that. Settled with
@@ -1457,7 +1460,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        Waiting shows `✳`, as claude's title does;
     3. a hook runs tmux, by the path cld checked, quoted for sh, on claude's server by its socket
        and for claude's session by name, both written in as the session is made - `tmux -S
-       SOCKET if -F -t =cld-NAME: ... "set -t =cld-NAME: ..."` - and sets `@cld-status` on that
+       SOCKET if -F -t =cld-S: ... "set -t =cld-S: ..."` - and sets `@cld-status` on that
        session only where it changes: setting any option redraws every terminal on the server,
        and `PostToolUse` comes with every tool. claude does not always run a hook in its pane: a
        conversation it runs in the background runs them without `TMUX` and `TMUX_PANE` (see
@@ -1468,7 +1471,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        claude's directory. It prints nothing, since what a `UserPromptSubmit` hook prints goes to
        the model; a tmux that fails says so, which claude shows the user;
     4. `set-titles` on, `set-titles-string`
-       `#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-NAME`, the marker
+       `#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-S`, the marker
        `@cld-busy` and the path `@cld-tmux` go on claude's session, not the server, as 5's options
        go on claude's window: a session claude makes keeps tmux's. A claude that exited is not
        busy, though a turn it failed in left the option so. The title leaves claude's own, `#T`,
@@ -1481,10 +1484,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `#{q:@cld-tmux}`, since a path in the format could hold a `#` or `%`, which formats and
        strftime take up, or a `)`, which ends the job. No job runs for an idle claude or a session
        no terminal is on, and the last one ends within a second of the turn;
-    6. cld still prints `✳ cld-NAME` before tmux starts, and the list before it hands the terminal
+    6. cld still prints `✳ cld-S` before tmux starts, and the list before it hands the terminal
        over (14), which tmux replaces on attach with the session's title as it stands. A terminal
        that detaches keeps the title tmux set last - a busy marker, if claude was busy - and a
-       session an older cld started keeps `✳ cld-NAME`, as it has neither the hooks nor the title;
+       session an older cld started keeps `✳ cld-S`, as it has neither the hooks nor the title;
     7. the tests: the probe runs the hooks of its `--settings` as claude would (`hook EVENT
        JSON`), and fails a test on one that fails or prints anything; the events one by one, and
        the status each leaves; C1 with `✳`, then `◐` and `◑` in turn and `✳` again, and `✳` for a
@@ -1499,7 +1502,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     more than the marker, and the title a terminal keeps after it detaches.
 26. The tab marks a worktree: while claude works in a linked git worktree - one `new -w` has
     claude make, one it enters with `EnterWorktree`, one `cld new` runs in - the title ends in
-    ` [w]`, as in `✳ cld-NAME [w]`, and loses it as claude leaves. It follows claude as 25's
+    ` [w]`, as in `✳ cld-S [w]`, and loses it as claude leaves. It follows claude as 25's
     status does. Settled with it:
     1. the hooks of 25 keep `@cld-worktree` on claude's session, `1` or `0`, and the title adds
        `#{?@cld-worktree, [w],}` after the name. The hooks are `SessionStart` and `CwdChanged`:
@@ -1883,8 +1886,8 @@ tmux 3.3a to 3.7c:
   wheel to a program that asked for mouse reporting: the real claude 2.1.281 scrolled its
   fullscreen transcript under `mouse off` too. What `mouse on` adds is the wheel over a program
   that draws in the main screen without the mouse, which scrolls the pane's history (C4);
-- since 3.7 the default wheel binding hands the wheel to a program in the alternate screen whether
-  or not it asked for the mouse, where earlier versions entered copy mode.
+- since 3.6 the default wheel binding hands the wheel to a program in the alternate screen whether
+  or not it asked for the mouse, where earlier versions entered copy mode (see Findings).
 
 The `VT10x` in Findings came from the probing shell, which carried
 `TERMINAL_EMULATOR=JetBrains-JediTerm`: claude's `--debug` log read `extendedKeys=no (env:

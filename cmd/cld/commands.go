@@ -928,13 +928,14 @@ func (n naming) resolve(tmux *session.Tmux) (string, error) {
 }
 
 // sessionName is the NAME given with -n, checked once the options have been read: first its
-// length, whatever its characters, then its characters.
+// length, whatever its characters, then its characters. The messages call it a name, as -s's
+// call SUFFIX a suffix: the session's name is NAME-SUFFIX (see tooLong).
 func sessionName(name string) (string, error) {
 	if utf8.RuneCountInString(name) > session.MaxName {
-		return "", fail.Usage(fmt.Sprintf("session name '%s' is longer than %d characters (see cld help)", name, session.MaxName))
+		return "", fail.Usage(fmt.Sprintf("name '%s' is longer than %d characters (see cld help)", name, session.MaxName))
 	}
 	if !session.ValidName(name) {
-		return "", &fail.Error{Status: 2, Message: fmt.Sprintf("invalid session name '%s'", name), Advice: " (see cld help)"}
+		return "", &fail.Error{Status: 2, Message: fmt.Sprintf("invalid name '%s'", name), Advice: " (see cld help)"}
 	}
 	return name, nil
 }

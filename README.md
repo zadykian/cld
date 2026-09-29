@@ -95,9 +95,9 @@ Leaving claude (`/exit`, `Ctrl+C` twice) ends its session. If claude exits with 
 session stays with its message on screen, as `exited` in `cld list`, until `cld kill` ends it.
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
-The terminal's tab shows the session, `✳ cld-NAME`, and while claude works `◐` and `◑` in turn in
-place of the `✳`, as claude's own title does outside tmux; while claude works in a linked git
-worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
+The terminal's tab shows the session, `✳ cld-NAME-SUFFIX`, and while claude works `◐` and `◑` in
+turn in place of the `✳`, as claude's own title does outside tmux; while claude works in a linked
+git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
 [guide](docs/guide.md#sessions) says what they miss.
 
 ### Resuming a conversation
@@ -181,9 +181,9 @@ Claude Code has its own tmux option, `claude --worktree [name] --tmux`, for a di
 | tmux configuration | a private server per session that ignores `~/.tmux.conf` and sets what claude needs | not documented; [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise settings for `~/.tmux.conf` |
 | iTerm2 | a regular tmux client | native panes when available; `--tmux=classic` for regular tmux |
 
-The `claude --tmux` column follows `claude --help` in Claude Code 2.1.281, as the docs do not
-describe the option yet. `cld new -w` combines the two: claude's own worktree, in a session of
-cld's.
+The `claude --tmux` column follows the option's row in Claude Code's
+[CLI reference](https://code.claude.com/docs/en/cli-reference) and `claude --help` in 2.1.284.
+`cld new -w` combines the two: claude's own worktree, in a session of cld's.
 
 ## Terminals
 

@@ -449,7 +449,7 @@ func TestRejectsInvalidNames(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
 				result := s.RunCld(nil, args...)
-				if result.Code != 2 || !strings.Contains(result.Stderr, "invalid session name") {
+				if result.Code != 2 || !strings.Contains(result.Stderr, "invalid name") {
 					t.Errorf("exit %d, stderr %q", result.Code, result.Stderr)
 				}
 				if result.Stdout != "" {
@@ -470,7 +470,7 @@ func TestNamesAreASCII(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			if result, want := s.RunCld(locale, "new", "-n", name), "cld: invalid session name '"+name+"' (see cld help)\n"; result.Code != 2 || result.Stderr != want {
+			if result, want := s.RunCld(locale, "new", "-n", name), "cld: invalid name '"+name+"' (see cld help)\n"; result.Code != 2 || result.Stderr != want {
 				t.Errorf("new -n %s: exit %d, stderr %q, want exit 2, stderr %q", name, result.Code, result.Stderr, want)
 			}
 			// No legacy hint either: NAME is no session name.
@@ -497,14 +497,14 @@ func TestNameLength(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"new", "-n", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
-		{[]string{"join", "--name", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
-		{[]string{"kill", "-n", tooLong}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
-		{[]string{"resume", "-n", tooLong, "SESSION"}, "cld: session name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
-		{[]string{"new", "-n", tooLong[:60] + "a.b.c"}, "cld: session name '" + tooLong[:60] + "a.b.c' is longer than 64 characters (see cld help)\n"},
-		{[]string{"new", "-n", tooLong[:60] + "a.b"}, "cld: invalid session name '" + tooLong[:60] + "a.b' (see cld help)\n"},
-		{[]string{"new", "-n", accents}, "cld: invalid session name '" + accents + "' (see cld help)\n"},
-		{[]string{"new", "-n", tooManyAccents}, "cld: session name '" + tooManyAccents + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"new", "-n", tooLong}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"join", "--name", tooLong}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"kill", "-n", tooLong}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"resume", "-n", tooLong, "SESSION"}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"new", "-n", tooLong[:60] + "a.b.c"}, "cld: name '" + tooLong[:60] + "a.b.c' is longer than 64 characters (see cld help)\n"},
+		{[]string{"new", "-n", tooLong[:60] + "a.b"}, "cld: invalid name '" + tooLong[:60] + "a.b' (see cld help)\n"},
+		{[]string{"new", "-n", accents}, "cld: invalid name '" + accents + "' (see cld help)\n"},
+		{[]string{"new", "-n", tooManyAccents}, "cld: name '" + tooManyAccents + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{tooLong}, "cld: unknown command '" + tooLong + "' (see cld help)\n"},
 		{[]string{longest}, "cld: unknown command '" + longest + "'; for a session " + longest + "-SUFFIX: cld new -n " + longest + ", cld join -n " + longest + " -s SUFFIX\n"},
 	} {
@@ -555,8 +555,8 @@ func TestNameOptions(t *testing.T) {
 		{[]string{"kill", "--name", "x"}, "cld: kill: missing -s SUFFIX (see cld list)\n"},
 		{[]string{"resume"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
 		{[]string{"resume", "-n", "x"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
-		{[]string{"kill", "-n", "", "-s", ""}, "cld: invalid session name '' (see cld help)\n"},
-		{[]string{"join", "-n", "a.b"}, "cld: invalid session name 'a.b' (see cld help)\n"},
+		{[]string{"kill", "-n", "", "-s", ""}, "cld: invalid name '' (see cld help)\n"},
+		{[]string{"join", "-n", "a.b"}, "cld: invalid name 'a.b' (see cld help)\n"},
 		{[]string{"new", "-n", "x", "-s", "a b"}, "cld: invalid suffix 'a b' (see cld help)\n"},
 		{[]string{"new", "-s", ""}, "cld: invalid suffix '' (see cld help)\n"},
 		{[]string{"new", "-s", " "}, "cld: invalid suffix ' ' (see cld help)\n"},

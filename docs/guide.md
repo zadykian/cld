@@ -64,7 +64,7 @@ install it as `cld`, executable, in a directory on your `PATH`.
   `/config`. It stays off where your organisation's policy does, or where the project's
   `.claude/settings.json` or `.claude/settings.local.json` sets `remoteControlAtStartup` to
   `false`.
-- The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn in place of the `✳` while claude
+- The tab's title is `✳ cld-S`, with `◐` and `◑` in turn in place of the `✳` while claude
   works. Under tmux claude keeps its own marker at `✳`, so cld gives claude hooks with
   `--settings` that tell tmux when a turn starts, when claude asks for a permission and when the
   turn ends. They miss:
@@ -72,10 +72,10 @@ install it as `cld`, executable, in a directory on your `PATH`.
     claude, idle for a minute, notifies it; an interrupt in a tool comes through;
   - a prompt that a `UserPromptSubmit` hook of your own blocks: busy until the next one;
   - everything under `disableAllHooks`, or a policy that allows only managed hooks: the title
-    stays `✳ cld-NAME`.
+    stays `✳ cld-S`.
 
   A terminal that detaches keeps the title it had, a busy one too. A session that an older cld
-  started keeps `✳ cld-NAME`.
+  started keeps `✳ cld-S`.
 - While claude works in a linked git worktree - one `cld new -w` has it make, one it enters with
   its `EnterWorktree` tool, one you run `cld new` in - the title ends in ` [w]`, and loses it
   when claude leaves. It follows claude's working directory, not where a shell command `cd`s
