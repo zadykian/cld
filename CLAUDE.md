@@ -132,19 +132,25 @@ not push such a change. Rebase onto `main` before either.
   can) goes with a `\` before the `;`, since tmux would end its command there. The directory also
   goes with every `#` doubled: tmux expands `-c` as a format, where `#(...)` runs a shell command.
 - A server per session: session `cld-NAME` lives on server `cld-NAME` (`tmux -L cld-NAME`), and
-  cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}`. Anything
-  claude runs inherits `TMUX` and reaches claude's own server, where a session it makes has another
-  name; there is no mark. `list` reads the sockets `cld-*` in `${TMUX_TMPDIR:-/tmp}/tmux-UID` and
+  cld looks for that one session there, filtering on `#{==:#{session_name},cld-NAME}` and cld's
+  mark. Anything claude runs inherits `TMUX` and reaches claude's own server, where a session it
+  makes has another name. `list` reads the sockets `cld-*` in `${TMUX_TMPDIR:-/tmp}/tmux-UID` and
   asks each server; stale sockets answer "no server running" and are passed over, never removed.
   `kill` runs `kill-session`, then `kill-server`, in one tmux command, and does not wait for
   claude, whose `SessionEnd` hooks (reason `other`) may still run after it returns (decision 32).
   Where the server runs without its session, `kill` ends it with `kill-server` alone if it has
-  outlived the session - it has sessions, none `cld-NAME`, and its `#{socket_path}` is
-  `.../cld-NAME`, a format checked before the kill and again under `if -F` in its command - and
-  refuses the name otherwise; `new`, `resume` and `join` refuse the name, pointing at `kill` where
-  it would end the server and at `tmux -L cld-NAME ls` alone otherwise. Where that path names
-  another NAME that differs only in case (a socket directory that ignores case, as on macOS), all
-  four name that session instead.
+  outlived the session - it has cld's mark and sessions, none `cld-NAME`, and its
+  `#{socket_path}` is `.../cld-NAME`, a format checked before the kill and again under `if -F` in
+  its command - and refuses the name otherwise; `new`, `resume` and `join` refuse the name,
+  pointing at `kill` where it would end the server and at `tmux -L cld-NAME ls` alone otherwise.
+  Where that path names another NAME that differs only in case (a socket directory that ignores
+  case, as on macOS), all four name that session instead.
+- cld marks the servers it starts, not their sessions (`set -s @cld 1`), and reads the mark,
+  `#{||:#{@cld},#{==:#{prefix},C-q}}` - the prefix for the servers of cld 0.8.2 and earlier - in
+  the formats it runs anyway: the filter for session `cld-NAME`, `lingering`'s, `kill`'s `if -F`
+  and `OwnPane`'s. A server `cld-NAME` without it, the user's own, is none of cld's: `list` and
+  completion pass over it, `new`, `resume` and `join` nest in its panes, and they and `kill`
+  refuse its name, pointing at another name, never at `kill` (decision 34).
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
   window, and the tab's title (`set-titles`, `set-titles-string`, `@cld-busy`, `@cld-tmux`) on
   claude's session, not the server, so the sessions claude makes on its server behave as plain

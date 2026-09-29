@@ -40,7 +40,7 @@ install it as `cld`, executable, in a directory on your `PATH`.
   `dotfiles-0`. Where nothing is left - in the root directory, or for a name in another script -
   `S` is `SUFFIX` alone.
 - Without `-s`, `cld new` gives the index above the highest of the sessions `NAME-INDEX` that run,
-  those `cld list` shows, and of servers that outlive their session (see
+  those `cld list` shows, and of servers that outlive their session or are your own (see
   [Troubleshooting](#troubleshooting)); a gap stays a gap. A session that has ended counts no
   more, so the next `cld new` can give its name again, and claude's history then holds two
   conversations of that name (see [Resuming a conversation](#resuming-a-conversation)). Two
@@ -426,6 +426,10 @@ to bring the conversation back into cld.
   refuse the name: `tmux -L cld-S ls` shows what runs there, and `cld kill` ends it with the
   server. So it goes where the session was renamed (`tmux rename-session`): claude may still run
   there, and `cld kill` ends it too.
+- **A tmux server of your own named `cld-S`.** cld marks the servers it starts and leaves any other
+  alone: `cld list` does not show it, cld runs in its panes as in any other tmux, and `cld new`,
+  `cld resume`, `cld join` and `cld kill` refuse the name `S` - use another. One whose prefix is
+  `C-q` counts as cld's, as the servers of cld 0.8.2 and earlier do.
 - **Names that differ only in case.** Where tmux's socket directory ignores case, as on macOS's
   default file system, `A` and `a` share one socket: while one of them runs, cld refuses the other.
 - **`File name too long`.** The server's socket, `$TMUX_TMPDIR/tmux-UID/cld-S` with its symlinks

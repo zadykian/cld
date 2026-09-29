@@ -453,8 +453,9 @@ func TestSetupCompletionBashBleSh(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.WriteFile(filepath.Join(s.Work, "file"), "")
-	// Session alpha-1, as list reads it: session cld-alpha-1 on the server cld-alpha-1.
-	s.MustTmux("cld-alpha-1", "-f", "/dev/null", "new-session", "-d", "-s", "cld-alpha-1", "sleep", "600")
+	// Session alpha-1, as list reads it: session cld-alpha-1 on the server cld-alpha-1, marked as
+	// cld marks its servers.
+	s.MustTmux("cld-alpha-1", "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", "cld-alpha-1", "sleep", "600")
 
 	screen := func(name string) string { return s.MustTmux("bash", "capture-pane", "-p", "-t", "="+name+":") }
 	tab := func(name, typed string) string {
