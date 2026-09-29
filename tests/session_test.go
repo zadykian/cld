@@ -512,8 +512,8 @@ func TestNamePrefixes(t *testing.T) {
 					t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", strings.Join(command.args, " "), result.Code, result.Stdout, result.Stderr, title)
 					continue
 				}
-				if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:2], []string{"-L", command.want}) {
-					t.Errorf("%s: tmux arguments start %q, want -L %s", strings.Join(command.args, " "), argv[:2], command.want)
+				if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv[:3], []string{"-u", "-L", command.want}) {
+					t.Errorf("%s: tmux arguments start %q, want -u -L %s", strings.Join(command.args, " "), argv[:3], command.want)
 				}
 			}
 		})
@@ -1833,13 +1833,58 @@ func TestClaudeNeverSeesTheTerminal(t *testing.T) {
 	}
 }
 
+// tmux takes a terminal for UTF-8 only where TMUX is set or LC_ALL, LC_CTYPE or LANG names UTF-8,
+// and otherwise draws each character that is not ASCII as "_" - most of claude's UI, over ssh to
+// a host whose sshd takes no LANG. The clients of new, resume, join and the list's Enter take it
+// for UTF-8 whatever the locale, and show what claude draws as it is: here its arguments, where
+// resume puts SESSION.
+func TestClientsTakeUTF8(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	notUTF8 := map[string]string{"LC_ALL": "", "LC_CTYPE": "", "LANG": "C"}
+	const conversation = "✳ ⏺ café │"
+	// attached waits for the terminal to attach to session cld-NAME, and checks that tmux takes it
+	// for UTF-8 and, where claude draws some, shows what is not ASCII.
+	attached := func(how string, term terminal.Terminal, name string, shows bool) {
+		t.Helper()
+		waitClients(t, s, 1)
+		if flag := s.MustTmux("cld-"+name, "list-clients", "-F", "#{client_utf8}"); flag != "1" {
+			t.Errorf("%s: client_utf8 %q under LANG=C, want 1", how, flag)
+		}
+		if shows {
+			waitScreen(t, term, "--resume "+conversation)
+		}
+	}
+	detach := func(term terminal.Terminal) {
+		t.Helper()
+		term.Keys("C-q", "d")
+		waitClients(t, s, 0)
+	}
+
+	term := startCld(t, s, "tmux", notUTF8, "new", "-s", "n")
+	attached("new", term, "n", false)
+	detach(term)
+	term = startCld(t, s, "tmux", notUTF8, "resume", "-s", "r", conversation)
+	attached("resume", term, "r", true)
+	detach(term)
+	term = startCld(t, s, "tmux", notUTF8, "join", "-s", "r")
+	attached("join", term, "r", true)
+	detach(term)
+	term = terminal.New(t, "tmux", s)
+	startList(t, s, term, listScript, notUTF8)
+	waitScreen(t, term, listHints)
+	term.Keys("Down", "Enter")
+	attached("the list's Enter", term, "r", true)
+}
+
 // Inside another tmux ($TMUX set) cld nests: its server is another one. Its client gets an empty
-// TMUX, as join's has to (see TestNestsOnADeadPanesPty), with which tmux still takes the terminal,
-// a pane of the other tmux, for UTF-8 whatever the locale says. cld looks for its own panes on its
-// own servers only, cld-NAME: in a live pane of any other server it nests - the default one, the
-// one server cld 0.3.0 and earlier shared, one named like no session of cld's can be, or one named
-// like cld's that cld did not start, the user's own tmux -L cld-outer (see
-// TestLeavesAForeignServerAlone), where list is interactive too.
+// TMUX, as join's has to (see TestNestsOnADeadPanesPty), and takes the terminal, a pane of the
+// other tmux, for UTF-8 whatever the locale says, with -u as outside one (see TestClientsTakeUTF8;
+// an empty TMUX would do it by itself). cld looks for its own panes on its own servers only,
+// cld-NAME: in a live pane of any other server it nests - the default one, the one server cld
+// 0.3.0 and earlier shared, one named like no session of cld's can be, or one named like cld's
+// that cld did not start, the user's own tmux -L cld-outer (see TestLeavesAForeignServerAlone),
+// where list is interactive too.
 func TestNestsInsideAnotherTmux(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
