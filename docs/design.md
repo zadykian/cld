@@ -187,6 +187,9 @@ rows that name none were probed against tmux 3.6.
 | a terminal attached to a session (tmux 3.7c, the snap: a client of a private server in a pane of another, which stands for the terminal, `script -f` recording what the client writes) | the outer pane has `alternate_on=1 history_size=0` while the inner one, after `seq 3000`, has 2978 lines of history: the terminal's scrollback gets nothing. `OSC 133 ; A` and `; C`, `; D`, written in the inner pane, reach the terminal not at all; tmux marks the lines, and copy mode's `next-prompt` goes to them, but no key is bound to it or to `previous-prompt` by default |
 | what a full history costs (tmux 3.7c, the snap: `history-limit` 50000, a 120x40 pane printing 60000 lines of 100 characters, the server's resident size) | from 3.6 MB to 35 MB for plain ASCII; to 156 MB where every character has an RGB colour, a new one every ten characters; the same coloured lines under the default 2000 took 10 MB |
 | claude's renderers, and scrollback ([fullscreen rendering](https://code.claude.com/docs/en/fullscreen) and [screen readers](https://code.claude.com/docs/en/accessibility) in Claude Code's docs, read 2026-09-29; the bundle of 2.1.284, read, not run) | the classic renderer draws in the main screen and "keeps the conversation in your terminal's native scrollback so `Cmd+f` and tmux copy mode work as usual"; the fullscreen renderer draws in the alternate screen and scrolls its own transcript, which `Ctrl+O`, then `/`, searches, and `Ctrl+O`, then `[`, writes into the scrollback. Which one starts depends on the `tui` setting (`/tui default`, `/tui fullscreen`), `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`, feature flags and when claude was first used. Screen-reader mode (`--ax-screen-reader`, `CLAUDE_AX_SCREEN_READER=1`, `axScreenReader`) always runs the classic renderer, and relies on the terminal's scrollback for reading back and on OSC 133 marks for jumping between turns: the bundle writes `A` as a turn starts and `C`, `D` as it ends in that mode, but in WezTerm, with no exception for tmux |
+| what a title hook and the busy marker's job cost (the `PostToolUse` hook as `new` writes it, run with `sh -c` 20 times against a private server, and the job's `sh -c '(sleep 1; tmux -S SOCKET refresh-client -S -t CLIENT)'` 10 times with a terminal attached, timed with bash's `time`; tmux 3.7c from Ubuntu's snap, and built from source in the image `tests/Dockerfile` builds, on one Linux 7.0 host with 8 CPUs under a load of 3 to 9) | with the snap, a hook took 130 to 230 ms and 120 to 135 ms of CPU, whether it set the option or not, and a turn of the job 135 to 141 ms of CPU: 14% of a core for each terminal while the title is busy. Built from source, a hook took 5.5 to 6 ms and 3.7 ms of CPU, and a turn of the job 4.6 ms, 0.5% of a core. claude waits for a hook before it goes on: with the snap a turn of 40 tools waits 5 to 9 s more for `PostToolUse` alone |
+| `async` and `timeout` of a command hook (claude 2.1.284's bundle, read, not run; Claude Code's hooks reference and CHANGELOG, read on 2026-09-29) | with `async: true` claude writes the hook's input and goes on. Once the hook exits, claude hands the model only the `systemMessage` and `additionalContext` of what it printed; one that fails - exits other than 0, or writes to stderr - shows as `Async hook EVENT completed` only in verbose mode or the transcript view (Ctrl+O), since 2.1.75, and one that succeeds printing nothing shows nothing. Sending a hook to the background clears its timer: claude ends it at no timeout, as the reference says. A hook claude waits for it kills at `timeout` seconds, dropping its output; the default is 600 s (10 minutes since 2.1.3), and 30 s for `UserPromptSubmit`. The CHANGELOG has async hooks by 2.1.23 (a fix for pending ones), a fix for the empty transcript entries of an async `PostToolUse` hook that prints nothing in 2.1.119, and `timeout` per hook since 1.0.41: all before 2.1.232. claude awaits `SessionStart`'s hooks as it starts, resumes or forks a conversation, and on `/clear` and `/compact` |
+| the order a hook in the background lands in (claude 2.1.284's bundle, read, not run: the description of the `PostToolBatch` hook; and the hooks as `new` writes them against a private server, `PostToolUse`'s busy started in the background over a waiting, then after a gap `PermissionRequest`'s waiting through `sh -c`, the status read once both had ended: 20 runs a gap with tmux 3.7c from Ubuntu's snap under a load of 8 on 8 CPUs, and 40 built from source in the image `tests/Dockerfile` builds) | claude runs the tools of one answer with no call to the model between them: "PostToolUse fires per-tool", and `PostToolBatch` "once after every tool call in a batch has resolved, before the next model request". So the next tool's `PermissionRequest` can follow a tool's `PostToolUse` at once - two commands that each ask, the first answered - and an MCP server's second question its first `ElicitationResult`. A busy run in the background landed after the waiting, and left the status busy, with the snap in 10 of 20 runs at a gap of 0 ms, 8 at 5 ms, 7 at 10 ms, 5 at 20 ms, 2 at 30 ms and 1 at 50 ms; built from source in 4 of 40 at 0 ms, and in none from 5 ms on |
 
 ## Distribution
 
@@ -2115,7 +2118,42 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        connections (`socket` in the tests; see Implementation notes).
 
     Out of scope: the `tmux -V` every command but completion runs (6), and the tmux each of the
-    title's hooks runs (25).
+    title's hooks runs (25; see 39).
+
+39. What the title's hooks cost (#81): they hold claude up where their order matters, and for
+    5 s at most. Each hook of 25 starts a tmux client, which claude waits for, and while the title
+    is busy each terminal on the session starts one a second for the turning (25.5): each as
+    long, and as much CPU, as tmux takes to start (38), some 6 ms built from source, but a tenth
+    of a second and more through Ubuntu's snap (see Findings) - there a turn of 40 tools waits 5
+    to 9 s more for `PostToolUse` alone. Settled with it:
+    1. the hooks of `@cld-status` stay synchronous, `PostToolUse` and `ElicitationResult` too,
+       since the order they land in is the status's. claude runs the tools of one answer with no
+       call to the model between them (see Findings), so a busy of `PostToolUse` run in the
+       background (`"async": true`) could land after the waiting of the next tool's
+       `PermissionRequest` - with the snap it did in up to half the runs - and leave the title
+       turning while claude asks, the moment it should tell the user that claude needs them;
+       `ElicitationResult`'s could before an MCP server's next question, and `UserPromptSubmit`'s
+       after the idle of a `StopFailure` that comes at once. Rejected: those two in the
+       background, as the issue proposed, which would spare the snap's tenth of a second after
+       each tool. No guard was found: `PermissionRequest`'s input names no tool call to match a
+       `PostToolUse` with (claude 2.1.284), and whatever a hook in the background reads, it
+       reads as late as it lands;
+    2. each of them, and `SessionStart`, has `"timeout": 5`, so that a tmux that hangs holds
+       claude up for 5 s, not claude's default of 600 (30 for `UserPromptSubmit`);
+    3. `CwdChanged` runs in the background, with no timeout, as claude ends no hook in the
+       background at one. Its hook asks git about the directory claude started it in, however
+       late it lands; only two changes of claude's own directory in one answer - `EnterWorktree`,
+       then `ExitWorktree` - could land out of order and leave ` [w]` as the first had it until
+       the next. `async` predates the minimum (see Findings), so 6 stands. One that fails - the
+       tmux of 25.3 that says so - shows only in claude's verbose mode or transcript view;
+    4. the turning stays at a second (25.5): a tick every 2 s would halve what the job costs but
+       turn at half claude's pace, and a busy marker with no job would cost nothing and not turn
+       (the maintainer chose to keep it). The user guide and the README say what the title costs;
+    5. the tests: the settings word for word (25.7), `async` and `timeout` with them. The probe
+       waits for every hook, one in the background too, so that the tests read the status each
+       leaves.
+
+    Out of scope: making tmux start faster, and fewer hooks.
 
 ## Implementation notes
 
@@ -2529,7 +2567,10 @@ by hand in a nested tmux).
   the worker outlives `cld kill` (see Findings); what made claude run one in a worker two seconds
   after it started, which the claude in the pane showed (see Findings), is not known. A copy's
   hooks after its session has ended were not seen: run by hand, they say that no server runs,
-  and set the option on a later session of the name.
+  and set the option on a later session of the name. The hooks' `async` and `timeout` (39) were
+  read in claude 2.1.284's bundle and Claude Code's reference, not run: a `CwdChanged` that runs
+  in the background, a hook that reaches its timeout, and a tool's `PermissionRequest` right
+  after the `PostToolUse` of another of the same answer are still to see.
 - Notifications (29): what each channel writes was read in claude's bundle, and the contract
   checks that the baseline terminal and JediTerm get it; a real claude notifying in a session,
   and iTerm2, kitty and Ghostty showing it, were not seen.

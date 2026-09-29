@@ -179,8 +179,9 @@ not push such a change. Rebase onto `main` before either.
   `@cld-busy` refreshes the terminal a second later to turn the marker, since `status off` leaves
   tmux no timer (decision 25). `SessionStart` and `CwdChanged`
   hooks keep `@cld-worktree`, 1 while claude's directory is in a linked git worktree; they run git
-  by the path cld found, and are left out where it finds none (decision 26). The hook events must
-  exist in the minimum claude.
+  by the path cld found, and are left out where it finds none (decision 26). claude waits 5 s at
+  most (`timeout`) for each hook but `CwdChanged`'s, which it runs in the background (`async`;
+  decision 39). The hook events, `async` and `timeout` must exist in the minimum claude.
 - The variables that name the terminal to claude, which it trusts over `TERM_PROGRAM=tmux` -
   `TERMINAL_EMULATOR`, `__CFBundleIdentifier`, `CURSOR_TRACE_ID`, `VisualStudioVersion` and
   `VSCODE_GIT_ASKPASS_MAIN` - are removed from the environment `new` and `resume` exec tmux with,

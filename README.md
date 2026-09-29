@@ -109,7 +109,10 @@ where `Esc` goes back to the conversation, which goes on in the background all t
 The terminal's tab shows the session, `✳ cld-NAME-SUFFIX`, and while claude works `◐` and `◑` in
 turn in place of the `✳`, as claude's own title does outside tmux; while claude works in a linked
 git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
-[guide](docs/guide.md#sessions) says what they miss.
+[guide](docs/guide.md#sessions) says what they miss. Each hook starts a tmux client, and while the
+title turns so does each terminal on the session, every second: a tmux slow to start, such as
+Ubuntu's snap, holds claude up a moment as it starts, after each tool and as each turn starts and
+ends, and costs CPU for as long as the title turns.
 
 While attached, the terminal shows tmux, and its own scrollback and search see nothing of the
 session. In claude's classic renderer, which draws in the terminal's main screen, what scrolls off

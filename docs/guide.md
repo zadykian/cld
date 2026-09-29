@@ -124,11 +124,23 @@ install it as `cld`, executable, in a directory on your `PATH`.
 
   A terminal that detaches keeps the title it had, a busy one too. A session that an older cld
   started keeps `✳ cld-S`.
+
+  Each hook starts a tmux client, and while the title is busy each terminal on the session starts
+  `sh`, `sleep` and a tmux client every second to turn the marker: each takes as long, and as
+  much CPU, as tmux takes to start (see [Troubleshooting](#troubleshooting)). Through Ubuntu's
+  snap, claude waits a tenth of a second and more at each event - as it starts, after every
+  tool, as a turn starts and ends, as it asks you something - and the turning takes some 14% of
+  a core for each terminal, also where one of the misses above leaves the title busy. claude
+  waits for a hook 5 s at most, and not at all for the one on a change of its directory, which
+  it runs in the background.
 - While claude works in a linked git worktree - one `cld new -w` has it make, one it enters with
   its `EnterWorktree` tool, one you run `cld new` in - the title ends in ` [w]`, and loses it
   when claude leaves. It follows claude's working directory, not where a shell command `cd`s
   to. Without git on your `PATH` when the session starts, or with hooks turned off, there is no
-  `[w]`.
+  `[w]`. claude does not wait for tmux as it changes directory: a worktree it enters and leaves
+  again within one answer can leave the title as the first change had it, until claude next
+  changes directory, and a tmux that fails there shows only in claude's transcript view
+  (`Ctrl+O`).
 - claude's links - the file paths and URLs it marks - reach the terminal as links, which it opens
   with its own click; as tmux has the terminal report clicks, some terminals want the key that
   keeps a click from the program with it. tmux passes links on where it knows the terminal takes
@@ -494,7 +506,10 @@ to bring the conversation back into cld.
   each run takes as long as tmux takes to start: 6-20 ms built from source or from most packages,
   100-200 ms from Ubuntu's tmux snap. `cld list` and a TAB ask every server of cld's that runs,
   eight at a time: over 10 sessions, under half a second through the snap. The sockets that ended
-  sessions leave in `tmux-UID`, which neither tmux nor cld removes, cost no tmux.
+  sessions leave in `tmux-UID`, which neither tmux nor cld removes, cost no tmux. In a session,
+  each hook of the tab's title runs tmux too, and claude waits for all of them but the one on a
+  change of its directory: after every tool among others, through the snap a tenth of a second
+  and more each time (see [Sessions](#sessions)).
 
 ## Upgrading
 

@@ -41,7 +41,8 @@ func remoteControl(s *sandbox.Sandbox, name string) string {
 // worktree branched from HEAD, then the hooks that keep claude's status and whether it is in a
 // linked worktree on its session, for the tab's title (see TestStatusHooks, TestWorktreeHooks and
 // TestHooksOutsideThePane). Each runs that tmux on the session's server, by the socket in the
-// sandbox's directory, and names the session.
+// sandbox's directory, and names the session; that of CwdChanged in the background, and the
+// others with a timeout of 5 s.
 func settings(s *sandbox.Sandbox, tmux, git, name string, fromHead bool) string {
 	socket := filepath.Join(s.SocketDir(), name)
 	set := func(option, value string) string {
@@ -52,18 +53,20 @@ func settings(s *sandbox.Sandbox, tmux, git, name string, fromHead bool) string 
 		return `\"$('` + git + `' rev-parse --path-format=absolute ` + which + ` 2>/dev/null)\"`
 	}
 	worktree := `w=0; [ ` + dir("--git-dir") + ` = ` + dir("--git-common-dir") + ` ] || w=1; ` + set("@cld-worktree", "$w")
-	on := func(event, matcher, command string) string {
+	hook := func(event, matcher, command, how string) string {
 		if matcher != "" {
 			matcher = `"matcher":"` + matcher + `",`
 		}
-		return `"` + event + `":[{` + matcher + `"hooks":[{"type":"command","command":"` + command + `"}]}]`
+		return `"` + event + `":[{` + matcher + `"hooks":[{"type":"command","command":"` + command + `",` + how + `}]}]`
 	}
+	on := func(event, matcher, command string) string { return hook(event, matcher, command, `"timeout":5`) }
+	background := func(event, command string) string { return hook(event, "", command, `"async":true`) }
 	base := ""
 	if fromHead {
 		base = `"worktree":{"baseRef":"head"},`
 	}
 	return `{"remoteControlAtStartup":true,` + base + `"hooks":{` + strings.Join([]string{
-		on("CwdChanged", "", worktree),
+		background("CwdChanged", worktree),
 		on("Elicitation", "", status("waiting")),
 		on("ElicitationResult", "", status("busy")),
 		on("Notification", "idle_prompt", status("idle")),

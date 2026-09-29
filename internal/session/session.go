@@ -459,10 +459,18 @@ type hook struct {
 	Hooks   []hookCommand `json:"hooks"`
 }
 
+// hookCommand is a command claude runs through sh: in the background with Async, and otherwise
+// waiting for it, for Timeout seconds at most where that is not 0.
 type hookCommand struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
+	Async   bool   `json:"async,omitempty"`
+	Timeout int    `json:"timeout,omitempty"`
 }
+
+// hookTimeout is how many seconds claude waits for a hook of statusHooks that it does not run in
+// the background, where its own default is 600 (30 for UserPromptSubmit).
+const hookTimeout = 5
 
 // statusHooks are the hooks that keep claude's status on its session, for the tab's title (see
 // titles). @cld-status is busy from a prompt on, waiting while claude asks - a permission, an MCP
@@ -493,6 +501,20 @@ type hookCommand struct {
 // claude made. The socket goes as an absolute path, since the hooks run in claude's directory.
 // Nothing is printed for claude to take up: what a UserPromptSubmit or a SessionStart hook prints
 // goes to the model.
+//
+// Each hook starts a tmux client, some 6 ms built from source, or a tenth of a second and more
+// where tmux is slow to start, as Ubuntu's snap is (see serverless), and claude waits for a hook
+// before it goes on - for PostToolUse's after every tool. The hooks of @cld-status keep it waiting
+// all the same, since the order they land in is the status's: claude runs the tools of one answer
+// with no call to the model between them, so a busy of PostToolUse run in the background could land
+// after the waiting of the next tool's PermissionRequest and leave the title turning while claude
+// asks, as could ElicitationResult's before an MCP server's next question, and UserPromptSubmit's
+// after a StopFailure that comes at once. Each has a timeout of hookTimeout seconds instead, so
+// that a tmux that hangs holds claude up for seconds, not minutes. CwdChanged runs in the
+// background (async): its hook asks git about the directory claude started it in, however late it
+// lands, and only two changes of claude's own directory in one answer - EnterWorktree, then
+// ExitWorktree - could land out of order. claude ends no hook in the background at a timeout, and
+// shows one that failed only in its verbose mode or transcript view (claude 2.1.284).
 func statusHooks(tmux, git, socket, suffix string) map[string][]hook {
 	session := "=cld-" + suffix + ":"
 	// set sets option to value, a word of sh that the shell expands.
@@ -500,8 +522,13 @@ func statusHooks(tmux, git, socket, suffix string) map[string][]hook {
 		return shellWord(tmux) + ` -S ` + shellWord(socket) + ` if -F -t ` + shellWord(session) +
 			` "#{!=:#{` + option + `},` + value + `}" "set -t ` + session + ` ` + option + ` ` + value + `"`
 	}
+	// on runs command on the event, where it matches matcher, and claude waits for it; background
+	// runs command on every one of the event, and claude goes on.
 	on := func(matcher, command string) []hook {
-		return []hook{{Matcher: matcher, Hooks: []hookCommand{{Type: "command", Command: command}}}}
+		return []hook{{Matcher: matcher, Hooks: []hookCommand{{Type: "command", Command: command, Timeout: hookTimeout}}}}
+	}
+	background := func(command string) []hook {
+		return []hook{{Hooks: []hookCommand{{Type: "command", Command: command, Async: true}}}}
 	}
 	hooks := map[string][]hook{
 		"UserPromptSubmit":   on("", set("@cld-status", "busy")),
@@ -520,7 +547,7 @@ func statusHooks(tmux, git, socket, suffix string) map[string][]hook {
 		}
 		worktree := `w=0; [ ` + dir("--git-dir") + ` = ` + dir("--git-common-dir") + ` ] || w=1; ` + set("@cld-worktree", "$w")
 		hooks["SessionStart"] = on("", worktree)
-		hooks["CwdChanged"] = on("", worktree)
+		hooks["CwdChanged"] = background(worktree)
 	}
 	return hooks
 }
@@ -1486,6 +1513,8 @@ func titles(suffix string) string {
 // background, refreshes the status of the terminal the title was expanded for - that is, its
 // title - which expands the title, and so runs the job, again: tmux runs it at most once a second
 // for each terminal, and not at all for a title that is not busy or a session no terminal is on.
+// Each run is a sh, a sleep and a tmux client: some 0.5% of a core for each terminal while the
+// title is busy, and 14% where tmux is slow to start, as Ubuntu's snap is.
 // It names tmux by @cld-tmux, the path cld checked, quoted for the shell there: in the format, a
 // "#" or a "%" would be taken for a format or a conversion of strftime's, and a ")" for the end of
 // the job.

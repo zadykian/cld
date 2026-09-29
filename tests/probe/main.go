@@ -29,9 +29,10 @@
 //	                              claude does: each command through sh -c, in the probe's
 //	                              directory and environment, with JSON (default {}) as its
 //	                              input - where a hook has a matcher, only if it matches the
-//	                              event's notification_type, or tool_name; once they have run,
-//	                              append a line to PID.hooks: EVENT, and after a ": " why where
-//	                              one failed or printed anything
+//	                              event's notification_type, or tool_name - waiting for it, one
+//	                              claude runs in the background (async) too, with no timeout;
+//	                              once they have run, append a line to PID.hooks: EVENT, and
+//	                              after a ": " why where one failed or printed anything
 //	            unsetenv NAMES    unset the variables NAMES, split at spaces, in the environment
 //	                              the probe runs hooks and tmux with from then on, as claude
 //	                              runs the hooks of a conversation it runs in the background:
