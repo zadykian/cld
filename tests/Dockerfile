@@ -10,10 +10,13 @@ FROM ${GO_IMAGE} AS go
 
 FROM ${BASE}
 # bash-completion, fish and zsh load what cld setup completion writes, in the tests that check it.
+# PACKAGES are more, for a base that has them: ble.sh on Ubuntu, which Debian's trixie lacks
+# (`make docker-blesh-check`).
+ARG PACKAGES=
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         bash ca-certificates curl default-jdk-headless git make shellcheck shfmt \
-        bash-completion fish zsh \
+        bash-completion fish zsh $PACKAGES \
         bison build-essential libevent-dev libncurses-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,12 +1,15 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
@@ -15,8 +18,9 @@ import (
 // for byte what cld completion SHELL prints, where each shell reads it - where the variables that
 // move it say - zsh's lines in .zshrc, and what cld says it did; running it again, files that
 // exist, refusals. Where a shell is installed, it then loads what cld wrote, started as a user
-// starts it: bash with bash-completion 2, zsh and fish. cld update's refresh of the scripts is in
-// update_test.go.
+// starts it: bash with bash-completion 2, zsh and fish; and where ble.sh is, as in the Ubuntu image
+// of make docker-blesh-check, bash with ble.sh completes cld through it, typed into a tmux pane.
+// cld update's refresh of the scripts is in update_test.go.
 
 // zshLines are the lines setup completion zsh adds to .zshrc.
 const zshLines = `# cld's completion, from cld setup completion zsh
@@ -352,23 +356,34 @@ func lookShell(t *testing.T, name string) string {
 	return path
 }
 
+// lookFile is the first of paths that exists; a test without any skips, saying what is not
+// installed.
+func lookFile(t *testing.T, what string, paths ...string) string {
+	t.Helper()
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	t.Skipf("%s is not installed", what)
+	return ""
+}
+
+// bashCompletion is bash-completion 2's main script, which ~/.bashrc loads; a test without it
+// skips.
+func bashCompletion(t *testing.T) string {
+	t.Helper()
+	return lookFile(t, "bash-completion 2", "/usr/share/bash-completion/bash_completion",
+		"/opt/homebrew/share/bash-completion/bash_completion", "/usr/local/share/bash-completion/bash_completion")
+}
+
 // bash-completion 2, loaded as ~/.bashrc loads it, finds the script where setup completion bash
 // wrote it, as it looks for a command's completion at its first TAB, and registers cld's
 // function: _comp_load since bash-completion 2.12, __load_completion before.
 func TestSetupCompletionBashLoadsIt(t *testing.T) {
 	t.Parallel()
 	bash := lookShell(t, "bash")
-	var main string
-	for _, candidate := range []string{"/usr/share/bash-completion/bash_completion", "/opt/homebrew/share/bash-completion/bash_completion",
-		"/usr/local/share/bash-completion/bash_completion"} {
-		if _, err := os.Stat(candidate); err == nil {
-			main = candidate
-			break
-		}
-	}
-	if main == "" {
-		t.Skip("bash-completion 2 is not installed")
-	}
+	main := bashCompletion(t)
 	load := ". " + main + "; if declare -F _comp_load >/dev/null; then _comp_load cld; else __load_completion cld; fi; complete -p cld"
 	for _, test := range completionCases {
 		if test.shell != "bash" {
@@ -386,6 +401,110 @@ func TestSetupCompletionBashLoadsIt(t *testing.T) {
 			}
 		})
 	}
+}
+
+// blesh is the ~/.bashrc of TestSetupCompletionBashBleSh, given bash-completion's main script and
+// ble.sh: it loads them as Ubuntu's ~/.bashrc and ble.sh's instructions do, ble.sh attaching at the
+// first prompt, and turns off the suggestions ble.sh makes as you type, when it idles. TAB runs
+// ble.sh's complete widget, as by default, then writes its exit status and the command line to
+// ~/tab.PID: ble.sh cancels a completion when a key comes, so the test sends none until then.
+const blesh = `. %s
+[[ $- == *i* ]] && source -- %s
+PS1='$ '
+if [[ ${BLE_VERSION-} ]]; then
+    bleopt complete_auto_complete=
+    function ble/widget/cld-test/complete {
+        ble/widget/complete
+        printf '%%s\n%%s' "$?" "$_ble_edit_str" >"$HOME/tab.$$.new" && mv "$HOME/tab.$$.new" "$HOME/tab.$$"
+    }
+    ble-bind -f C-i cld-test/complete
+fi
+`
+
+// bash with ble.sh (https://github.com/akinomyoga/ble.sh), which edits the command line in
+// readline's place and completes through the script setup completion bash wrote, completes cld as
+// bash does: a command, an option, the NAME of a session list shows and its SUFFIX. Where cld
+// offers nothing - new's and kill's arguments, setup telemetry's FILE, what follows a command
+// cld does not have - it offers nothing either, where ble.sh would offer the file in the
+// directory (see bashScript in cmd/cld). Each line is typed into a new bash in a tmux pane, one
+// TAB after it; with more than one command, the first TAB lists them with their descriptions.
+func TestSetupCompletionBashBleSh(t *testing.T) {
+	t.Parallel()
+	bash := lookShell(t, "bash")
+	main := bashCompletion(t)
+	// CLD_BLESH names ble.sh where the test must run (make docker-blesh-test); without it, a
+	// test that finds no ble.sh skips.
+	ble := os.Getenv("CLD_BLESH")
+	if ble == "" {
+		home, _ := os.UserHomeDir()
+		ble = lookFile(t, "ble.sh", "/usr/share/blesh/ble.sh", "/usr/local/share/blesh/ble.sh",
+			filepath.Join(home, ".local/share/blesh/ble.sh"))
+	} else if _, err := os.Stat(ble); err != nil {
+		t.Fatalf("CLD_BLESH: %v", err)
+	}
+	s := sandbox.New(t)
+	if result := setupCompletion(s, "bash", nil); result.Code != 0 {
+		t.Fatalf("setup completion bash: %+v", result)
+	}
+	s.WriteFile(filepath.Join(s.Home, ".bashrc"), fmt.Sprintf(blesh, main, ble))
+	s.WriteFile(filepath.Join(s.Work, "file"), "")
+	// Session alpha-1, as list reads it: session cld-alpha-1 on the server cld-alpha-1.
+	s.MustTmux("cld-alpha-1", "-f", "/dev/null", "new-session", "-d", "-s", "cld-alpha-1", "sleep", "600")
+
+	screen := func(name string) string { return s.MustTmux("bash", "capture-pane", "-p", "-t", "="+name+":") }
+	tab := func(name, typed string) string {
+		t.Helper()
+		// Each bash in a session of its own on the test's server, bash. tmux gives a pane the PATH
+		// of the client that makes it, whatever -e says: this one's, with the cld under test first.
+		cmd := exec.Command("tmux", "-L", "bash", "-f", "/dev/null", "new-session", "-d", "-s", name, "-x", "100", "-y", "20",
+			"-c", s.Work, bash, "-i")
+		cmd.Env = shellEnv(s, nil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("tmux new-session: %v: %s", err, out)
+		}
+		// ble.sh draws the prompt once it has attached; keys that come before are lost.
+		sandbox.WaitFor(t, 30*time.Second, "ble.sh's prompt", func() bool {
+			lines := strings.Split(screen(name), "\n")
+			return lines[len(lines)-1] == "$"
+		})
+		pid := s.MustTmux("bash", "list-panes", "-t", "="+name, "-F", "#{pane_pid}")
+		s.MustTmux("bash", "send-keys", "-t", "="+name+":", "-l", typed)
+		s.MustTmux("bash", "send-keys", "-t", "="+name+":", "C-i")
+		var data []byte
+		sandbox.WaitFor(t, 20*time.Second, "ble.sh to complete "+strconv.Quote(typed), func() bool {
+			var err error
+			data, err = os.ReadFile(filepath.Join(s.Home, "tab."+pid))
+			return err == nil
+		})
+		// A completion that a key cancels leaves the line as it was, and ends with 148.
+		status, line, _ := strings.Cut(string(data), "\n")
+		if status == "148" {
+			t.Fatalf("%q: ble.sh cancelled the completion; the pane:\n%s", typed, screen(name))
+		}
+		return line
+	}
+	for i, test := range []struct{ typed, want string }{
+		{"cld jo", "cld join "},
+		{"cld new --wo", "cld new --worktree "},
+		{"cld join -n al", "cld join -n alpha "},
+		{"cld join -n alpha -s ", "cld join -n alpha -s 1 "},
+		{"cld new f", "cld new f"},
+		{"cld kill -s f", "cld kill -s f"},
+		{"cld setup telemetry --collector-config f", "cld setup telemetry --collector-config f"},
+		{"cld joni f", "cld joni f"},
+	} {
+		name := "case" + strconv.Itoa(i)
+		if line := tab(name, test.typed); line != test.want {
+			t.Errorf("%q, TAB: %q, want %q; the pane:\n%s", test.typed, line, test.want, screen(name))
+		}
+	}
+	if line := tab("commands", "cld "); line != "cld " {
+		t.Errorf(`"cld ", TAB: %q, want "cld "`, line)
+	}
+	sandbox.WaitFor(t, 10*time.Second, "the commands with their descriptions", func() bool {
+		commands := screen("commands")
+		return strings.Contains(commands, "attach to session NAME-SUFFIX") && strings.Contains(commands, "update cld to the latest release")
+	})
 }
 
 // zsh, started interactively, loads the script where setup completion zsh wrote it, through the

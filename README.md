@@ -45,8 +45,9 @@ cld setup completion zsh   # or bash, or fish
 It writes the script that `cld completion SHELL` prints where the shell reads it - for zsh, with
 the lines that load it at the end of `~/.zshrc` - and `cld update` writes the script anew when a
 new release prints another. bash needs bash-completion 2, which Debian's and Ubuntu's `~/.bashrc`
-load. The [guide](docs/guide.md#shell-completion) says where each script goes, and how to set it
-up by hand, for macOS's bash 3.2 among others.
+load, and completes with [ble.sh](https://github.com/akinomyoga/ble.sh) too. The
+[guide](docs/guide.md#shell-completion) says where each script goes, and how to set it up by hand,
+for macOS's bash 3.2 among others.
 
 ## Usage
 

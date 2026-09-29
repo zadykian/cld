@@ -146,11 +146,11 @@ func shellArgument(args []string) error {
 // COMMAND or SESSION, the next - or a "--", which pflag would drop, is refused.
 //
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
-// on every TAB, and setup completion SHELL writes it where the shell reads it (see
-// setupCompletion). join -n offers the NAME of NAME-SUFFIX for the sessions list shows (see
-// sessionNames), join -s their SUFFIX (see sessionSuffixes), help the commands (see
-// commandNames), setup project --mcp the MCP servers (see serverNames), and nothing offers file
-// names, as no argument of cld's is a file.
+// on every TAB - bash's with lines of cld's for ble.sh (see bashScript) - and setup completion
+// SHELL writes it where the shell reads it (see setupCompletion). join -n offers the NAME of
+// NAME-SUFFIX for the sessions list shows (see sessionNames), join -s their SUFFIX (see
+// sessionSuffixes), help the commands (see commandNames), setup project --mcp the MCP servers (see
+// serverNames), and nothing offers file names, as no argument of cld's is a file.
 //
 // new, resume, join and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX (see
 // naming): NAME defaults to the repository's or directory's name, and SUFFIX, for new and for
@@ -456,13 +456,48 @@ cld setup completion wrote are written anew where the new cld prints others.`,
 	return root
 }
 
+// bleLines go at the end of __start_cld, the function through which cobra's bash script completes
+// cld, for bash with ble.sh, which edits the command line in readline's place and runs the script
+// itself. Where cld offers no file names, the script turns off -o default with compopt, but only
+// where compopt is bash's builtin, and ble.sh has the script call a compopt function of its own:
+// -o default stays on, and ble.sh offers file names. It would all the same without -o default, as
+// it offers completions of its own - options it reads from the help, file names - wherever a
+// function offers nothing, unless the function turns off ble/default. The lines do both where cld
+// offers no file names - the directive has ShellCompDirectiveNoFileComp - and compopt is a
+// function in a shell ble.sh runs in; elsewhere they do nothing.
+const bleLines = `    # ble.sh has the lines above call a compopt function of its own, which they take for no
+    # compopt: turn off -o default as they would, and ble.sh's completions where cld offers none.
+    if [[ ${BLE_VERSION-} && $(type -t compopt) == function ]] && (((directive & %d) != 0)); then
+        compopt +o default +o ble/default
+    fi
+`
+
+// bashScript writes to w cobra's bash script for root, with descriptions or without, and
+// bleLines at the end of the function that completes root: what completion bash prints, and
+// setup completion bash writes.
+func bashScript(w io.Writer, root *cobra.Command, descriptions bool) error {
+	var script bytes.Buffer
+	if err := root.GenBashCompletionV2(&script, descriptions); err != nil {
+		return err
+	}
+	end := "\n    __" + root.Name() + "_process_completion_results\n}\n"
+	before, after, found := strings.Cut(script.String(), end)
+	if !found || strings.Contains(after, end) {
+		panic("cobra's bash script has no end of __start_" + root.Name())
+	}
+	lines := fmt.Sprintf(bleLines, cobra.ShellCompDirectiveNoFileComp)
+	_, err := io.WriteString(w, before+strings.TrimSuffix(end, "}\n")+lines+"}\n"+after)
+	return err
+}
+
 // completionCommand adds cobra's completion command to root: completion SHELL prints the
-// completion script for SHELL, bash, zsh, fish or powershell, and its help, cobra's Long, says
-// where the script goes and what it needs; completion alone shows its help, as with cobra. The
-// short descriptions, which the help of completion and of cld list, are cld's. They read their
-// arguments as cld's commands do (see commandLine), with cld's -h and --help: an unknown SHELL,
-// an argument after it or an unknown option is refused, where cobra would show the help and exit
-// 0, fail with exit status 1, or take a later option first.
+// completion script for SHELL, bash, zsh, fish or powershell - bash's with lines of cld's (see
+// bashScript) - and its help, cobra's Long, says where the script goes and what it needs;
+// completion alone shows its help, as with cobra. The short descriptions, which the help of
+// completion and of cld list, are cld's. They read their arguments as cld's commands do (see
+// commandLine), with cld's -h and --help: an unknown SHELL, an argument after it or an unknown
+// option is refused, where cobra would show the help and exit 0, fail with exit status 1, or take
+// a later option first.
 func completionCommand(root *cobra.Command) {
 	root.InitDefaultCompletionCmd()
 	completion, _, err := root.Find([]string{"completion"})
@@ -476,6 +511,15 @@ SHELL writes it where bash, zsh or fish reads it; the help of each command
 below says where the script goes by hand, and what it needs.`
 	for _, shell := range completion.Commands() {
 		shell.Short = "print the completion script for " + shell.Name()
+		if shell.Name() == "bash" {
+			shell.RunE = func(c *cobra.Command, _ []string) error {
+				noDescriptions, err := c.Flags().GetBool("no-descriptions")
+				if err != nil {
+					return err
+				}
+				return bashScript(c.OutOrStdout(), root, !noDescriptions)
+			}
+		}
 	}
 	// A command cobra cannot run shows its help before it looks at the arguments: completion runs,
 	// to show it once they are read.
@@ -545,7 +589,7 @@ where set), where fish finds it at the first TAB.`,
 				var err error
 				switch shell {
 				case "bash":
-					err = c.Root().GenBashCompletionV2(&script, true)
+					err = bashScript(&script, c.Root(), true)
 				case "zsh":
 					err = c.Root().GenZshCompletion(&script)
 				default:

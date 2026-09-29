@@ -8,13 +8,18 @@ BASE ?= debian:trixie
 TMUX_VERSION ?= 3.7c
 DOCKER_TERMINALS ?= tmux,jediterm
 IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))-tmux-$(TMUX_VERSION)
+# The completion checks in bash with ble.sh: the same image, on BLESH_BASE, whose package ble.sh
+# the tests load - Ubuntu 26.04's is 0.4.0~git20250806.8060b7a, as CI builds it too.
+BLESH_BASE ?= ubuntu:26.04
+BLESH_IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BLESH_BASE)))-blesh-tmux-$(TMUX_VERSION)
 # The version make dist and make install stamp into cld.
 VERSION ?= dev
 # The platforms make dist builds cld for, as dist/cld-OS-ARCH.
 PLATFORMS = linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 BUILD = CGO_ENABLED=0 go build -trimpath -ldflags '-X main.version=$(VERSION)'
 
-.PHONY: check lint test docker-image docker-test docker-check dist install uninstall
+.PHONY: check lint test docker-image docker-test docker-check docker-blesh-image docker-blesh-test \
+	docker-blesh-check dist install uninstall
 
 check: lint test
 
@@ -39,6 +44,20 @@ docker-test:
 
 docker-check: docker-image
 	@$(MAKE) --no-print-directory docker-test
+
+docker-blesh-image:
+	docker build --build-arg BASE=$(BLESH_BASE) --build-arg PACKAGES=ble.sh \
+		--build-arg TMUX_VERSION=$(TMUX_VERSION) -t $(BLESH_IMAGE) -f tests/Dockerfile .
+
+# The completion tests in an image that is already built, by docker-blesh-image or by CI from its
+# layer cache; with CLD_BLESH, the ble.sh test fails where it would skip without ble.sh.
+docker-blesh-test:
+	docker run --rm --init --user "$$(id -u):$$(id -g)" -e HOME=/tmp \
+		-e CLD_BLESH=/usr/share/blesh/ble.sh -v "$(CURDIR):/src:ro" -w /src $(BLESH_IMAGE) \
+		sh -c 'cd tests && go test -count=1 -run Completion .'
+
+docker-blesh-check: docker-blesh-image
+	@$(MAKE) --no-print-directory docker-blesh-test
 
 # With cgo off every platform cross-compiles without a C toolchain, into a static binary on Linux.
 # The installer goes with the binaries it downloads, outside cld.sha256.

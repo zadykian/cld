@@ -247,6 +247,12 @@ cld removes nothing: to undo it, delete the script, and for zsh the lines in `.z
   Debian's and Ubuntu's do; with Homebrew's bash, install `bash-completion@2` and follow its
   caveats. Without bash-completion, every TAB prints `_get_comp_words_by_ref: command not found`.
 
+  With [ble.sh](https://github.com/akinomyoga/ble.sh) 0.4, which edits bash's command line, the
+  script completes as in bash, with the descriptions in ble.sh's menu, and offers no file names
+  where cld offers nothing - on TAB, and in grey as you type. `-n=NAME`, `--name=NAME` and
+  `--mcp=SERVER` complete nothing there, since ble.sh drops what cld offers after the `=`: write
+  `-n NAME`. ble.sh 0.3 offers file names wherever cld offers nothing.
+
   macOS's own `/bin/bash`, 3.2, takes Homebrew's `bash-completion` (1.3), which reads no such
   directory: install it, add the line its caveats show to `~/.bash_profile`, and write the script
   by hand, `cld completion bash > "$(brew --prefix)/etc/bash_completion.d/cld"`, which

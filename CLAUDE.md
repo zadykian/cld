@@ -32,6 +32,8 @@ cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata
 make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
 make docker-check                       # same as CI: tmux 3.7c built from source, tmux + jediterm
+make docker-blesh-check                 # the completion tests in bash with ble.sh, in that image
+                                        #   built on Ubuntu 26.04 with its package ble.sh
 make docker-image TMUX_VERSION=X        # an image with another tmux release, to try it by hand
 make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH, linux/darwin x amd64/arm64, cld.sha256,
                                         #   install.sh
@@ -39,8 +41,9 @@ make install PREFIX=DIR                 # build cld for the host into DIR/bin (V
 ```
 
 Native runs need Go, tmux 3.7 or newer, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`)
-runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, and `make check` on macOS with
-Homebrew tmux. Pushing a tag `vX.Y.Z` runs the checks and publishes a release: a binary per
+runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, the completion tests in the
+image built on Ubuntu with ble.sh in another, `blesh`, and `make check` on macOS with Homebrew
+tmux. Pushing a tag `vX.Y.Z` runs the checks and publishes a release: a binary per
 platform, `cld.sha256` and `install.sh`.
 
 Pull requests land on `main` by fast-forward only, as the commits CI checked; GitHub's merge
@@ -90,16 +93,19 @@ not push such a change. Rebase onto `main` before either.
   and `Long` and its option usages (value names in backquotes: `` `NAME` ``). cobra wraps
   nothing: break the texts by hand within 80 columns, which `TestHelpText` checks - all but
   cobra's own last line, which names the command (81 columns for `setup completion`).
-- Shell completion is cobra's (`cld completion SHELL`, `__complete`): `join -n` offers the NAME,
-  and `join -s` the SUFFIX, of the names `list` shows, read as `list` reads them, `help` the
-  commands it takes, `setup project` and
-  `setup telemetry` among them, `setup project --mcp` its MCP servers, nothing offers file names
-  (`--collector-config`'s `FILE` neither), and completion makes none of the startup checks,
-  `setup telemetry`'s included, and never starts the interactive list (decisions 17 to 19 in
-  docs/design.md). The `Short`s are also what `cld <TAB>` shows.
-- `setup completion SHELL` (bash, zsh, fish) writes the script cobra generates, byte for byte
-  what `completion SHELL` prints, where the shell reads it, following `BASH_COMPLETION_USER_DIR`,
-  `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `ZDOTDIR`: bash-completion 2's user directory,
+- Shell completion is cobra's (`cld completion SHELL`, `__complete`), bash's script with lines of
+  cld's at the end of `__start_cld` that turn off file names, and ble.sh's own completions, where
+  cld offers none under ble.sh (`bashScript`, decision 27): `join -n` offers the NAME, and
+  `join -s` the SUFFIX, of the names `list` shows, read as `list` reads them, `help` the
+  commands it takes, `setup project` and `setup telemetry` among them, `setup project --mcp` its
+  MCP servers, nothing offers file names (`--collector-config`'s `FILE` neither), and completion
+  makes none of the startup checks, `setup telemetry`'s included, and never starts the
+  interactive list (decisions 17 to 19 in docs/design.md). The `Short`s are also what
+  `cld <TAB>` shows.
+- `setup completion SHELL` (bash, zsh, fish) writes the script cobra generates (bash's with cld's
+  lines), byte for byte what `completion SHELL` prints, where the shell reads it, following
+  `BASH_COMPLETION_USER_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `ZDOTDIR`: bash-completion 2's
+  user directory,
   `~/.config/fish/completions`, and for zsh `~/.local/share/cld/zsh/_cld` with lines at the end
   of `.zshrc` that load it, running `compinit -i` only where nothing has before them (decision
   22). It reads both files before it writes either, writes through `internal/configfile`, and
@@ -232,7 +238,10 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   warning for one it cannot write; `completion_test.go` — `setup completion` in the sandbox's
   home directory: each script and `.zshrc`'s lines where the variables say, files that exist,
   refusals, and bash (with bash-completion 2), zsh and fish loading them, each skipped where it
-  is not installed (`tests/Dockerfile` installs all three).
+  is not installed (`tests/Dockerfile` installs all three); and bash with ble.sh, where it is
+  installed, completing lines typed into a tmux pane - TAB writes the line to a file once ble.sh
+  is done - which `make docker-blesh-check` runs in the image built on Ubuntu with `PACKAGES`
+  `ble.sh`, `CLD_BLESH` making the test fail where it would skip.
 
 ## Documentation conventions
 

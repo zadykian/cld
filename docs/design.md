@@ -104,6 +104,9 @@ rows that name none were probed against tmux 3.6.
 | where zsh 5.9 looks for `_cld` (Debian trixie, as an ordinary user without `sudo`; `cld join -n <TAB>` typed into an interactive zsh in a tmux pane, tmux 3.7c) | the user's `${fpath[1]}` is `/usr/local/share/zsh/site-functions`, owned by root with mode 755, so `cld completion zsh > "${fpath[1]}/_cld"`, the Linux line of cobra's help, fails with `permission denied`. With the script in `~/.zfunc/_cld` and `fpath=(~/.zfunc $fpath)` before `autoload -U compinit; compinit` in `~/.zshrc`, `$_comps[cld]` is `_cld` and the first TAB lists `bad -- exited`, `rev -- attached` and `review -- detached`; with the script written into that `${fpath[1]}` as root, the user's `compinit` loads it too |
 | where bash-completion 2.16, zsh 5.9 and fish 4.0.2 read a user's completion scripts, and what `source <(cld completion zsh)` in `.zshrc` needs (Debian trixie, each as a new ordinary user, cobra 1.10.2; `cld completion <TAB>` typed into an interactive shell in a tmux pane, tmux 3.7c; Ubuntu 24.04's `/etc/zsh/zshrc` read too) | bash-completion loads `completions/cld` from each directory of `$BASH_COMPLETION_USER_DIR`, split on `:`, or else from `${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion`, before the system's directories, and Debian's `/etc/skel/.bashrc` loads bash-completion. fish's `$fish_complete_path` starts with `~/.config/fish/completions` (`$XDG_CONFIG_HOME/fish/completions`), then `/etc/fish/completions` and `~/.local/share/fish/vendor_completions.d`: a script in the first hides one in the others. fish makes `~/.config/fish` at its first interactive start, not for `fish -c`: writing the script into `completions` before then fails with `warning: Path '/home/u/.config/fish/completions' does not exist`, but fish reads the directory once made for it. `/etc/zsh/zshrc` runs `compinit` for every user on Ubuntu, unless `skip_global_compinit` is set, and not on Debian. With `compdef _gnu_generic foo` between two `compinit`s, `$_comps[foo]` is empty after the second. `source <(cld completion zsh)` in `.zshrc` needs `compinit` before it - without, zsh prints `command not found: compdef` as it starts and `$_comps[cld]` is empty - and cld on the `PATH` by then: without, zsh prints `command not found: cld` |
 | the lines `cld setup completion zsh` adds to `.zshrc` (the same systems; `$_comps[cld]`, and `$functions_source[_cld]` after `autoload +X _cld`, printed by `zsh -ic`, and `cld setup completion <TAB>` typed into each of the three shells) | alone, they run `compinit` and register `_cld`, loaded from cld's file; after `compinit` and `compdef _gnu_generic foo`, both stay registered; before them, the later `compinit` registers `_cld` all the same, from `$fpath`, by the script's `#compdef cld`. `$XDG_DATA_HOME` and `$ZDOTDIR` move them as zsh reads them. With the script missing they do nothing, `compinit` included, and cld need not be on the `PATH` as zsh starts. The first TAB lists `bash`, `zsh` and `fish` with their descriptions in zsh, and so do bash - through Debian's own `~/.bashrc` - and fish, from the scripts `setup completion` wrote |
+| cld's completion in bash with ble.sh, which edits the command line in readline's place and runs the completion functions itself: cobra 1.10.2's bash script, bash-completion 2.16, ble.sh 0.4.0~git20250806.8060b7a (Ubuntu 26.04's package, bash 5.3.9) and 0.4.0-nightly+d81fd54 (2026-09-08); lines typed into an interactive bash in a tmux pane, tmux 3.7c, from the JetBrains terminal's rcfile, a login shell and bash with ble.sh alone | cld's answers complete as in bash - commands, options, `join -n` and `-s`, `--mcp` after a comma - and ble.sh's menu shows the descriptions, which its adapter for cobra's script reads; choosing one inserts the word alone. Where cld offers nothing (`:4`: `new`, `kill -s`, `--collector-config`, an unknown command), ble.sh offers the directory's file names, on TAB and in grey as a line is typed. The script turns off `-o default` with `compopt` only where `type -t compopt` is `builtin`, and ble.sh makes `compopt` a function of its own while it runs a completion function, so `-o default` stays on; and wherever a function offers nothing, ble.sh offers completions of its own - options it reads from the help, file names - unless the function turns off `ble/default` (`compopt +o ble/default`; `-o ble/no-default` before). From the end of `__start_cld`, `compopt +o ble/default` alone leaves the file names of `-o default`; `compopt +o default +o ble/default` offers nothing, on TAB and in grey, and changes nothing else; bash's own `compopt` fails there, `not currently executing completion function`. ble.sh 0.4.0-devel3 (the latest release, 2023) takes no keys under bash 5.3; under bash 5.2.15 (Debian bookworm) it offers nothing there with cobra's script alone, and says `(no items)`. ble.sh 0.3.4 offers file names wherever a function offers nothing, and has no option against it (read from the source) |
+| `--mcp=go` and `-n=c` in bash with ble.sh (the same versions) | complete file names - `--mcp=go.`, the part `go.mod` and `go.sum` share, and `-n=cmd/` - where bash completes `--mcp=goland` and `-n=cld`: cld answers `goland` (cobra's script, as in bash, drops `--mcp=` from the word), but ble.sh's adapter for cobra's script keeps the answers that start with the whole word, `--mcp=go`, when they have descriptions, and then offers its own. With the lines of 27, `--mcp=go`, `-n=c` and `--name=c` complete nothing. With `CLD_COMPLETION_DESCRIPTIONS=0` they complete; `-n c` and `--mcp go` complete either way. The adapter's code is the same in the nightly |
+| the PATH of a pane that `new-session -d -e PATH=/b COMMAND`, run with `PATH=/c`, makes on a server started with `PATH=/a` (tmux 3.7c, Ubuntu 26.04) | `/c`, the client's: neither the server's nor `-e`'s. Without `-e`, and for `new-window`, `/c` too |
 | how long `cld __complete join -n ''` takes, beside `cld list | cat` (tmux 3.7c, in the image `tests/Dockerfile` builds on `debian:trixie`, 8 CPUs, load about 2; natively too, with Ubuntu's tmux 3.7c snap) | in the image about 3 ms with no socket, 22 ms with four sessions and 147 ms over 36 sockets, 16 of them stale, where `cld list | cat` took 9, 27 and 152 ms: one `list-sessions` a socket, as `list` (13.1), and no `tmux -V`. Before a server per session (13) it was one `list-sessions` in all: about 5 ms with no server and 10 ms with four sessions. Natively, where each tmux client of the snap took about 150 ms to start, 6 ms with no socket and 625 ms with four sessions |
 | when `claude` 2.1.282 reads its telemetry settings (Linux; this row and the next two with GoLand 2026.2.3 and the JetBrains OpenTelemetry plugin 2.1.5) | at startup only (the docs: environment variables). A running session keeps the endpoint it started with |
 | the plugin's receiver | a separate process, `java -jar .../open-telemetry-plugin/satellite/satellite.jar`, listening on all interfaces on a random port (37223 in the probe). Settings › OpenTelemetry › Common has "Use fixed OTLP server port" and "OTLP server port". Not probed: what a GoLand terminal gets from the plugin's terminal customizer (`SatelliteTerminalCustomizer`; its core module names `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and `OTEL_METRIC_EXPORT_INTERVAL`), and whether the `env` of `settings.json` wins over it for a claude started there |
@@ -230,7 +233,8 @@ than skipped, so a terminal gaining or losing support flips a test.
 ### CI
 
 - every push and pull request: lint; contract x tmux on one pinned tmux release (3.7c, built from
-  source, in a Linux container) and on Homebrew's current tmux on macOS; contract x JediTerm;
+  source, in a Linux container) and on Homebrew's current tmux on macOS; contract x JediTerm; the
+  completion tests in bash with ble.sh, in the same image built on Ubuntu (27.5);
 - nightly, on tags and on demand: contract x iTerm2 on macOS, uploading screenshots and logs on
   failure; non-blocking until it proves stable;
 - tags: release.
@@ -1510,6 +1514,46 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 
     Out of scope: `[w]` for a shell `cd` into a worktree that the session's directory does not
     follow, and saying which worktree.
+
+27. Completion in bash with ble.sh: where cld offers no file names, bash with ble.sh offers none
+    either. ble.sh, a line editor that runs in bash in readline's place, completes through the
+    script `setup completion bash` writes, but offered the directory's file names wherever cld
+    offers nothing, against 17.3 (see Findings); the maintainer uses it. Settled with it:
+    1. `completion bash` prints cobra's script with five lines of cld's at the end of
+       `__start_cld`, the function that completes `cld`, and `setup completion bash` writes the
+       same (22.1): where the directive has `ShellCompDirectiveNoFileComp` and `compopt` is a
+       function in a shell ble.sh runs in (`$BLE_VERSION` set), `compopt +o default +o
+       ble/default` - what cobra's lines do in bash, which they leave undone under ble.sh, and
+       ble.sh's own completions off. In bash, and in bash with ble.sh loaded but not attached, the
+       lines do nothing. The zsh and fish scripts, and `completion powershell`, are cobra's as
+       they were;
+    2. cld inserts them before the `}` that ends `__start_cld`, the one place where
+       `__cld_process_completion_results` is followed by it, and panics where cobra's template
+       no longer has that: a bump of cobra that changes it fails every test that prints the
+       script. The script still starts as cobra's does, so `update` writes it anew where the
+       new release prints another (22.5), with the lines; one without descriptions gets them too;
+    3. other ways: the fix in ble.sh's adapter for cobra's script, which would help every cobra
+       program but leave cld's users waiting on a ble.sh release, and does not keep `-o default`
+       from offering file names; a bash script of cld's own, one more copy to keep in step with
+       cobra's (17.1); lines in `~/.bashrc`, which cld edits none of (22.4);
+    4. not done: `--mcp=SERVER`, `-n=NAME` and `--name=NAME`, which ble.sh completed with file
+       names while descriptions are on, and with the lines completes with nothing (see
+       Findings) - its adapter's to fix; the user guide says to write `-n NAME`. ble.sh 0.3
+       offers file names wherever cld offers nothing, and cannot be told not to;
+    5. the tests: `TestSetupCompletionBashBleSh` types lines into bash in a tmux pane, with
+       bash-completion and ble.sh loaded by `~/.bashrc` as Ubuntu's `~/.bashrc` and ble.sh's
+       instructions load them, and one TAB after each: a command, an option, `join -n`'s NAME and
+       `-s`'s SUFFIX, and nothing for four arguments where the file in the directory would
+       complete; with several, the commands' descriptions on screen. TAB runs a widget that runs
+       ble.sh's `complete`, then writes its status and the command line to a file, which the test
+       waits for: ble.sh cancels a completion when a key comes, so no key can follow TAB before it
+       is done, and a completion it cancelled (status 148), which would leave the line as it was,
+       fails the test. Keys typed before ble.sh draws its prompt are lost, so the test waits for
+       it, and it runs `new-session` itself, with the cld under test first on the PATH, which
+       tmux gives the pane from the client (see Findings). It runs where ble.sh is installed, and skips elsewhere - the Debian image and macOS among
+       them. `make docker-blesh-check` builds the test image on Ubuntu 26.04 with its package
+       `ble.sh` and runs the completion tests there, with `CLD_BLESH` naming ble.sh, so that the
+       test fails where it would skip; CI's `blesh` job runs them the same way.
 
 ## Implementation notes
 

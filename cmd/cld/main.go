@@ -5,8 +5,8 @@
 // a local OpenTelemetry collector for claude, in internal/telemetry, cld update, which replaces
 // cld with the latest release, in internal/update, and cld setup completion, which writes the
 // completion script where a shell reads it, in internal/completion.
-// cld completion SHELL prints cobra's completion script for the shell, with which cld join -n
-// completes the names cld list shows (see commandLine).
+// cld completion SHELL prints cobra's completion script for the shell - bash's with lines of
+// cld's for ble.sh - with which cld join -n completes the names cld list shows (see commandLine).
 package main
 
 import (
