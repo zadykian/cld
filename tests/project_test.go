@@ -18,24 +18,49 @@ import (
 
 // cld setup project in the sandbox's work directory, a git work tree unless a test says otherwise,
 // against the real git, which checks the .gitignore cld writes. What cld writes where there was
-// nothing is this repository's own .claude/settings.json and .mcp.json with --mcp goland, which
-// the tests read from the repository (they run in its tests directory): a change to either shows
-// here, and goes with a change to cld.
+// nothing is this repository's own .claude/settings.json and .mcp.json with --mcp goland
+// --permissions cld, which the tests read from the repository (they run in its tests directory):
+// a change to either shows here, and goes with a change to cld.
 
 const (
 	// localSettings is the .claude/settings.local.json setup project writes where there is none.
 	localSettings = "{\n  \"$schema\": \"https://json.schemastore.org/claude-code-settings.json\"\n}\n"
-	// ignoreLines are the lines setup project adds to .gitignore.
-	ignoreLines = "/.claude/*\n!/.claude/settings.json\n"
+	// ignoreLines are the lines setup project adds to .gitignore, and addedLines how it reports
+	// them.
+	ignoreLines = "/.claude/settings.local.json\n/.claude/plans/\n/.claude/worktrees/\n"
+	addedLines  = "/.claude/settings.local.json, /.claude/plans/, /.claude/worktrees/"
 )
 
-// serverAllow are the entries each MCP server adds to permissions.allow, and mcpEntries its entry
-// in .mcp.json's mcpServers, as cld writes it there.
+// readOnlyAllow is permissions.allow of the settings setup project writes with --permissions
+// read-only, the default, before what the MCP servers add; serverAllow are the entries each MCP
+// server adds with read-only and with cld; and mcpEntries each server's entry in .mcp.json's
+// mcpServers, as cld writes it there.
 var (
-	serverAllow = map[string][]string{
-		"goland":    {"mcp__goland"},
-		"jbcontext": {"Bash(jbcontext:*)", "mcp__jbcontext"},
-		"rider":     {"mcp__rider"},
+	readOnlyAllow = []string{
+		"Read",
+		"Bash(ls:*)",
+		"Bash(pwd:*)",
+		"Bash(cat:*)",
+		"Bash(head:*)",
+		"Bash(tail:*)",
+		"Bash(wc:*)",
+		"Bash(grep:*)",
+		"Bash(stat:*)",
+		"Bash(du:*)",
+		"Bash(which:*)",
+		"Bash(git status:*)",
+	}
+	serverAllow = map[string]map[string][]string{
+		"read-only": {
+			"goland":    ideTools("goland"),
+			"jbcontext": {"Bash(jbcontext search:*)", "mcp__jbcontext__code_search"},
+			"rider":     ideTools("rider"),
+		},
+		"cld": {
+			"goland":    {"mcp__goland"},
+			"jbcontext": {"Bash(jbcontext:*)", "mcp__jbcontext"},
+			"rider":     {"mcp__rider"},
+		},
 	}
 	mcpEntries = map[string]string{
 		"goland":    "    \"goland\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream\"\n    }",
@@ -43,6 +68,18 @@ var (
 		"rider":     "    \"rider\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream\"\n    }",
 	}
 )
+
+// ideTools are the entries of the tools of the IDE's MCP server name that --permissions read-only
+// allows: those GoLand 2026.2.3's server marks readOnlyHint.
+func ideTools(name string) []string {
+	var entries []string
+	for _, tool := range []string{"analyze_calls", "get_all_open_file_paths", "get_file_problems", "get_project_dependencies",
+		"get_project_modules", "get_repositories", "get_run_configurations", "get_symbol_info", "git_status", "lint_files",
+		"list_directory_tree", "read_file", "search_file", "search_regex", "search_symbol", "search_text"} {
+		entries = append(entries, "mcp__"+name+"__"+tool)
+	}
+	return entries
+}
 
 // repoFile is what the file name of cld's own repository holds.
 func repoFile(t *testing.T, name string) string {
@@ -72,21 +109,41 @@ func quoted(prefix string, entries []string) string {
 	return strings.Join(lines, ",\n")
 }
 
-// projectSettings is the .claude/settings.json setup project writes where there is none, with the
-// MCP servers named, in cld's order: the repository's own, whose server is goland, with theirs
-// in goland's place.
-func projectSettings(t *testing.T, servers ...string) string {
+// allowed is permissions.allow of the settings setup project writes with --permissions set and
+// the MCP servers named, in cld's order: with cld, the repository's own, but for goland's entry,
+// and then the servers'.
+func allowed(t *testing.T, set string, servers ...string) []string {
+	t.Helper()
+	var allow []string
+	switch set {
+	case "read-only":
+		allow = slices.Clone(readOnlyAllow)
+	case "cld":
+		allow = baseAllow(t)
+	}
+	for _, name := range servers {
+		allow = append(allow, serverAllow[set][name]...)
+	}
+	return allow
+}
+
+// projectSettings is the .claude/settings.json setup project writes where there is none, with
+// --permissions set and the MCP servers named, in cld's order: the repository's own, whose
+// permissions are cld's and whose server is goland, with the set's and the servers' in their
+// place, and no permissions where they allow nothing.
+func projectSettings(t *testing.T, set string, servers ...string) string {
 	t.Helper()
 	settings := repoFile(t, ".claude/settings.json")
-	var allow []string
-	for _, name := range servers {
-		allow = append(allow, serverAllow[name]...)
+	start, end := "  \"permissions\": {\n    \"allow\": [\n", "\n    ]\n  },\n"
+	from, to := strings.Index(settings, start), strings.Index(settings, end)
+	if from < 0 || to < from {
+		t.Fatalf("no permissions.allow in the repository's settings\n%s", settings)
 	}
-	added := ""
-	if len(allow) > 0 {
-		added = ",\n" + quoted("      ", allow)
+	permissions := ""
+	if allow := allowed(t, set, servers...); len(allow) > 0 {
+		permissions = start + quoted("      ", allow) + end
 	}
-	settings = replaceOnce(t, settings, ",\n      \"mcp__goland\"\n    ]", added+"\n    ]")
+	settings = settings[:from] + permissions + settings[to+len(end):]
 	enabled := ""
 	if len(servers) > 0 {
 		enabled = ",\n  \"enabledMcpjsonServers\": [\n" + quoted("    ", servers) + "\n  ]"
@@ -94,8 +151,8 @@ func projectSettings(t *testing.T, servers ...string) string {
 	return replaceOnce(t, settings, ",\n  \"enabledMcpjsonServers\": [\n    \"goland\"\n  ]", enabled)
 }
 
-// baseAllow is permissions.allow of the settings setup project writes without MCP servers: the
-// repository's own, but for goland's entry.
+// baseAllow is permissions.allow of the settings setup project writes with --permissions cld
+// without MCP servers: the repository's own, but for goland's entry.
 func baseAllow(t *testing.T) []string {
 	t.Helper()
 	var settings struct{ Permissions struct{ Allow []string } }
@@ -179,25 +236,33 @@ func tree(t *testing.T, dir string) map[string]string {
 	return entries
 }
 
-// setup project where there is nothing: each file as the repository has it with --mcp goland, the
-// servers in cld's order whatever the order given, each once, and git adding the settings and
-// .mcp.json but ignoring settings.local.json. Run again, it leaves every file as it is.
+// setup project where there is nothing: each file as the repository has it with --mcp goland
+// --permissions cld, read-only's entries by default and none with none, the servers in cld's order
+// whatever the order given, each once, and git adding the settings and .mcp.json but ignoring
+// settings.local.json. Run again, it leaves every file as it is.
 func TestSetupProject(t *testing.T) {
 	t.Parallel()
 	if want, got := repoFile(t, ".mcp.json"), mcpFile("goland"); got != want {
 		t.Fatalf("the repository's .mcp.json\n%s\nwant, as the tests expect of --mcp goland\n%s", want, got)
 	}
-	if got := projectSettings(t, "goland"); got != repoFile(t, ".claude/settings.json") {
-		t.Fatalf("the settings the tests expect of --mcp goland\n%s\nare not the repository's", got)
+	if got := projectSettings(t, "cld", "goland"); got != repoFile(t, ".claude/settings.json") {
+		t.Fatalf("the settings the tests expect of --mcp goland --permissions cld\n%s\nare not the repository's", got)
 	}
 	for _, test := range []struct {
-		args    []string
+		args []string
+		// set is the permissions expected, servers the MCP servers.
+		set     string
 		servers []string
 	}{
-		{nil, nil},
-		{[]string{"--mcp", "goland"}, []string{"goland"}},
-		{[]string{"--mcp=jbcontext"}, []string{"jbcontext"}},
-		{[]string{"--mcp", "rider,goland", "--mcp", "jbcontext,rider"}, []string{"goland", "jbcontext", "rider"}},
+		{nil, "read-only", nil},
+		{[]string{"--mcp", "goland"}, "read-only", []string{"goland"}},
+		{[]string{"--permissions", "read-only", "--mcp=jbcontext,rider"}, "read-only", []string{"jbcontext", "rider"}},
+		{[]string{"--mcp", "goland", "--permissions", "cld"}, "cld", []string{"goland"}},
+		{[]string{"--permissions=cld", "--mcp", "rider,goland", "--mcp", "jbcontext,rider"}, "cld", []string{"goland", "jbcontext", "rider"}},
+		{[]string{"--permissions", "cld"}, "cld", nil},
+		{[]string{"--permissions", "none"}, "none", nil},
+		{[]string{"--mcp=jbcontext", "--permissions", "none"}, "none", []string{"jbcontext"}},
+		{[]string{"--permissions", "none", "--permissions", "cld"}, "cld", nil},
 	} {
 		args := append([]string{"setup", "project"}, test.args...)
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -215,7 +280,7 @@ func TestSetupProject(t *testing.T) {
 			}
 			files := map[string]string{
 				".claude":                     "/",
-				".claude/settings.json":       projectSettings(t, test.servers...),
+				".claude/settings.json":       projectSettings(t, test.set, test.servers...),
 				".claude/settings.local.json": localSettings,
 				".gitignore":                  ignoreLines,
 			}
@@ -258,13 +323,13 @@ func TestSetupProject(t *testing.T) {
 	}
 }
 
-// Files that exist: cld sets the keys it manages - the last of a key given twice, which claude
-// reads - adds the entries that permissions.allow and enabledMcpjsonServers lack after theirs,
-// replaces a server's entry that differs from its own, whole - rider's here, with its port written
-// out and a header - and keeps everything else as the file has it: its order, indentation and mode,
-// the values it leaves - <, > and & in them - and the other servers, a server written otherwise but
-// the same included. settings.local.json is left as it is, a symbolic link to no file included, and
-// .gitignore gets the lines it lacks.
+// Files that exist: cld adds the keys it manages that a file lacks, and leaves the values it has -
+// theme and autoCompactEnabled too, which it set before - adds the entries that permissions.allow
+// and enabledMcpjsonServers lack after theirs, replaces a server's entry that differs from its
+// own, whole - rider's here, with its port written out and a header - and keeps everything else
+// as the file has it: its order, indentation and mode, the values it leaves - <, > and & in them -
+// and the other servers, a server written otherwise but the same included. settings.local.json is
+// left as it is, a symbolic link to no file included, and .gitignore gets the lines it lacks.
 func TestSetupProjectEditsFiles(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -277,7 +342,7 @@ func TestSetupProjectEditsFiles(t *testing.T) {
     },
     "theme": "light",
     "model": "opus",
-    "autoCompactEnabled": true,
+    "autoCompactEnabled": false,
     "enabledMcpjsonServers": ["github"],
     "hooks": {"Stop": []}
 }
@@ -299,15 +364,15 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 `)
 	projectWrite(t, s, ".gitignore", "node_modules/\n")
 	result := s.RunCld(nil, "setup", "project", "--mcp", "rider,jbcontext")
-	want := "Updated .claude/settings.json: $schema, permissions.allow, autoUpdatesChannel, plansDirectory, autoMemoryEnabled, theme, enabledMcpjsonServers\n" +
+	want := "Updated .claude/settings.json: $schema, permissions.allow, plansDirectory, enabledMcpjsonServers\n" +
 		"Left .claude/settings.local.json as it was\n" +
 		"Updated .mcp.json: mcpServers.rider\n" +
-		"Updated .gitignore: /.claude/*, !/.claude/settings.json\n"
+		"Updated .gitignore: " + addedLines + "\n"
 	if result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, want)
 	}
 	allow := []string{"Bash(make test)", "Read", "mcp__rider", "Read(<&>)"}
-	for _, entry := range append(baseAllow(t), "Bash(jbcontext:*)", "mcp__jbcontext", "mcp__rider") {
+	for _, entry := range allowed(t, "read-only", "jbcontext", "rider") {
 		if !slices.Contains(allow, entry) {
 			allow = append(allow, entry)
 		}
@@ -321,18 +386,16 @@ func TestSetupProjectEditsFiles(t *testing.T) {
         ],
         "defaultMode": "acceptEdits"
     },
-    "theme": "dark",
+    "theme": "light",
     "model": "opus",
-    "autoCompactEnabled": true,
+    "autoCompactEnabled": false,
     "enabledMcpjsonServers": [
         "github",
         "jbcontext",
         "rider"
     ],
     "hooks": {"Stop": []},
-    "autoUpdatesChannel": "latest",
-    "plansDirectory": ".claude/plans",
-    "autoMemoryEnabled": true
+    "plansDirectory": ".claude/plans"
 }
 `)
 	checkMode(t, settings, 0o666)
@@ -353,15 +416,16 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 		t.Errorf("left %q", leftovers)
 	}
 
-	// A key given twice: cld edits the last, and leaves the others as they are.
+	// A key given twice: cld adds entries to the last array, leaves the others as they are, and
+	// replaces neither value of a setting, nor a $schema of the file's own.
 	t.Run("a key given twice", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		gitInit(t, s)
-		settings := projectWrite(t, s, ".claude/settings.json", `{"theme": "light", "enabledMcpjsonServers": [], "theme": "light", "enabledMcpjsonServers": ["goland"]}`)
+		settings := projectWrite(t, s, ".claude/settings.json", `{"$schema": "https://example.com/settings.json", "plansDirectory": "plans", "enabledMcpjsonServers": ["goland"], "plansDirectory": "notes", "enabledMcpjsonServers": []}`)
 		projectWrite(t, s, ".mcp.json", `{"mcpServers": {"goland": {}}, "mcpServers": {"goland": {}, "goland": {"type": "sse"}}}`)
-		result := s.RunCld(nil, "setup", "project", "--mcp", "goland")
-		want := "Updated .claude/settings.json: $schema, permissions.allow, autoUpdatesChannel, plansDirectory, autoMemoryEnabled, theme, autoCompactEnabled\n" +
+		result := s.RunCld(nil, "setup", "project", "--mcp", "goland", "--permissions", "cld")
+		want := "Updated .claude/settings.json: permissions.allow, enabledMcpjsonServers\n" +
 			"Created .claude/settings.local.json\n" +
 			"Updated .mcp.json: mcpServers.goland\n" +
 			"Created .gitignore\n"
@@ -369,20 +433,18 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 			t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, want)
 		}
 		checkSettings(t, settings, `{
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "theme": "light",
-  "enabledMcpjsonServers": [],
-  "theme": "dark",
+  "$schema": "https://example.com/settings.json",
+  "plansDirectory": "plans",
   "enabledMcpjsonServers": ["goland"],
+  "plansDirectory": "notes",
+  "enabledMcpjsonServers": [
+    "goland"
+  ],
   "permissions": {
     "allow": [
-`+quoted("      ", append(baseAllow(t), "mcp__goland"))+`
+`+quoted("      ", allowed(t, "cld", "goland"))+`
     ]
-  },
-  "autoUpdatesChannel": "latest",
-  "plansDirectory": ".claude/plans",
-  "autoMemoryEnabled": true,
-  "autoCompactEnabled": true
+  }
 }
 `)
 		checkFile(t, s, ".mcp.json", `{
@@ -406,36 +468,57 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 		}
 		checkFile(t, s, ".mcp.json", "{")
 	})
+
+	// With --permissions none, cld allows nothing, and reads no permissions: these are no object.
+	t.Run("no permissions", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		gitInit(t, s)
+		settings := projectWrite(t, s, ".claude/settings.json", `{"permissions": "ask"}`)
+		result := s.RunCld(nil, "setup", "project", "--permissions", "none")
+		if want := "Updated .claude/settings.json: $schema, plansDirectory\n"; result.Code != 0 || !strings.HasPrefix(result.Stdout, want) || result.Stderr != "" {
+			t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout starting with %q", result.Code, result.Stdout, result.Stderr, want)
+		}
+		checkSettings(t, settings, `{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": "ask",
+  "plansDirectory": ".claude/plans"
+}
+`)
+	})
 }
 
-// .gitignore gets /.claude/* and then !/.claude/settings.json where it lacks them, in its line
-// endings, after a newline where its last line has none. A line counts as there as git reads it:
-// with its leading slash or without, and without a carriage return or spaces at its end - but a
-// tab stays - and the exception only after the last line that ignores .claude/*. Each time git
-// adds the settings and ignores settings.local.json.
+// .gitignore gets /.claude/settings.local.json, /.claude/plans/ and /.claude/worktrees/ where it
+// lacks them, in its line endings, after a newline where its last line has none. A line counts as
+// there as git reads it, anywhere in the file: with its leading slash or without, and without a
+// carriage return or spaces at its end - but a tab stays. Each time git ignores
+// settings.local.json, the plans and the worktrees, and adds the rest of .claude: the settings,
+// CLAUDE.md, commands, skills.
 func TestSetupProjectGitignore(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name, before, after, added string
 	}{
-		{"empty", "", ignoreLines, "/.claude/*, !/.claude/settings.json"},
-		{"no newline at the end", "dist/", "dist/\n" + ignoreLines, "/.claude/*, !/.claude/settings.json"},
-		{"carriage returns", "dist/\r\n", "dist/\r\n/.claude/*\r\n!/.claude/settings.json\r\n", "/.claude/*, !/.claude/settings.json"},
+		{"empty", "", ignoreLines, addedLines},
+		{"no newline at the end", "dist/", "dist/\n" + ignoreLines, addedLines},
+		{"carriage returns", "dist/\r\n", "dist/\r\n/.claude/settings.local.json\r\n/.claude/plans/\r\n/.claude/worktrees/\r\n", addedLines},
 		{"there", "dist/\n" + ignoreLines, "", ""},
-		{"without slashes", ".claude/*\n!.claude/settings.json\n", "", ""},
-		{"with carriage returns", "/.claude/*\r\n!/.claude/settings.json\r\n", "", ""},
-		{"with spaces", "/.claude/*  \n!/.claude/settings.json \n", "", ""},
-		{"with a tab", "/.claude/*\n!/.claude/settings.json\t\n", "/.claude/*\n!/.claude/settings.json\t\n!/.claude/settings.json\n", "!/.claude/settings.json"},
-		{"ignored only", "/.claude/*\n", ignoreLines, "!/.claude/settings.json"},
-		{"excepted only", "!/.claude/settings.json\n", "!/.claude/settings.json\n" + ignoreLines, "/.claude/*, !/.claude/settings.json"},
-		{"excepted first", "!/.claude/settings.json\n/.claude/*\n", "!/.claude/settings.json\n" + ignoreLines, "!/.claude/settings.json"},
-		{"ignored again", ignoreLines + ".claude/*\n", ignoreLines + ".claude/*\n!/.claude/settings.json\n", "!/.claude/settings.json"},
+		{"in another order", "/.claude/worktrees/\ndist/\n/.claude/plans/\n/.claude/settings.local.json\n", "", ""},
+		{"without slashes", ".claude/settings.local.json\n.claude/plans/\n.claude/worktrees/\n", "", ""},
+		{"with carriage returns", "/.claude/settings.local.json\r\n/.claude/plans/\r\n/.claude/worktrees/\r\n", "", ""},
+		{"with spaces", "/.claude/settings.local.json  \n/.claude/plans/ \n/.claude/worktrees/\n", "", ""},
+		{"with a tab", "/.claude/settings.local.json\t\n/.claude/plans/\n/.claude/worktrees/\n",
+			"/.claude/settings.local.json\t\n/.claude/plans/\n/.claude/worktrees/\n/.claude/settings.local.json\n", "/.claude/settings.local.json"},
+		{"some", "/.claude/plans/\n", "/.claude/plans/\n/.claude/settings.local.json\n/.claude/worktrees/\n", "/.claude/settings.local.json, /.claude/worktrees/"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
 			gitInit(t, s)
 			projectWrite(t, s, ".gitignore", test.before)
+			for _, name := range []string{"CLAUDE.md", "commands/review.md", "skills/deploy/SKILL.md", "plans/plan.md", "worktrees/cld-x-0/main.go"} {
+				projectWrite(t, s, ".claude/"+name, "")
+			}
 			result := s.RunCld(nil, "setup", "project")
 			line, after := "Left .gitignore as it was\n", test.before
 			if test.added != "" {
@@ -445,33 +528,62 @@ func TestSetupProjectGitignore(t *testing.T) {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout ending in %q", result.Code, result.Stdout, result.Stderr, line)
 			}
 			checkFile(t, s, ".gitignore", after)
-			if got, want := gitStatus(t, s), []string{"!! .claude/settings.local.json", "?? .claude/settings.json", "?? .gitignore"}; !slices.Equal(got, want) {
+			want := []string{
+				"!! .claude/plans/plan.md",
+				"!! .claude/settings.local.json",
+				"!! .claude/worktrees/cld-x-0/main.go",
+				"?? .claude/CLAUDE.md",
+				"?? .claude/commands/review.md",
+				"?? .claude/settings.json",
+				"?? .claude/skills/deploy/SKILL.md",
+				"?? .gitignore",
+			}
+			if got := gitStatus(t, s); !slices.Equal(got, want) {
 				t.Errorf("git status %q, want %q", got, want)
 			}
 		})
 	}
 }
 
-// Once the files are written, cld asks git whether it ignores .claude/settings.json all the same -
-// a pattern that ignores .claude/, which keeps git out of the directory, another after cld's
-// lines, git's own excludes - and says by what, with status 1, after the report. It does not ask
-// outside a git work tree, or without git.
+// Once the files are written, cld asks git whether it ignores what a project shares under .claude
+// all the same - a pattern that ignores .claude/, which keeps git out of the directory, the
+// /.claude/* that cld wrote before, but for what an exception after it keeps, another after cld's
+// lines, git's own excludes - and after the report warns of each by what, the paths ignored by a
+// pattern together, and ends with status 1 where git ignores .claude/settings.json. It does not
+// ask outside a git work tree, or without git. A directory is asked about as git sees it: a
+// symbolic link as a file, and a directory whatever files in it git tracks.
 func TestSetupProjectIgnoredAllTheSame(t *testing.T) {
 	t.Parallel()
-	const created = "Created .claude/settings.json\nCreated .claude/settings.local.json\n"
+	const (
+		created = "Created .claude/settings.json\nCreated .claude/settings.local.json\n"
+		updated = "Updated .gitignore: " + addedLines + "\n"
+		// others are the paths a project shares under .claude, but for the settings.
+		others = ".claude/commands/, .claude/agents/, .claude/skills/, .claude/rules/, .claude/hooks/ and .claude/CLAUDE.md"
+		shared = ", which a project shares through git, by the pattern "
+	)
 	for _, test := range []struct {
 		name, gitignore, exclude string
 		// git is whether the work directory is a git work tree, with git on the PATH.
 		git            bool
+		code           int
 		stdout, stderr string
 	}{
-		{"the directory", ".claude/\n", "", true, created + "Updated .gitignore: /.claude/*, !/.claude/settings.json\n",
-			"cld: git ignores .claude/settings.json all the same, by the pattern .claude/ (.gitignore, line 1)\n"},
-		{"after cld's lines", ignoreLines + "*.json\n", "", true, created + "Left .gitignore as it was\n",
-			"cld: git ignores .claude/settings.json all the same, by the pattern *.json (.gitignore, line 3)\n"},
-		{"git's excludes", "", ".claude\n", true, created + "Created .gitignore\n",
-			"cld: git ignores .claude/settings.json all the same, by the pattern .claude (.git/info/exclude, line 1)\n"},
-		{"no work tree", ".claude/\n", "", false, created + "Updated .gitignore: /.claude/*, !/.claude/settings.json\n", ""},
+		{"the directory", ".claude/\n", "", true, 1, created + updated,
+			"cld: warning: git ignores " + others + shared + ".claude/ (.gitignore, line 1)\n" +
+				"cld: git ignores .claude/settings.json all the same, by the pattern .claude/ (.gitignore, line 1)\n"},
+		{"cld's lines before", "/.claude/*\n!/.claude/settings.json\n", "", true, 0, created + updated,
+			"cld: warning: git ignores " + others + shared + "/.claude/* (.gitignore, line 1)\n"},
+		{"cld's lines before, with exceptions", "/.claude/*\n!/.claude/settings.json\n!/.claude/*/\n!/.claude/CLAUDE.md\n", "", true, 0, created + updated, ""},
+		{"some of them", "skills/\n*.md\n.claude/rules\n", "", true, 0, created + updated,
+			"cld: warning: git ignores .claude/skills/" + shared + "skills/ (.gitignore, line 1)\n" +
+				"cld: warning: git ignores .claude/rules/" + shared + ".claude/rules (.gitignore, line 3)\n" +
+				"cld: warning: git ignores .claude/CLAUDE.md" + shared + "*.md (.gitignore, line 2)\n"},
+		{"after cld's lines", ignoreLines + "*.json\n", "", true, 1, created + "Left .gitignore as it was\n",
+			"cld: git ignores .claude/settings.json all the same, by the pattern *.json (.gitignore, line 4)\n"},
+		{"git's excludes", "", ".claude\n", true, 1, created + "Created .gitignore\n",
+			"cld: warning: git ignores " + others + shared + ".claude (.git/info/exclude, line 1)\n" +
+				"cld: git ignores .claude/settings.json all the same, by the pattern .claude (.git/info/exclude, line 1)\n"},
+		{"no work tree", ".claude/\n", "", false, 0, created + updated, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -488,14 +600,10 @@ func TestSetupProjectIgnoredAllTheSame(t *testing.T) {
 				projectWrite(t, s, ".git/info/exclude", test.exclude)
 			}
 			result := s.RunCld(extra, "setup", "project")
-			code := 0
-			if test.stderr != "" {
-				code = 1
+			if result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.stderr {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q", result.Code, result.Stdout, result.Stderr, test.code, test.stdout, test.stderr)
 			}
-			if result.Code != code || result.Stdout != test.stdout || result.Stderr != test.stderr {
-				t.Errorf("exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q", result.Code, result.Stdout, result.Stderr, code, test.stdout, test.stderr)
-			}
-			checkFile(t, s, ".claude/settings.json", projectSettings(t))
+			checkFile(t, s, ".claude/settings.json", projectSettings(t, "read-only"))
 		})
 	}
 	t.Run("no git", func(t *testing.T) {
@@ -504,8 +612,75 @@ func TestSetupProjectIgnoredAllTheSame(t *testing.T) {
 		gitInit(t, s)
 		projectWrite(t, s, ".gitignore", ".claude/\n")
 		result := s.RunCld(map[string]string{"PATH": s.Tools()}, "setup", "project")
-		if want := created + "Updated .gitignore: /.claude/*, !/.claude/settings.json\n"; result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+		if want := created + updated; result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 			t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, want)
+		}
+	})
+	// A symbolic link to a directory of skills, which git keeps as a link, is asked about as a
+	// file: git would refuse the path with a slash, and answer for none.
+	t.Run("a symbolic link", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		gitInit(t, s)
+		projectWrite(t, s, ".gitignore", "/.claude/*\n!/.claude/settings.json\n*.json\n")
+		skills := filepath.Join(s.Root, "skills")
+		for _, dir := range []string{filepath.Join(skills, "deploy"), filepath.Join(s.Work, ".claude")} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.Symlink(skills, filepath.Join(s.Work, ".claude", "skills")); err != nil {
+			t.Fatal(err)
+		}
+		result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root}, "setup", "project")
+		want := "cld: warning: git ignores .claude/commands/, .claude/agents/, .claude/skills, .claude/rules/, " +
+			".claude/hooks/ and .claude/CLAUDE.md" + shared + "/.claude/* (.gitignore, line 1)\n" +
+			"cld: git ignores .claude/settings.json all the same, by the pattern *.json (.gitignore, line 3)\n"
+		if result.Code != 1 || result.Stdout != created+updated || result.Stderr != want {
+			t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stdout %q, stderr %q", result.Code, result.Stdout, result.Stderr, created+updated, want)
+		}
+	})
+	// A directory with files the project added all the same (git add -f) is ignored all the same:
+	// git ignores a new file there. A file git tracks is shared, whatever pattern matches it.
+	t.Run("files added all the same", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		gitInit(t, s)
+		projectWrite(t, s, ".gitignore", ".claude/\n")
+		projectWrite(t, s, ".claude/settings.json", projectSettings(t, "read-only"))
+		projectWrite(t, s, ".claude/CLAUDE.md", "")
+		projectWrite(t, s, ".claude/skills/deploy/SKILL.md", "")
+		runGit(t, s, s.Work, "add", "-f", ".claude/settings.json", ".claude/CLAUDE.md", ".claude/skills/deploy/SKILL.md")
+		result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root}, "setup", "project")
+		stdout := "Left .claude/settings.json as it was\nCreated .claude/settings.local.json\n" + updated
+		want := "cld: warning: git ignores .claude/commands/, .claude/agents/, .claude/skills/, .claude/rules/ and " +
+			".claude/hooks/" + shared + ".claude/ (.gitignore, line 1)\n"
+		if result.Code != 0 || result.Stdout != stdout || result.Stderr != want {
+			t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q, stderr %q", result.Code, result.Stdout, result.Stderr, stdout, want)
+		}
+	})
+	// A submodule, which git's index holds as one entry, checked out (the skills) or not (the
+	// agents, an empty directory), is shared whatever pattern matches it: what is in it is its own
+	// repository's. A repository in .claude that is no submodule (the commands) is ignored.
+	t.Run("submodules", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		gitInit(t, s)
+		projectWrite(t, s, ".gitignore", "/.claude/*\n!/.claude/settings.json\n")
+		for _, name := range []string{"skills", "agents", "commands"} {
+			dir := filepath.Join(s.Work, ".claude", name)
+			runGit(t, s, s.Root, "init", "-q", dir)
+			runGit(t, s, dir, "commit", "-q", "--allow-empty", "-m", name)
+		}
+		runGit(t, s, s.Work, "add", "-f", ".claude/skills", ".claude/agents")
+		if err := os.RemoveAll(filepath.Join(s.Work, ".claude", "agents", ".git")); err != nil {
+			t.Fatal(err)
+		}
+		result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root}, "setup", "project")
+		want := "cld: warning: git ignores .claude/commands/, .claude/rules/, .claude/hooks/ and .claude/CLAUDE.md" +
+			shared + "/.claude/* (.gitignore, line 1)\n"
+		if result.Code != 0 || result.Stdout != created+updated || result.Stderr != want {
+			t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q, stderr %q", result.Code, result.Stdout, result.Stderr, created+updated, want)
 		}
 	})
 }
@@ -594,16 +769,19 @@ func TestSetupProjectCannotWrite(t *testing.T) {
 	if result.Code != 1 || result.Stderr != want || result.Stdout != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
 	}
-	checkFile(t, s, ".claude/settings.json", projectSettings(t))
+	checkFile(t, s, ".claude/settings.json", projectSettings(t, "read-only"))
 	checkSettings(t, target, "")
 }
 
 // setup project's mistakes are usage errors, read left to right as other commands' are: a server
-// that --mcp does not take, the empty one included, an argument, an option cld does not know.
-// Nothing is written.
+// that --mcp does not take, the empty one included, and then a set that --permissions does not
+// take, an argument, an option cld does not know. Nothing is written.
 func TestSetupProjectRejectsArguments(t *testing.T) {
 	t.Parallel()
-	const servers = ": goland, jbcontext or rider (see cld help)\n"
+	const (
+		servers = ": goland, jbcontext or rider (see cld help)\n"
+		sets    = ": read-only, cld or none (see cld help)\n"
+	)
 	for _, test := range []struct {
 		args []string
 		want string
@@ -615,6 +793,13 @@ func TestSetupProjectRejectsArguments(t *testing.T) {
 		{[]string{"--mcp=goland,"}, "cld: invalid MCP server '' for --mcp" + servers},
 		{[]string{"--mcp", "goland rider"}, "cld: invalid MCP server 'goland rider' for --mcp" + servers},
 		{[]string{"--mcp"}, "cld: option '--mcp' needs a value (see cld help)\n"},
+		{[]string{"--permissions", "all"}, "cld: invalid permissions 'all' for --permissions" + sets},
+		{[]string{"--permissions", "Cld"}, "cld: invalid permissions 'Cld' for --permissions" + sets},
+		{[]string{"--permissions", ""}, "cld: invalid permissions '' for --permissions" + sets},
+		{[]string{"--permissions=read-only,cld"}, "cld: invalid permissions 'read-only,cld' for --permissions" + sets},
+		{[]string{"--permissions", "all", "--mcp", "idea"}, "cld: invalid MCP server 'idea' for --mcp" + servers},
+		{[]string{"--permissions"}, "cld: option '--permissions' needs a value (see cld help)\n"},
+		{[]string{"--permissions", "cld", "none"}, "cld: setup project: unexpected argument 'none' (see cld help)\n"},
 		{[]string{"x"}, "cld: setup project: unexpected argument 'x' (see cld help)\n"},
 		{[]string{"--mcp", "goland", "rider"}, "cld: setup project: unexpected argument 'rider' (see cld help)\n"},
 		{[]string{"x", "--mcp", "goland"}, "cld: setup project: unexpected argument 'x' (see cld help)\n"},

@@ -98,7 +98,8 @@ not push such a change. Rebase onto `main` before either.
   cld offers none under ble.sh (`bashScript`, decision 27): `join -n` offers the NAME, and
   `join -s` the SUFFIX, of the names `list` shows, read as `list` reads them, `help` the
   commands it takes, `setup project` and `setup telemetry` among them, `setup project --mcp` its
-  MCP servers, nothing offers file names (`--collector-config`'s `FILE` neither), and completion
+  MCP servers and `--permissions` its sets, nothing offers file names (`--collector-config`'s
+  `FILE` neither), and completion
   makes none of the startup checks, `setup telemetry`'s included, and never starts the
   interactive list (decisions 17 to 19 in docs/design.md). The `Short`s are also what
   `cld <TAB>` shows.
@@ -162,12 +163,17 @@ not push such a change. Rebase onto `main` before either.
   Outside the tests - whose fake docker comes first on the `PATH` - run it only with `HOME` and
   `CLAUDE_CONFIG_DIR` pointing at a scratch directory. The collector image is pinned
   (`otel/opentelemetry-collector:0.161.0`) and bumped deliberately.
-- `setup project` writes in the current directory, as this repository has them: `--mcp goland`
-  writes its `.claude/settings.json` and `.mcp.json` byte for byte, which `project_test.go`
-  checks, so change those files and `internal/project` together. It edits files that exist in
-  place and removes nothing; `.claude/settings.local.json` is only created. In a git work tree it
-  then checks with `git check-ignore` that git does not ignore `.claude/settings.json`
-  (decision 19).
+- `setup project` writes in the current directory, as this repository has them:
+  `--mcp goland --permissions cld` writes its `.claude/settings.json` and `.mcp.json` byte for
+  byte, which `project_test.go` checks, so change those files and `internal/project` together;
+  the default `--permissions` is `read-only`. The settings hold nothing of one person's (no
+  `theme`), and `.gitignore` gets `/.claude/settings.local.json`, `/.claude/plans/` and
+  `/.claude/worktrees/`, so that git adds what a project shares in `.claude`. It edits files
+  that exist in place, never replaces a value the settings have - but it replaces a server's
+  entry in `.mcp.json` that differs, whole - and removes nothing;
+  `.claude/settings.local.json` is only created. In a git work tree it then checks with
+  `git check-ignore` that git does not ignore `.claude/settings.json`, and warns of the other
+  files a project shares under `.claude` that git ignores (decisions 19 and 28).
 - `setup` has commands of its own: `run` checks the argument after it before cobra, as it checks
   the first, and after `setup completion` the shell, and `help` takes `setup project`,
   `setup telemetry` and `setup completion SHELL`. Their checks (Linux, docker)
@@ -230,7 +236,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   against the fake docker: its calls, the collector config, the port, the settings file, failures
   (Linux only; macOS checks the refusal); `project_test.go` — `setup project` against the real
   git: the files as the repository has them, edits of files that exist, `.gitignore`'s lines,
-  patterns that ignore the settings all the same, refusals; `install_test.go` — `install.sh`
+  patterns that ignore the settings, or the files a project shares under `.claude`, all the same
+  (old lines, a symbolic link, `git add -f`, submodules), refusals; `install_test.go` — `install.sh`
   piped into `sh` and `bash`, against releases an HTTP server of the test's serves
   (`CLD_RELEASES_URL`) and a fake `uname`: platforms, versions, directories, refusals, and the
   script cut short at every line; `update_test.go` — `cld update` of a cld built as release 0.4.0

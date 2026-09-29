@@ -1,23 +1,35 @@
-set claude up in the project in the current directory, as cld's own repository
-has it: .claude/settings.json holds the settings the project shares through
-git - what claude may do without asking, and a few settings more - and
+set claude up in the project in the current directory: .claude/settings.json
+holds the settings the project shares through git - what claude may do without
+asking, which --permissions sets, and where claude keeps its plans - and
 .claude/settings.local.json, holding its $schema alone, is for your own.
-.gitignore gets /.claude/* and !/.claude/settings.json: git ignores what claude
-keeps in .claude, but for the shared settings. With --mcp, cld adds MCP servers
-to .mcp.json, and the settings enable them and let claude use them.
+.gitignore gets /.claude/settings.local.json, /.claude/plans/ and
+/.claude/worktrees/: git ignores those, and adds what the project shares in
+.claude, such as its commands, agents and skills. With --mcp, cld adds MCP
+servers to .mcp.json, and the settings enable them and allow their tools as
+--permissions says.
 
-Where the files exist, cld adds what they lack: it sets its settings, adds its
-permissions and servers, and keeps everything else - settings.local.json whole.
-Then, in a git work tree, it checks that git does not ignore the settings.
+Where the files exist, cld adds what they lack and keeps everything else, the
+values of the settings it would set included, but for a server's entry in
+.mcp.json that differs from cld's, which it replaces. Then, in a git work tree,
+it checks that git does not ignore the settings, and warns of the other files a
+project shares under .claude that git ignores. Review the changes before you
+commit them: whoever trusts the project's folder gives claude what they allow.
 
 Usage:
-  cld setup project [--mcp SERVER] [flags]
+  cld setup project [--mcp SERVER] [--permissions SET] [flags]
 
 Flags:
-  -h, --help         help for project
-      --mcp SERVER   an MCP SERVER for claude in the project: goland or rider,
-                     the IDE's own server on 127.0.0.1, at the port in
-                     GOLAND_MCP_PORT or RIDER_MCP_PORT where claude runs, else
-                     the IDE's default, 64422 or 64482; or jbcontext, JetBrains
-                     Context's code search. Give --mcp again, or separate them
-                     with commas
+  -h, --help              help for project
+      --mcp SERVER        an MCP SERVER for claude in the project: goland or
+                          rider, the IDE's own server on 127.0.0.1, at the port
+                          in GOLAND_MCP_PORT or RIDER_MCP_PORT where claude
+                          runs, else the IDE's default, 64422 or 64482; or
+                          jbcontext, JetBrains Context's code search. Give --mcp
+                          again, or separate them with commas
+      --permissions SET   what claude may do in the project without asking:
+                          SET is read-only, the default, to read files, run
+                          commands that only read, such as git status and ls,
+                          and use the servers' tools that only read;
+                          cld, as cld's own repository has it, to edit files,
+                          run git, go, make, docker and more, and use every
+                          tool of the servers; or none, to allow nothing more

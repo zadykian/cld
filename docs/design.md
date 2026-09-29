@@ -140,6 +140,11 @@ rows that name none were probed against tmux 3.6.
 | `claude mcp list` (2.1.283, Linux, a scratch `CLAUDE_CONFIG_DIR`) in a project that `cld setup project --mcp goland,jbcontext,rider` wrote, GoLand and Rider 2026.2 running with their MCP servers on 64422 and 64482 | claude lists the three from `.mcp.json` - `claude mcp get jbcontext` names its scope `Project config (shared via .mcp.json)` - as `Pending approval (run claude to approve)` while the folder's workspace trust is not accepted; once it is, all three are `Connected`. Trusted, but without `enabledMcpjsonServers` in `.claude/settings.json`, they stay `Pending approval` |
 | the port of a JetBrains IDE's MCP server (GoLand 2026.2.3's `mcpserver` plugin, `McpServerSettings` and `McpServerService` read with `javap`; GoLand 2026.2.3 and Rider 2026.2.1 remote-development backends listening) | the default is 64342 plus an offset per product, chosen by `PlatformUtils.getPlatformPrefix()`: IntelliJ IDEA 0, CLion 20, DataGrip 60, GoLand 80, PhpStorm 100, PyCharm 120, Rider 140, RubyMine 160, RustRover 180, WebStorm 200, any other 0 - so GoLand listens on 64422 and Rider on 64482, as they do here, the two running at once; an authorized endpoint takes the port 100 above (64522, 64582). The MCP Server settings keep a port of their own (`mcpServerPort`), and the system property `idea.mcp.server.force.port` overrides both; where the port was never changed, the options file (`mcpServer.xml`) holds `enableMcpServer` alone. "Copy HTTP Stream Config" in those settings gives `http://127.0.0.1:PORT/stream` |
 | `${VAR:-DEFAULT}` in the URL of an `.mcp.json` server (claude 2.1.283, `claude mcp list` and `claude mcp get`, a scratch `CLAUDE_CONFIG_DIR`, the folder trusted, GoLand and Rider as above) | claude expands it as it connects: to DEFAULT where VAR is unset, and to VAR from its environment, or from the `env` of `$CLAUDE_CONFIG_DIR/settings.json`; VAR in the `env` of the project's `.claude/settings.local.json` was not used. It shows the URL with `${VAR}`, the default left out. `${VAR}` without a default, VAR unset: `[Warning] [goland] mcpServers.goland: Missing environment variables: VAR`, and the server fails with `'url' is not a valid URL` |
+| `git check-ignore --verbose -z --stdin` given several paths under `.claude` (git 2.53.0 on Ubuntu 26.04; the tests' cases also on git 2.47.3, in the image `tests/Dockerfile` builds) | it answers each path a pattern matches, an exception too, in the order given, as four NUL-ended fields, and leaves out a path none matches; it exits 1 only where none matches any. A path given with a trailing slash is taken for a directory before it exists: `skills/` matches `.claude/skills/`, not `.claude/skills`, until the directory exists; `.claude/` matches every path under `.claude`, the directory there or not. With `/.claude/*` and then `!/.claude/settings.json` in `.gitignore`, as cld wrote them until 28, git ignores `.claude/commands/`, `agents/`, `skills/`, `rules/`, `hooks/` and `CLAUDE.md`: `git status --untracked-files=all` does not show a new `.claude/skills/s/SKILL.md`, and `git add` refuses it (`The following paths are ignored by one of your .gitignore files`, `hint: Use -f`), exit 1. With `.claude/skills` a symbolic link to a directory, `.claude/skills/` ends it, whatever else it was given, with `fatal: pathspec '.claude/skills/' is beyond a symbolic link`, exit 128; `.claude/skills` it answers, by `/.claude/*`, as `git status --ignored` shows the link. It does not answer for a path git tracks, nor for a directory holding files added with `git add -f`, although git ignores a new one there (`git status --untracked-files=all` does not show `.claude/skills/b/SKILL.md` beside a tracked `.claude/skills/a/SKILL.md`); with `--no-index` it answers for both - for a tracked `.claude/settings.json` too, by `*.json` - and for a submodule, `.claude/skills` added with `git submodule add -f`, checked out or not (a clone that has not run `git submodule update`, an empty directory), which it does not answer for with the index; `git ls-files --stage -z -- .claude/skills` names that one `160000 OBJECT 0`, a tab and `.claude/skills`, from a subdirectory too, as a path from it. A repository in `.claude/commands` that is no submodule it answers for either way |
+| what claude keeps out of git itself (claude 2.1.284's bundle, read, not run; and this repository's `.git/info/exclude`) | claude appends to the repository's `.git/info/exclude`, where it lacks the line `# claude-code-runtime`, that line and `**/.claude/` patterns for its runtime files: `scheduled_tasks.lock`, `scheduled_tasks.json`, `routines/.state/`, `worktrees/`, `checkpoints/`, `mailbox/`, `agent-registry.json`, `agent-memory-local`, `first-run`, `assistant-daemon-state.json` - this repository's has them. Where it writes `.claude/settings.local.json` and git does not ignore that, it appends `**/.claude/settings.local.json` to the user's global excludes (`core.excludesfile`, else `$XDG_CONFIG_HOME/git/ignore` or `~/.config/git/ignore`). Neither covers the plans: `plansDirectory` is "relative to project root", and by default `~/.claude/plans/`. The bundle's own table of the settings files marks `.claude/settings.json` "Commit" and `settings.local.json` "Gitignore", and has them load user, project, local, a later one overriding |
+| the defaults of the settings cld wrote until 28 (claude 2.1.284's bundle, read, not run) | where no settings file sets them, `autoMemoryEnabled` is `true`, `autoCompactEnabled` `true`, `theme` `"dark"` and `autoUpdatesChannel` `"latest"`: the values cld wrote. All four are read from any settings file, the project's `.claude/settings.json` among them, which overrides `~/.claude/settings.json` |
+| read-only commands and permission rules (claude 2.1.284's bundle, read, not run; git 2.53.0, run in a scratch repository) | claude runs bare read-only commands without asking - the bundle's own advice says "many bare read-only commands (`ls`, `cat`, `git status`, ...) are auto-allowed by Claude Code and never prompt" - and checks the options of `git diff`, `git log`, `git show`, `git status` and others against lists of safe ones, which have no `--output`. A rule `Bash(PREFIX:*)` is a prefix rule, as `Bash(PREFIX *)` is: it matches `PREFIX` alone or followed by a space and anything - "prefix STRING matches with NO flag-level analysis", in the bundle's words, which go on: "`git log --output=<file>` and `git diff --output=<file>` write arbitrary files ... so `Bash(git log *)` admits every flag form those validators deliberately reject". With git 2.53.0, `git log -1 --format='[core]%n%x09fsmonitor = "touch PWNED; echo"%n' --output=.git/config` and then `git status` made the file `PWNED`. The target of an output redirection (`>`) claude checks as a file it would create, whatever rule matches the command |
+| the tools of the IDEs' MCP servers and of `jbcontext mcp` (`initialize`, then `tools/list`: over streamable HTTP to GoLand 2026.2.3's server on 64422, and over stdio to JetBrains Context 0.9.15's `jbcontext mcp`) | GoLand's server has 44 tools, `execute_terminal_command`, `execute_run_configuration`, `apply_patch`, `execute_sql_query` and `build_project` among them, and marks 16 with `readOnlyHint`: `analyze_calls`, `get_all_open_file_paths`, `get_file_problems`, `get_project_dependencies`, `get_project_modules`, `get_repositories`, `get_run_configurations`, `get_symbol_info`, `git_status`, `lint_files`, `list_directory_tree`, `read_file`, `search_file`, `search_regex`, `search_symbol`, `search_text`; none has `destructiveHint`. `jbcontext mcp` has one tool, `code_search`. `jbcontext`'s own commands include `logout`, `remove-index`, `upgrade`, `setup-agent` and `remove-agent` beside `search`. Rider's server was not probed |
 | real `claude` under tmux, first 12 s | enables `?2004` bracketed paste, `?2031` colour-scheme reports, `?1004` focus, `?1049` alt screen, `?1000/1002/1003/1006` SGR all-motion mouse; queries XTVERSION (`CSI > 0 q`), kitty keyboard (`CSI ? u`), DA1, DECRQM `?2026`; resets modifyOtherKeys (`CSI > 4 m`); sets the title `✳ <name>`. The pane stayed in key mode `VT10x`: no extended keys were requested in that window - because the probing shell carried `TERMINAL_EMULATOR` (see What the tests found) |
 | `claude` 2.1.283's own title (read from its bundle; and the `#{pane_title}` of a claude working in a session of cld's, read every 50 ms for 45 s) | `MARKER NAME`, the marker from claude's status: `◐` and `◑` in turn, every 960 ms, while it is `busy`; `✳` while it is `idle` or `waiting` - a permission dialog, an MCP server's question. Where `TMUX`, `STY` or `ZELLIJ` is set and the feature flag `tengu_static_title_under_mux` (on by default) holds, the marker stays `✳`: the pane's title read `✳ cld-NAME` throughout. claude also writes its status to `~/.claude/sessions/PID.json` (`status`, `statusUpdatedAt`), which no documentation names, and sends no OSC 9;4 that tmux records: `#{pane_pb_state}` stayed `hidden` |
 | claude's hook events (the linux-x64 bundles of 2.1.232 and 2.1.283, read, not run) | both have `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` ("When a permission dialog is displayed"), `Elicitation`, `ElicitationResult`, `Notification` - of the types `permission_prompt`, `idle_prompt`, `elicitation_dialog` and others - `Stop` and `StopFailure` ("Fires instead of Stop when an API error ... ended the turn"). `PostToolUseFailure`'s input has `is_interrupt`. No event comes when the user interrupts claude as it writes |
@@ -901,7 +906,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `--name=NAME` and `-n=NAME` complete; `-nNAME` does not (see Findings).
     3. Only `join -n` offers session names, and `help` the commands it takes (see 12.2), with
        their `Short`s, as cobra's help command does; since 19, `setup project --mcp` offers the MCP
-       servers it takes (19.8). `new -n` offers none: it refuses a name a
+       servers it takes (19.8), and since 28 `--permissions` its sets. `new -n` offers none: it
+       refuses a name a
        session holds, and cld keeps no record of the sessions that are gone. Nor does
        `resume -n`, for the same reason, or `resume`'s SESSION (16): offering the conversations
        claude keeps would mean reading its transcripts, which cld does not (16.4). `kill -n`
@@ -1073,21 +1079,26 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     `.claude/settings.local.json`, holding its `$schema` alone, and `/.claude/*` and
     `!/.claude/settings.json` in `.gitignore`, so that git ignores what claude keeps in `.claude`
     but for the shared settings. `--mcp` adds MCP servers: `goland`, `jbcontext` and `rider`.
+    Since 28 the settings are `$schema`, what `--permissions` allows and `plansDirectory`, and
+    `.gitignore` gets `/.claude/settings.local.json`, `/.claude/plans/` and `/.claude/worktrees/`.
     Settled with it:
-    1. the settings are those of this repository's `.claude/settings.json`: `--mcp goland` writes
-       it byte for byte, and its `.mcp.json`, which the tests check, so a change to either goes
+    1. the settings are those of this repository's `.claude/settings.json`: `--mcp goland` (since
+       28 with `--permissions cld`) writes it byte for byte, and its `.mcp.json`, which the tests
+       check, so a change to either goes
        with one to `internal/project`. They are Go data there - the allow list and the other keys
        - rather than an embedded copy of the file, so that each server's entries go where the
        file has goland's. They include the maintainer's tools (`dotnet`, `go`, `make`,
        `docker build`, `gh pr merge`) and `theme`, which are nobody else's defaults: a project
        edits them afterwards, and cld adds them back only when it runs there again, since it never
-       removes anything (see 4);
+       removes anything (see 4) - until 28, which put the list behind `--permissions cld` and
+       dropped `theme`;
     2. `--mcp SERVER`, given again or separated by commas (`--mcp goland,jbcontext`), takes
        `goland`, `jbcontext` or `rider`; any other name, the empty one included (`--mcp goland,`),
        is a usage error. Each server is written once, in that order, whatever the order given. A
        server is its entry in `.mcp.json`, its name in `enabledMcpjsonServers`, without which
        claude asks before it starts the server (see Findings), and `mcp__NAME` in
-       `permissions.allow`, which Claude Code's docs have match every tool of the server, so that
+       `permissions.allow` (since 28 with `--permissions cld`, and with `read-only` its tools that
+       only read, 28.5), which Claude Code's docs have match every tool of the server, so that
        claude uses them without asking (not probed); `jbcontext` also
        allows `Bash(jbcontext:*)`, since its hooks and instructions have claude run
        `jbcontext search`. `goland` and `rider` are the servers built into the IDEs, over
@@ -1111,7 +1122,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        subdirectory of one `.gitignore` is that directory's, its patterns anchored there;
     4. files that exist are edited in place, through `internal/configfile`, which `setup
        telemetry` uses for its settings (18.6): cld sets its keys - the last of a key given twice,
-       which claude reads - where their values differ, however they are written (`1.0` is `1`, an
+       which claude reads - where their values differ (since 28 only where the file lacks them),
+       however they are written (`1.0` is `1`, an
        object's members in any order); adds the entries `permissions.allow` and
        `enabledMcpjsonServers` lack, after theirs; replaces a server's entry in `.mcp.json` that
        differs, whole, since a merge would keep a stdio server's old `args` beside `mcp`, or a
@@ -1121,7 +1133,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        not given again. `.claude/settings.local.json`, someone's own, is only made, where nothing
        is - a symbolic link to no file counts as something. What is missing is created, `.claude`
        included, 0644 and 0755 less the umask. Running it again changes nothing;
-    5. `.gitignore` gets `/.claude/*` and then `!/.claude/settings.json`, where they are not there
+    5. `.gitignore` gets `/.claude/*` and then `!/.claude/settings.json` (until 28, 28.1), where
+       they are not there
        as git reads them (see Findings): without the leading slash, which a pattern with a slash
        before its end does not need, and with a carriage return or trailing spaces, but not a tab;
        the exception counts only after the last line that ignores `.claude/*`, where it wins. What
@@ -1136,7 +1149,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `--mcp`. The report has a line a file: created, updated with what changed - the keys, as
        `permissions.allow` or `mcpServers.rider`, or the lines added - or left as it was;
     7. in a git work tree cld then asks git whether it ignores `.claude/settings.json` all the
-       same (`git check-ignore -v -z --stdin`): a `.claude/` or `.claude` elsewhere - before cld's
+       same (`git check-ignore -v -z --stdin`; since 28 also what else a project shares under
+       `.claude`, of which it warns, 28.2): a `.claude/` or `.claude` elsewhere - before cld's
        lines, in `.git/info/exclude` or git's other excludes - keeps git out of the directory, and
        a `*.json` after them ignores the file again. It says so after the report, naming the
        pattern, its file and its line, and exits with status 1; it does not edit patterns it did
@@ -1574,6 +1588,84 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        and runs the completion tests there, with `CLD_BLESH` naming ble.sh, so that the test
        fails where it would skip; CI's `blesh` job runs them the same way.
 
+28. Project settings a team can share: `cld setup project` writes what a project shares, and none
+    of one developer's settings. It wrote this repository's own into any project - a theme, an
+    update channel, and an allow list that amounts to running commands without a prompt - and a
+    `.gitignore` that kept all of `.claude` but the settings out of git, what claude has a project
+    commit among it: a new skill showed in no `git status`, and cld exited 0 (see Findings).
+    Settled with it:
+    1. `.gitignore` gets `/.claude/settings.local.json`, `/.claude/plans/` and
+       `/.claude/worktrees/`, each where it is not there, anywhere in the file, as git reads it:
+       without the leading slash too, and with a carriage return or trailing spaces, but not a
+       tab. What is missing goes at the end, in the file's line endings, as in 19.5. git ignores
+       one developer's settings, the plans that `plansDirectory` keeps in the project, and
+       `claude --worktree`'s worktrees, and adds the rest of `.claude` - `commands/`, `agents/`,
+       `skills/`, `rules/`, `hooks/`, `CLAUDE.md` - which Claude Code's docs have a project
+       commit. claude keeps its other runtime files out of git itself, `worktrees/` among them
+       (see Findings); the line is written all the same, as it does not rest on when claude
+       writes its own;
+    2. cld removes no line: a project with `/.claude/*` and `!/.claude/settings.json`, which cld
+       wrote before, keeps them, and gets the new lines beside them. In a git work tree cld then
+       asks git (19.7) about each path a project shares under `.claude`, and after the report
+       warns of those git ignores, a warning a pattern: `cld: warning: git ignores
+       .claude/commands/, ... and .claude/CLAUDE.md, which a project shares through git, by the
+       pattern /.claude/* (.gitignore, line 1)`. `.claude/settings.json`, which cld writes to be
+       shared, still ends it with status 1. A directory is asked about with its slash, so that git
+       takes it for one before it exists, and with `--no-index`, so that git answers where the
+       project added files in it with `git add -f`: a new one there is ignored all the same - but
+       not a submodule, which the index holds as one entry (mode 160000, `git ls-files --stage`),
+       checked out or not, and whose files are its own repository's, out of the project's
+       patterns' reach; cld asks the index about the directories `--no-index` answers for. A
+       path there as something else - a symbolic link to a directory of skills shared between
+       projects, say, which git keeps as a link, and with the slash refuses, answering for no path
+       (see Findings) - is asked about as the files are: without the slash, and with the index,
+       since a file git tracks is shared whatever pattern matches it. Not taken: rewriting the old
+       lines, which a project may have made its own, and a check of each file under the
+       directories;
+    3. the settings are `$schema`, `permissions.allow` and `plansDirectory`, and with `--mcp`
+       `enabledMcpjsonServers`. `theme`, `autoUpdatesChannel`, `autoMemoryEnabled` and
+       `autoCompactEnabled` are gone: the first two are a person's, which the project's file would
+       override in each developer's `~/.claude/settings.json`, and all four restate claude's
+       defaults (see Findings). cld never replaces a value the file has, `$schema` and
+       `plansDirectory` included: it adds the keys and entries the file lacks (19.4 otherwise). A
+       project that ran an earlier cld keeps the four keys until it removes them;
+    4. `--permissions SET` picks what `permissions.allow` gets. `read-only`, the default: `Read`,
+       and `Bash` prefix rules for `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep`, `stat`, `du`,
+       `which` and `git status` - commands none of whose options runs another command, as
+       `find -exec` and `rg --pre` do, or writes a file, as `sort -o` and `tree -o` do. A prefix
+       rule admits every option (see Findings), so `git diff`, `git log` and `git show` are left
+       out: their `--output FILE` writes any file, `.git/config` among them, whose
+       `core.fsmonitor` the next `git status` runs - a claude that a prompt injected would run any
+       command without a prompt. claude runs the three without asking with the options it checks,
+       and asks for the others. `cld`: this repository's list, one developer's,
+       which lets claude edit files and run `git`, `go`, `make`, `docker run` and more without a
+       prompt. `none`: nothing, and cld does not read `permissions`. claude asks for no bare
+       read-only command anyway (see Findings), so `read-only` saves prompts for their other
+       options and for reading outside the project; what matters is that it is safe to share,
+       since whoever accepts the folder's workspace trust gives claude what the file allows. Any
+       other SET, the empty one included, is a usage error, checked after `--mcp`'s servers;
+       completion offers the three, each described;
+    5. a server allows what the set does of it: with `cld`, every tool (`mcp__NAME`) and, for
+       `jbcontext`, `Bash(jbcontext:*)`; with `read-only`, `mcp__NAME__TOOL` for each tool GoLand
+       2026.2.3's server marks `readOnlyHint` - Rider's too, the same platform's server, not
+       probed - and `Bash(jbcontext search:*)` and `jbcontext mcp`'s one tool, `code_search`
+       (see Findings); with `none`, nothing. An entry for a tool a server lacks allows nothing,
+       and a tool it adds later is asked for until cld's list has it;
+    6. this repository's `.claude/settings.json` and `.mcp.json` are what `cld setup project --mcp
+       goland --permissions cld` writes, byte for byte, which the tests check (19.1); its
+       `.gitignore` was changed by hand to the new lines. The README and the guide say what the
+       command writes, and to review it before committing;
+    7. the tests: each set, with servers and without, where there is nothing; a file with the
+       keys already, other values in them, a key given twice, and `none` beside a `permissions`
+       that is no object; the new lines as git reads them, with `git status` adding the shared
+       files and ignoring the personal ones; and the warnings - `.claude/`, the old lines with
+       and without exceptions after them, patterns that ignore some of the paths, git's excludes,
+       a symbolic link to a directory of skills, files added with `git add -f`, and submodules,
+       checked out and not, beside a repository that is none.
+
+    Out of scope: other MCP servers (19), removing the old lines or keys, and sets of a project's
+    own.
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -1823,9 +1915,10 @@ Where the implementation departs from the plan above:
   with `json.Indent`.
 - `setup project` (decision 19) is `internal/project`. Its tests run the real git, which checks
   what the `.gitignore` cld writes does (`git status --ignored`), and compare what `--mcp goland`
-  writes with the repository's own `.claude/settings.json` and `.mcp.json`, which they read from
-  the directory above `tests`. The write that fails, of `.gitignore` after the settings, comes
-  from a symbolic link to a file whose path is 4095 bytes long, as for `setup telemetry`.
+  (since 28 with `--permissions cld`) writes with the repository's own `.claude/settings.json` and
+  `.mcp.json`, which they read from the directory above `tests`. The write that fails, of
+  `.gitignore` after the settings, comes from a symbolic link to a file whose path is 4095 bytes
+  long, as for `setup telemetry`.
 - The tests fake docker with the probe, which TestMain links as `docker` next to `claude`, so
   every sandbox finds it before the real one. It records each call, with its environment, in
   `docker.jsonl`, keeps the one container's state in a file (`inspect`, `rm -f` and `run -d` read
@@ -1908,7 +2001,9 @@ by hand in a nested tmux).
 - `setup project` was checked by hand with git 2.53.0 and `claude mcp list` 2.1.283 (see
   Findings), the ports from their variables included; a claude session calling the servers' tools,
   and whether a session, rather than `claude mcp list`, takes the variables from the project's
-  `.claude/settings.local.json`, were not.
+  `.claude/settings.local.json`, were not. Nor were 28's permission sets tried in a claude
+  session: what claude asks for with each was read from its bundle, not run, and Rider's tools
+  were not listed.
 - `install.sh` is tested against releases the tests serve, under the `sh` and `bash` of the Linux
   image and of the macOS runner, and was run by hand against the release v0.4.0 on Linux (see
   Findings). Rosetta 2's `sysctl.proc_translated` was not probed on a Mac.

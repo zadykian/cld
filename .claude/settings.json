@@ -57,11 +57,7 @@
       "mcp__goland"
     ]
   },
-  "autoUpdatesChannel": "latest",
   "plansDirectory": ".claude/plans",
-  "autoMemoryEnabled": true,
-  "theme": "dark",
-  "autoCompactEnabled": true,
   "enabledMcpjsonServers": [
     "goland"
   ]

@@ -71,7 +71,7 @@ and `cld resume` `-s` or `SESSION`, with which it names its session as `cld new`
 | `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
 | `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
-| `cld setup project [--mcp SERVER]` | set claude up in the project in the current directory |
+| `cld setup project [--mcp SERVER] [--permissions SET]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
 | `cld setup completion SHELL` | set up completion in `bash`, `zsh` or `fish` |
 | `cld update` | update cld to the latest release, replacing the file it runs from, and the completion scripts |
@@ -122,11 +122,11 @@ run in the repository, takes the conversation back to it. See the
 
 ### Project settings
 
-`cld setup project` sets claude up in the project in the current directory, as cld's own
-repository has it: `.claude/settings.json` shares through git what claude may do without asking,
-and a few settings more; `.claude/settings.local.json` is for your own; and `.gitignore` keeps the
-rest of `.claude` out of git. `--mcp` adds MCP servers to `.mcp.json`, which claude may then use
-without asking:
+`cld setup project` sets claude up in the project in the current directory:
+`.claude/settings.json` shares through git what claude may do without asking, and where it keeps
+plans; `.claude/settings.local.json` is for your own settings; and `.gitignore` keeps those, the
+plans and claude's worktrees out of git, so that what the project shares in `.claude` - commands,
+agents, skills - goes in. `--mcp` adds MCP servers to `.mcp.json`:
 
 ```sh
 cld setup project --mcp goland,jbcontext   # or --mcp goland --mcp jbcontext
@@ -138,9 +138,21 @@ cld setup project --mcp goland,jbcontext   # or --mcp goland --mcp jbcontext
 | `rider` | Rider's own MCP server (Settings › Tools › MCP Server) |
 | `jbcontext` | JetBrains Context's semantic code search, `jbcontext mcp` |
 
-An IDE's port comes from `GOLAND_MCP_PORT` or `RIDER_MCP_PORT` where claude runs, or else is the
-IDE's default. cld edits files that exist in place, adding what they lack and removing nothing, so
-running it again changes nothing. See the [guide](docs/guide.md#project-settings).
+`--permissions` says what claude may do without asking:
+
+| `--permissions` | claude may |
+|---|---|
+| `read-only` (default) | read files, run commands that only read (`git status`, `ls`, `cat`, `grep`, ...) and use the servers' tools that only read |
+| `cld` | as cld's own repository has it: also edit files and run `git`, `go`, `make`, `docker run` and more, and use every tool of the servers |
+| `none` | nothing more than claude allows by itself |
+
+The settings are shared: whoever accepts the folder's workspace trust gives claude what they allow,
+and `cld` amounts to running commands without a prompt - review the changes before you commit
+them. An IDE's port comes from `GOLAND_MCP_PORT` or `RIDER_MCP_PORT` where claude runs, or else is
+the IDE's default. cld edits files that exist in place, adding what they lack - a setting the
+project has keeps its value, and a server's entry in `.mcp.json` that differs from cld's is
+replaced - and removing nothing, so running it again changes nothing. See the
+[guide](docs/guide.md#project-settings).
 
 ### Telemetry
 

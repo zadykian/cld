@@ -296,8 +296,8 @@ func TestCompletionScripts(t *testing.T) {
 
 // __complete offers the commands, completion and setup among them, and the commands help takes -
 // after setup or completion, theirs, and after setup completion, its shells - each with its
-// description; the options; the MCP servers of
-// setup project --mcp, after a comma the others; and no file names where nothing is offered
+// description; the options; the MCP servers of setup project --mcp, after a comma the others,
+// and the sets of --permissions; and no file names where nothing is offered
 // (":4", ShellCompDirectiveNoFileComp, which cobra reports on stderr), the root's default for an
 // argument with nothing to complete, setup telemetry's included.
 // Without the word to complete it fails, as cld's other command-line mistakes do.
@@ -324,6 +324,9 @@ func TestCompleteCommands(t *testing.T) {
 	goland := "goland\tGoLand's MCP server, port $GOLAND_MCP_PORT or 64422\n"
 	jbcontext := "jbcontext\tJetBrains Context's semantic code search, jbcontext mcp\n"
 	rider := "rider\tRider's MCP server, port $RIDER_MCP_PORT or 64482\n"
+	readOnlySet := "read-only\tread files and run commands that only read, the default\n"
+	cldSet := "cld\tcld's own: edit files, run git, go, make, docker and more\n"
+	noneSet := "none\tnothing more than claude allows by itself\n"
 	shells := "bash\tprint the completion script for bash\n" +
 		"zsh\tprint the completion script for zsh\n" +
 		"fish\tprint the completion script for fish\n" +
@@ -357,7 +360,7 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", "setup", "completion", "f"}, "fish\tset up cld's completion in fish\n:4\n"},
 		{[]string{"__complete", "setup", "completion", "bash", ""}, ":4\n"},
 		// --mcp offers its servers; after a comma, those the list does not have, after it.
-		{[]string{"__complete", "setup", "project", "--m"}, "--mcp\tan MCP `SERVER` for claude in the project: goland or rider,\n:4\n"},
+		{[]string{"__complete", "setup", "project", "--m"}, "--mcp\tan MCP `SERVER` for claude in the project: goland or\n:4\n"},
 		{[]string{"__complete", "setup", "project", "--mcp", ""}, goland + jbcontext + rider + ":4\n"},
 		{[]string{"__complete", "setup", "project", "--mcp", "j"}, jbcontext + ":4\n"},
 		{[]string{"__complete", "setup", "project", "--mcp=r"}, rider + ":4\n"},
@@ -367,6 +370,14 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", "setup", "project", "--mcp", "x"}, ":4\n"},
 		{[]string{"__completeNoDesc", "setup", "project", "--mcp", "goland,"}, "goland,jbcontext\ngoland,rider\n:4\n"},
 		{[]string{"__complete", "setup", "project", "--mcp", "goland", ""}, ":4\n"},
+		// --permissions offers its sets, the default first.
+		{[]string{"__complete", "setup", "project", "--p"}, "--permissions\twhat claude may do in the project without asking:\n:4\n"},
+		{[]string{"__complete", "setup", "project", "--permissions", ""}, readOnlySet + cldSet + noneSet + ":4\n"},
+		{[]string{"__complete", "setup", "project", "--permissions", "n"}, noneSet + ":4\n"},
+		{[]string{"__complete", "setup", "project", "--mcp", "goland", "--permissions=c"}, cldSet + ":4\n"},
+		{[]string{"__complete", "setup", "project", "--permissions", "x"}, ":4\n"},
+		{[]string{"__completeNoDesc", "setup", "project", "--permissions", ""}, "read-only\ncld\nnone\n:4\n"},
+		{[]string{"__complete", "setup", "project", "--permissions", "cld", ""}, ":4\n"},
 		// No URL, port or file name is offered, --collector-config's FILE included.
 		{[]string{"__complete", "setup", "telemetry", "--l"}, "--local\twhere traces, metrics and logs go, such as\n:4\n"},
 		{[]string{"__complete", "setup", "telemetry", "--local", ""}, ":4\n"},

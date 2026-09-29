@@ -157,16 +157,29 @@ branches from your current `HEAD`, not from the remote's default branch, whateve
 
 ## Project settings
 
-- `.claude/settings.json` gets `$schema`; in `permissions.allow`, reading, editing and writing
-  files, web search and fetch, and shell commands such as `ls`, `grep`, `git`, `go`, `dotnet`,
-  `make`, `docker build` and `gh pr view`; and `autoUpdatesChannel`, `plansDirectory`,
-  `autoMemoryEnabled`, `theme` and `autoCompactEnabled`, with the values of cld's own.
+- `.claude/settings.json` gets `$schema`, `permissions.allow` as `--permissions` says, and
+  `plansDirectory`, `.claude/plans`. Settings of a person's, such as a theme or an update channel,
+  belong in your own `~/.claude/settings.json`: the project's file would override everyone's.
+- `--permissions read-only`, the default, allows `Read` and `ls`, `pwd`, `cat`, `head`, `tail`,
+  `wc`, `grep`, `stat`, `du`, `which` and `git status`, with any options, none of which runs a
+  command or writes a file. It leaves out `git diff`, `git log` and `git show`, whose
+  `--output FILE` writes any file - `.git/config` too, where git reads commands to run. claude
+  runs the three without asking with the options it knows to be safe, and asks for the others.
+  `--permissions cld` allows what cld's own repository does: reading, editing and writing files,
+  web search and fetch, and shell commands such as `ls`, `grep`, `git`, `go`, `dotnet`, `make`,
+  `docker run` and `gh pr merge` - enough for a prompt-injected claude to run anything.
+  `--permissions none` adds nothing: claude asks for all it does not allow by itself.
 - `.claude/settings.local.json` is only created, holding its `$schema`.
-- `.gitignore` gets `/.claude/*` and `!/.claude/settings.json`; the lines without the leading slash
-  count as there.
-- With `--mcp`, each server gets its entry in `.mcp.json`, its name in `enabledMcpjsonServers` and
-  `mcp__NAME` in `permissions.allow`; `jbcontext` also `Bash(jbcontext:*)`, for `jbcontext search`.
-  claude asks nothing about them once you have accepted the folder's workspace trust.
+- `.gitignore` gets `/.claude/settings.local.json`, `/.claude/plans/` and `/.claude/worktrees/`;
+  the lines without the leading slash count as there. The rest of `.claude` - `commands/`,
+  `agents/`, `skills/`, `rules/`, `hooks/`, `CLAUDE.md` - is the project's to share. claude keeps
+  its other files there out of git itself, in `.git/info/exclude`.
+- With `--mcp`, each server gets its entry in `.mcp.json` and its name in `enabledMcpjsonServers`,
+  and `permissions.allow` gets its tools: with `read-only`, the IDE's tools that only read - as
+  GoLand 2026.2.3 marks them: reading and searching files, symbols, problems, `git_status` - and
+  `jbcontext search`; with `cld`, every tool, `mcp__NAME` - GoLand's `execute_terminal_command`
+  among them - and `jbcontext` whatever its command. claude asks nothing about what they allow
+  once you have accepted the folder's workspace trust.
 
 The IDEs' servers are `http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream` and
 `http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream`: `.mcp.json` is shared, and each developer's IDE
@@ -175,12 +188,20 @@ shows its URL), set the variable in your shell's profile, or in the `env` of you
 `~/.claude/settings.json`, which serves every project. Not in the project's
 `.claude/settings.local.json`: claude 2.1.283 does not expand `.mcp.json` from it.
 
-Where the files exist, cld sets the keys whose values differ, adds the entries and `.gitignore`
-lines that are missing, and replaces a server's entry that differs from its own, whole. Keys,
-entries and servers of your own stay, in their order and indentation. A file it cannot edit - not
+Where the files exist, cld adds the keys, entries and `.gitignore` lines that are missing, and
+replaces a server's entry that differs from its own, whole. A key the file has keeps its value,
+and keys, entries and servers of your own stay, in their order and indentation; cld removes
+nothing, so what an earlier cld wrote - its `theme`, `autoUpdatesChannel`, `autoMemoryEnabled` and
+`autoCompactEnabled`, a longer allow list - stays until you remove it. A file it cannot edit - not
 valid JSON, say - stops it with nothing changed. In a git work tree cld then checks that git does
 not ignore `.claude/settings.json` all the same - through `.claude/`, `*.json` or git's own
-excludes - and otherwise names the pattern and exits with status 1.
+excludes - and otherwise names the pattern and exits with status 1. It warns of the other files a
+project shares under `.claude` that git ignores, naming the pattern - of a directory even where
+you added files in it with `git add -f`, as git ignores a new one there, but not of a submodule,
+whose files are its own repository's. An earlier cld wrote `/.claude/*` and
+`!/.claude/settings.json`, which ignore them, and which you replace with the new lines. Review the
+changes, `git diff` and `git status`, before you commit them: whoever accepts the folder's
+workspace trust gives claude what the settings allow.
 
 ## Telemetry
 
@@ -225,11 +246,11 @@ cld reads the file when it runs: edits apply when you run it again. The containe
 
 `cld join -n <TAB>` offers the `NAME` of the sessions' names, with how many sessions have it;
 `cld join -s <TAB>` offers the `SUFFIX` of each session whose `NAME` is `-n`'s, or else that of the
-repository or directory you are in, with its state; and `--mcp` the next server after a comma. No
-file names are offered, and `cld new`, `cld resume`, `cld kill` and the values of
-`cld setup telemetry` offer nothing. The script runs `cld` on every TAB, so the names are always
-current. `CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states and the other
-descriptions.
+repository or directory you are in, with its state; `--mcp` the next server after a comma; and
+`--permissions` its sets. No file names are offered, and `cld new`, `cld resume`, `cld kill` and
+the values of `cld setup telemetry` offer nothing. The script runs `cld` on every TAB, so the
+names are always current. `CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states
+and the other descriptions.
 
 `cld setup completion SHELL` writes the script that `cld completion SHELL` prints where the shell
 reads it, making its directories, and says what it wrote; start a new shell for it to take effect.
@@ -349,6 +370,13 @@ a cld session, `/bg` or `←` on an empty prompt moves the conversation to a bac
   that the claude in the pane shows: there every hook failed, after each tool, with
   `PostToolUse:Bash hook error` and `no current session`, and the title stayed `✳`. End such a
   session with `cld kill` and bring its conversation back with `cld resume`.
+- **Project settings.** `cld setup project` of cld 0.4.0 to 0.8.2 wrote `/.claude/*` and
+  `!/.claude/settings.json` to `.gitignore`, which keep what a project shares under `.claude` -
+  commands, agents, skills - out of git, and to `.claude/settings.json` `theme`,
+  `autoUpdatesChannel`, `autoMemoryEnabled`, `autoCompactEnabled` and the allow list that is now
+  `--permissions cld`, which override every developer's own settings. cld removes none of them:
+  run `cld setup project` again, which adds the new lines and warns of what the old ones ignore,
+  then remove the two lines, the four keys and the entries you do not want to share.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from

@@ -150,7 +150,8 @@ func shellArgument(args []string) error {
 // SHELL writes it where the shell reads it (see setupCompletion). join -n offers the NAME of
 // NAME-SUFFIX for the sessions list shows (see sessionNames), join -s their SUFFIX (see
 // sessionSuffixes), help the commands (see commandNames), setup project --mcp the MCP servers (see
-// serverNames), and nothing offers file names, as no argument of cld's is a file.
+// serverNames) and --permissions its sets (see permissionSets), and nothing offers file names, as
+// no argument of cld's is a file.
 //
 // new, resume, join and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX (see
 // naming): NAME defaults to the repository's or directory's name, and SUFFIX, for new and for
@@ -613,32 +614,46 @@ where set), where fish finds it at the first TAB.`,
 
 // setupProject is cld setup project, named in its messages as typed. --mcp takes the MCP servers
 // as a list, given again or separated by commas; each is written once, in project.Servers' order,
-// whatever the order given.
+// whatever the order given. --permissions takes one of project.PermissionSets, the first where it
+// is not given.
 func setupProject(typed string) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "project [--mcp SERVER]",
+		Use:   "project [--mcp SERVER] [--permissions SET]",
 		Short: "set claude up in the project in the current directory",
-		Long: `set claude up in the project in the current directory, as cld's own repository
-has it: .claude/settings.json holds the settings the project shares through
-git - what claude may do without asking, and a few settings more - and
+		Long: `set claude up in the project in the current directory: .claude/settings.json
+holds the settings the project shares through git - what claude may do without
+asking, which --permissions sets, and where claude keeps its plans - and
 .claude/settings.local.json, holding its $schema alone, is for your own.
-.gitignore gets /.claude/* and !/.claude/settings.json: git ignores what claude
-keeps in .claude, but for the shared settings. With --mcp, cld adds MCP servers
-to .mcp.json, and the settings enable them and let claude use them.
+.gitignore gets /.claude/settings.local.json, /.claude/plans/ and
+/.claude/worktrees/: git ignores those, and adds what the project shares in
+.claude, such as its commands, agents and skills. With --mcp, cld adds MCP
+servers to .mcp.json, and the settings enable them and allow their tools as
+--permissions says.
 
-Where the files exist, cld adds what they lack: it sets its settings, adds its
-permissions and servers, and keeps everything else - settings.local.json whole.
-Then, in a git work tree, it checks that git does not ignore the settings.`,
+Where the files exist, cld adds what they lack and keeps everything else, the
+values of the settings it would set included, but for a server's entry in
+.mcp.json that differs from cld's, which it replaces. Then, in a git work tree,
+it checks that git does not ignore the settings, and warns of the other files a
+project shares under .claude that git ignores. Review the changes before you
+commit them: whoever trusts the project's folder gives claude what they allow.`,
 		Args: noArguments(typed),
 	}
 	command.SetFlagErrorFunc(flagError(typed))
-	mcp := command.Flags().StringArray("mcp", nil, "an MCP `SERVER` for claude in the project: goland or rider,\n"+
-		"the IDE's own server on 127.0.0.1, at the port in\n"+
-		"GOLAND_MCP_PORT or RIDER_MCP_PORT where claude runs, else\n"+
-		"the IDE's default, 64422 or 64482; or jbcontext, JetBrains\n"+
-		"Context's code search. Give --mcp again, or separate them\n"+
-		"with commas")
-	command.RunE = func(*cobra.Command, []string) error {
+	flags := command.Flags()
+	mcp := flags.StringArray("mcp", nil, "an MCP `SERVER` for claude in the project: goland or\n"+
+		"rider, the IDE's own server on 127.0.0.1, at the port\n"+
+		"in GOLAND_MCP_PORT or RIDER_MCP_PORT where claude\n"+
+		"runs, else the IDE's default, 64422 or 64482; or\n"+
+		"jbcontext, JetBrains Context's code search. Give --mcp\n"+
+		"again, or separate them with commas")
+	permissions := flags.String("permissions", "", "what claude may do in the project without asking:\n"+
+		"`SET` is read-only, the default, to read files, run\n"+
+		"commands that only read, such as git status and ls,\n"+
+		"and use the servers' tools that only read;\n"+
+		"cld, as cld's own repository has it, to edit files,\n"+
+		"run git, go, make, docker and more, and use every\n"+
+		"tool of the servers; or none, to allow nothing more")
+	command.RunE = func(c *cobra.Command, _ []string) error {
 		chosen := map[string]bool{}
 		for _, list := range *mcp {
 			for _, name := range strings.Split(list, ",") {
@@ -654,9 +669,20 @@ Then, in a git work tree, it checks that git does not ignore the settings.`,
 				servers = append(servers, s)
 			}
 		}
-		return project.Setup(servers)
+		set := project.PermissionSets[0]
+		if c.Flags().Changed("permissions") {
+			at := slices.IndexFunc(project.PermissionSets, func(p project.Permissions) bool { return p.Name == *permissions })
+			if at < 0 {
+				return fail.Usage(fmt.Sprintf("invalid permissions '%s' for --permissions: read-only, cld or none (see cld help)", *permissions))
+			}
+			set = project.PermissionSets[at]
+		}
+		return project.Setup(servers, set)
 	}
 	if err := command.RegisterFlagCompletionFunc("mcp", serverNames); err != nil {
+		panic(err)
+	}
+	if err := command.RegisterFlagCompletionFunc("permissions", permissionSets); err != nil {
 		panic(err)
 	}
 	return command
@@ -820,6 +846,18 @@ func serverNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion
 	for _, s := range project.Servers {
 		if strings.HasPrefix(s.Name, last) && !slices.Contains(strings.Split(before, ","), s.Name) {
 			names = append(names, cobra.CompletionWithDesc(before+s.Name, s.Description))
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+// permissionSets completes the SET of setup project --permissions: the sets it takes that start
+// with what was typed, each described.
+func permissionSets(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	var names []cobra.Completion
+	for _, p := range project.PermissionSets {
+		if strings.HasPrefix(p.Name, typed) {
+			names = append(names, cobra.CompletionWithDesc(p.Name, p.Description))
 		}
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
