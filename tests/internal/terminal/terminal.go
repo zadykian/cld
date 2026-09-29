@@ -8,6 +8,8 @@
 package terminal
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,6 +37,10 @@ type Terminal interface {
 	// Paste pastes text the way the terminal's own paste command does.
 	Paste(text string)
 	WheelUp()
+	// Click presses a mouse button over the screen and lets it go. key names the press the way
+	// tmux does, with the modifiers held: "C-MouseDown1" is a Ctrl+click, "M-MouseDown3" an
+	// Alt+right-click.
+	Click(key string)
 	Focus(focused bool)
 	// Resize sets the size in cells; called before Start, the size the terminal starts with.
 	Resize(columns, rows int)
@@ -88,6 +94,11 @@ func (u unsupported) WheelUp() {
 	u.t.Skipf("%s: cannot inject mouse wheel events", u.name)
 }
 
+func (u unsupported) Click(string) {
+	u.t.Helper()
+	u.t.Skipf("%s: cannot inject mouse clicks", u.name)
+}
+
 func (u unsupported) Hold(string, time.Duration, time.Duration, int) {
 	u.t.Helper()
 	u.t.Skipf("%s: cannot time a key held down", u.name)
@@ -119,4 +130,25 @@ func (u unsupported) Clipboard() string {
 	u.t.Helper()
 	u.t.Skipf("%s: cannot read the clipboard", u.name)
 	return ""
+}
+
+// mouseModifiers are the modifiers of a mouse key as tmux names them, and their bits in the button
+// of an xterm mouse report.
+var mouseModifiers = map[string]int{"S-": 4, "M-": 8, "C-": 16}
+
+// mouseButton is the button of an xterm mouse report for key, a press named the way tmux names it
+// (see Click): the button counted from 0, and a bit for each modifier.
+func mouseButton(t testing.TB, key string) int {
+	t.Helper()
+	button := 0
+	for len(key) > 2 && mouseModifiers[key[:2]] != 0 {
+		button |= mouseModifiers[key[:2]]
+		key = key[2:]
+	}
+	number, found := strings.CutPrefix(key, "MouseDown")
+	if n, err := strconv.Atoi(number); found && err == nil && n >= 1 && n <= 3 {
+		return button | (n - 1)
+	}
+	t.Fatalf("no mouse press %q", key)
+	return 0
 }

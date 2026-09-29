@@ -226,9 +226,9 @@ The `claude --tmux` column follows the option's row in Claude Code's
 
 ## Terminals
 
-The tests check one contract - title, Shift+Enter, Ctrl keys, detach, mouse wheel, focus,
-clipboard, notifications, links, paste, claude exiting, and the keys of the session list - against
-each terminal:
+The tests check one contract - title, Shift+Enter, Ctrl keys, detach, mouse wheel and clicks,
+focus, clipboard, notifications, links, paste, claude exiting, and the keys of the session list -
+against each terminal:
 
 | Terminal | How it is tested | Differences |
 |---|---|---|

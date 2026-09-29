@@ -76,6 +76,17 @@ install it as `cld`, executable, in a directory on your `PATH`.
   from either reach it. The window takes the size of the terminal you used last, and a larger one
   shows the rest of its screen dotted. `cld join --detach-others` detaches the other terminals
   instead; claude keeps running in its directory either way.
+- The mouse goes to claude where claude takes it, in its fullscreen view: the wheel and clicks
+  reach claude as they would without cld. claude opens a link on a Ctrl+click or an Alt+click;
+  not on a plain click in Ghostty, nor on a Cmd+click in Ghostty or Warp on macOS, as it does
+  without cld, since claude sees tmux there and not your terminal - which may still open the
+  link with its own click, as below. Where claude does not take the mouse - drawing in the main
+  screen, or after it has failed - tmux takes it: the wheel scrolls the pane's history in tmux's
+  copy mode, which `q` leaves, a drag selects there and copies as you let go, a middle-click
+  pastes tmux's last copy, and a right-click opens tmux's menu for the pane. For your
+  terminal's own selection, drag with Shift held - Option in iTerm2, Fn in Terminal.app. A
+  session that an older cld started keeps tmux's own Ctrl+click and Alt+right-click until it
+  ends: there claude opens a link on an Alt+click alone.
 - Remote Control is turned on over the "Enable Remote Control for all sessions" setting in
   `/config`. It stays off where your organisation's policy does, or where the project's
   `.claude/settings.json` or `.claude/settings.local.json` sets `remoteControlAtStartup` to

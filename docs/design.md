@@ -94,6 +94,9 @@ rows that name none were probed against tmux 3.6.
 | a DA1 answer later than the list's wait for it, the list having become `tmux attach-session` (tmux 3.7c; the terminal frozen for 1.5 s against a one-second wait) | tmux asks for DA1 itself as it starts and takes the first answer for its own; the next, its own, reached claude's pane as keys (`CSI ? 1 ; 2 c` in the probe's input). Answered in time, the probe read no answer. Other versions were not checked |
 | what tmux writes to the terminal as a client attaches to a session whose program asks for all-motion mouse reporting (tmux 3.7c, the probe as claude; the output of the baseline terminal and of JediTerm 3.76) | tmux turns every mouse mode off (`CSI ? 1006 l`, `? 1000 l`, `? 1002 l`, `? 1003 l`) and then on again as it wants them, after it has drawn: several times as the client attaches, and the last time after the pane's text, as the program's request comes in. A terminal that takes in the output a piece at a time while it is asked about it, as the JediTerm driver's emulator does on a thread of its own, shows the pane's text with mouse reporting off for a moment: C7 read the modes there once, under load (`{AltScreen:true Mouse:false}`), and the driver had no mouse reporting to send the wheel through |
 | tmux's default wheel binding, the `WheelUpPane` line of `list-keys -T root` on a server started with `-f /dev/null` (Debian's 3.5a and 3.6b, from trixie and trixie-backports, and 3.7c built from source, in Docker; tmux's `CHANGES` and `key-bindings.c` read at 3.5a, 3.6 and 3.7c) | 3.5a hands the wheel to the pane (`send-keys -M`) where it is in a mode (`#{pane_in_mode}`) or its program asked for the mouse (`#{mouse_any_flag}`), and otherwise enters copy mode; 3.6b and 3.7c add `#{alternate_on}`, so a program in the alternate screen gets the wheel whether or not it asked for the mouse. `CHANGES` lists it under 3.5a to 3.6: "Don't enter copy mode on mouse wheel in alternate screen (issue 3705)". `list-keys -T root WheelUpPane` printed the binding on 3.5a and 3.6b, and nothing on 3.7c, with status 0: 3.7c shows a single binding found as a message on the client's status line (`cmd-list-keys.c`), and without a client only in the server's messages (`status.c`) |
+| clicks over a pane whose program asks for SGR all-motion mouse reporting, under `mouse on`: a Ctrl+click, an Alt+right-click, an Alt+click, a Ctrl+right-click and a click, each typed as its SGR press and release into the pane of an outer tmux that runs the client, over a stub in the alternate screen that logs its input (tmux 3.7c, the snap's, on private sockets) | with tmux's default bindings the Ctrl+click reached the stub as its release alone, `CSI < 16 ; 20 ; 10 m`, and the Alt+right-click not at all: `C-MouseDown1Pane` runs `swap-pane -s @` and `M-MouseDown3Pane` opens the pane menu, neither asking whether the pane takes the mouse, where `MouseDown1Pane` hands the press on, and the other `Pane` mouse keys of the root table - middle and right click, drag, wheel, double and triple click - do so for a pane that takes the mouse (`#{mouse_any_flag}`). The two are the root table's only `Pane` mouse keys with a modifier. The other three clicks came whole. After `unbind -n C-MouseDown1Pane ; unbind -n M-MouseDown3Pane`, every click came whole: tmux hands a mouse key it has no binding for to the pane. `unbind -n` of a key that is not bound succeeds: the command list, run again on a server that had it, went on to its `new-session` |
+| how claude opens a link it is clicked on (claude 2.1.284's bundle, read, not run) | on the release of a click whose press it saw: the press starts a selection at its cell, and a release that selected nothing opens the OSC 8 link claude drew at the cell, 500 ms later unless a second click makes a double click of it - where the click carries Ctrl or Alt (`button & 24` of the SGR report), the terminal is Ghostty by XTVERSION, or on macOS Ghostty or Warp by `TERM_PROGRAM`, whose Cmd+click comes without a bit; never in VS Code's terminal (`TERM_PROGRAM=vscode`, or XTVERSION `xterm.js`), which opens links itself. A release without its press starts nothing. Under tmux, `TERM_PROGRAM` and XTVERSION are tmux's, so only Ctrl or Alt opens a link. On Linux a right-click pastes the clipboard where nothing is selected, and a middle-click the primary selection |
+| where claude's agent teams put a teammate that runs in a tmux pane, claude inside tmux (claude 2.1.284's bundle, `TmuxBackend`, read, not run) | in claude's own window: the first teammate splits claude's pane (`split-window -d -t PANE -h -l 70%`, the pane `TMUX_PANE` named at startup), the next ones split the teammates' panes. So claude's window, on cld's server, can hold more panes than claude's |
 | a program exiting on a pty4j pty (pty4j 0.13.13, read from its source; the JediTerm driver) | pty4j's reaper thread waits for the process and then wakes the reader (`breakRead`): `isAlive()` is false from then on, while the pty may still hold what the program wrote last. Reads return that, and then the end of the stream. The driver's emulator thread takes it all in, but can be behind: C9 read the modes once `isAlive()` was false, before the emulator had taken in the last of what tmux wrote, which turns them off |
 | two Ctrl+X (0x18) typed into a pane whose program reads in raw mode, `dd bs=64 count=1` in a loop, a line of hex a read (tmux 3.7c, natively and in the image `tests/Dockerfile` builds): by two tmux clients 50 ms apart, as the baseline terminal's `Keys` types them; by one command list, `send-keys C-x \; send-keys C-x`; and pasted with `paste-buffer -p -S` | from two clients, two reads of a byte each, in 20 rounds of 20 natively and 50 of 50 in the image; from the command list and from the paste, one read of both bytes, every round. tmux adds what a command types to the pane's buffer (`bufferevent_write` in `input-keys.c` and `cmd-paste-buffer.c`, read in the 3.7c source) and writes it out once its event loop comes round, in one write. What two clients type goes in two writes, which a program that has not read the first by the second reads at once all the same, as `cld list` stopped (SIGSTOP) until both had come did (see Implementation notes) |
 | SIGTSTP in a Go program that has had it through `os/signal` (Go 1.27.1, Linux 7.0) | after `signal.Stop` or `signal.Reset`, `kill -TSTP` of the process did nothing: `sigdisable` leaves Go's handler in place for any signal that `sigInstallGoHandler` accepts, and the handler drops a `_SigNotify` signal that no channel wants. Never notified, SIGTSTP keeps its default action, since `initsig` skips `_SigDefault` signals. `kill(getpid(), SIGSTOP)` returned before the process stopped, under dash with `set -m`, and it stopped soon after; the SIGCONT of `fg` then reached `os/signal` |
@@ -220,7 +223,7 @@ for the tests that hand over to the fake tmux, the sandbox's own (see 31.6).
 | C1 | tab title is `✳ cld-NAME`, with `◐` and `◑` in turn in place of `✳` while claude is busy and ` [w]` after it while claude is in a linked git worktree, and survives claude's own title changes | terminal, probe |
 | C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, `hyperlinks`, ...) | tmux |
 | C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
-| C4 | mouse wheel and focus in/out reach claude; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
+| C4 | mouse wheel and focus in/out reach claude, and a Ctrl+click and an Alt+right-click whole, the press and the release; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
 | C5 | OSC 52 and notifications - claude's OSC 9, 99 and 777 - wrapped in tmux passthrough, the bell, copies through `tmux load-buffer -w`, and claude's OSC 8 links reach the outer terminal | terminal, terminal output |
 | C6 | claude never sees a variable that names the terminal a session was created in - `TERMINAL_EMULATOR` from the JetBrains terminal, `__CFBundleIdentifier`, `CURSOR_TRACE_ID`, `VisualStudioVersion`, VS Code's askpass and git editor (33) - nor does what claude starts through tmux on its server | probe env dump, tmux |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
@@ -1754,7 +1757,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        to 0.48.1, Windows Terminal up to 0.9, Emacs's terminal, screen with long URIs - are old
        releases, or have no `xterm*` `TERM`;
     3. the click that opens a link is the terminal's, not claude's, so it does not wait on
-       Ctrl+click reaching claude (#73); with `mouse on` the terminal reports clicks to tmux, and
+       Ctrl+click reaching claude (35); with `mouse on` the terminal reports clicks to tmux, and
        where it opens a link only with the modifier that keeps a click from the program, that
        modifier it takes. Which click opens a link in each terminal was not checked (see
        Status). A session that an older cld started keeps its links text;
@@ -1910,6 +1913,39 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        reads `@cld`. The tests that make cld's sessions or servers by hand, `TestLingeringServer`'s
        among them, mark their servers with `set -s @cld 1`.
 
+35. Clicks with a modifier reach claude (#73): cld's server unbinds tmux's `C-MouseDown1Pane` and
+    `M-MouseDown3Pane`. Of tmux's mouse bindings on a pane only these two - `swap-pane -s @` and
+    the pane menu - take the press without asking whether the pane's program takes the mouse, so
+    a Ctrl+click reached claude as its release alone, and an Alt+right-click not at all. claude
+    opens a link only on the release of a click whose press it saw (read in its bundle, see
+    Findings), so under cld a Ctrl+click would open none. Settled with it:
+    1. `new` and `resume` run `unbind -n C-MouseDown1Pane ; unbind -n M-MouseDown3Pane` with the
+       server's other options, after `mouse on`: tmux hands a mouse key it has no binding for to
+       the pane, which is claude's where claude takes the mouse, and goes nowhere where it does
+       not. Unbinding a key that is not bound is no error, so the options set again by a second
+       `new` for the name still end in `new-session`'s `duplicate session`;
+    2. the session has one pane unless claude splits it, as its agent teams do for teammates in
+       tmux panes (claude 2.1.284's `TmuxBackend` runs `split-window -d -t PANE -h -l 70%` on
+       claude's pane, read in its bundle), and key tables are the server's: the panes and
+       sessions claude makes there lose the two bindings as well, and a teammate that takes the
+       mouse gets the clicks. That is accepted: `C-q {` and `C-q }` still swap panes, and `C-q >`
+       opens the pane menu, as a right-click does over a program that does not take the mouse.
+       Bindings that ask, as tmux's others do
+       (`if -F '#{mouse_any_flag}' { send-keys -M } { ... }`), would keep the two for such a
+       program, at the cost of a copy of tmux's pane menu in cld;
+    3. the rest of what `mouse on` does over a program without the mouse - claude drawing in the
+       main screen, a claude that failed - is tmux's own and stays: a drag selects in copy mode, a
+       middle-click pastes, a right-click opens the menu. So does what claude makes of a click
+       under tmux: claude opens a link on a Ctrl or Alt click alone, as it knows Ghostty's plain
+       click and the Cmd+click of Ghostty and Warp on macOS by `TERM_PROGRAM` and XTVERSION,
+       which are tmux's there (see Findings); the terminal's own click on the links tmux passes
+       it (30) is the terminal's. The user guide says so, and how to select with the terminal
+       instead; a session an older cld started keeps tmux's two bindings until it ends;
+    4. the tests: `TestServerOptions` finds neither key in the root table, `MouseDown1Pane` still
+       there, and the second `new`'s `duplicate session`; C4 (`TestContractClicks`) types a
+       Ctrl+click and an Alt+right-click and waits for the press and the release of each in
+       claude's input, on each terminal.
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -1922,9 +1958,9 @@ Where the implementation departs from the plan above:
   included, and writes no record, so that only the claude in a session counts as one. The
   JediTerm driver stays Java, because JediTerm is a JVM library; the Go side talks to it one line
   per command.
-- The baseline terminal types raw xterm input (`CSI 13;2u`, `CSI I`/`CSI O`, SGR wheel) through
-  `send-keys -H`: tmux 3.3a does not know the key name `S-Enter` and types it literally, and an
-  outer tmux reports focus changes only to panes of an attached client.
+- The baseline terminal types raw xterm input (`CSI 13;2u`, `CSI I`/`CSI O`, SGR wheel and
+  clicks) through `send-keys -H`: tmux 3.3a does not know the key name `S-Enter` and types it
+  literally, and an outer tmux reports focus changes only to panes of an attached client.
 - tmux 3.3a expands `display -p -t =SESSION` to nothing when no client is attached; the tests read
   formats through `list-panes`.
 - tmux 3.7 prints nothing for `list-keys -T prefix KEY`, and its `new-session -A` honours `-c`: a
@@ -2084,10 +2120,11 @@ Where the implementation departs from the plan above:
   until that thread has read the pty to the end, which it goes on doing after pty4j has reported
   the process gone (see Findings): once `Running` is false, the screen and the modes are final,
   and C7 and C9 read them once. Modes that change while the program runs are waited for
-  (`waitModes`), and so is mouse reporting before the wheel (`WheelUp`: the driver's `wheel-up`
-  sends nothing while it is off), as tmux turns every mouse mode off and on again after it draws
-  (see Findings). Both races showed only under load; a sleep in the emulator thread whenever mouse
-  reporting goes off, and before each read once the process has exited, made them fail every time.
+  (`waitModes`), and so is mouse reporting before the wheel and a click (`WheelUp` and `Click`:
+  the driver's `wheel-up` and `click` send nothing while it is off), as tmux turns every mouse
+  mode off and on again after it draws (see Findings). Both races showed only under load; a sleep
+  in the emulator thread whenever mouse reporting goes off, and before each read once the process
+  has exited, made them fail every time.
 - `TestMain` unsets every `GIT_*` variable before it builds or runs anything, and `gitInit` runs
   git in the sandbox's environment, as cld runs: the tests run from `git rebase --exec` in a
   linked worktree set `core.bare = true` in the repository's config (see Findings).
@@ -2313,6 +2350,11 @@ by hand in a nested tmux).
   git extension's source (see Findings), and the pane's environment probed on tmux 3.7c; claude
   was not run in the terminals of Cursor, VS Code or a JetBrains IDE, nor on macOS, where
   `__CFBundleIdentifier` comes from.
+- A Ctrl+click on a link under cld was not run with the real `claude`: the tests see the press
+  and the release reach the probe, and claude's handling of them was read in its 2.1.284 bundle
+  (see Findings), as was where its agent teams put teammates in tmux panes, not run either.
+  Selecting with Shift held, Option in iTerm2 and Fn in Terminal.app, as the user guide says, was
+  not tried.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

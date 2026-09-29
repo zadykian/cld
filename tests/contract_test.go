@@ -220,6 +220,24 @@ func TestContractWheelScrollsHistory(t *testing.T) {
 	})
 }
 
+// C4: a click with a modifier reaches claude whole, the press and the release: claude opens the
+// link under a Ctrl+click as it is let go, and only after a press it saw. tmux binds a Ctrl+click
+// and an Alt+right-click on a pane whether or not its program takes the mouse, and cld unbinds
+// them (see TestServerOptions).
+func TestContractClicks(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		_, term, probe := startContract(t, name)
+		for _, click := range []struct{ key, button string }{{"C-MouseDown1", "16"}, {"M-MouseDown3", "10"}} {
+			mark := probe.Mark()
+			term.Click(click.key)
+			whole := regexp.MustCompile(`\x1b\[<` + click.button + `;\d+;\d+M\x1b\[<` + click.button + `;\d+;\d+m`)
+			sandbox.WaitFor(t, 10*time.Second, click.key+" pressed and let go in the probe input", func() bool {
+				return whole.Match(probe.Input()[mark:])
+			})
+		}
+	})
+}
+
 // C4: focus changes reach claude.
 func TestContractFocus(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {

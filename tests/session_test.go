@@ -1782,6 +1782,17 @@ func TestServerOptions(t *testing.T) {
 	}) {
 		t.Errorf("C-q C-q is not bound to send-prefix:\n%s", strings.Join(bindings, "\n"))
 	}
+	// tmux hands a mouse key it has no binding for to the pane: a Ctrl+click and an Alt+right-click
+	// reach claude whole (see TestContractClicks). tmux's other mouse bindings stay.
+	var keys []string
+	for _, binding := range strings.Split(s.MustTmux("cld-0", "list-keys", "-T", "root"), "\n") {
+		if fields := strings.Fields(binding); len(fields) > 3 {
+			keys = append(keys, fields[3])
+		}
+	}
+	if !slices.Contains(keys, "MouseDown1Pane") || slices.Contains(keys, "C-MouseDown1Pane") || slices.Contains(keys, "M-MouseDown3Pane") {
+		t.Errorf("root bindings %q, want tmux's without C-MouseDown1Pane and M-MouseDown3Pane", keys)
+	}
 }
 
 // claude trusts TERMINAL_EMULATOR, and the other variables that name a terminal to it, over
