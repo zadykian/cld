@@ -155,10 +155,17 @@ not push such a change. Rebase onto `main` before either.
   `HOME`.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
-  the `PATH`; a word of cld's ending in `;` (resume's SESSION, the directory given with `-c` or
-  the session's home can) goes with a `\` before the `;`, since tmux would end its command there.
-  The directory also goes with every `#` doubled: tmux expands `-c` as a format, where `#(...)`
-  runs a shell command.
+  the `PATH`; a word of cld's ending in `;` (resume's SESSION, a word after `--`, the directory
+  given with `-c` or the session's home can) goes with a `\` before the `;`, since tmux would end
+  its command there. The directory also goes with every `#` doubled: tmux expands `-c` as a
+  format, where `#(...)` runs a shell command.
+- `new` and `resume` give claude the words after `--`, after cld's own arguments, and refuse
+  (status 2, naming why) a word that starts with an option cld gives claude itself (`-n`, `-w`,
+  `--settings`), one that resumes a conversation (`-r`, `-c`, `--from-pr`) or one with which
+  claude leaves the session (`-p`, `--bg`, `--tmux`, `--teleport`, `--init-only`,
+  `--rewind-files`, `-h`, `-v`): `claudeOptions` in `cmd/cld`, decision 41. They also refuse
+  words that make tmux's command longer than the 16364 bytes tmux takes (`commandLimit` in
+  `internal/session`), counted with the record's hooks before the session's entry is written.
 - The clients that attach - `new`'s, `resume`'s, `join`'s and the list's Enter's - and the reads
   of the sessions, `list`'s and the lookup of one (for its `@cld-home`), run `tmux -u`: under a
   locale that names no UTF-8 (`LC_ALL`, `LC_CTYPE`, `LANG`), tmux would otherwise write what is

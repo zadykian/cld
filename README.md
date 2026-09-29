@@ -72,8 +72,8 @@ made.
 
 | Command | Action |
 |---|---|
-| `cld new [-n NAME] [-s SUFFIX] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME-SUFFIX` |
-| `cld resume [-n NAME] [-s SUFFIX] [SESSION]` | create the session with claude resuming its conversation, where the session ran, or `SESSION` |
+| `cld new [-n NAME] [-s SUFFIX] [-w] [-- ARGS...]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME-SUFFIX`; `ARGS` go to claude |
+| `cld resume [-n NAME] [-s SUFFIX] [SESSION] [-- ARGS...]` | create the session with claude resuming its conversation, where the session ran, or `SESSION`; `ARGS` go to claude |
 | `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
 | `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`) and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
@@ -138,6 +138,17 @@ channel in `~/.claude/settings.json` - `"iterm2"`, `"kitty"` or `"ghostty"`, or 
 
 cld's server passes them on to every terminal on the session. See the
 [guide](docs/guide.md#notifications).
+
+### claude's options
+
+The words after `--` go to claude after cld's own arguments: its options and a prompt to start
+with, as in `cld new -- --model opus --permission-mode plan "review the diff"`. A resumed
+conversation does not keep `--mcp-config`, `--plugin-dir`, `--add-dir` and `--fallback-model`:
+give them to `cld resume` again. cld refuses the options it gives claude itself - `--name`,
+`--worktree` (`cld new -w` gives it), `--settings` - those that resume a conversation, such as
+`--resume` and `--continue` (run `cld resume`), and those with which claude would not stay in the
+session, such as `-p` and `--bg`. claude reports the rest, and a claude that fails to start stays
+on screen with its message. See the [guide](docs/guide.md#claudes-options).
 
 ### Resuming a conversation
 

@@ -80,6 +80,12 @@ rows that name none were probed against tmux 3.6.
 | how `claude` 2.1.282 resumes (read from its bundle, not run) | `--resume ID` with no conversation for the ID prints `No conversation found with session ID: ID` and exits 1. A conversation that runs as a background session (`claude --bg`) is refused, naming `claude attach` and `claude stop`, unless `--fork-session` is given; one open in an interactive claude is not. When Remote Control starts and another process on the machine holds the conversation's Remote Control session, claude leaves Remote Control off with a notice that starts `Remote Control not started here · another Claude Code on this machine ... already has Remote Control for this conversation` and ends `run /remote-control to move it to this terminal`. Not found in the bundle: whether a session that connected at startup, as cld's do, records its Remote Control session in the conversation, and how `remoteControlAtStartup` on the command line combines with a recorded one |
 | how `claude` 2.1.283 moves a conversation to its background sessions (read from its bundle, not run, and again from 2.1.284's, which has the same strings; what cld then shows, the refused `cld resume`, and `←` then `cld kill` seen in sessions of cld's with the real claude 2.1.283 on tmux 3.7c, as #70 reports; the transcripts' `continued-in` entries read in claude's history; Claude Code's agent-view docs read; the hooks' tmux command run against a private tmux 3.7c server) | agent view, on unless `disableAgentView` or `CLAUDE_CODE_DISABLE_AGENT_VIEW=1` turns it off ("Disable agent view (`claude agents`, `--bg`, /background, the on-demand daemon)"), moves a conversation out of an interactive claude three ways: `/background` (`/bg`, "Send this session to the background and free the terminal"); "Move to background and exit" in the dialog `/exit` shows while background work runs, beside "Exit and stop tasks" and "Stay"; and `←` on an empty prompt, while `/config`'s `← opens agents` (`leftArrowOpensAgents`, on by default) is on. claude's daemon runs the conversation on as a copy, with a new session ID and the same name - which Claude Code's agent-view docs say it numbers, as `NAME (2)`, where a background session on the list has it already; the old transcript gets a `continued-in` entry with the copy's ID, and `/resume` passes it over (`filtered from /resume: continued in ID`). `/bg` and the dialog exit claude with status 0: under `remain-on-exit failed` the pane, the session and its server went, the terminal showed `[exited]` and `cld list` nothing. After `←` claude stays in the pane, in agent view; `cld kill` ends it, and the copy goes on. The docs say that `Esc` there returns to the conversation, and `Enter` or `→` on a row attaches to it, and that detaching (`←`, `Ctrl+Z`, `/exit`, `Ctrl+C` or `Ctrl+D` twice) never stops a background session (not run: `Esc`, `Enter` and `→`; `←` was seen). `--resume` by the name then finds the copy, which claude refuses while a live background process holds it, unless `--fork-session` is given: ``Session UUID is running as a background session (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.``, without a job ID ``Run `claude agents` to find its id, then ...``, status 1, which leaves a session of cld's `exited`; `/resume` inside claude refuses it without the last sentence. `claude stop ID`: "Stop a background session. Its conversation is kept: `claude attach <id>` opens it again, `claude --resume` works once it is stopped" in the command's description, and "... kept; resume it later with `claude attach <id>`." in its usage; `claude attach ID`: "Open the background session in this terminal". A worker runs with the `--settings` of the claude in the pane (see the hooks of a conversation claude runs in the background, below). A tmux 3.7c server whose last session ended - its program exited with status 0 under `remain-on-exit failed` - leaves its socket, and the hooks' `tmux -S SOCKET if -F -t =cld-NAME: ...` then prints `no server running on SOCKET`, status 1; once a new server on that socket has a session `cld-NAME`, as a later `cld new` of the name starts one, the same command exits 0 and sets the option on that session |
 | an argv word that ends in `;` (tmux's `cmd_parse_from_arguments`, read in the 3.3a and 3.7c sources; run on 3.7c, and on 3.3a, 3.4, 3.5a and 3.7c by `TestResume` and `TestDirectoryTmuxWouldChange`) | ends the tmux command, the text before the `;` staying an argument: `a;` reaches the program as `a`, and the next word starts a new tmux command. A word ending in `\;` becomes the text with `;` - `a\;` arrives as `a;`, `a\\;` as `a\;` - and a `;` elsewhere in a word is left alone. The words of a command given to `new-session` are not format-expanded: `#{session_name}` arrives as it is |
+| an empty word and others in `new-session`'s command (tmux 3.5a and 3.7c, on a private server: `new-session -d -s s1 args.sh --model opus '' 'a b' '--append-system-prompt=x\;' '#{session_name}' -p x`, the script writing each argument it got to a file) | the program got 8 arguments: the empty one as an empty argument, `x\;` as `x;`, and `#{session_name}` as it is |
+| `claude --help` of 2.1.284 on its command line (run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`: it prints and exits, starting no conversation) | `Usage: claude [options] [command] [prompt]`, with commands such as `mcp`, `agents` and `attach`. Its short options are `-c, --continue`, `-d, --debug [filter]`, `-h, --help`, `-n, --name <name>`, `-p, --print` ("Print response and exit"), `-r, --resume [value]`, `-v, --version` and `-w, --worktree [name]`; `--bg` is also `--background` ("Start the session in the background and return immediately"); `--settings <file-or-json>`; `--tmux` "Create a tmux session for the worktree (requires --worktree)", `--tmux=classic` for plain tmux; `--teleport [session]` "Resume a teleport session"; `--from-pr [value]` "Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term"; `--bare` "Minimal mode: skip hooks (those defined in settings and by installed plugins; ...)", and `--safe-mode` starts with "hooks" among the customizations disabled. Hidden, in the bundle: `--init-only` "Run Setup and SessionStart:startup hooks, then exit", and `--rewind-files <user-message-id>` "Restore files to state at the specified user message and exit (requires --resume)" |
+| how `claude` 2.1.284 reads its command line (read from its bundle, not run) | commander, whose `.option()` calls the bundle holds, reads a word `-xyz` as `-x` with the value `yz` where `-x` takes a value, and else as `-x` followed by `-yz`, and `--x=VALUE` as `--x` with `VALUE`; an option given twice keeps the value given last, and `--settings`, `--name`, `--worktree` and `--resume` are such options - claude's own read of `--settings` from its raw arguments takes the last one too. claude also scans its raw arguments before commander: for `-p` and `--print` it stops at `--` and skips the values of the options that a table of its own names (`--model`, `--append-system-prompt`, `-n` and some 80 more; `--add-dir` and the other lists take each word up to one starting with `-`); for `--tmux` it looks at every word, after a `--` too, and where `-w` or `--worktree` is among them it goes to `execIntoTmuxWorktree` before anything else; for `--bg` and `--background` it looks at every word as well, and goes to its background sessions. `--from-pr` resumes as `--resume` does: claude's own check of whether it resumes names `-r`, `--resume` and `--from-pr` together. `--teleport` checks out the web session's branch in the current repository (`Switching to branch '...'`) and resumes the session there |
+| one of claude's commands after options (`claude --name cld-x --settings '{}' mcp --help` of 2.1.284, run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`) | printed `Usage: claude mcp [options] [command]` and exited 0: the first word that is no option's value names a command, cld's options before it notwithstanding, and claude runs that command instead of a conversation |
+| the longest command a tmux client hands its server (tmux 3.7c, the snap's binary run with its libraries on a private socket, and 3.5a in the tests' image: `new-session -d -s s SCRIPT WORD`, `WORD` ever longer; tmux 3.7c's `client.c` and `compat/imsg.c` read) | the client sends the words after its options, each followed by a NUL, behind their count (4 bytes), in one message of at most 16384 bytes with a 16-byte header: at 16364 bytes of words the script got `WORD`; at 16365 to 16380 tmux printed `failed to send command`, and beyond that `command too long`, exit 1 both, having started its server, which then ended, leaving its socket. `cld new -s x -- WORD` with a 20000-byte `WORD` made a command of 25968 bytes, 5967 of them cld's own, with tmux at a path of 97 characters, claude at `/tmp/fake/claude`, git's `/usr/bin/git`, the socket in `/tmp/tmux-0`, the directory `/root/repository/cld` and the record in `/root/.local/state/cld`, and 5029 in the tests' sandbox (both in the tests' image, measured again once 39 had given the hooks `timeout` and `async`, 133 bytes more than before, and again once 40 had added the record's hooks, 647 bytes more at those paths): the hooks in claude's settings name tmux and the server's socket by their paths, the record's hooks the entry's file and the directory, and the session's home names the directory |
+| what a resumed conversation keeps ([Claude Code's docs](https://code.claude.com/docs/en/sessions), read on 29 September 2026) | "Not every configuration flag from the original launch is restored. If the session depended on `--mcp-config`, `--settings`, `--plugin-dir`, `--fallback-model`, or directories added with `--add-dir`, pass them again when you resume"; the model is restored unless `--model` or an `ANTHROPIC_MODEL`-family variable picks one |
 | a `#` in `new-session`'s `-c` (tmux 3.3a, 3.4, 3.5a and 3.7c: plain tmux, and `cld new` and `cld resume` before and after the fix, by hand in Docker; `TestDirectoryTmuxWouldChange`) | tmux expands `-c` as a format, after splitting its command at `;`, and `#{session_path}` keeps the result: `/tmp/w/C#S` became `/tmp/w/C` (`#S` is empty then: the session does not exist yet), and `/tmp/w/x#(touch ran)` became `/tmp/w/x` while tmux ran `touch ran` through the shell in the client's directory (with `new-session -d`, 3.3a to 3.5a; with an attached client, as cld's, all four). A `-c` that names no directory starts the program in the home directory, and with 3.3a where the server started. So `cld new`, and `resume`, in such a directory started claude elsewhere, and in one named `x#(command)` ran command. `/tmp/w/C##S` gives `/tmp/w/C#S`: `##` is a `#` |
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` (since 33, also the other variables that name the terminal to claude) and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
 | the script's name check and `list`'s columns under `en_US.UTF-8`, `C.UTF-8` and `C` (bash 5.3.9, glibc 2.43; bash 3.2 on macOS not checked) | `[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]` follows the locale's collation: under `en_US.UTF-8` it matched `é`, `ñ`, `ß`, `Ä`, `ǅ`, `①` and `٣`, so `cld new -n café` made `cld-café`, which `tmux -L cld kill-session -t =cld-café` ends (tmux 3.7c); under `C.UTF-8` and `C` it matched ASCII only. `${#name}` counts characters under a UTF-8 locale and bytes under `C`; `printf '%-*s'` pads by bytes under all three, so `é` took three columns of a four-column NAME |
@@ -917,10 +923,12 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     1. SESSION is whatever `claude --resume` takes - an ID, a name, a search term for claude's
        picker - for a conversation cld did not start, or one of several that share a name. It is
        one argument, handed to claude as it is, as one word. An empty one is refused, and one
-       starting with `-`, which claude would read as an option (see Findings); so is a `--`,
-       after which pflag would hand claude what follows (`resume -n x -- -p`). Options come
+       starting with `-`, which claude would read as an option (see Findings); so was a `--`,
+       after which pflag would hand claude what follows (`resume -n x -- -p`), until 41 gave
+       claude the words after it. Options come
        before SESSION, the order `SetInterspersed(false)` gives every command, and whatever
-       follows it is refused, an option included: `cld resume x -n y` names `-n`. So `resume`'s
+       follows it but a `--` (41) is refused, an option included: `cld resume x -n y` names
+       `-n`. So `resume`'s
        usage line names its options first, `cld resume [-n NAME] [flags] [SESSION]`, with
        `DisableFlagsInUseLine`, as `help`'s does (see 12.4); its help describes SESSION.
     2. `--name cld-NAME` goes with `--resume` always, SESSION or not: the session runs
@@ -1844,10 +1852,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `TERM` that terminfo does not know stays tmux's to refuse, socket and all: cld reads no
        terminfo;
     2. when: once every other check has passed - the name, the tools and their versions, the
-       lookup (a session that exists or none, a lingering server), the directory and `-w`'s
-       repository - just before the title, so that each of those says what it said without a
-       terminal too. `Attach`, the rest of `join`, which the list's Enter takes too, makes it
-       there: where the list runs it passes;
+       lookup (a session that exists or none, a lingering server), the directory, `-w`'s
+       repository and, since 41, the length of tmux's command - just before the title, so that
+       each of those says what it said without a terminal too. `Attach`, the rest of `join`,
+       which the list's Enter takes too, makes it there: where the list runs it passes;
     3. the message says what is missing, and no more: most ways into it involve no ssh, so
        `ssh -t` is in the user guide's Troubleshooting instead;
     4. the title goes to stdout only where stdout is a terminal: tmux draws on stdin's terminal,
@@ -2291,6 +2299,87 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     Out of scope: counting worktrees, a column for when a session last ran, forgetting from the
     command line, and following a `cleanupPeriodDays` of the user's.
 
+41. claude's options (#61): `new [-n NAME] [-s SUFFIX] [-w] [-- ARGS...]` and
+    `resume [-n NAME] [-s SUFFIX] [SESSION] [-- ARGS...]` give claude the words after `--`, after
+    cld's own arguments. Before, both refused `--` (16.1), and claude could get no option but
+    cld's, where some have no other way in - `--mcp-config`, `--plugin-dir`,
+    `--append-system-prompt`, `--session-id`, a first prompt - and Claude Code's docs say to give
+    `--mcp-config`, `--plugin-dir`, `--add-dir` and `--fallback-model` again on resume (see
+    Findings). Settled with it:
+    1. the words: pflag drops a `--` among the options, recording where it was
+       (`ArgsLenAtDash`), and leaves one after `resume`'s SESSION in place, as it reads no option
+       past the first argument; cld takes the words after either. Before the `--`, `new` takes no
+       argument and `resume` SESSION at most, checked as before (16.1); the other commands still
+       refuse a `--`. The words go after cld's own - `--name`, `--settings`, then `--worktree` or
+       `--resume` - so that an option among them that takes the words after it, `--add-dir` say,
+       takes none of cld's; each as one argv word, through `literal` (16.8), an empty one too,
+       which tmux passes on (see Findings). `resume` without SESSION starts claude in the
+       directory of the session's entry (40), which is where claude reads a relative path among
+       the words from, not where `resume` ran: the guide says to give absolute paths;
+    2. refused, naming the word and why, with status 2 before any tool is looked for: the options
+       cld gives claude itself, of which claude keeps the last (see Findings) - `-n` and
+       `--name`, `-w` and `--worktree` (for `new`, cld's `-w`; for `resume`, none: 16.3), and
+       `--settings`, which would replace Remote Control (10), the worktree's base (4), the
+       title's hooks (25, 26) and the record's (40.2). Then those that resume a conversation,
+       pointing at `cld resume`: `-r` and `--resume` (for `resume`, its SESSION), `-c` and
+       `--continue`, as the maintainer chose over passing them, and `--from-pr`, which claude
+       counts with `--resume` (see Findings): claude's most recent conversation in the
+       directory, or the one of a pull request, need not be the session's, and would take the
+       session's name. Then the options with which claude would not stay in the session: `-p`
+       and `--print`, `--bg` and `--background`, `-h` and `--help`, `-v` and `--version` print
+       and exit, and the hidden `--init-only` and `--rewind-files` run the startup hooks or
+       restore files and exit, which ends the session with status 0 before anyone reads what
+       they printed (5); `--tmux` takes claude to a tmux session of its own, and `--teleport`
+       resumes a session from the web, checking out its branch. The issue named `-p`, `--bg`,
+       `--tmux` and `--teleport`; `--background`, `-h`, `-v` and `--rewind-files` are the same
+       kind, and the review named `--from-pr` and `--init-only`;
+    3. how a word gives an option: a short one at the start of the word, with a value or more
+       options after it, as claude reads `-xyz` (see Findings); a long one alone or with
+       `=VALUE`. Every word counts, after a second `--` too, whatever comes before it: cld does
+       not track which of claude's options take a value, a table in claude that changes with its
+       releases, and claude's own scans for `--tmux`, `--bg` and `--background` look at every
+       word, after a `--` as well. Refusing only those three after a second `--`, which the
+       review proposed so that a prompt could start with `-p`, would rest on every other scan of
+       claude's stopping at `--`, which no release promises. A value spelled like one of these
+       goes after `=`, and such a prompt starts with another word. Only the start of a word
+       counts because claude 2.1.284's one other short option, `-d`, takes the rest of the word
+       as its value, and every short one that takes none is refused;
+    4. not refused: claude's commands, such as `mcp`, which the maintainer chose not to tell
+       apart from a prompt - claude runs one instead of a conversation, cld's options before it
+       notwithstanding (see Findings), and the session ends with it - and every other option,
+       which claude reads and reports, `--bare` and `--safe-mode` among them, which leave out the
+       title's hooks (25, 26) and the record's (40.2) with the other hooks of settings, so that
+       the session's entry keeps no ID but the one `resume` wrote and the time cld wrote it; a
+       claude that fails at startup stays on screen with its message (5). claude's options for
+       sessions in the cloud, `--cloud` and `--environment`, were not looked into. cld passes no
+       option of its own that is new, so the minimum claude (6) stands;
+    5. the length: tmux takes a command of 16364 bytes at most (see Findings) and fails on a
+       longer one, with `command too long` or `failed to send command`, after cld has printed the
+       title, leaving the socket of the server it started. cld counts its command as tmux does
+       (`commandLimit`) and refuses a longer one, with status 2, naming its size, before the
+       check of the terminal (31.2) and the title: only the words for claude, or a long SESSION,
+       make it so, cld's own taking some 5 to 6 KB. It counts the command before the session's
+       entry is written (40.1), with the record's hooks for that entry (40.2), so that a command
+       refused leaves the record as it was; where cld then cannot write the entry, the command
+       goes without those hooks (40.7), which only shortens it. The message and the guide say to
+       give claude long text in a file (`--append-system-prompt-file` and the like);
+    6. the help: `new`'s and `resume`'s usage lines end in `[-- ARGS...]`, after `[flags]`
+       (`DisableFlagsInUseLine`, as 12.4), and their help says what goes to claude and what is
+       refused; the test of the help's text takes the words after `--` for arguments;
+    7. the tests: claude's words in `TestSessionNames`, `TestResume` (after SESSION too),
+       `TestResumeRecorded` (after the ID of the session's entry, in its directory),
+       `TestNewWorktree` and the tmux command word for word (a word ending in `;`, an empty one);
+       each refused option for `new` and `resume` in `TestRefusesClaudeOptions`, alone, with a
+       value, in a word with more, after other words and after a second `--`; the arguments
+       before the `--` in `TestRejectsUnexpectedArguments`; completion, which offers nothing
+       after `--`, where `resume`'s `-s` is claude's; and in `TestCommandLimit`, against the real
+       tmux, words for claude and a SESSION beyond the limit refused, without a terminal, which
+       is checked after (31.2), no socket and no entry left, and claude started with words that
+       make the command 16364 bytes exactly, the record's hooks included.
+
+    Out of scope: completing claude's options after `--`, and keeping the words, in the session's
+    entry (40), for a later `cld resume`.
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -2355,7 +2444,8 @@ Where the implementation departs from the plan above:
   - `SetInterspersed(false)` on every command: pflag reads options up to the first argument,
     where it would pass over arguments and read every option first (`cld join a -x` would name
     `-x`). Each command's `Args` refuses that argument - `resume`'s takes it as SESSION and
-    refuses the next (see 16) - and a `--` (`ArgsLenAtDash`), which pflag would drop;
+    refuses the next (see 16) - and a `--` (`ArgsLenAtDash`), which pflag would drop, but for
+    `new` and `resume`, which give claude the words after it (decision 41);
   - a `FlagErrorFunc` turns pflag's typed errors (`NotExistError`, `ValueRequiredError`,
     `InvalidValueError`, `InvalidSyntaxError`) into cld's messages, and shows the help when `-h`
     or `--help` came before the error: cobra looks at `-h` only once every option has parsed;
@@ -2737,6 +2827,15 @@ by hand in a nested tmux).
   `claude` were not checked; nor was the record on macOS's file system, which ignores case. The
   hooks' timeouts (40.2), and the 1.5 s claude gives `SessionEnd`'s, were read in 2.1.284's
   bundle, not run.
+- The words `new` and `resume` give claude after `--` (41) were not run with the real `claude`:
+  its `--help` 2.1.284 was, and `mcp --help` after cld's options; how it reads a short option
+  with more after it and an option given twice, what `--tmux` with `--worktree`, `--bg` and
+  `--teleport` do, `--from-pr`, `--init-only` and `--rewind-files`, and that `--bare` and
+  `--safe-mode` leave out the hooks of settings, were read in its bundle (see Findings). That a
+  resumed conversation takes `--mcp-config` and the others given again, as Claude Code's docs
+  say, was not checked. tmux's limit on a command was probed on 3.5a and 3.7c, on which
+  `TestCommandLimit` checks it in CI's `linux-oldest` and `linux`, and read in the 3.4 and 3.7c
+  sources, which set it alike; with Homebrew's tmux on macOS it rests on CI's `macos` job.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

@@ -142,8 +142,9 @@ func shellArgument(args []string) error {
 // takes one of cld's commands at most - with setup, one of setup's after it, and a shell after
 // setup completion - and version is a command rather than cobra's --version and -v. Every command
 // reads its options up to the first argument, which pflag would otherwise pass over, and takes no
-// argument but help's COMMAND, resume's SESSION and completion's SHELL: the first one left - after
-// COMMAND or SESSION, the next - or a "--", which pflag would drop, is refused.
+// argument but help's COMMAND, resume's SESSION and completion's SHELL, and new's and resume's
+// words for claude after a "--" (see claudeArguments): the first one left - after COMMAND or
+// SESSION, the next - or a "--" elsewhere, which pflag would drop, is refused.
 //
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
 // on every TAB - bash's with lines of cld's for ble.sh (see bashScript) - and setup completion
@@ -178,8 +179,9 @@ stays, showing why, until cld kill ends it.`,
 	root.CompletionOptions.SetDefaultShellCompDirective(cobra.ShellCompDirectiveNoFileComp)
 	root.SetFlagErrorFunc(flagError(typed))
 
+	// new's usage line names "[flags]" before ARGS, where cobra would add it at the end.
 	newCommand := &cobra.Command{
-		Use:   "new [-n NAME] [-s SUFFIX] [-w]",
+		Use:   "new [-n NAME] [-s SUFFIX] [-w] [flags] [-- ARGS...]",
 		Short: "create session NAME-SUFFIX in this directory and attach to it",
 		Long: `create session NAME-SUFFIX in the current directory and attach to it. NAME is
 by default the name of the git repository the directory is in, or else of the
@@ -187,13 +189,23 @@ directory itself; SUFFIX is by default INDEX, 0 or, where sessions NAME-INDEX
 run or have ended within 30 days, one above the highest of their INDEX. Where
 the directory's name leaves nothing, as in /, the session is SUFFIX alone. NAME
 and SUFFIX consist of letters, digits, "_" and "-", each starting with a letter
-or digit, and make 64 characters at most.`,
+or digit, and make 64 characters at most.
+
+ARGS, after --, go to claude after cld's own arguments: claude's options, such
+as --model opus, and a prompt to start with. cld refuses the options it gives
+claude itself: -n, --name, -w, --worktree and --settings; those that resume a
+conversation, which cld resume does: -r, --resume, -c, --continue and
+--from-pr; and those with which claude would leave the session: -p, --print,
+--bg, --background, --tmux, --teleport, --init-only, --rewind-files, -h,
+--help, -v and --version.`,
+		Args:                  claudeArguments(typed, false),
+		DisableFlagsInUseLine: true,
 	}
 	newNaming := addNaming(newCommand, "the session's `SUFFIX`, after NAME-: by default the index\n"+
 		"above the highest of the sessions NAME-INDEX, or 0")
 	worktree := newCommand.Flags().BoolP("worktree", "w", false,
 		"run claude in git worktree cld-NAME-SUFFIX, which claude\nmakes from HEAD or reopens (claude --worktree\ncld-NAME-SUFFIX)")
-	newCommand.RunE = func(*cobra.Command, []string) error {
+	newCommand.RunE = func(c *cobra.Command, args []string) error {
 		if err := newNaming.check(typed, ""); err != nil {
 			return err
 		}
@@ -221,13 +233,14 @@ or digit, and make 64 characters at most.`,
 		if err != nil {
 			return err
 		}
-		return tmux.New(claude, suffix, *worktree)
+		_, words := atDash(c, args)
+		return tmux.New(claude, suffix, *worktree, words)
 	}
 
 	// resume makes its session the way new does, and has claude resume a conversation in it. Its
 	// usage line names its options before SESSION, as help's does before COMMAND.
 	resume := &cobra.Command{
-		Use:   "resume [-n NAME] [-s SUFFIX] [flags] [SESSION]",
+		Use:   "resume [-n NAME] [-s SUFFIX] [flags] [SESSION] [-- ARGS...]",
 		Short: "create session NAME-SUFFIX with claude resuming its conversation",
 		Long: `create session NAME-SUFFIX and attach to it, as new does, with claude resuming
 a conversation: without SESSION, the one the session had last, by the ID cld
@@ -236,13 +249,18 @@ ran in - or, where cld keeps no record of the session, by that name in the
 current directory; with SESSION, whatever claude --resume takes, such as a
 session ID, a name, or a search term for claude's picker, in the current
 directory. SESSION comes after the options and does not start with "-".
-Without SESSION, -s is needed.`,
-		Args:                  conversationArgument(typed),
+Without SESSION, -s is needed.
+
+ARGS, after --, go to claude as with new, and cld refuses the same options. A
+resumed conversation does not keep --mcp-config, --plugin-dir, --add-dir and
+--fallback-model, which Claude Code's docs say to give again.`,
+		Args:                  claudeArguments(typed, true),
 		DisableFlagsInUseLine: true,
 	}
 	resumeNaming := addNaming(resume, "the session's `SUFFIX`, after NAME-: with SESSION, by\n"+
 		"default the index new would give")
-	resume.RunE = func(_ *cobra.Command, args []string) error {
+	resume.RunE = func(c *cobra.Command, args []string) error {
+		args, words := atDash(c, args)
 		missing := "-s SUFFIX or SESSION (see cld help)"
 		if len(args) > 0 {
 			missing = ""
@@ -282,7 +300,7 @@ Without SESSION, -s is needed.`,
 				return err
 			}
 		}
-		return tmux.Resume(claude, suffix, conversation)
+		return tmux.Resume(claude, suffix, conversation, words)
 	}
 	if err := resume.RegisterFlagCompletionFunc("name", sessionNames(true)); err != nil {
 		panic(err)
@@ -1098,7 +1116,7 @@ func resumeEnded(tmux *session.Tmux, name string) error {
 	}
 	unlock := session.Lock()
 	defer unlock()
-	return tmux.Resume(claude, name, "")
+	return tmux.Resume(claude, name, "", nil)
 }
 
 // Kill is kill's steps - the name, then End - with End's check that the session is still the one
@@ -1148,23 +1166,115 @@ func helpArguments(typed string) cobra.PositionalArgs {
 	}
 }
 
-// conversationArgument takes resume's one argument, SESSION, the conversation claude resumes. It
-// refuses an empty one and one starting with "-", which claude would read as an option;
-// anything after SESSION, an option too, since options come first; and a "--", which pflag
-// would drop, handing claude what follows it as SESSION (resume -n x -- -p).
-func conversationArgument(typed string) cobra.PositionalArgs {
+// claudeArguments takes the arguments of new and, with conversation, of resume: the words after a
+// "--", which go to claude after cld's own (see session.Tmux.New), and before it none, or for
+// resume SESSION, the conversation claude resumes. It refuses an argument before the "--", or
+// after SESSION - an option too, since options come first - and a SESSION that is empty or starts
+// with "-", which claude would read as an option; then, among the words for claude, the options
+// that claudeOptions refuses.
+func claudeArguments(typed string, conversation bool) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
-		if c.ArgsLenAtDash() >= 0 {
-			return unexpected(typed, "--")
-		}
-		if len(args) > 0 && (args[0] == "" || strings.HasPrefix(args[0], "-")) {
+		args, words := atDash(c, args)
+		if conversation && len(args) > 0 && (args[0] == "" || strings.HasPrefix(args[0], "-")) {
 			return unexpected(typed, args[0])
 		}
-		if len(args) > 1 {
-			return unexpected(typed, args[1])
+		most := 0
+		if conversation {
+			most = 1
 		}
-		return nil
+		if len(args) > most {
+			return unexpected(typed, args[most])
+		}
+		return refuseOptions(typed, conversation, words)
 	}
+}
+
+// atDash splits args, the arguments of new or resume, at the "--" after which the words go to
+// claude: the arguments before it, and the words after it, none without a "--". pflag drops a
+// "--" it reads among the options, recording where it was (ArgsLenAtDash), and leaves one after
+// the first argument, SESSION, in place, as it reads no option past that argument.
+func atDash(c *cobra.Command, args []string) (before, words []string) {
+	dash := c.ArgsLenAtDash()
+	if dash >= 0 {
+		return args[:dash], args[dash:]
+	}
+	if dash = slices.Index(args, "--"); dash >= 0 {
+		return args[:dash], args[dash+1:]
+	}
+	return args, nil
+}
+
+// claudeOption is one of claude's options, as a word gives it: short, such as -n, at the start of
+// the word, and long, such as --name, or its other spelling alias, alone or with a value after "=".
+// claude reads a word -xyz as its option -x with the value yz where -x takes a value, and else as
+// -x followed by -yz: so a word that starts with a short option gives that option either way.
+type claudeOption struct {
+	short, long, alias string
+	// why new refuses the option, and resume, where that differs
+	why, resume string
+}
+
+// claudeOptions are the options of claude's that new and resume refuse among the words for
+// claude: those cld gives claude itself, of which claude would keep the one given last - -w and
+// --worktree too, which new gives with cld's -w - and those that resume a conversation, which is
+// resume's to do; and those with which claude would not stay in the session, printing and exiting
+// or leaving the pane - the hidden --init-only and --rewind-files too. Only the start of a word
+// counts: the one short option of claude 2.1.284's not here, -d, takes the rest of its word as its
+// value, so a word holds one of these after its start only as a value.
+var claudeOptions = []claudeOption{
+	{short: "-n", long: "--name", why: "cld gives claude the session's name, which -n and -s make"},
+	{short: "-w", long: "--worktree", why: "cld gives claude --worktree with -w, before --",
+		resume: "claude takes a conversation back to its worktree itself"},
+	{long: "--settings", why: "cld gives claude --settings, which this one would replace"},
+	{short: "-r", long: "--resume", why: "cld resume resumes a conversation",
+		resume: "cld gives claude --resume, with SESSION, before --"},
+	{short: "-c", long: "--continue", why: "cld resume resumes a conversation",
+		resume: "cld resume resumes the session's conversation, or SESSION"},
+	{long: "--from-pr", why: "cld resume resumes a conversation",
+		resume: "cld resume resumes the session's conversation, or SESSION"},
+	{short: "-p", long: "--print", why: "claude would print its answer and exit, ending the session"},
+	{long: "--bg", alias: "--background", why: "claude would start in the background and exit, ending the session"},
+	{long: "--tmux", why: "claude would move to a tmux session of its own"},
+	{long: "--teleport", why: "claude would resume a session from Claude Code on the web instead"},
+	{long: "--init-only", why: "claude would run its startup hooks and exit, ending the session"},
+	{long: "--rewind-files", why: "claude would restore files and exit, ending the session"},
+	{short: "-h", long: "--help", why: "claude would print its help and exit, ending the session"},
+	{short: "-v", long: "--version", why: "claude would print its version and exit, ending the session"},
+}
+
+// given reports whether word gives option o.
+func (o claudeOption) given(word string) bool {
+	if o.short != "" && strings.HasPrefix(word, o.short) && !strings.HasPrefix(word, "--") {
+		return true
+	}
+	for _, long := range []string{o.long, o.alias} {
+		if long != "" && (word == long || strings.HasPrefix(word, long+"=")) {
+			return true
+		}
+	}
+	return false
+}
+
+// refuseOptions refuses the first of words, the words for claude of new or, with conversation,
+// of resume, that gives one of claudeOptions, saying why. Each word counts, whatever comes before
+// it, a second "--" too, after which claude still looks for --tmux, --bg and --background: a
+// value that one of claude's options takes after it, spelled as one of these, goes after "="
+// (--append-system-prompt=-p...). claude reports the other words it does not take, and a claude
+// that fails at startup stays on screen with what it said.
+func refuseOptions(typed string, conversation bool, words []string) error {
+	for _, word := range words {
+		for _, option := range claudeOptions {
+			if !option.given(word) {
+				continue
+			}
+			why := option.why
+			if conversation && option.resume != "" {
+				why = option.resume
+			}
+			return fail.Usage(fmt.Sprintf("%s: '%s' after --: %s (see cld help)", typed, word, why))
+		}
+	}
+	return nil
 }
 
 // helpTopic is the command whose help help shows, given args: the root for none, else the

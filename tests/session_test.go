@@ -156,26 +156,36 @@ func writeEntry(t *testing.T, s *sandbox.Sandbox, name, dir, conversation string
 // Session NAME-SUFFIX is the tmux session cld-NAME-SUFFIX, and claude's --name: NAME is -n's, or
 // else the name of the git repository - outside one, as here, of the directory, work - and SUFFIX
 // -s's, or else the next index, 0 where no session runs. -n and -s go together, in either order.
+// The words after "--" go to claude after cld's own arguments, each as it is: an empty one, a "--",
+// and the words cld refuses (see TestRefusesClaudeOptions) as values, after "=" or, for -d, in its
+// word.
 func TestSessionNames(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args    []string
 		session string
+		// claude is what claude gets after cld's arguments
+		claude []string
 	}{
-		{[]string{"new"}, "cld-work-0"},
-		{[]string{"new", "-n", "review"}, "cld-review-0"},
-		{[]string{"new", "--name", "Fix_42-b"}, "cld-Fix_42-b-0"},
-		{[]string{"new", "-s", "fix"}, "cld-work-fix"},
-		{[]string{"new", "--suffix", "Fix_42-b"}, "cld-work-Fix_42-b"},
-		{[]string{"new", "-n", "api", "-s", "fix"}, "cld-api-fix"},
-		{[]string{"new", "-s", "fix", "--name", "api"}, "cld-api-fix"},
+		{[]string{"new"}, "cld-work-0", nil},
+		{[]string{"new", "-n", "review"}, "cld-review-0", nil},
+		{[]string{"new", "--name", "Fix_42-b"}, "cld-Fix_42-b-0", nil},
+		{[]string{"new", "-s", "fix"}, "cld-work-fix", nil},
+		{[]string{"new", "--suffix", "Fix_42-b"}, "cld-work-Fix_42-b", nil},
+		{[]string{"new", "-n", "api", "-s", "fix"}, "cld-api-fix", nil},
+		{[]string{"new", "-s", "fix", "--name", "api"}, "cld-api-fix", nil},
 		// The spellings of pflag, which reads the options.
-		{[]string{"new", "--name=x"}, "cld-x-0"},
-		{[]string{"new", "-ny"}, "cld-y-0"},
-		{[]string{"new", "-n=z"}, "cld-z-0"},
-		{[]string{"new", "-sq"}, "cld-work-q"},
-		{[]string{"new", "--suffix=7"}, "cld-work-7"},
-		{[]string{"new", "-nx", "-s=y"}, "cld-x-y"},
+		{[]string{"new", "--name=x"}, "cld-x-0", nil},
+		{[]string{"new", "-ny"}, "cld-y-0", nil},
+		{[]string{"new", "-n=z"}, "cld-z-0", nil},
+		{[]string{"new", "-sq"}, "cld-work-q", nil},
+		{[]string{"new", "--suffix=7"}, "cld-work-7", nil},
+		{[]string{"new", "-nx", "-s=y"}, "cld-x-y", nil},
+		// claude's words.
+		{[]string{"new", "-s", "a", "--"}, "cld-work-a", nil},
+		{[]string{"new", "-n", "m", "--", "--model", "opus", "fix the -p bug"}, "cld-m-0", []string{"--model", "opus", "fix the -p bug"}},
+		{[]string{"new", "-s", "p", "--", "--append-system-prompt=-p", "", "-dapi,hooks", "--", "fix it"}, "cld-work-p",
+			[]string{"--append-system-prompt=-p", "", "-dapi,hooks", "--", "fix it"}},
 	} {
 		t.Run(test.session, func(t *testing.T) {
 			t.Parallel()
@@ -189,13 +199,55 @@ func TestSessionNames(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{test.session}) {
 				t.Errorf("sessions %q, want [%s]", sessions, test.session)
 			}
-			if want := []string{"--name", test.session, "--settings", remoteControl(s, test.session, dir)}; !slices.Equal(probe.Argv, want) {
+			if want := append([]string{"--name", test.session, "--settings", remoteControl(s, test.session, dir)}, test.claude...); !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != dir {
 				t.Errorf("claude runs in %s, want %s", probe.Cwd, dir)
 			}
 		})
+	}
+}
+
+// tmux takes a command of 16364 bytes at most, each word after its options followed by a NUL (see
+// commandLimit in internal/session), and fails on a longer one once it has started its server,
+// which leaves the socket. new and resume refuse words for claude that make theirs longer - a
+// SESSION too - naming its size, before they write the session's entry in cld's record, check the
+// terminal, which they run without here, print the title or start tmux's server; at the limit,
+// counted with the record's hooks, tmux starts claude with them.
+func TestCommandLimit(t *testing.T) {
+	t.Parallel()
+	const limit = 16364
+	s := sandbox.New(t)
+	refused := func(args ...string) int {
+		t.Helper()
+		result := s.RunCld(nil, args...)
+		var size int
+		fmt.Sscanf(result.Stderr, "cld: claude's arguments make tmux's command %d bytes", &size)
+		want := fmt.Sprintf("cld: claude's arguments make tmux's command %d bytes, and tmux takes %d at most: "+
+			"give claude long text in a file, as with --append-system-prompt-file\n", size, limit)
+		if result.Code != 2 || result.Stdout != "" || size <= limit || result.Stderr != want {
+			t.Fatalf("%s: exit %d, stdout %q, stderr %q, want exit 2, stderr %q", args[0], result.Code, result.Stdout, result.Stderr, want)
+		}
+		return size
+	}
+	long := strings.Repeat("a", 20000)
+	fits := long[:len(long)-(refused("new", "-s", "x", "--", "go", long)-limit)]
+	if size := refused("new", "-s", "x", "--", "go", fits+"a"); size != limit+1 {
+		t.Errorf("a word one byte longer makes the command %d bytes, want %d", size, limit+1)
+	}
+	refused("resume", "-s", "x", long)
+	refused("resume", "-s", "x", "a", "--", long)
+	if _, err := os.Lstat(filepath.Join(s.SocketDir(), "cld-x")); err == nil {
+		t.Errorf("a socket cld-x is left")
+	}
+	if entry := readEntry(s, "x"); entry != "" {
+		t.Errorf("an entry of x is written: %q", entry)
+	}
+	startCld(t, s, "tmux", nil, "new", "-s", "x", "--", "go", fits)
+	probe := s.WaitProbes(1)[0]
+	if want := []string{"--name", "cld-x", "--settings", remoteControl(s, "cld-x", s.Work), "go", fits}; !slices.Equal(probe.Argv, want) {
+		t.Errorf("claude arguments %d words, want %d: the last %.20q, want %.20q", len(probe.Argv), len(want), probe.Argv[len(probe.Argv)-1], fits)
 	}
 }
 
@@ -242,20 +294,24 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 
 // new -w hands the worktree to claude: claude gets --worktree cld-NAME-SUFFIX, named as the session
 // is, with settings that also make it branch a new worktree from HEAD, and starts where cld runs;
-// it then makes or reopens the worktree itself and moves into it. The repository is named work.
+// it then makes or reopens the worktree itself and moves into it. The words after "--" come after
+// --worktree's value. The repository is named work.
 func TestNewWorktree(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args []string
 		// session is claude's --name and --worktree
 		session string
+		// after is what claude gets after --worktree's value
+		after []string
 	}{
-		{[]string{"new", "-w"}, "cld-work-0"},
-		{[]string{"new", "-n", "feat", "--worktree"}, "cld-feat-0"},
-		{[]string{"new", "-w", "--name=feat"}, "cld-feat-0"},
-		{[]string{"new", "-wn", "feat"}, "cld-feat-0"},
-		{[]string{"new", "-s", "feat", "-w"}, "cld-work-feat"},
-		{[]string{"new", "-ws", "x", "-n", "feat"}, "cld-feat-x"},
+		{[]string{"new", "-w"}, "cld-work-0", nil},
+		{[]string{"new", "-n", "feat", "--worktree"}, "cld-feat-0", nil},
+		{[]string{"new", "-w", "--name=feat"}, "cld-feat-0", nil},
+		{[]string{"new", "-wn", "feat"}, "cld-feat-0", nil},
+		{[]string{"new", "-s", "feat", "-w"}, "cld-work-feat", nil},
+		{[]string{"new", "-ws", "x", "-n", "feat"}, "cld-feat-x", nil},
+		{[]string{"new", "-w", "--", "--effort", "high", "start"}, "cld-work-0", []string{"--effort", "high", "start"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -267,7 +323,7 @@ func TestNewWorktree(t *testing.T) {
 			startCldIn(t, s, "tmux", sub, nil, test.args...)
 			probe := s.WaitProbes(1)[0]
 			fromHead := settings(s, sandbox.RealTmux, sandbox.RealGit, test.session, sub, true)
-			if want := []string{"--name", test.session, "--settings", fromHead, "--worktree", test.session}; !slices.Equal(probe.Argv, want) {
+			if want := append([]string{"--name", test.session, "--settings", fromHead, "--worktree", test.session}, test.after...); !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != sub {
@@ -279,26 +335,32 @@ func TestNewWorktree(t *testing.T) {
 
 // resume makes its session as new does, in the current directory, and claude gets new's arguments
 // - never -w's - then --resume with the conversation: the one named like the session, or SESSION,
-// as one word, whatever it holds. tmux would end its command at a word ending in ";" (see
-// literal in internal/session), and a git repository makes no worktree session. Its name, "_",
-// leaves nothing, so -s SUFFIX names the session SUFFIX; with SESSION and without -s the session
-// gets the index new would give it.
+// as one word, whatever it holds; then the words after "--", after SESSION too, as new gives them.
+// tmux would end its command at a word ending in ";" (see literal in internal/session), and a git
+// repository makes no worktree session. Its name, "_", leaves nothing, so -s SUFFIX names the
+// session SUFFIX; with SESSION and without -s the session gets the index new would give it.
 func TestResume(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args         []string
 		name, resume string
+		// after is what claude gets after --resume
+		after []string
 	}{
-		{[]string{"resume", "-s", "x"}, "x", "cld-x"},
-		{[]string{"resume", "--suffix=x"}, "x", "cld-x"},
-		{[]string{"resume", "-n", "a", "-s", "x"}, "a-x", "cld-a-x"},
-		{[]string{"resume", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"},
-		{[]string{"resume", "-n", "a", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "a-0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"},
-		{[]string{"resume", "-s", "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"},
-		{[]string{"resume", "-s", "x", "a b"}, "x", "a b"},
-		{[]string{"resume", "-s", "x", "fix;"}, "x", "fix;"},
-		{[]string{"resume", "-s", "x", `fix\;`}, "x", `fix\;`},
-		{[]string{"resume", "-s", "x", "#{session_name}"}, "x", "#{session_name}"},
+		{[]string{"resume", "-s", "x"}, "x", "cld-x", nil},
+		{[]string{"resume", "--suffix=x"}, "x", "cld-x", nil},
+		{[]string{"resume", "-n", "a", "-s", "x"}, "a-x", "cld-a-x", nil},
+		{[]string{"resume", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", nil},
+		{[]string{"resume", "-n", "a", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "a-0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", nil},
+		{[]string{"resume", "-s", "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", nil},
+		{[]string{"resume", "-s", "x", "a b"}, "x", "a b", nil},
+		{[]string{"resume", "-s", "x", "fix;"}, "x", "fix;", nil},
+		{[]string{"resume", "-s", "x", `fix\;`}, "x", `fix\;`, nil},
+		{[]string{"resume", "-s", "x", "#{session_name}"}, "x", "#{session_name}", nil},
+		{[]string{"resume", "-s", "x", "--", "--mcp-config", "m.json", "--add-dir", "../y"}, "x", "cld-x", []string{"--mcp-config", "m.json", "--add-dir", "../y"}},
+		{[]string{"resume", "-s", "x", "--"}, "x", "cld-x", nil},
+		{[]string{"resume", "a", "--", "--fork-session", "go on;"}, "0", "a", []string{"--fork-session", "go on;"}},
+		{[]string{"resume", "-s", "x", "a", "--", "--"}, "x", "a", []string{"--"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -310,7 +372,7 @@ func TestResume(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-" + test.name}) {
 				t.Errorf("sessions %q, want [cld-%s]", sessions, test.name)
 			}
-			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl(s, "cld-"+test.name, s.Work), "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
+			if want := append([]string{"--name", "cld-" + test.name, "--settings", remoteControl(s, "cld-"+test.name, s.Work), "--resume", test.resume}, test.after...); !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != s.Work {
@@ -1398,7 +1460,7 @@ func TestLeavesAForeignServerAlone(t *testing.T) {
 // record, which resume -s offers, with the directories they ran in, and join -s does not. join -n
 // and resume -n offer what comes before a "-" of a name, and none has one here (see
 // TestCompleteSuffixes). new -n, its -s and resume's SESSION offer nothing, and neither do the
-// other arguments, file names included.
+// other arguments, file names included, nor claude's words after "--", cld's options included.
 func TestCompleteNames(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1510,6 +1572,10 @@ func TestCompleteNames(t *testing.T) {
 		{[]string{"__complete", "resume", "-n", ""}, nil, offered()},
 		{[]string{"__complete", "resume", ""}, nil, offered()},
 		{[]string{"__complete", "resume", "-s", "rev", ""}, nil, offered()},
+		{[]string{"__complete", "new", "--", ""}, nil, offered()},
+		{[]string{"__complete", "new", "--", "--"}, nil, offered()},
+		{[]string{"__complete", "resume", "-s", "rev", "x", "--", "-"}, nil, offered()},
+		{[]string{"__complete", "resume", "--", "-s", ""}, nil, offered()},
 		{[]string{"__complete", "kill", "-s", ""}, nil, offered()},
 		{[]string{"__complete", "join", ""}, nil, offered()},
 		{[]string{"__complete", "list", ""}, nil, offered()},

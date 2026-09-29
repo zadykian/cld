@@ -274,6 +274,12 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
 - For a session ID that matches no conversation, claude prints
   `No conversation found with session ID: ...` and exits with an error; the session stays with the
   message.
+- A resumed conversation keeps its model, which `--model` overrides, but not `--mcp-config`,
+  `--plugin-dir`, `--add-dir` or `--fallback-model`: give them again after `--` (see
+  [claude's options](#claudes-options)), with absolute paths - without `SESSION`, claude starts in
+  the directory the session ran in, where cld has a record of it, and reads a relative path from
+  there, not from where you run `cld resume`. `Enter` in `cld list` resumes a session without
+  them.
 - `cld resume` refuses a name that a session holds, one whose claude exited included: end it with
   `cld kill` first. It cannot tell whether the conversation is open elsewhere. When another
   claude has the conversation's Remote Control session, the resumed one leaves Remote Control off
@@ -326,6 +332,45 @@ branches from your current `HEAD`, not from the remote's default branch, whateve
 - claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
   (or `cld new`) there once first; otherwise claude says so and exits, and the session stays with
   the message.
+
+## claude's options
+
+`cld new ... -- ARGS` and `cld resume ... -- ARGS` start claude with `ARGS` after cld's own
+arguments: `--name cld-S` and `--settings`, then `--worktree cld-S` for `cld new -w`, and
+`--resume` for `cld resume`.
+
+- Each word goes to claude as it is, an empty one too. claude reads its options and a prompt to
+  start with, and reports what it does not take: a claude that fails at startup stays with its
+  message until `cld kill` ends the session.
+- cld refuses, naming why, the options it gives claude itself, of which claude would keep the
+  last: `-n` and `--name`, as `-n` and `-s` name the session and claude; `-w` and `--worktree` -
+  `cld new -w` gives claude the worktree, and `cld resume` none, as claude takes a conversation
+  back to its worktree itself; and `--settings`, which would replace cld's - Remote Control, the
+  worktree's base, and the hooks of the tab's title and of cld's record: your own go in a settings
+  file, such as `.claude/settings.local.json`.
+- It refuses those that resume a conversation, `-r`, `--resume`, `-c`, `--continue` and
+  `--from-pr`, for which there is `cld resume`.
+- It refuses those with which claude would not stay in the session: `-p`, `--print`, `--bg`,
+  `--background`, `-h`, `--help`, `-v` and `--version` print and exit, and the hidden
+  `--init-only` and `--rewind-files` run the startup hooks or restore files and exit, which ends
+  the session before you can read what they print; `--tmux` moves claude to a tmux session of its
+  own; and `--teleport` resumes a session from Claude Code on the web.
+- A short option counts at the start of a word, as claude reads it: `-pc` is `-p` then `-c`, and
+  `-nX` is `-n X`. Every word counts, after a second `--` too, where claude still looks for
+  `--tmux`, `--bg` and `--background`: a value that looks like one of these goes after `=`, as in
+  `--append-system-prompt='-n means a dry run'`, and a prompt that starts with one cannot be
+  given - start it with another word.
+- claude's commands, such as `mcp` or `update`, are words like any other: cld passes them on, and
+  claude runs the command instead of a conversation, which ends the session when it exits, as
+  with `cld new -- mcp list`.
+- `--bare` and `--safe-mode` leave out the hooks of settings, cld's among them: the tab's title
+  then keeps its `✳` while claude works, and shows no ` [w]`; and cld's record gets neither the
+  conversation's ID - `cld resume` then goes by the session's name, or by the ID it resumed - nor
+  the times claude answers, so that cld forgets the session 30 days after it started.
+- tmux takes a command of 16364 bytes at most, of which cld's own arguments for claude take some
+  5 to 6 KB, and cld refuses words that would make it longer, saying so. Long text goes to claude
+  in a file: `--append-system-prompt-file`, `--system-prompt-file`, or a prompt that names a file
+  for claude to read.
 
 ## Project settings
 

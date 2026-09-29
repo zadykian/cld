@@ -23,7 +23,8 @@
 // the session had last - by the ID of its entry in cld's record (see below), or else by the name
 // cld-NAME - in the directory the session ran in, or the current one where cld keeps no record of
 // the session, and with SESSION that, in the current directory. It also gets --resume ID,
-// --resume cld-NAME or --resume SESSION (see Tmux.Resume).
+// --resume cld-NAME or --resume SESSION (see Tmux.Resume). The words given to either after "--"
+// go to claude after these, as they are.
 // `cld join` attaches to the session again, `cld kill` ends it with its server (see Tmux.Kill),
 // and `cld list` shows the sessions, asking each server for its own (see Tmux.Sessions) - on a
 // terminal as a list to pick one from with the arrow keys, to join with Enter, as join does, or to
@@ -572,20 +573,21 @@ func shellWord(text string) string {
 
 // New creates session cld-SUFFIX on a server of its own, running claude in the current directory,
 // and becomes a tmux client attached to it; with worktree claude works in git worktree cld-SUFFIX,
-// named as the session is, which claude makes on the branch worktree-cld-SUFFIX or reopens. It
-// returns only when it does not get as far.
-func (t *Tmux) New(c *Claude, suffix string, worktree bool) error {
-	return t.create(c, suffix, worktree, "", "")
+// named as the session is, which claude makes on the branch worktree-cld-SUFFIX or reopens.
+// claude gets args, the words given after "--", after cld's own arguments. It returns only when it
+// does not get as far.
+func (t *Tmux) New(c *Claude, suffix string, worktree bool, args []string) error {
+	return t.create(c, suffix, worktree, "", "", args)
 }
 
 // Resume creates session cld-SUFFIX as New does, without a worktree, with claude resuming a
 // conversation instead of starting one: conversation where that is not empty, and otherwise the
 // one the session's entry in cld's record names by its ID (see recorded) - the one the session
-// had last, whatever its name now - or else the one named cld-SUFFIX. claude finds the
-// conversation, and says so when it cannot: cld does not read claude's transcripts, whose format
-// claude keeps to itself. The caller has made the directory the entry names the current one (see
-// EnterRecorded). It returns only when it does not get as far.
-func (t *Tmux) Resume(c *Claude, suffix, conversation string) error {
+// had last, whatever its name now - or else the one named cld-SUFFIX; and args after cld's own
+// arguments. claude finds the conversation, and says so when it cannot: cld does not read
+// claude's transcripts, whose format claude keeps to itself. The caller has made the directory the
+// entry names the current one (see EnterRecorded). It returns only when it does not get as far.
+func (t *Tmux) Resume(c *Claude, suffix, conversation string, args []string) error {
 	id := ""
 	if conversation == "" {
 		conversation = "cld-" + suffix
@@ -593,14 +595,17 @@ func (t *Tmux) Resume(c *Claude, suffix, conversation string) error {
 			conversation, id = r.Conversation, r.Conversation
 		}
 	}
-	return t.create(c, suffix, false, conversation, id)
+	return t.create(c, suffix, false, conversation, id, args)
 }
 
 // create makes session cld-SUFFIX for New and Resume, which differ only in claude's arguments:
 // with worktree claude works in git worktree cld-SUFFIX, and with a conversation it resumes that,
-// whose ID id is where Resume took it from the session's entry. It writes the session's entry as
-// it goes (see remember), under the record's lock, which the caller holds (see Lock).
-func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id string) error {
+// whose ID id is where Resume took it from the session's entry. args come after cld's own
+// arguments, so that no word of cld's is taken for the value of an option among them, such as
+// --add-dir, which takes the words that follow it; it refuses those that would make tmux's
+// command longer than tmux takes (see commandLimit). It writes the session's entry as it goes
+// (see remember), under the record's lock, which the caller holds (see Lock).
+func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id string, args []string) error {
 	if err := t.readyClient(); err != nil {
 		return err
 	}
@@ -622,47 +627,120 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 	if err != nil {
 		return fail.Runtime(err.Error())
 	}
+	command := "new"
+	if conversation != "" {
+		command = "resume"
+	}
+	// build is tmux's command, whose claude gets the hooks that keep the session's entry in file
+	// where file is not empty, and its size as tmux counts it (see commandLimit).
+	build := func(file string) (argv []string, size int, err error) {
+		// Settings given on claude's command line override the user's and the project's. Remote
+		// Control starts with the session, so it can be reached from claude.ai and the mobile
+		// app; claude still keeps it off where org policy or the project's own settings turn it
+		// off. A resumed conversation does not keep the settings it was started with: they go
+		// again.
+		git, _ := tool.LookPath("git")
+		given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path, git, socket, suffix)}
+		if file != "" {
+			start, touch := recordHooks(file, suffix, dir)
+			given.Hooks["SessionStart"] = append(given.Hooks["SessionStart"], hook{Hooks: []hookCommand{{Type: "command", Command: start, Timeout: hookTimeout}}})
+			given.Hooks["Stop"] = append(given.Hooks["Stop"], hook{Hooks: []hookCommand{{Type: "command", Command: touch, Timeout: hookTimeout}}})
+			given.Hooks["SessionEnd"] = []hook{{Hooks: []hookCommand{{Type: "command", Command: touch}}}}
+		}
+		if worktree {
+			// claude branches a new worktree from the remote's default branch unless
+			// worktree.baseRef is "head".
+			given.Worktree.BaseRef = "head"
+		}
+		// Without HTML's escapes, so that a hook's 2>/dev/null reads as such, not as
+		// 2\u003e/dev/null.
+		var encoded bytes.Buffer
+		encoder := json.NewEncoder(&encoded)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(given); err != nil {
+			return nil, 0, fail.Runtime(err.Error())
+		}
+		// claude gets the session's name when it resumes too: a conversation resumed by another
+		// name is to take the session's, so that the next resume finds it (decision 16 in
+		// docs/design.md).
+		claude := []string{c.path, "--name", name, "--settings", strings.TrimSuffix(encoded.String(), "\n")}
+		if worktree {
+			claude = append(claude, "--worktree", name)
+		}
+		if conversation != "" {
+			claude = append(claude, "--resume", conversation)
+		}
+		claude = append(claude, args...)
+		// claude and its arguments go to tmux as separate words: tmux then executes them directly
+		// instead of through sh -c, and each reaches claude as given, an empty one too, as the
+		// directory reaches tmux (see literal and unexpanded). claude goes by the path
+		// CheckClaude checked: tmux would look the bare word up in the PATH, relative entries
+		// included, and could start another claude.
+		// What follows new-session in the same tmux command - remain-on-exit and the pane-died
+		// hook, which go to claude's pane only, so that another pane of its window, split by
+		// claude for a teammate or by hand, and a session claude makes on its server close as
+		// tmux would close them - takes effect before tmux sees claude exit, however soon; tmux
+		// cuts the command short when new-session fails, as when another cld new or cld resume -n
+		// NAME got there first. The title's options go to claude's session only, for the same
+		// reason (see titles), and so does its home, which join and kill check (see foreign). The
+		// targets end in ":" because set takes a pane, which "=NAME" does not find: "=NAME:" is
+		// the active pane of the session's window, claude's, its only one yet. -u takes the
+		// terminal for UTF-8 whatever the locale (see the package comment).
+		target := "=" + name + ":"
+		argv = []string{"tmux", "-u", "-L", name, "-f", "/dev/null"}
+		options := len(argv)
+		argv = append(argv, "set", "-s", "@cld", "1", ";",
+			"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys:hyperlinks", ";",
+			"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
+			"set", "-s", "terminal-features[102]", "alacritty:hyperlinks", ";",
+			"set", "-s", "focus-events", "on", ";",
+			"set", "-g", "mouse", "on", ";",
+			"unbind", "-n", "C-MouseDown1Pane", ";", "unbind", "-n", "M-MouseDown3Pane", ";",
+			"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
+			"set", "-g", "history-limit", "50000", ";",
+			"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
+			"new-session", "-s", name, "-n", suffix, "-c", literal(unexpanded(dir)))
+		for _, word := range claude {
+			argv = append(argv, literal(word))
+		}
+		argv = append(argv, ";",
+			"set", "-p", "-t", target, "remain-on-exit", "failed", ";",
+			"set", "-p", "-t", target, "remain-on-exit-format", "", ";",
+			"set-hook", "-p", "-t", target, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"", ";",
+			"set", "-t", target, "@cld-tmux", literal(t.path), ";",
+			"set", "-t", target, "@cld-home", literal(home.Dir), ";",
+			"set", "-t", target, "@cld-busy", busyMarker, ";",
+			"set", "-t", target, "set-titles-string", titles(suffix), ";",
+			"set", "-t", target, "set-titles", "on")
+		return argv, commandSize(argv[options:]), nil
+	}
 	// The entry goes once nothing is left to refuse the session, with the ID resume resumes, and
-	// claude gets the hooks that keep it where it could be written. The entries that have expired
-	// go with it, but for those of the sessions whose servers run.
+	// claude gets the hooks that keep it where it could be written; the entries that have expired
+	// go with it, but for those of the sessions whose servers run. Before it, tmux's command is
+	// counted with the hooks for the file the entry goes to - where cld then cannot write it, the
+	// command goes without them, and is only shorter - so that a command too long leaves the
+	// record as it was: tmux would start its server before it failed on a longer one, saying no
+	// more than "command too long" or "failed to send command", and leave the server's socket once
+	// the server has ended.
+	planned := ""
+	if state, err := stateDir(); err == nil {
+		planned = entryFile(state, suffix)
+	}
+	argv, size, err := build(planned)
+	if err != nil {
+		return err
+	}
+	if size > commandLimit {
+		return fail.Usage(fmt.Sprintf("claude's arguments make tmux's command %d bytes, and tmux takes %d at most: give claude long text in a file, as with --append-system-prompt-file", size, commandLimit))
+	}
 	file := remember(entry{Name: suffix, Directory: dir, Conversation: id}, func(other string) bool {
 		server, _, _, _, err := t.lookup(context.Background(), other)
 		return server || err != nil
 	})
-	// Settings given on claude's command line override the user's and the project's. Remote
-	// Control starts with the session, so it can be reached from claude.ai and the mobile app;
-	// claude still keeps it off where org policy or the project's own settings turn it off. A
-	// resumed conversation does not keep the settings it was started with: they go again.
-	git, _ := tool.LookPath("git")
-	given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path, git, socket, suffix)}
-	if file != "" {
-		start, touch := recordHooks(file, suffix, dir)
-		given.Hooks["SessionStart"] = append(given.Hooks["SessionStart"], hook{Hooks: []hookCommand{{Type: "command", Command: start, Timeout: hookTimeout}}})
-		given.Hooks["Stop"] = append(given.Hooks["Stop"], hook{Hooks: []hookCommand{{Type: "command", Command: touch, Timeout: hookTimeout}}})
-		given.Hooks["SessionEnd"] = []hook{{Hooks: []hookCommand{{Type: "command", Command: touch}}}}
-	}
-	if worktree {
-		// claude branches a new worktree from the remote's default branch unless
-		// worktree.baseRef is "head".
-		given.Worktree.BaseRef = "head"
-	}
-	// Without HTML's escapes, so that a hook's 2>/dev/null reads as such, not as 2\u003e/dev/null.
-	var encoded bytes.Buffer
-	encoder := json.NewEncoder(&encoded)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(given); err != nil {
-		return fail.Runtime(err.Error())
-	}
-	// claude gets the session's name when it resumes too: a conversation resumed by another name
-	// is to take the session's, so that the next resume finds it (decision 16 in docs/design.md).
-	claude := []string{c.path, "--name", name, "--settings", strings.TrimSuffix(encoded.String(), "\n")}
-	if worktree {
-		claude = append(claude, "--worktree", name)
-	}
-	command := "new"
-	if conversation != "" {
-		claude = append(claude, "--resume", conversation)
-		command = "resume"
+	if file != planned {
+		if argv, _, err = build(file); err != nil {
+			return err
+		}
 	}
 	if err := checkTerminal(command); err != nil {
 		return err
@@ -670,45 +748,6 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 	if err := printTitle(suffix); err != nil {
 		return err
 	}
-	// claude and its arguments go to tmux as separate words: tmux then executes them directly
-	// instead of through sh -c, and each reaches claude as given, as the directory reaches tmux
-	// (see literal and unexpanded). claude goes by the path CheckClaude checked: tmux would look
-	// the bare word up in the PATH, relative entries included, and could start another claude.
-	// What follows new-session in the same tmux command - remain-on-exit and the pane-died hook,
-	// which go to claude's pane only, so that another pane of its window, split by claude for a
-	// teammate or by hand, and a session claude makes on its server close as tmux would close
-	// them - takes effect before tmux sees claude exit, however soon; tmux cuts the command short
-	// when new-session fails, as when another cld new or cld resume -n NAME got there first. The
-	// title's options go to claude's session only, for the same reason (see titles), and so does
-	// its home, which join and kill check (see foreign). The targets end in ":" because set takes
-	// a pane, which "=NAME" does not find: "=NAME:" is the active pane of the session's window,
-	// claude's, its only one yet. -u takes the terminal for UTF-8 whatever the locale (see the
-	// package comment).
-	target := "=" + name + ":"
-	argv := []string{"tmux", "-u", "-L", name, "-f", "/dev/null",
-		"set", "-s", "@cld", "1", ";",
-		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys:hyperlinks", ";",
-		"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
-		"set", "-s", "terminal-features[102]", "alacritty:hyperlinks", ";",
-		"set", "-s", "focus-events", "on", ";",
-		"set", "-g", "mouse", "on", ";",
-		"unbind", "-n", "C-MouseDown1Pane", ";", "unbind", "-n", "M-MouseDown3Pane", ";",
-		"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
-		"set", "-g", "history-limit", "50000", ";",
-		"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
-		"new-session", "-s", name, "-n", suffix, "-c", literal(unexpanded(dir))}
-	for _, word := range claude {
-		argv = append(argv, literal(word))
-	}
-	argv = append(argv, ";",
-		"set", "-p", "-t", target, "remain-on-exit", "failed", ";",
-		"set", "-p", "-t", target, "remain-on-exit-format", "", ";",
-		"set-hook", "-p", "-t", target, "pane-died", "if -F '#{window_active_clients}' \""+hint(suffix)+"\"", ";",
-		"set", "-t", target, "@cld-tmux", literal(t.path), ";",
-		"set", "-t", target, "@cld-home", literal(home.Dir), ";",
-		"set", "-t", target, "@cld-busy", busyMarker, ";",
-		"set", "-t", target, "set-titles-string", titles(suffix), ";",
-		"set", "-t", target, "set-titles", "on")
 	// The server keeps the environment of the client that starts it, cld's (see the package
 	// comment).
 	return t.become(argv, withoutTerminal(os.Environ()))
@@ -771,10 +810,31 @@ func withoutTerminal(environ []string) []string {
 	})
 }
 
+// commandLimit is the size of the longest command a tmux client hands its server: the client
+// sends the words after its options, each followed by a NUL, behind their count, an int, as one
+// message of at most 16384 bytes, 16 of them the message's header (MAX_IMSGSIZE and
+// IMSG_HEADER_SIZE in tmux's compat/imsg.h), and fails otherwise with "command too long" or
+// "failed to send command". Of new's command, cld's own words take some 5 to 6 KB, most of it
+// claude's settings, whose hooks name tmux and the server's socket by their paths, and the file
+// of the session's entry in cld's record; the rest is for the words given to claude, resume's
+// SESSION among them.
+const commandLimit = 16384 - 16 - 4
+
+// commandSize is the size of command as a tmux client hands it to its server, without the count:
+// each word followed by a NUL.
+func commandSize(command []string) int {
+	size := 0
+	for _, word := range command {
+		size += len(word) + 1
+	}
+	return size
+}
+
 // literal is word as tmux takes it back from its command line: tmux ends a command at a word
 // that ends in ";", keeping what comes before the ";" as an argument, and turns a "\;" at the
-// end of a word into ";". Of cld's words, the directory, the session's home and the conversation
-// given to resume can end in one: "a;" goes as "a\;", and "a\;" as "a\\;".
+// end of a word into ";". Of cld's words, the directory, the session's home, the conversation
+// given to resume and the words given after "--" can end in one: "a;" goes as "a\;", and "a\;"
+// as "a\\;".
 func literal(word string) string {
 	if before, found := strings.CutSuffix(word, ";"); found {
 		return before + `\;`

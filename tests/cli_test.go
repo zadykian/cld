@@ -129,7 +129,8 @@ var usageWord = regexp.MustCompile(`\[[^]]*\]|\S+`)
 // optionsAfterArguments are the options that the usage lines of help name after an argument:
 // [flags], one in brackets starting with "-", or a plain one starting with "-", as the -s of
 // -s SUFFIX, whose value is the word after it. An argument is another word in brackets or in
-// capitals, such as [COMMAND]; the others name cld and its command.
+// capitals, such as [COMMAND], or the words after a "--", which ends the options, such as
+// [-- ARGS...]; the others name cld and its command.
 func optionsAfterArguments(help string) []string {
 	_, usage, _ := strings.Cut(help, "\nUsage:\n")
 	usage, _, _ = strings.Cut(usage, "\n\n")
@@ -140,6 +141,8 @@ func optionsAfterArguments(help string) []string {
 			switch {
 			case value:
 				value = false
+			case word == "--" || strings.HasPrefix(word, "[-- "):
+				argument = true
 			case word == "[flags]" || strings.HasPrefix(word, "[-") || strings.HasPrefix(word, "-"):
 				if argument {
 					late = append(late, word)
@@ -754,10 +757,11 @@ func TestUnsafeSocketDirectory(t *testing.T) {
 }
 
 // Arguments are read left to right, and the first wrong one decides the message: an option after
-// an argument is not read, and -- ends nothing. help and version are named as typed, completion's
-// commands with their SHELL. help takes one argument, a command of cld's; resume takes one,
-// SESSION, after its options: never empty, never one claude would take for an option, and nothing
-// after it; and completion none but a SHELL, as its command.
+// an argument is not read, and -- ends nothing but the options of new and resume, whose words
+// after it are claude's (see TestRefusesClaudeOptions). help and version are named as typed,
+// completion's commands with their SHELL. help takes one argument, a command of cld's; resume
+// takes one, SESSION, after its options: never empty, never one claude would take for an option,
+// and nothing after it but a "--"; and completion none but a SHELL, as its command.
 func TestRejectsUnexpectedArguments(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -795,7 +799,7 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"--help", "x"}, "cld: --help: unknown command 'x' (see cld help)\n"},
 		{[]string{"version", "-n", "a"}, "cld: version: unexpected argument '-n' (see cld help)\n"},
 		{[]string{"-V", "x"}, "cld: -V: unexpected argument 'x' (see cld help)\n"},
-		{[]string{"new", "--"}, "cld: new: unexpected argument '--' (see cld help)\n"},
+		{[]string{"new", "review", "--", "-p"}, "cld: new: unexpected argument 'review' (see cld help)\n"},
 		{[]string{"join", "--", "-x"}, "cld: join: unexpected argument '--' (see cld help)\n"},
 		{[]string{"list", "--"}, "cld: list: unexpected argument '--' (see cld help)\n"},
 		{[]string{"join", "a", "-x"}, "cld: join: unexpected argument 'a' (see cld help)\n"},
@@ -811,13 +815,13 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"resume", "-w"}, "cld: resume: unexpected argument '-w' (see cld help)\n"},
 		{[]string{"resume", "-n", "x", "--worktree"}, "cld: resume: unexpected argument '--worktree' (see cld help)\n"},
 		{[]string{"resume", "-x"}, "cld: resume: unexpected argument '-x' (see cld help)\n"},
-		{[]string{"resume", "--", "-p"}, "cld: resume: unexpected argument '--' (see cld help)\n"},
-		{[]string{"resume", "-n", "x", "--", "-p"}, "cld: resume: unexpected argument '--' (see cld help)\n"},
 		{[]string{"resume", "a", "b"}, "cld: resume: unexpected argument 'b' (see cld help)\n"},
+		{[]string{"resume", "a", "b", "--", "-p"}, "cld: resume: unexpected argument 'b' (see cld help)\n"},
 		{[]string{"resume", "x", "-n", "y"}, "cld: resume: unexpected argument '-n' (see cld help)\n"},
 		{[]string{"resume", "x", "-h"}, "cld: resume: unexpected argument '-h' (see cld help)\n"},
-		{[]string{"resume", "x", "--"}, "cld: resume: unexpected argument '--' (see cld help)\n"},
+		{[]string{"resume", "x", "-h", "--"}, "cld: resume: unexpected argument '-h' (see cld help)\n"},
 		{[]string{"resume", "-n", "x", ""}, "cld: resume: unexpected argument '' (see cld help)\n"},
+		{[]string{"resume", "", "--", "-p"}, "cld: resume: unexpected argument '' (see cld help)\n"},
 		{[]string{"resume", "-"}, "cld: resume: unexpected argument '-' (see cld help)\n"},
 		// cobra would show its help and exit 0 for an unknown shell, fail with exit status 1 for
 		// an argument after it, and read an option after an argument.
@@ -841,6 +845,92 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 			s := sandbox.New(t)
 			if result := s.RunCld(nil, test.args...); result.Code != 2 || result.Stderr != test.want || result.Stdout != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, test.want)
+			}
+		})
+	}
+}
+
+// new and resume give claude the words after "--", but for the options of claude's that would undo
+// what cld gives claude - its name, its worktree, its settings - those that resume a conversation,
+// and those with which claude would not stay in the session, printing and exiting or leaving the
+// pane: each is refused, named as given, with why. A short option counts at the start of a word,
+// with a value or more options after it, a long one with a value after "=" too, and each word
+// counts, whatever comes before it, a second "--" too. These are mistakes on the command line,
+// exit status 2, found before any tool is looked for: the PATH has none here.
+func TestRefusesClaudeOptions(t *testing.T) {
+	t.Parallel()
+	const (
+		naming      = "cld gives claude the session's name, which -n and -s make"
+		worktree    = "cld gives claude --worktree with -w, before --"
+		inPlace     = "claude takes a conversation back to its worktree itself"
+		toResume    = "cld resume resumes a conversation"
+		resumes     = "cld gives claude --resume, with SESSION, before --"
+		resumed     = "cld resume resumes the session's conversation, or SESSION"
+		ownSettings = "cld gives claude --settings, which this one would replace"
+		answer      = "claude would print its answer and exit, ending the session"
+		background  = "claude would start in the background and exit, ending the session"
+		ownTmux     = "claude would move to a tmux session of its own"
+		teleport    = "claude would resume a session from Claude Code on the web instead"
+		initOnly    = "claude would run its startup hooks and exit, ending the session"
+		rewind      = "claude would restore files and exit, ending the session"
+		helps       = "claude would print its help and exit, ending the session"
+		versions    = "claude would print its version and exit, ending the session"
+	)
+	for _, test := range []struct {
+		args []string
+		// word is the word refused, and why the reason
+		word, why string
+	}{
+		{[]string{"new", "--", "-n", "x"}, "-n", naming},
+		{[]string{"new", "--", "-nx"}, "-nx", naming},
+		{[]string{"new", "--", "--name", "x"}, "--name", naming},
+		{[]string{"new", "--", "--name=x"}, "--name=x", naming},
+		{[]string{"resume", "-s", "x", "--", "-n", "x"}, "-n", naming},
+		{[]string{"new", "--", "-w"}, "-w", worktree},
+		{[]string{"new", "-w", "--", "--worktree=y"}, "--worktree=y", worktree},
+		{[]string{"resume", "-s", "x", "--", "--worktree"}, "--worktree", inPlace},
+		{[]string{"resume", "a", "--", "-wy"}, "-wy", inPlace},
+		{[]string{"new", "--", "-r", "x"}, "-r", toResume},
+		{[]string{"new", "--", "--resume=x"}, "--resume=x", toResume},
+		{[]string{"new", "--", "-c"}, "-c", toResume},
+		{[]string{"new", "--", "--continue"}, "--continue", toResume},
+		{[]string{"resume", "-s", "x", "--", "-r", "y"}, "-r", resumes},
+		{[]string{"resume", "a", "--", "--resume"}, "--resume", resumes},
+		{[]string{"resume", "-s", "x", "--", "-c"}, "-c", resumed},
+		{[]string{"resume", "--", "--continue"}, "--continue", resumed},
+		{[]string{"new", "--", "--from-pr", "12"}, "--from-pr", toResume},
+		{[]string{"resume", "-s", "x", "--", "--from-pr=12"}, "--from-pr=12", resumed},
+		{[]string{"new", "--", "--settings", "{}"}, "--settings", ownSettings},
+		{[]string{"resume", "a", "--", "--settings=s.json"}, "--settings=s.json", ownSettings},
+		{[]string{"new", "--", "-p", "hi"}, "-p", answer},
+		{[]string{"new", "--", "--print"}, "--print", answer},
+		{[]string{"new", "--", "--model", "opus", "-pc"}, "-pc", answer},
+		{[]string{"resume", "-n", "x", "--", "-p"}, "-p", answer},
+		{[]string{"new", "--", "--bg"}, "--bg", background},
+		{[]string{"new", "--", "--background"}, "--background", background},
+		{[]string{"resume", "a", "--", "--bg=1"}, "--bg=1", background},
+		{[]string{"new", "-w", "--", "--tmux"}, "--tmux", ownTmux},
+		{[]string{"new", "--", "--tmux=classic"}, "--tmux=classic", ownTmux},
+		{[]string{"new", "--", "--teleport"}, "--teleport", teleport},
+		{[]string{"resume", "-s", "x", "--", "--teleport=id"}, "--teleport=id", teleport},
+		{[]string{"new", "--", "--init-only"}, "--init-only", initOnly},
+		{[]string{"resume", "a", "--", "--rewind-files", "id"}, "--rewind-files", rewind},
+		{[]string{"new", "--", "--rewind-files=id"}, "--rewind-files=id", rewind},
+		{[]string{"new", "--", "-h"}, "-h", helps},
+		{[]string{"new", "--", "--help"}, "--help", helps},
+		{[]string{"resume", "a", "--", "-v"}, "-v", versions},
+		{[]string{"new", "--", "--version"}, "--version", versions},
+		// The first word refused decides, wherever it is.
+		{[]string{"new", "--", "--append-system-prompt", "-p", "-n", "x"}, "-p", answer},
+		{[]string{"new", "--", "prompt", "--", "--tmux"}, "--tmux", ownTmux},
+		{[]string{"resume", "a", "--", "--", "--bg"}, "--bg", background},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			want := "cld: " + test.args[0] + ": '" + test.word + "' after --: " + test.why + " (see cld help)\n"
+			if result := s.RunCld(map[string]string{"PATH": s.Tools()}, test.args...); result.Code != 2 || result.Stderr != want || result.Stdout != "" {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, want)
 			}
 		})
 	}
@@ -1518,16 +1608,16 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // options, the directory, claude - by the path of the one it checked - and its arguments as
 // separate words, what goes on claude's pane, and the tab's title on claude's session, naming
 // the tmux cld checked, as claude's hooks do. resume's claude gets new's arguments, never -w's,
-// then --resume. A word ending in ";", which tmux would take for the end of its command,
-// goes with a "\" before the ";", which tmux drops: SESSION, or the directory cld runs in. The
-// directory goes with every "#" doubled, since tmux expands -c as a format, in which "##" is a
-// "#". The session's home - the repository, the work directory, or a directory that is a
-// repository of its own - goes with a "\" before a ";" at its end too, but with no "#" doubled:
-// set does not expand it. The fake tmux, which finds no server running for the session, records
-// the command, and the environment it gets: cld's own, without the variables that name the
-// terminal to claude (see TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set,
-// which join's client needs (see TestNestsOnADeadPanesPty); a PS1, which the script's bash
-// dropped, passes too (decision 11 in docs/design.md).
+// then --resume; the words after "--" come last. A word ending in ";", which tmux would take for
+// the end of its command, goes with a "\" before the ";", which tmux drops: SESSION, a word after
+// "--", or the directory cld runs in. The directory goes with every "#" doubled, since tmux
+// expands -c as a format, in which "##" is a "#". The session's home - the repository, the work
+// directory, or a directory that is a repository of its own - goes with a "\" before a ";" at its
+// end too, but with no "#" doubled: set does not expand it. The fake tmux, which finds no server
+// running for the session, records the command, and the environment it gets: cld's own, without
+// the variables that name the terminal to claude (see TestVSCodeGit for VS Code's) and with an
+// empty TMUX where TMUX was set, which join's client needs (see TestNestsOnADeadPanesPty); a PS1,
+// which the script's bash dropped, passes too (decision 11 in docs/design.md).
 func TestNewTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -1549,6 +1639,9 @@ func TestNewTmuxCommand(t *testing.T) {
 		{[]string{"resume", "-s", "x", "a b"}, "", "", "", []string{"--resume", "a b"}},
 		{[]string{"resume", "-s", "x", "a;"}, "", "", "", []string{"--resume", `a\;`}},
 		{[]string{"resume", "-s", "x", `a\;`}, "", "", "", []string{"--resume", `a\\;`}},
+		{[]string{"new", "-s", "x", "--", "--model", "a;", `a\;`, ""}, "", "", "", []string{"--model", `a\;`, `a\\;`, ""}},
+		{[]string{"new", "-s", "x", "-w", "--", "go"}, "", "", "", []string{"--worktree", "cld-x", "go"}},
+		{[]string{"resume", "-s", "x", "a", "--", "b;"}, "", "", "", []string{"--resume", "a", `b\;`}},
 		{[]string{"new", "-s", "x"}, "w;", `w\;`, "", nil},
 		{[]string{"new", "-s", "x", "-w"}, "w;", `w\;`, "", []string{"--worktree", "cld-x"}},
 		{[]string{"resume", "-s", "x"}, "w;", `w\;`, "", []string{"--resume", "cld-x"}},

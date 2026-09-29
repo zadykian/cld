@@ -116,9 +116,10 @@ func TestRecordHooks(t *testing.T) {
 // A session whose server no longer runs - killed, here - has ended: list shows it with the
 // directory it ran in, and join and kill refuse it, pointing at resume. resume without SESSION
 // then brings its conversation back by the ID the hook recorded - whatever the conversation's
-// name has become - in the directory the session ran in, from wherever it runs, and writes the
-// entry again with that ID. Once that directory has gone, resume refuses the session, with the
-// command that resumes it from where resume runs - while the session runs, as one that runs.
+// name has become - in the directory the session ran in, from wherever it runs, with the words
+// after -- after the ID, and writes the entry again with that ID. Once that directory has gone,
+// resume refuses the session, with the command that resumes it from where resume runs - while the
+// session runs, as one that runs.
 func TestResumeRecorded(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -148,9 +149,9 @@ func TestResumeRecorded(t *testing.T) {
 		}
 	}
 
-	startCldIn(t, s, "tmux", elsewhere, nil, "resume", "-n", "api", "-s", "1")
+	startCldIn(t, s, "tmux", elsewhere, nil, "resume", "-n", "api", "-s", "1", "--", "--model", "opus", "--add-dir", "../y")
 	resumed := s.WaitProbes(2)[1]
-	if want := []string{"--name", "cld-api-1", "--settings", remoteControl(s, "cld-api-1", dir), "--resume", firstID}; !slices.Equal(resumed.Argv, want) {
+	if want := []string{"--name", "cld-api-1", "--settings", remoteControl(s, "cld-api-1", dir), "--resume", firstID, "--model", "opus", "--add-dir", "../y"}; !slices.Equal(resumed.Argv, want) {
 		t.Errorf("claude arguments %q, want %q", resumed.Argv, want)
 	}
 	if resumed.Cwd != dir || resumed.Env["PWD"] != dir {

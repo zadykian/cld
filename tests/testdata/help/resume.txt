@@ -7,8 +7,12 @@ session ID, a name, or a search term for claude's picker, in the current
 directory. SESSION comes after the options and does not start with "-".
 Without SESSION, -s is needed.
 
+ARGS, after --, go to claude as with new, and cld refuses the same options. A
+resumed conversation does not keep --mcp-config, --plugin-dir, --add-dir and
+--fallback-model, which Claude Code's docs say to give again.
+
 Usage:
-  cld resume [-n NAME] [-s SUFFIX] [flags] [SESSION]
+  cld resume [-n NAME] [-s SUFFIX] [flags] [SESSION] [-- ARGS...]
 
 Flags:
   -h, --help            help for resume

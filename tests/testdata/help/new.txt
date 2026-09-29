@@ -6,8 +6,16 @@ the directory's name leaves nothing, as in /, the session is SUFFIX alone. NAME
 and SUFFIX consist of letters, digits, "_" and "-", each starting with a letter
 or digit, and make 64 characters at most.
 
+ARGS, after --, go to claude after cld's own arguments: claude's options, such
+as --model opus, and a prompt to start with. cld refuses the options it gives
+claude itself: -n, --name, -w, --worktree and --settings; those that resume a
+conversation, which cld resume does: -r, --resume, -c, --continue and
+--from-pr; and those with which claude would leave the session: -p, --print,
+--bg, --background, --tmux, --teleport, --init-only, --rewind-files, -h,
+--help, -v and --version.
+
 Usage:
-  cld new [-n NAME] [-s SUFFIX] [-w] [flags]
+  cld new [-n NAME] [-s SUFFIX] [-w] [flags] [-- ARGS...]
 
 Flags:
   -h, --help            help for new
