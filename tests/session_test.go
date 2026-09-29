@@ -312,7 +312,8 @@ func TestNewWorktreeRequiresRepository(t *testing.T) {
 
 // Without -s, new gives a session the SUFFIX above the highest index of the sessions NAME-INDEX
 // that run, NAME being the git repository's name, work here, or -n's: a gap stays, a server that
-// has outlived its session counts, as new would refuse its name, and so does a session whose name
+// has outlived its session counts, and so does a server that cld did not start (see
+// TestLeavesAForeignServerAlone), as new would refuse either name, and a session whose name
 // has NAME in other letters, whose socket would be the same where the socket directory ignores
 // case. A stale socket does not count, nor does a session of another NAME, one without NAME, or
 // one with no index after it. resume with SESSION alone names its session the same way. Outside a
@@ -327,23 +328,24 @@ func TestDefaultNames(t *testing.T) {
 		dir string
 		// options go to new and to resume
 		options []string
-		// running are the sessions that run before, each on its server; lingering the servers that
-		// run without their session, and stale the sockets no server answers on
-		running, lingering, stale []string
+		// running are the sessions that run before, each on its server, marked as cld marks one;
+		// lingering such servers that run without their session, foreign servers that cld did not
+		// start, unmarked, each holding a session other, and stale the sockets no server answers on
+		running, lingering, foreign, stale []string
 		// want are the names that new, then resume SESSION, give
 		want []string
 	}{
-		{"in a repository", "", nil, nil, nil, nil, []string{"cld-work-0", "cld-work-1"}},
+		{"in a repository", "", nil, nil, nil, nil, nil, []string{"cld-work-0", "cld-work-1"}},
 		{"in a repository, with sessions", "", nil,
 			[]string{"cld-work-0", "cld-work-3", "cld-WORK-4", "cld-work-x", "cld-work-6a", "cld-other-9", "cld-9", "cld-work"},
-			[]string{"cld-work-5"}, []string{"cld-work-9"}, []string{"cld-work-6", "cld-work-7"}},
-		{"outside a repository", "plain", nil, nil, nil, nil, []string{"cld-plain-0", "cld-plain-1"}},
+			[]string{"cld-work-5"}, nil, []string{"cld-work-9"}, []string{"cld-work-6", "cld-work-7"}},
+		{"outside a repository", "plain", nil, nil, nil, nil, nil, []string{"cld-plain-0", "cld-plain-1"}},
 		{"outside a repository, with sessions", "plain", nil,
-			[]string{"cld-plain-2", "cld-plain-x-7", "cld-plain-x", "cld-5", "cld-work-9"}, nil, []string{"cld-plain-8"},
+			[]string{"cld-plain-2", "cld-plain-x-7", "cld-plain-x", "cld-5", "cld-work-9"}, nil, nil, []string{"cld-plain-8"},
 			[]string{"cld-plain-3", "cld-plain-4"}},
-		{"in the root directory", "/", nil, []string{"cld-2", "cld-plain-7"}, nil, nil, []string{"cld-3", "cld-4"}},
-		{"with -n", "", []string{"-n", "api"}, []string{"cld-api-0", "cld-api-x", "cld-work-3"}, nil, nil,
-			[]string{"cld-api-1", "cld-api-2"}},
+		{"in the root directory", "/", nil, []string{"cld-2", "cld-plain-7"}, nil, nil, nil, []string{"cld-3", "cld-4"}},
+		{"with -n", "", []string{"-n", "api"}, []string{"cld-api-0", "cld-api-x", "cld-work-3"}, nil,
+			[]string{"cld-api-4"}, nil, []string{"cld-api-5", "cld-api-6"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -361,9 +363,12 @@ func TestDefaultNames(t *testing.T) {
 				}
 			}
 			for _, name := range test.running {
-				s.MustTmux(name, "-f", "/dev/null", "new-session", "-d", "-s", name, "sleep", "600")
+				s.MustTmux(name, "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", name, "sleep", "600")
 			}
 			for _, name := range test.lingering {
+				s.MustTmux(name, "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", "other", "sleep", "600")
+			}
+			for _, name := range test.foreign {
 				s.MustTmux(name, "-f", "/dev/null", "new-session", "-d", "-s", "other", "sleep", "600")
 			}
 			for _, name := range test.stale {
@@ -380,7 +385,7 @@ func TestDefaultNames(t *testing.T) {
 				t.Errorf("claude named %q, want %q", names, test.want)
 			}
 			want := append(slices.Clone(test.running), test.want...)
-			for _, name := range test.lingering {
+			for _, name := range append(slices.Clone(test.lingering), test.foreign...) {
 				want = append(want, name+"/other")
 			}
 			if slices.Sort(want); !slices.Equal(s.Sessions(), want) {
@@ -841,7 +846,8 @@ func TestLingeringServer(t *testing.T) {
 		t.Errorf("new reached the server %s that outlived a, want a fresh one", server)
 	}
 
-	s.MustTmux("cld-b", "start-server", ";", "set", "-s", "exit-empty", "off")
+	// Marked, as the server a cld new is starting is (see TestLeavesAForeignServerAlone).
+	s.MustTmux("cld-b", "start-server", ";", "set", "-s", "exit-empty", "off", ";", "set", "-s", "@cld", "1")
 	const empty = "cld: session 'b' has ended, but its tmux server still runs (see tmux -L cld-b ls)\n"
 	for _, command := range []string{"kill", "join"} {
 		if result := s.RunCld(nil, command, "-s", "b"); result.Code != 1 || result.Stdout != "" || result.Stderr != empty {
@@ -863,7 +869,7 @@ func TestLingeringServer(t *testing.T) {
 		{"c", "display-message", 1, "cld: session 'c' has ended, but its tmux server still runs (see tmux -L cld-c ls)\n"},
 		{"d", "kill-server", 0, ""},
 	} {
-		s.MustTmux("cld-"+test.name, "new-session", "-d", "-s", "side", "sleep", "600")
+		s.MustTmux("cld-"+test.name, "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", "side", "sleep", "600")
 		env := wrapTmux(t, s, "case \"$*\" in *"+test.at+"*)\n"+
 			"\ttmux -L cld-"+test.name+" new-session -d -s cld-"+test.name+" sleep 600 ;;\n"+
 			"esac\n")
@@ -1003,6 +1009,59 @@ func TestLeavesTheSharedServerAlone(t *testing.T) {
 	}
 }
 
+// A tmux server named like one of cld's that cld did not start - the user's own tmux -L cld-x,
+// say - is none of cld's, whatever its sessions are called: cld marks the servers it starts with
+// @cld. list shows nothing there, and new, resume, join and kill refuse the name, pointing at no
+// kill, which would end the sessions there; they stay, and kill ends none of them, not even on a
+// server that loses the mark only after kill read it. A server that cld 0.8.2 and earlier started
+// has no mark, but its prefix is C-q: it is cld's, list shows its session, new finds it and kill
+// ends it.
+func TestLeavesAForeignServerAlone(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	s.MustTmux("cld-x", "-f", "/dev/null", "new-session", "-d", "-s", "other", "sleep", "600")
+	s.MustTmux("cld-y", "-f", "/dev/null", "new-session", "-d", "-s", "cld-y", "sleep", "600")
+	s.MustTmux("cld-old", "-f", "/dev/null", "set", "-g", "prefix", "C-q", ";",
+		"new-session", "-d", "-s", "cld-old", "-c", s.Work, "sleep", "600")
+	type run struct {
+		args           []string
+		code           int
+		stdout, stderr string
+	}
+	runs := []run{{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\n" + "old   detached  " + s.Work + "\n", ""}}
+	for _, name := range []string{"x", "y"} {
+		for _, command := range []string{"new", "resume", "join", "kill"} {
+			runs = append(runs, run{[]string{command, "-s", name}, 1, "", "cld: tmux server cld-" + name + " is not one of cld's; use another name\n"})
+		}
+	}
+	runs = append(runs,
+		run{[]string{"new", "-s", "old"}, 1, "", "cld: session 'old' exists; attach to it with cld join -s old\n"},
+		run{[]string{"kill", "-s", "old"}, 0, "", ""})
+	for _, test := range runs {
+		if result := s.RunCld(nil, test.args...); result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.stderr {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q", strings.Join(test.args, " "),
+				result.Code, result.Stdout, result.Stderr, test.code, test.stdout, test.stderr)
+		}
+	}
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x/other", "cld-y"}) || len(s.Probes()) != 0 {
+		t.Errorf("sessions %q, %d claude processes; want [cld-x/other cld-y] and none", sessions, len(s.Probes()))
+	}
+
+	// A server of cld's that has outlived its session, and loses the mark after kill read it -
+	// one of the user's own started on the socket since, say: the kill's own tmux command, which
+	// checks the mark again (see TestLingeringServer), ends nothing. A tmux first on the PATH
+	// takes the mark away.
+	s.MustTmux("cld-z", "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", "side", "sleep", "600")
+	env := wrapTmux(t, s, "case \"$*\" in *kill-server*)\n\ttmux -L cld-z set -su @cld ;;\nesac\n")
+	if result := s.RunCld(env, "kill", "-s", "z"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
+		t.Errorf("kill -s z, the mark gone before kill-server: exit %d, stdout %q, stderr %q, want exit 0 and no output",
+			result.Code, result.Stdout, result.Stderr)
+	}
+	if sessions := s.MustTmux("cld-z", "list-sessions", "-F", "#{session_name}"); sessions != "side" {
+		t.Errorf("sessions on server cld-z %q, want side", sessions)
+	}
+}
+
 // join -s completes the names of the sessions list shows - here, where the directory's name
 // leaves nothing, a session's name is its SUFFIX - attached, detached, or with claude exited -
 // that start with what was typed, in list's order, each with its state, and then offers
@@ -1010,11 +1069,11 @@ func TestLeavesTheSharedServerAlone(t *testing.T) {
 // completion scripts run on every TAB; it starts no server and no claude. As list does, it asks
 // the server of each socket for its own session, and leaves out the sessions cld did not start -
 // one that claude makes, on its own session's server under another name, one made there by hand,
-// and one on the server that cld 0.3.0 and earlier shared - a session renamed by hand, whose
-// server then runs without it, and a stale socket, whose server has died. join -n offers what
-// comes before a "-" of a name, and none has one here (see TestCompleteSuffixes). new -n,
-// resume -n, their -s and resume's SESSION offer nothing, and neither do the other arguments,
-// file names included.
+// one on a server named like cld's that cld did not start, and one on the server that cld 0.3.0
+// and earlier shared - a session renamed by hand, whose server then runs without it, and a stale
+// socket, whose server has died. join -n offers what comes before a "-" of a name, and none has
+// one here (see TestCompleteSuffixes). new -n, resume -n, their -s and resume's SESSION offer
+// nothing, and neither do the other arguments, file names included.
 func TestCompleteNames(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1063,8 +1122,9 @@ func TestCompleteNames(t *testing.T) {
 		return slices.Contains(s.Sessions(), "cld-rev/cld-inside")
 	})
 	s.MustTmux("cld-review", "new-session", "-d", "-s", "cld-by-hand", "sleep", "600")
+	s.MustTmux("cld-own", "-f", "/dev/null", "new-session", "-d", "-s", "cld-own", "sleep", "600")
 	s.MustTmux("cld", "-f", "/dev/null", "new-session", "-d", "-s", "cld-old", "sleep", "600")
-	want := []string{"cld-bad", "cld-cafe/cld-café", "cld-rev", "cld-rev/cld-inside", "cld-review", "cld-review/cld-by-hand"}
+	want := []string{"cld-bad", "cld-cafe/cld-café", "cld-own", "cld-rev", "cld-rev/cld-inside", "cld-review", "cld-review/cld-by-hand"}
 	if sessions := s.Sessions(); !slices.Equal(sessions, want) {
 		t.Fatalf("sessions %q, want %q", sessions, want)
 	}
@@ -1107,6 +1167,7 @@ func TestCompleteNames(t *testing.T) {
 		{[]string{"__complete", "join", "-s", "in"}, nil, offered()},
 		{[]string{"__complete", "join", "-s", "b"}, nil, offered("bad\texited")},
 		{[]string{"__complete", "join", "-s", "o"}, nil, offered()},
+		{[]string{"__complete", "join", "-s", "ow"}, nil, offered()},
 		// pflag's -s=SUFFIX; in -sSUFFIX cobra takes the word for options, and finds none.
 		{[]string{"__complete", "join", "-s=re"}, nil, offered("rev\tattached", "review\tdetached")},
 		{[]string{"__complete", "join", "-sre"}, nil, offered()},
@@ -1154,8 +1215,9 @@ func TestCompleteSuffixes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Each on a server marked as cld marks its own (see TestLeavesAForeignServerAlone).
 	for _, name := range []string{"cld-work-0", "cld-work-fix", "cld-work--x", "cld-work", "cld-other-1", "cld-3", "cld-a-b-c"} {
-		s.MustTmux(name, "-f", "/dev/null", "new-session", "-d", "-s", name, "sleep", "600")
+		s.MustTmux(name, "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", name, "sleep", "600")
 	}
 	for _, test := range []struct {
 		dir  string
@@ -1650,6 +1712,7 @@ func TestServerOptions(t *testing.T) {
 	startCld(t, s, "tmux", nil, "new")
 	s.WaitProbes(1)
 	for _, option := range []struct{ scope, name, value string }{
+		{"-sv", "@cld", "1"},
 		{"-sv", "extended-keys", "on"},
 		{"-sv", "focus-events", "on"},
 		{"-gv", "mouse", "on"},
@@ -1763,7 +1826,9 @@ func TestClaudeNeverSeesTheTerminal(t *testing.T) {
 // TMUX, as join's has to (see TestNestsOnADeadPanesPty), with which tmux still takes the terminal,
 // a pane of the other tmux, for UTF-8 whatever the locale says. cld looks for its own panes on its
 // own servers only, cld-NAME: in a live pane of any other server it nests - the default one, the
-// one server cld 0.3.0 and earlier shared, or one named like no session of cld's can be.
+// one server cld 0.3.0 and earlier shared, one named like no session of cld's can be, or one named
+// like cld's that cld did not start, the user's own tmux -L cld-outer (see
+// TestLeavesAForeignServerAlone), where list is interactive too.
 func TestNestsInsideAnotherTmux(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1778,7 +1843,7 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 		t.Errorf("client_utf8 %q under LANG=C, want 1", utf8)
 	}
 
-	for i, server := range []string{"default", "cld", "cld-x.y"} {
+	for i, server := range []string{"default", "cld", "cld-x.y", "cld-outer"} {
 		// A pane of that server runs cld on its own pty, with the TMUX tmux sets for it.
 		name := "in" + strconv.Itoa(i)
 		out := filepath.Join(s.Root, name)
@@ -1793,6 +1858,11 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 			t.Errorf("cld new in a pane of server %s did not attach: %q", server, stderr)
 		}
 	}
+	s.MustTmux("cld-outer", append([]string{"new-session", "-d", "-s", "list", "-c", s.Work}, s.CldArgv("list")...)...)
+	sandbox.WaitFor(t, 10*time.Second, "the interactive list in a pane of server cld-outer", func() bool {
+		screen, _ := s.Tmux("cld-outer", "capture-pane", "-p", "-t", "=list:")
+		return strings.Contains(screen, "enter to join")
+	})
 }
 
 // A dead pane - one cld keeps for a failed claude, say - keeps the name of its closed pty, and the
@@ -1802,9 +1872,9 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 // dead pane. Not parallel: a terminal another test opens could take the name first.
 func TestNestsOnADeadPanesPty(t *testing.T) {
 	s := sandbox.New(t)
-	// Session main, and a dead pane on its server: remain-on-exit keeps the pane, dead, once false
-	// has exited.
-	s.MustTmux("cld-main", "-f", "/dev/null", "new-session", "-d", "-s", "cld-main", "sleep", "600")
+	// Session main, on a server marked as cld marks its own, and a dead pane on its server:
+	// remain-on-exit keeps the pane, dead, once false has exited.
+	s.MustTmux("cld-main", "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", "cld-main", "sleep", "600")
 	s.MustTmux("cld-main", "set", "-g", "remain-on-exit", "on", ";", "new-session", "-d", "-s", "dead", "false")
 	sandbox.WaitFor(t, 10*time.Second, "the pane to die", func() bool {
 		return s.MustTmux("cld-main", "list-panes", "-t", "=dead", "-F", "#{pane_dead}") == "1"
@@ -3517,7 +3587,7 @@ func TestListKill(t *testing.T) {
 		name, pattern string
 		ends          bool
 	}{
-		{"lookup", "*'#{==:#{session_name},cld-a} -F #{session_name} #{W:#{P:#{pane_pid} }}'", false},
+		{"lookup", "*'#{==:#{session_name},cld-a},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}'", false},
 		{"kill-session", "*kill-session*", false},
 		{"read", "*'#{?pane_dead,exited'*", true},
 	} {
@@ -3924,7 +3994,7 @@ type heldTmux struct {
 // by the one format that follows.
 func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldTmux {
 	t.Helper()
-	lookup := holdTmux(t, s, "the lookup of cld-"+name, "*'#{==:#{session_name},cld-"+name+"} -F #{session_name} #{W:#{P:#{pane_pid} }}'")
+	lookup := holdTmux(t, s, "the lookup of cld-"+name, "*'#{==:#{session_name},cld-"+name+"},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}'")
 	lookup.start(t)
 	return lookup
 }
