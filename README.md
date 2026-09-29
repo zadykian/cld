@@ -78,7 +78,7 @@ another repository or directory of the same name made.
 | `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
 | `cld detach [-n NAME] [-s SUFFIX]` | detach every terminal from the session; without `-n` and `-s`, as `! cld detach` in claude, the terminal used last, normally the one you typed it in |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
-| `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`) and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
+| `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`), when each was last active and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
 | `cld setup project [--mcp SERVER] [--permissions SET]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
 | `cld setup completion SHELL` | set up completion in `bash`, `zsh` or `fish` |
@@ -101,7 +101,8 @@ another repository or directory of the same name made.
 
 Leaving claude (`/exit`, `Ctrl+C` twice) ends its session, which `cld list` then shows as
 `ended`. If claude exits with an error, the session stays, as `exited` in `cld list`, with its
-message on screen and a line below it that says how to end the session, until `cld kill` ends it.
+message on screen and a line below it that says how to end the session, until `cld kill` ends it
+or it has been idle for longer than 30 days (below).
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
 `/background` (`/bg`), and "Move to background and exit" where `/exit` offers it, end the session
@@ -109,6 +110,12 @@ too: they move the conversation to Claude Code's
 [background sessions](https://code.claude.com/docs/en/agent-view), where it goes on without cld.
 `←` on an empty prompt moves it there as well, and leaves claude in the session, in agent view,
 where `Esc` goes back to the conversation, which goes on in the background all the same.
+
+A session idle for longer than 30 days - no terminal attached, and no key typed into one - ends at
+the next `cld list`, or `cld new` without `-s`, as `cld kill` would end it, with a line on stderr:
+`cld: ended session 'api-0', idle for 31 days`. `cld list` shows it as `ended`, for `cld resume`
+(below). `CLD_IDLE_DAYS` sets the days, and `0` ends none; see the
+[guide](docs/guide.md#idle-sessions).
 
 The terminal's tab shows the session, `✳ cld-NAME-SUFFIX`, and while claude works `◐` and `◑` in
 turn in place of the `✳`, as claude's own title does outside tmux; while claude works in a linked
@@ -249,10 +256,10 @@ Claude Code keeps conversations running without a terminal too, and without tmux
 or `/bg` or `←` in a conversation, hands one to a supervisor process; `claude attach ID` opens it
 again, and [agent view](https://code.claude.com/docs/en/agent-view), `claude agents`, lists them
 all on one screen. cld keeps claude as you run it in a terminal: a session goes by a name, not an
-ID, and TAB completes it; claude keeps running until you end it, idle or not; and it renders as
-your settings say, where an attached background session is always fullscreen. The
-[guide](docs/guide.md#cld-and-claude-codes-background-sessions) compares the two point by point,
-and says how they combine.
+ID, and TAB completes it; claude keeps running, working or waiting, until you end it or leave it
+idle for 30 days; and it renders as your settings say, where an attached background session is
+always fullscreen. The [guide](docs/guide.md#cld-and-claude-codes-background-sessions) compares
+the two point by point, and says how they combine.
 
 ## cld and `claude --tmux`
 

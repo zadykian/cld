@@ -251,6 +251,43 @@ held down does not go on to kill the next session.
 - Whether a JetBrains IDE passes `Esc` and `Ctrl+X` on to its terminal depends on its keymap;
   `Ctrl+C` also leaves the list.
 
+## Idle sessions
+
+A claude holds some 0.2 to 0.5 GB of memory for as long as its session runs, used or not.
+`cld list`, and `cld new` without `-s`, end each session idle for longer than 30 days, as
+`cld kill` ends it, and say so on stderr: `cld: ended session 'api-0', idle for 31 days`. The
+`LAST ACTIVE` column of `cld list` shows how long ago each session was active - `now`, `5m`, `2h`,
+`31d` - as of when the list read the sessions, and `-` for a session that has ended.
+
+- A session is idle while no terminal is attached to it, from the last key typed into a terminal
+  on it or the last terminal attaching, whichever came later: tmux counts nothing else. claude
+  working on its own - a long task, `/loop` - does not count, nor does a conversation continued
+  through Remote Control. A session with a terminal attached is never idle. `C-q d` is a key; a
+  terminal that closes without it, or that `cld join --detach-others` or `cld detach` detaches,
+  leaves the session idle from its last key, or from when it attached.
+- To keep a session, join it now and then (`cld join`, then `C-q d`), or set `CLD_IDLE_DAYS` in
+  your shell's profile: the number of days, such as `90` or `0.5`, or `0` to end none. `cld list`
+  and `cld new` without `-s` refuse a value that is no number of days. Completion ends no
+  session, and neither does `cld new -s SUFFIX`.
+- cld never ends the session it runs in: a session's claude running `cld list`, say, or a shell in
+  a pane on its tmux server. Ending it would end cld too, and that claude in the middle of its
+  work. A session driven through Remote Control alone ends at the next `cld list` run elsewhere.
+- The kill checks again that the session is idle: a terminal that attaches as `cld list` ends it,
+  or a key typed, keeps it. The session goes with its server, as with `cld kill`: whatever claude
+  started through tmux ends too.
+- `cld new` ends the idle sessions once it has taken its index, so the session it makes does not
+  take the name of one it has just ended: in a repository `api` whose one session, `api-0`, was
+  idle, it makes `api-1`. As after `cld kill`, the name is not given again while cld keeps the
+  session (see [Sessions](#sessions)). Where a server answers the read with an error, `cld new`
+  warns and ends none; `cld list` fails with it.
+- A session ended for being idle shows in `cld list` as `ended`, as after `cld kill`, and `Enter`
+  on its row, or `cld resume -n NAME -s SUFFIX`, brings the conversation back (see
+  [Resuming a conversation](#resuming-a-conversation)) for as long as Claude Code keeps it: it
+  removes a transcript last written longer ago than its `cleanupPeriodDays` setting, 30 days by
+  default, so the conversation of a session idle for 30 days can go soon after, and cld forgets
+  the session about then. Raise `cleanupPeriodDays` in `~/.claude/settings.json`, or set
+  `CLD_IDLE_DAYS` lower, to keep the conversations for longer than the sessions.
+
 ## Notifications
 
 claude's setting `preferredNotifChannel` - "Local notifications" in `/config` - picks how claude
@@ -657,10 +694,10 @@ Claude Code 2.1.284 - agent view is a research preview, and its docs say what ch
 | Needs | cld and tmux, of the version the [README](../README.md#install) names | nothing but claude; the `disableAgentView` setting, or `CLAUDE_CODE_DISABLE_AGENT_VIEW`, turns agent view off, and `--bg` and `/bg` with it |
 | Address | a name - `-s SUFFIX` in its repository - which TAB completes | an ID of 8 hex digits, or its start: `claude attach 7c5d`; for a name, claude says `No job matching 'NAME'` |
 | Coming back | claude as you left it, in the renderer you chose with `/tui`; in the classic one, the wheel scrolls the pane's history in tmux's copy mode | always fullscreen, whatever `/tui` chose; the terminal's scrollback and tmux's copy mode see only the screen |
-| Idle | claude keeps running until you end it | the supervisor stops claude once it is done, or waits for your next message, and has been unattached for about an hour, unless the session is pinned (`Ctrl+T` in agent view); attaching resumes the conversation |
+| Idle | claude keeps running, working or waiting, until you end it or the session has had no terminal attached and no key typed for 30 days: then the next `cld list`, or `cld new` without `-s`, ends it (see [Idle sessions](#idle-sessions)), and `cld resume` resumes the conversation | the supervisor stops claude once it is done, or waits for your next message, and has been unattached for about an hour, unless the session is pinned (`Ctrl+T` in agent view); attaching resumes the conversation |
 | claude crashes | the session stays, with claude's last screen and how it exited, `exited` in `cld list` | the supervisor starts claude again; `claude logs ID` shows its recent output |
 | Reboot | claude stops; `cld resume` resumes the conversation in a new session | claude stops; the session shows failed - stopped after 48 hours - and attaching resumes the conversation |
-| Listing | `cld list`: name, state and directory; join or kill | `claude agents`: state, activity and age; attach, peek, reply, dispatch, stop |
+| Listing | `cld list`: name, state, when last active and directory; join or kill | `claude agents`: state, activity and age; attach, peek, reply, dispatch, stop |
 
 A cld session is not one of them: `claude agents --json` lists it as `"kind": "interactive"`, named
 `cld-NAME-SUFFIX` and without the `id` that `claude attach`, `claude logs` and `claude stop` take,
@@ -704,14 +741,15 @@ to bring the conversation back into cld.
 - **A slow cld.** Each command runs tmux a few times - `tmux -V`, but for completion, a command
   for each running server it asks, and then the tmux that starts, joins, detaches or kills the
   session - and each run takes as long as tmux takes to start: 6-20 ms built from source or from
-  most packages, 100-200 ms from Ubuntu's tmux snap. `cld list` and a TAB ask every server of
-  cld's that runs, eight at a time: over 10 sessions, under half a second through the snap. The
-  sockets that ended sessions leave in `tmux-UID`, which neither tmux nor cld removes, cost no
-  tmux. In a session, each hook of the tab's title runs tmux too, and claude waits for all of them
-  but the one on a change of its directory: after every tool among others, through the snap a
-  tenth of a second and more each time (see [Sessions](#sessions)). Inside your own tmux, where
-  cld's own tmux is 3.6 or newer, `new`, `resume`, `join` and `Enter` in `cld list` run one tmux
-  more, which asks yours what it keeps from claude (see
+  most packages, 100-200 ms from Ubuntu's tmux snap. `cld list`, a TAB and `cld new` without `-s`,
+  which ends the idle sessions (see [Idle sessions](#idle-sessions); `CLD_IDLE_DAYS=0` spares it
+  that), ask every server of cld's that runs, eight at a time: over 10 sessions, under half a
+  second through the snap. The sockets that ended sessions leave in `tmux-UID`, which neither tmux
+  nor cld removes, cost no tmux. In a session, each hook of the tab's title runs tmux too, and
+  claude waits for all of them but the one on a change of its directory: after every tool among
+  others, through the snap a tenth of a second and more each time (see [Sessions](#sessions)).
+  Inside your own tmux, where cld's own tmux is 3.6 or newer, `new`, `resume`, `join` and `Enter`
+  in `cld list` run one tmux more, which asks yours what it keeps from claude (see
   [Inside your own tmux](#inside-your-own-tmux)).
 
 ## Upgrading
@@ -768,6 +806,12 @@ to bring the conversation back into cld.
   `true` in `/config` connects cld's sessions as before, and every claude you start without cld
   too: the setting is claude's, in its user settings. A session started before the upgrade keeps
   Remote Control until it ends.
+- **Idle sessions.** In cld 0.9.0 and earlier a session ran until claude exited or `cld kill`
+  ended it. Now `cld list`, and `cld new` without `-s`, end each session idle for longer than 30
+  days, those left from before the upgrade too, among them sessions kept on purpose or driven
+  through Remote Control alone: to keep them, set `CLD_IDLE_DAYS` (see
+  [Idle sessions](#idle-sessions)) before the first run. The table of `cld list` gains
+  `LAST ACTIVE` before `DIRECTORY`, which a script now finds fourth, after a header of five words.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **Ended sessions.** cld 0.9.0 and earlier kept no record of the sessions: a session they started

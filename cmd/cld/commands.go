@@ -6,9 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -171,7 +175,8 @@ claude starts through tmux runs on that server too, and ends with it.
 
 Detach with C-q d, or ! cld detach in claude where the terminal keeps C-q from
 tmux; C-q C-q sends C-q to claude. A session whose claude fails stays, showing
-why, until cld kill ends it.`,
+why, until cld kill ends it, or it has been idle for longer than $CLD_IDLE_DAYS
+days (see cld help list).`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -190,7 +195,9 @@ directory itself; SUFFIX is by default INDEX, 0 or, where sessions NAME-INDEX
 run or have ended within 30 days, one above the highest of their INDEX. Where
 the directory's name leaves nothing, as in /, the session is SUFFIX alone. NAME
 and SUFFIX consist of letters, digits, "_" and "-", each starting with a letter
-or digit, and make 64 characters at most.
+or digit, and make 64 characters at most. Without -s, new also ends the
+sessions idle for longer than $CLD_IDLE_DAYS days, as cld list does, once it
+has taken its INDEX.
 
 ARGS, after --, go to claude after cld's own arguments: claude's options, such
 as --model opus, and a prompt to start with. cld refuses the options it gives
@@ -209,6 +216,16 @@ conversation, which cld resume does: -r, --resume, -c, --continue and
 	newCommand.RunE = func(c *cobra.Command, args []string) error {
 		if err := newNaming.check(typed, ""); err != nil {
 			return err
+		}
+		// Without -s, new looks its index up (see session.Tmux.Next), and then reads every server
+		// to end the idle sessions, as list does (see sweep); with -s it reads its session's server
+		// only.
+		var limit time.Duration
+		if !newNaming.flags.Changed("suffix") {
+			var err error
+			if limit, err = idleLimit(); err != nil {
+				return err
+			}
 		}
 		tools := []string{"claude"}
 		if *worktree {
@@ -233,6 +250,17 @@ conversation, which cld resume does: -r, --resume, -c, --continue and
 		suffix, _, err := newNaming.resolve(tmux)
 		if err != nil {
 			return err
+		}
+		// The sweep comes once the index is taken, so that the session made does not take the name
+		// of one just ended, by which cld resume finds its conversation, and resume's index stays
+		// new's. It runs under the record's lock, which another new waits for meanwhile. The sweep
+		// is not what was asked: where its read of the servers fails, new says so and goes on.
+		if limit > 0 {
+			if sessions, err := tmux.Sessions(context.Background()); err != nil {
+				output.Warn("cannot end the idle sessions: " + err.Error())
+			} else {
+				sweep(tmux, sessions, limit)
+			}
 		}
 		_, words := atDash(c, args)
 		return tmux.New(claude, suffix, *worktree, words)
@@ -446,14 +474,17 @@ conversation back.`,
 	// where join would refuse the session picked; with no sessions there is nothing to pick.
 	// Leaving it prints the table, from the sessions it last read. A session picked that has ended
 	// is resumed as resume without SESSION resumes it: its claude is checked once the list has
-	// handed the terminal over (see resumeEnded).
+	// handed the terminal over (see resumeEnded). It ends the idle sessions first (see sweep).
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "list cld's sessions; on a terminal, join, kill or resume one",
 		Long: `list the sessions cld started: name, whether a terminal is attached (or claude
-exited, or the session ended), and the directory claude is in or ran in. cld
-keeps a session that has ended - by cld kill, claude's /exit, a reboot - for 30
-days.
+exited, or the session ended), when it was last active (a terminal attaching,
+or a key typed in one) and the directory claude is in or ran in. cld keeps a
+session that has ended - by cld kill, claude's /exit, a reboot - for 30 days.
+A session idle for longer than $CLD_IDLE_DAYS days, 30 where unset or empty,
+is ended first, as cld kill ends it, with a line on stderr; cld resume brings
+its conversation back. CLD_IDLE_DAYS=0 ends none.
 
 On a terminal, pick one to join or kill: Up and Down select a session, Enter
 joins it as cld join does, C-x twice within two seconds kills it as cld kill
@@ -461,6 +492,10 @@ does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
 list. On a session that has ended, Enter resumes it as cld resume does, and C-x
 twice forgets it. cld list | cat prints the list only.`,
 		RunE: func(*cobra.Command, []string) error {
+			limit, err := idleLimit()
+			if err != nil {
+				return err
+			}
 			tmux, err := session.Check()
 			if err != nil {
 				return err
@@ -469,6 +504,7 @@ twice forgets it. cld list | cat prints the list only.`,
 			if err != nil {
 				return err
 			}
+			sessions = sweep(tmux, sessions, limit)
 			if len(sessions) > 0 && picker.Available() {
 				if _, own := tmux.OwnPane(); !own {
 					picked, last, err := picker.Run(listSource{tmux}, sessions)
@@ -1467,8 +1503,8 @@ func unexpected(typed, argument string) error {
 	return fail.Usage(fmt.Sprintf("%s: unexpected argument '%s' (see cld help)", typed, argument))
 }
 
-// table lays out sessions for list: NAME, at least four wide, STATE and DIRECTORY, under a
-// header; nothing at all without sessions.
+// table lays out sessions for list: NAME, at least four wide, STATE, LAST ACTIVE and DIRECTORY,
+// under a header; nothing at all without sessions.
 func table(sessions []session.Session) string {
 	if len(sessions) == 0 {
 		return ""
@@ -1478,9 +1514,89 @@ func table(sessions []session.Session) string {
 		width = max(width, utf8.RuneCountInString(s.Name))
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "%-*s  %-8s  %s\n", width, "NAME", "STATE", "DIRECTORY")
+	fmt.Fprintf(&out, "%-*s  %-8s  %-11s  %s\n", width, "NAME", "STATE", "LAST ACTIVE", "DIRECTORY")
 	for _, s := range sessions {
-		fmt.Fprintf(&out, "%-*s  %-8s  %s\n", width, s.Name, s.State, s.Directory)
+		fmt.Fprintf(&out, "%-*s  %-8s  %-11s  %s\n", width, s.Name, s.State, s.LastActive(), s.Directory)
 	}
 	return out.String()
+}
+
+// days matches a number of days as CLD_IDLE_DAYS takes it: decimal digits, with a fraction or
+// without.
+var days = regexp.MustCompile(`^([0-9]+\.?[0-9]*|\.[0-9]+)$`)
+
+// idleLimit is how long a session may stay idle before list, and new without -s, end it (see
+// sweep): CLD_IDLE_DAYS days - a fraction of a day too, as the tests take - and 30 where it is
+// unset or empty; 0 for no limit, where nothing is ended. Anything else is refused rather than
+// taken for another limit, which could end the sessions sooner than meant: a negative number, an
+// exponent, a unit. A limit longer than a time.Duration holds, some 292 years, is none.
+func idleLimit() (time.Duration, error) {
+	value := os.Getenv("CLD_IDLE_DAYS")
+	if value == "" {
+		return 30 * 24 * time.Hour, nil
+	}
+	if !days.MatchString(value) {
+		return 0, fail.Runtime(fmt.Sprintf("CLD_IDLE_DAYS is not a number of days: '%s'", value))
+	}
+	// +Inf where the number is too large for a float64.
+	count, _ := strconv.ParseFloat(value, 64)
+	limit := math.Ceil(count * float64(24*time.Hour))
+	if limit >= math.MaxInt64 {
+		return 0, nil
+	}
+	return time.Duration(limit), nil
+}
+
+// sweep ends each of sessions that has been idle for longer than limit - none where limit is 0 -
+// as kill ends it, with a note on stderr for each, and returns the sessions as list then shows
+// them: those it ended as ended, where cld's record keeps them (see session.EndedSession), as
+// after cld kill. It is list's first step, and new's without -s once it has its index. The kill
+// checks again that the session is idle (see session.Tmux.EndIdle): one that a terminal has
+// attached to since, say, stays. A kill that fails is a warning, and the session stays too: the
+// sweep is not what was asked. The session whose server cld runs on, as when its claude runs cld,
+// stays however long it has been idle (see session.OwnServer), and one that has ended is idle for
+// no time (see session.Session's Idle).
+func sweep(tmux *session.Tmux, sessions []session.Session, limit time.Duration) []session.Session {
+	if limit == 0 {
+		return sessions
+	}
+	own, inside := session.OwnServer()
+	var kept []session.Session
+	for _, s := range sessions {
+		if s.Idle > limit && !(inside && s.Name == own) {
+			ended, err := tmux.EndIdle(context.Background(), s.Name, limit)
+			if err != nil {
+				output.Warn(fmt.Sprintf("cannot end session '%s', idle for %s: %s", s.Name, idleFor(s.Idle), err))
+			}
+			if ended {
+				output.Note(fmt.Sprintf("ended session '%s', idle for %s", s.Name, idleFor(s.Idle)))
+				if row, recorded := session.EndedSession(s.Name); recorded {
+					kept = append(kept, row)
+				}
+				continue
+			}
+		}
+		kept = append(kept, s)
+	}
+	return kept
+}
+
+// idleFor is how long a session has been idle, for the sweep's notes: in whole days, hours,
+// minutes or seconds, the largest that fits - "31 days", "1 hour".
+func idleFor(idle time.Duration) string {
+	unit, name := time.Second, "second"
+	for _, larger := range []struct {
+		size time.Duration
+		name string
+	}{{24 * time.Hour, "day"}, {time.Hour, "hour"}, {time.Minute, "minute"}} {
+		if idle >= larger.size {
+			unit, name = larger.size, larger.name
+			break
+		}
+	}
+	count := int64(idle / unit)
+	if count != 1 {
+		name += "s"
+	}
+	return strconv.FormatInt(count, 10) + " " + name
 }

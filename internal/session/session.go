@@ -45,6 +45,14 @@
 // session that has ended with Enter, as resume does, and forgets it with Ctrl+X twice; join,
 // detach and kill refuse it, pointing at resume, and `cld resume -n` and `-s` complete its name.
 //
+// list shows how long each session has been idle - no terminal attached, and no key typed into
+// one - and first ends, as kill does, each session idle for longer than CLD_IDLE_DAYS days, 30 by
+// default, and so does new without -s, once it has taken its index: a forgotten claude holds some
+// 0.2 to 0.5 GB for as long as its server runs. Completion never ends one, nor does cld end the
+// session whose server it runs on (see OwnServer). Its entry in cld's record stays, as after kill:
+// list shows it as ended, and resume brings its conversation back (see Session's Idle and
+// EndIdle).
+//
 // cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
 // Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
 // made that way has another name - cld-NAME is taken - so it is no session of cld's, and kill
@@ -1227,24 +1235,50 @@ type Session struct {
 	// session of a cld that recorded none, 0.8.2 or earlier, and for one that has ended, whose
 	// entry records none.
 	Home string
+	// Idle is how long the session had been idle when Sessions read it: since the later of the last
+	// key typed into a terminal attached to it and its last attach, both in whole seconds
+	// (#{session_activity}, #{session_last_attached}), or 0 while a terminal is attached. tmux counts
+	// neither a pane's output nor input that comes by any other way than a terminal attached to the
+	// session - claude's own work, Remote Control - and a detach sets nothing: the idle time runs
+	// from the last key, which C-q d is (tmux 3.5a, 3.7c). A time in the future, or one tmux does not
+	// give as a number, counts as now, so that nothing is ended on a value cld cannot read (see
+	// EndIdle). A session that has ended has none: 0, which no sweep ends.
+	Idle time.Duration
+}
+
+// LastActive is Idle as list shows it: "now" under a minute, and otherwise in whole minutes,
+// hours or days, the largest that fits - 5m, 2h, 31d; "-" for a session that has ended, of which
+// tmux knows nothing.
+func (s Session) LastActive() string {
+	switch {
+	case s.State == Ended:
+		return "-"
+	case s.Idle < time.Minute:
+		return "now"
+	case s.Idle < time.Hour:
+		return strconv.Itoa(int(s.Idle/time.Minute)) + "m"
+	case s.Idle < 24*time.Hour:
+		return strconv.Itoa(int(s.Idle/time.Hour)) + "h"
+	}
+	return strconv.Itoa(int(s.Idle/(24*time.Hour))) + "d"
 }
 
 // Sessions reads the sessions cld started, in the order of their names: those whose servers run,
-// and those that have ended, as Ended - the entries of cld's record without their session (see
-// entries). Each has a server of its own: Sessions asks every server with a socket cld-NAME in
-// tmux's directory (see socketDir) for its session cld-NAME, one tmux command a server that takes
-// the connection (see serverless), up to asks servers at once, in the order of the names. It
-// passes over a socket whose NAME no session can have, a server that cld did not start (see mark),
-// and the socket cld, of the one server earlier versions of cld shared. tmux never removes a
-// socket - not when its server exits, is killed or dies - and on a stale one says that no server
-// is running: Sessions passes over it without running tmux, as it passes over a server that exits
-// while it asks, when a claude exits or a cld kill runs. cld removes none either: tmux replaces a
-// stale socket under a lock, which cld would not hold, so cld could remove the socket of a server
-// that a cld new had just started there. Once a server fails otherwise, Sessions asks no more -
-// where tmux refuses its directory, every server would fail alike - and of those that failed, the
-// first in the order of the names gives the error. Sessions starts no server, and writes nothing:
-// it is list's read of the sessions, and completion's, on every TAB. Once ctx is done, its tmux is
-// killed.
+// each with how long it has been idle, and those that have ended, as Ended - the entries of cld's
+// record without their session (see entries). Each has a server of its own: Sessions asks every
+// server with a socket cld-NAME in tmux's directory (see socketDir) for its session cld-NAME, one
+// tmux command a server that takes the connection (see serverless), up to asks servers at once,
+// in the order of the names. It passes over a socket whose NAME no session can have, a server that
+// cld did not start (see mark), and the socket cld, of the one server earlier versions of cld
+// shared. tmux never removes a socket - not when its server exits, is killed or dies - and on a
+// stale one says that no server is running: Sessions passes over it without running tmux, as it
+// passes over a server that exits while it asks, when a claude exits or a cld kill runs. cld
+// removes none either: tmux replaces a stale socket under a lock, which cld would not hold, so cld
+// could remove the socket of a server that a cld new had just started there. Once a server fails
+// otherwise, Sessions asks no more - where tmux refuses its directory, every server would fail
+// alike - and of those that failed, the first in the order of the names gives the error. Sessions
+// starts no server, and writes nothing: it is list's read of the sessions, new's for its sweep of
+// the idle ones, and completion's, on every TAB. Once ctx is done, its tmux is killed.
 func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 	dir := socketDir()
 	sockets, err := os.ReadDir(dir)
@@ -1298,11 +1332,28 @@ func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 	// one that outlives its session (see lingering), which resume refuses.
 	for _, r := range entries() {
 		if !slices.ContainsFunc(sessions, func(s Session) bool { return s.Name == r.Name }) {
-			sessions = append(sessions, Session{Name: r.Name, State: Ended, Directory: r.Directory})
+			sessions = append(sessions, endedSession(r))
 		}
 	}
 	slices.SortFunc(sessions, func(a, b Session) int { return strings.Compare(a.Name, b.Name) })
 	return sessions, nil
+}
+
+// endedSession is the session of entry r as Sessions reads it once it has ended.
+func endedSession(r entry) Session {
+	return Session{Name: r.Name, State: Ended, Directory: r.Directory}
+}
+
+// EndedSession is session cld-SUFFIX as Sessions would read it now that it has ended - by the
+// sweep of the idle sessions, which shows it so without reading every server again - and whether
+// there is one: none where cld's record keeps no entry of it - one made by cld 0.9.0 or earlier,
+// one whose entry cld could not write, or one that has expired (see expiry).
+func EndedSession(suffix string) (Session, bool) {
+	r, ok := recorded(suffix)
+	if !ok {
+		return Session{}, false
+	}
+	return endedSession(r), true
 }
 
 // asks is how many servers Sessions asks at once. Through Ubuntu's snap, where a tmux took
@@ -1315,31 +1366,91 @@ const asks = 8
 func (t *Tmux) session(ctx context.Context, suffix string) (*Session, error) {
 	// pane_current_path is the directory claude is in now, not the one its session started in;
 	// once claude has exited there is none, and list shows where the session started. The
-	// session's home comes right before it, both paths, which can hold a tab: the home's length in
-	// bytes (n:) goes before them, and the directory takes the rest of the line.
+	// session's times share a field, as session_last_attached is empty where no terminal has
+	// attached. The session's home comes right before the directory, both paths, which can hold a
+	// tab: the home's length in bytes (n:) goes before them, and the directory takes the rest of
+	// the line.
 	state := "#{?pane_dead,exited,#{?session_attached,attached,detached}}"
+	times := "#{session_activity} #{session_last_attached}"
 	path := "#{n:@cld-home}\t#{@cld-home}#{?pane_dead,#{session_path},#{pane_current_path}}"
 	// tmux writes to a client whose LC_ALL, LC_CTYPE or LANG does not name UTF-8 - unset or C, as
 	// over ssh, in containers and cron - with "_" for each character it cannot print: the tabs,
 	// and any non-ASCII letter in a directory. -u marks the client UTF-8, so the output arrives as
 	// it is.
 	out, err := combinedOutput(t.commandContext(ctx, "-u", "-L", "cld-"+suffix, "list-sessions",
-		"-f", only(suffix), "-F", "#{session_name}\t"+state+"\t#{session_attached}\t"+panePIDs+"\t"+path))
+		"-f", only(suffix), "-F", "#{session_name}\t"+state+"\t#{session_attached}\t"+panePIDs+"\t"+times+"\t"+path))
 	if err != nil {
 		if noServer(out) {
 			return nil, nil
 		}
 		return nil, fail.Runtime(out)
 	}
+	read := time.Now()
 	line, _, _ := strings.Cut(out, "\n")
-	field := fields(line, 6)
+	field := fields(line, 7)
 	if field[0] != "cld-"+suffix {
 		return nil, nil
 	}
 	clients, _ := strconv.Atoi(field[2])
-	home, directory := cutHome(field[4], field[5])
-	return &Session{Name: suffix, State: field[1], Attached: clients > 0, PIDs: strings.Fields(field[3]),
-		Directory: directory, Home: home}, nil
+	home, directory := cutHome(field[5], field[6])
+	s := &Session{Name: suffix, State: field[1], Attached: clients > 0, PIDs: strings.Fields(field[3]),
+		Directory: directory, Home: home}
+	if !s.Attached {
+		s.Idle = idleSince(read, strings.Fields(field[4]))
+	}
+	return s, nil
+}
+
+// idleSince is how long a session with no terminal attached has been idle at now, going by the
+// later of times, tmux's #{session_activity} and #{session_last_attached} (see Session's Idle), of
+// which the second is missing where no terminal has attached: 0 where one is not a number of
+// seconds.
+func idleSince(now time.Time, times []string) time.Duration {
+	if len(times) == 0 {
+		return 0
+	}
+	var last int64
+	for _, value := range times {
+		seconds, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return 0
+		}
+		last = max(last, seconds)
+	}
+	return max(now.Sub(time.Unix(last, 0)), 0)
+}
+
+// EndIdle ends session cld-SUFFIX with its server, as End does, if it is still idle for longer than
+// limit: no terminal attached, and neither a key nor an attach since limit before now, by tmux's
+// seconds (see Session's Idle). It is the sweep of list and new, for a session Sessions read as
+// idle for longer. tmux checks and kills in one command (if -F, then kill-session and kill-server),
+// so that a terminal that attaches, or a key typed, between the read and the kill keeps the
+// session, as does a session made again under the name since, which is new; without the session,
+// if -F expands its format with none, and ends nothing. EndIdle reports whether it ended the
+// session: not where it was kept, nor where the server has gone, without an error. Another failure
+// is tmux's message. Once ctx is done, its tmux is killed.
+func (t *Tmux) EndIdle(ctx context.Context, suffix string, limit time.Duration) (bool, error) {
+	// A session is idle for longer than limit where its seconds are before now less limit, and so
+	// before that time's next whole second, where it has a fraction: tmux compares whole numbers.
+	since := time.Now().Add(-limit)
+	cutoff := since.Unix()
+	if since.Nanosecond() > 0 {
+		cutoff++
+	}
+	before := func(format string) string {
+		return "#{e|<:#{" + format + "}," + strconv.FormatInt(cutoff, 10) + "}"
+	}
+	idle := "#{&&:#{==:#{session_attached},0},#{&&:" + before("session_activity") + "," + before("session_last_attached") + "}}"
+	name := "=cld-" + suffix
+	out, err := combinedOutput(t.serverContext(ctx, suffix, "if", "-F", "-t", name+":", idle,
+		"kill-session -t "+name+" ; kill-server", "display-message -p kept"))
+	switch {
+	case err != nil && noServer(out):
+		return false, nil
+	case err != nil:
+		return false, fail.Runtime(out)
+	}
+	return out == "", nil
 }
 
 // socketDir is the directory tmux keeps the sockets of -L in: tmux-UID in TMUX_TMPDIR, or in /tmp
@@ -1732,6 +1843,29 @@ func ownServer() (socket, suffix string, found bool) {
 		return "", "", false
 	}
 	return socket, suffix, true
+}
+
+// OwnServer names the session whose server cld runs on, if TMUX names the socket of one of cld's
+// servers (see ownServer), the one of that name in tmux's directory (see socketDir): whatever runs
+// in a pane there inherits TMUX, claude's Bash tool included. The sweep of the idle sessions
+// passes that session over, as ending its server would end the pane cld runs in, and a claude that
+// ran cld in the middle of its turn: to tmux, a session driven through Remote Control alone is
+// idle. It goes by the socket's file, not its path, which TMUX gives with the directory's symbolic
+// links resolved (tmux 3.5a, 3.7c) - macOS's /tmp is one. Unlike OwnPane it needs no terminal.
+func OwnServer() (string, bool) {
+	socket, suffix, found := ownServer()
+	if !found {
+		return "", false
+	}
+	own, err := os.Stat(socket)
+	if err != nil {
+		return "", false
+	}
+	listed, err := os.Stat(filepath.Join(socketDir(), "cld-"+suffix))
+	if err != nil || !os.SameFile(own, listed) {
+		return "", false
+	}
+	return suffix, true
 }
 
 // Home is where the sessions made in the current directory belong, and where the NAME they take

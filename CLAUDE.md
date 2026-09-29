@@ -18,7 +18,7 @@ claude's settings pointed at it), `internal/configfile` edits the files the two 
 it, and `cld update` writing it anew), `internal/tool` finds the programs cld runs on the `PATH`
 (and ends cld as a shell would when one cannot run), `internal/fail` carries exit statuses up to
 `main`, and `internal/output` prints cld's own output, a write that fails being one of those ends,
-and its warnings. `install.sh`, published with each release,
+and its warnings and notes. `install.sh`, published with each release,
 installs cld from a release. Everything else is its test harness (Go, under `tests/`),
 docs and CI.
 
@@ -209,6 +209,18 @@ not push such a change. Rebase onto `main` before either.
   it does not go by `tty`. Both run under `if -F '#{session_attached}'` (the bare one with cld's
   mark too): with no terminal on the session, tmux would fail with `no current client`, or detach
   another session's terminal (decision 44).
+- `list` first, and `new` without `-s` once it has taken its index (reading every server as
+  `list` does, a failed read there only a warning), end each session idle for longer than
+  `CLD_IDLE_DAYS` days (decimal, 30 when unset or empty, `0` none; anything else refused): no
+  terminal attached, and the later of `#{session_activity}` and `#{session_last_attached}`, which
+  only an attach and a terminal's keys move, older than that. The kill is one tmux command,
+  `if -F` with that check again, then `kill-session` and `kill-server`, so that a terminal
+  attaching meanwhile keeps the session, and a note (`output.Note`) on stderr names each session
+  ended, which `list` then shows as `ended` where the record keeps its entry. `LAST ACTIVE` in
+  `list` and its interactive list is the same time, `-` for a session that has ended. Completion
+  never ends one, nor does the sweep end the session whose server cld runs on, the socket `TMUX`
+  names (compared as a file: tmux resolves symbolic links in its path), lest a claude that runs
+  cld end itself (decision 46).
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
   pane (`set -p`, `set-hook -p`), and the tab's title (`set-titles`, `set-titles-string`,
   `@cld-busy`, `@cld-tmux`) on claude's session, not the window or the server, so the other panes
@@ -302,9 +314,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   `CLD_PROBE_FAIL` makes it fail at startup. `claude --version` answers first, writing nothing,
   with `CLD_FAKE_CLAUDE_VERSION` (`99.0.0 (Claude Code)` when unset). Invoked as `tmux`, it fakes
   `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS` (unset:
-  no server running; `CLD_FAKE_TMUX_EXITED` names servers that exit as they are asked; where
-  `tmux-UID` exists, cld asks it only on a socket that takes connections, as `socket` in the
-  tests makes), and
+  no server running; `CLD_FAKE_TMUX_EXITED` names servers that exit as they are asked, and
+  `CLD_FAKE_TMUX_DENIED` those it may not connect to; where `tmux-UID` exists, cld asks it only
+  on a socket that takes connections, as `socket` in the tests makes), and
   records any other command in `tmux.json`, or runs the real tmux `CLD_FAKE_TMUX_REAL` names.
   Invoked as `docker`, it records each call in `docker.jsonl`, keeps the state of the container
   `cld-telemetry` in `docker.container`, takes connections on the port of a container it starts
@@ -334,13 +346,16 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
 - `session_test.go` — session lifecycle and server behaviour, `detach` as claude runs it, the
   names `new` gives from the repository and the index, the sessions of another repository of the
   same name, the hooks that keep claude's status and its worktree for the title, the names
-  completion offers, and the keys a tmux cld runs inside keeps from claude;
+  completion offers, the keys a tmux cld runs inside keeps from claude, and the idle sessions
+  `list` and `new` end (`CLD_IDLE_DAYS` of a few seconds);
   `record_test.go` — cld's record of its sessions: the entry, the hooks that give it the
   conversation's ID, `ended` sessions in `list`, `join`, `kill` and the interactive list,
   `resume` by the ID (or the name) in the entry's directory, the copy's after `resume --fork`, the
   indexes, expiry, the lock of two `new` at once, `XDG_STATE_HOME` and a record cld cannot write;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
-  byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
+  byte with `testdata/help`, the completion scripts, and `LAST ACTIVE`, the kill of an idle
+  session, the session cld runs in kept and `new`'s sweep that cannot read against the fake tmux;
+  `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures
   (Linux only; macOS checks the refusal); `project_test.go` — `setup project` against the real
   git: the files as the repository has them, edits of files that exist, `.gitignore`'s lines,

@@ -135,6 +135,12 @@ rows that name none were probed against tmux 3.6.
 | what `claude` 2.1.283 and 2.1.284 do on SIGHUP (read from their bundles, not run) | an interactive claude shuts down as for SIGTERM, but with the status 129 (143 for SIGTERM): it prints its resume hint where its stdout is a terminal, runs its cleanups, waits for its pending writes, kills the shell commands still running, runs its `SessionEnd` hooks, then exits. The hooks get the reason of the shutdown, `other` unless its caller names one - of `clear`, `resume`, `logout`, `prompt_input_exit` (`/exit`) and `other` - and are aborted after `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` or, unset, after 1.5 s or the longest `timeout` of a `SessionEnd` hook, 60 s at most. A failsafe forces the exit, giving claude's output 0.5 s first, and claude moves it as the shutdown goes on: armed with the signal for that budget plus 5 s, 5 s at least; armed again once the cleanups have ended, or had their 2 s, for the budget plus 5 s, 15 s at least, where writes are still pending; put off 2 s, twice at most, while a refresh of the OAuth token is held; and armed again after the hooks, as claude drains its output, for 2 s - longer for the bytes left to write, at 256 KiB/s, 30 s at most - plus 1.5 s. So until the drain it falls due 6.5 s after the signal with the default budget, 17 s where writes are pending, 21 s with the refresh held too, and 65, 67 and 71 s where a hook's `timeout` is 60 s; the drain sets it anew, 3.5 to 31.5 s past the drain's start (`shutdown`, `armShutdownFailsafe`, `waitForHeldOAuthRefresh` and `armFailsafeAndDrainStdout` in the bundles). A conversation claude runs in the background (`CLAUDE_BG_BACKEND=daemon`) ignores SIGHUP unless it owns its controlling terminal |
 | `cld kill` of a session whose program stands in for claude: a bash script that, on SIGHUP, sleeps 1.5 s for a `SessionEnd` hook, writes a line to its terminal and exits 129 (Ubuntu's tmux 3.7c snap, natively; cld of main 18f63ab) | `cld kill` returned after 0.52 s with status 0, and `tmux -L cld-S ls` then said `no server running`. The script, its parent now PID 1, went on: its hook ended 1.56 s after `cld kill` returned, and its line failed with `Input/output error`, the pty's master being closed |
 | `#{session_created}`, `#{session_id}` and `#{pane_pid}` in `list-sessions -F` (tmux 3.3a, 3.4, 3.5a, 3.7c) | `session_created` counts whole seconds: a session killed and made again within the second has the same value. `session_id` starts again at `$0` on a new server - after the last session was killed, say - so a session made again under the name can have the killed one's id; with another session left it gets the next id. `pane_pid` is the pid of the program tmux started in the session's pane, which a dead pane (`remain-on-exit`) keeps; `kill-session` ends such a session, with status 0 (no terminal attached). For a session, `pane_pid` is the active pane's in its current window: after `split-window -d` and `select-pane` onto the new pane it is the new pane's program's. `#{W:#{P:#{pane_pid} }}` gives every pane's, in every window, the active one or not, a dead one's too |
+| what moves `#{session_activity}` and `#{session_last_attached}` (#79: tmux 3.5a and 3.7c in the images `tests/Dockerfile` builds, and the snap's 3.7c; a session whose pane prints a line a second, a client attached to it from a pane of another private server; `session.c`, `server-client.c`, `window.c` and `format.c` read in 3.7c) | `session_activity` is set as the session is made, as a client attaches, and by each key a client attached to it types - the prefix and `d` of `C-q d` too, which detaches: tmux counts a key before it looks it up - and as a suspended client wakes. A pane's output moves `#{window_activity}` only, and neither moves for `send-keys` to the pane, `set`, `display-message`, `list-sessions` or a detach by `detach-client`. `session_last_attached` is set as a client attaches, and is empty for a session none has attached to: tmux expands a zero time to nothing. Both are whole seconds |
+| `if -F -t =S: '#{&&:#{==:#{session_attached},0},#{&&:#{e\|<:#{session_activity},C},#{e\|<:#{session_last_attached},C}}}' 'kill-session -t =S ; kill-server' 'display-message -p kept'` (#79: tmux 3.5a and 3.7c in the images, the snap's 3.7c) | exits 0: where the condition holds it ends the session and the server, another session on it too, printing nothing, and otherwise prints `kept`. Without session `S` the target fails quietly (`if-shell` may run without one) and the format expands with no session - `#{session_name}` empty - so the condition fails and nothing ends; with no server, `no server running on ...`, status 1. A command in the string that fails - `kill-session -t =S` without `S` - ends the rest: `kill-server` does not run, and tmux exits 1. `e\|<` truncates both sides to whole numbers unless given `f`, and takes an empty side for 0. 3.5a's `&&` takes two arguments, 3.7c's more |
+| claude's memory on the maintainer's host (#79: claude 2.1.284, `ps -o rss` of the four processes running a conversation, in sessions of cld and claude's own) | 225 to 540 MB resident each, where a session's tmux server takes 4 to 5 MB (see above) |
+| how claude 2.1.284 removes old conversations (read from its bundle, not run) | its cleanup takes the time `cleanupPeriodDays` days before now (30 unless set) and removes the transcripts, and their directories, last modified before then (`mtimeMs`): the conversation of a session idle for 30 days is about that old |
+| `TMUX` in a pane of a server started with `TMUX_TMPDIR` a symbolic link to another directory (#79: the snap's 3.7c, and 3.5a and 3.7c in the images `tests/Dockerfile` builds; `-L cld-self`, the pane writing its `TMUX` to a file) | the socket's path with the link resolved: `TMUX_TMPDIR=/tmp/l`, a link to `/tmp/r`, gave `TMUX=/tmp/r/tmux-0/cld-self,PID,0`, where cld's own path to the socket is `/tmp/l/tmux-0/cld-self`. The two are the same file |
+| `TMUX` in claude's Bash tool, in a session of cld's (#79: claude 2.1.284, `echo $TMUX` through the tool in the maintainer's session) | `/tmp/tmux-0/cld-NAME,PID,0`: the tool inherits it, so a `cld list` that claude runs names the session's own server there |
 | Ctrl+X in Claude Code's agent view (`claude agents`): [its docs](https://code.claude.com/docs/en/agent-view), read 2026-09-25, and the hints of 2.1.282, read from its bundle, not run | the docs: `Ctrl+X` "Stop the session; press again within two seconds to delete it", and "Press `Esc` to dismiss the confirmation without deleting"; the second press deletes even when the stop failed. A deleted session leaves the list, its transcript stays for `claude --resume`, and agent view removes a worktree Claude created for it, uncommitted changes included - but keeps the worktree and the session when another session uses or has locked it, or it has commits Claude Code cannot confirm are saved elsewhere. The hints: `ctrl+x to stop` or `ctrl+x to delete` among a selected row's hints; `stopped · ctrl+x again to delete · esc to keep` and `ctrl+x again to delete · esc to keep` dim, as other hints; `stopped · ctrl+x again to delete` and `ctrl+x again to delete` in the error colour. Which shows when was not observed |
 | a directory whose name holds control characters (0x01, ESC), in `#{pane_current_path}` of `list-sessions -F` and `list-panes -F` (tmux 3.3a, 3.4, 3.5a, 3.7c), for a client under `LANG=C.UTF-8` and `LANG=C` | 3.3a and 3.7c write the characters as they are to a UTF-8 client - under `C.UTF-8`, or with `-u` - and each as `_` under `C` without `-u`; 3.4 and 3.5a write them as octal escapes, `\001` and `\033`, under either, with `-u` or not |
 | hint strings in Claude Code 2.1.282 (read from its bundle, not run) | hints are lower case, but for Enter and Esc in some, joined by ` · ` and drawn dim: `↑/↓ to navigate · enter to resume as a background session`, `↑/↓ to navigate · Esc to cancel`, and a list of hints beside `ctrl+x to ...` and `to go back` that ends in `esc to quit` or `esc to close · esc again quits`. Where each shows was not observed |
@@ -2171,10 +2177,11 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        in that order gives the error, as the first asked did;
     3. `new` without `-s` looks up the servers of its candidates from the highest index down, and
        stops at the first that runs: the highest alone counts (24.1), so in the common case one
-       server is asked, where asking every one at once would run a tmux for each. A socket that
-       tmux fails on - a file there that is no socket, on macOS (see Implementation notes) - still
-       ends `new` with tmux's message where it is asked, but one below the highest running server
-       no longer is;
+       server is asked for the index (see 46.2 for the sweep, which then reads every server that
+       runs), where asking every one at once would run a tmux for each. A socket that tmux fails
+       on - a file there that is no socket, on macOS (see Implementation notes) - still ends `new`
+       with tmux's message where it is asked, but one below the highest running server no longer
+       is;
     4. the stale sockets stay (13.1): removing them under tmux's lock - `flock` on
        `cld-NAME.lock`, which a tmux starting a server there takes, never removing the lock file;
        #65 lost none of 3000 live sockets that way - on every `list`, in `kill` alone or behind a
@@ -2183,13 +2190,13 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     5. the tests: `TestStaleSocketsRunNoTmux` has `list`, `join`, `kill` and `new`'s index over
        running servers, one that outlives its session and stale sockets, with a tmux that writes
        down what it runs: no `list-sessions` for a stale socket or a name without one, `list`'s
-       order over more servers than it asks at once, `new` asking one server, and the sockets
-       left; `TestListAsksServersAtOnce` holds `list`'s asks of 12 servers: eight begin, and no
-       more until they are let go, and the sessions show in the order of their names;
-       `TestUnsafeSocketDirectory` a `tmux-UID` open to others, holding 12 stale sockets, where
-       `list`, `new`, `join` and `kill` end with tmux's message, `list` after eight asks at most.
-       `TestListKill`'s case of a server exiting after the kill leaves it taking connections, as
-       an exiting server does for a moment (13). The fake tmux's servers are sockets that take
+       order over more servers than it asks at once, `new` asking one server for its index (see
+       46.7), and the sockets left; `TestListAsksServersAtOnce` holds `list`'s asks of 12 servers:
+       eight begin, and no more until they are let go, and the sessions show in the order of their
+       names; `TestUnsafeSocketDirectory` a `tmux-UID` open to others, holding 12 stale sockets,
+       where `list`, `new`, `join` and `kill` end with tmux's message, `list` after eight asks at
+       most. `TestListKill`'s case of a server exiting after the kill leaves it taking connections,
+       as an exiting server does for a moment (13). The fake tmux's servers are sockets that take
        connections (`socket` in the tests; see Implementation notes).
 
     Out of scope: the `tmux -V` every command but completion runs (6), and the tmux each of the
@@ -2658,6 +2665,92 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        index and in a repository; and the entry `resume --fork` writes, the copy's ID its hook
        gives it, and `resume` bringing the copy back by that ID (`TestResumeForkRecorded`).
 
+46. Idle sessions end (#79): `list`, and `new` without `-s`, end each session idle for
+    longer than `CLD_IDLE_DAYS` days, 30 by default, as `kill` ends it (13), and say so on
+    stderr, `cld: ended session 'api-0', idle for 31 days`; the table and the list (14) show a
+    `LAST ACTIVE` column. A claude runs until `kill`, holding 0.2 to 0.5 GB (see Findings), and
+    nothing showed which sessions were forgotten. Settled with it:
+    1. idle is the time since the later of `#{session_activity}` and `#{session_last_attached}`,
+       and a session with a terminal attached is never idle: tmux moves the first for an attach
+       and each key typed into a terminal on the session, `C-q d` included, and not for a pane's
+       output or a detach (see Findings), so claude working on its own, or a conversation
+       continued through Remote Control, counts as idle, and a terminal that closes without
+       `C-q d` leaves the session idle from its last key. Rejected: `#{window_activity}`, which
+       any output of the pane moves, claude redrawing its screen included; and an `@cld-status`
+       idle since a time the `Stop` hook records (25), which sessions without the hooks lack and
+       which a hook that fails leaves wrong;
+    2. the sweep runs in `list`, first, which reads the servers anyway, and in `new` without
+       `-s`, once it has taken the index: the session it makes does not take the name of one it
+       has just ended, whose conversation `resume -s` finds by that name, and the index `resume`
+       gives with SESSION stays the one `new` gives - as the entry of the session ended keeps its
+       index given (40.6), but not where cld could not write it (40.7). `new` sweeps under the
+       record's lock, which it holds from the name to tmux (40.6): another `new` waits for the sweep
+       meanwhile. It reads every server for it as `list` does, a `list-sessions` for each that takes
+       the connection, eight at a time, and none for a stale socket (38), where its index asks one
+       server in the common case (38.3): through the snap, some 0.25 s more for 10 servers (38.2),
+       and none with `CLD_IDLE_DAYS=0`. A read that fails ends `list`, whose read it is, and is a
+       warning in `new`, which goes on: the sweep is not what was asked.
+       It comes before `new`'s checks of its own session - a terminal to attach from (31), a server
+       that outlived its session (13) - so a `new` refused there has ended the idle sessions all the
+       same, as a `list` run there would have. Neither ends the session whose server cld runs on,
+       where `TMUX` names that server's socket in tmux's directory (`session.OwnServer`): its claude
+       running `list` - to tmux a session driven through Remote Control alone is idle - would end
+       itself in the middle of its turn, and the note would reach nobody. It compares the socket's
+       file, not its path, which tmux gives `TMUX` with the directory's symbolic links resolved (see
+       Findings): macOS's `/tmp` is one.
+       Completion, which runs on every TAB, never ends one, nor do `new -s`, `resume`, `join`,
+       `detach` and `kill`, nor the list's reads after its own actions (14.6). A `kill --idle`
+       alone would leave the forgotten sessions to be remembered;
+    3. `CLD_IDLE_DAYS` takes decimal days, a fraction too, `0` for none; empty or unset is 30. A
+       value that is no such number - a sign, an exponent, `30d` - is refused by `list` and by
+       `new` without `-s` before anything runs, rather than taken for another limit, which could
+       end sessions sooner than meant. The tests give it seconds (`0.0001`, 8.64 s), with no
+       variable of their own;
+    4. the kill is one tmux command, `if -F -t =cld-NAME: CONDITION 'kill-session -t =cld-NAME ;
+       kill-server' 'display-message -p kept'`, where CONDITION checks again that no terminal is
+       attached and that both times are before the cutoff, now less the limit, rounded up to a
+       whole second: a terminal that attaches between the read and the kill, or a key typed,
+       keeps the session - and a session made again under the name since is new - where the
+       pids' check of 15 would miss both. Nested `&&`s, as tmux 3.5a's takes two arguments. A
+       kept session goes unmentioned and stays in the table as read; a kill that fails is a
+       warning (`output.Warn`), not the command's end. The note goes through `output.Note`,
+       `cld: NOTE` on stderr, away from the table that scripts read;
+    5. `LAST ACTIVE` is `now` under a minute and while a terminal is attached, then whole minutes,
+       hours or days: `5m`, `2h`, `31d`; `-` for an `ended` session (40.3), of which tmux knows
+       nothing: when a session last ran stays out of scope (40). It is as of the read, so the
+       list's rows do not change under a key (14.6). `Sessions` reads both times in one field,
+       `#{session_activity} #{session_last_attached}`, as the second is empty where no terminal has
+       attached and the fields split at runs of tabs; a time that is no number counts as now, so
+       that nothing ends on a value cld cannot read;
+    6. the session's entry in cld's record stays, as after `kill` (40.5): `list` shows a session
+       it has ended as `ended` at once, from its entry (`session.EndedSession`), without reading
+       every server again - and not at all without one, as for a session of cld 0.9.0 or earlier -
+       and the list's Enter on its row, or `resume`, brings its conversation back by its ID, in
+       its directory (40.3, 40.4). But claude's own cleanup removes a transcript last written
+       longer ago than `cleanupPeriodDays`, 30 days by default (see Findings): the conversation of
+       a session idle for 30 days is at that edge, and so is its entry, whose time follows the
+       conversation's writes (40.2) - one that has expired shows only once claude's `SessionEnd`
+       hook has touched it, as the kill ends claude. The default stays at 30, as proposed, and the
+       user guide says to raise `cleanupPeriodDays` or lower `CLD_IDLE_DAYS` to keep them;
+    7. the tests: with the real tmux, sessions idle for 10 s against a limit of 8.64 s - `list` ends
+       the detached one, keeps the attached one and one that a key alone keeps, its terminal
+       attached before the limit and detached by `detach-client`, says so and shows the one it ended
+       as `ended`, from its entry; `CLD_IDLE_DAYS=0`, completion and `new -s` end none; values that
+       are no number of days are refused; `new` ends session `0` and makes session `1`, and keeps
+       session `x`, as idle, run with the `TMUX` of its claude; a terminal that attaches while the
+       kill is held keeps the session. With the fake tmux, `LAST ACTIVE` for times from none to 40
+       days, the later of the two times where they differ, and a session never attached, the default
+       and other limits, the notes' units, and the kill's command word for word, its cutoff within a
+       second of now less the limit; `new` makes its session, with a warning, where a server refuses
+       the sweep's read (`CLD_FAKE_TMUX_DENIED`); `list` keeps the session whose socket `TMUX`
+       names, through a symbolic link too, and ends it where `TMUX` names a socket of that name in
+       another directory. `TestStaleSocketsRunNoTmux` (38.5) has `new` ask one server for its index,
+       then each running one, and no stale socket, for the sweep. The tables of the other tests gain
+       the column, `-` on an `ended` row (40.10).
+
+    Out of scope: a server that has outlived its session, which `list` shows only as an `ended`
+    entry (40.3) and `kill` ends (13).
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -2780,7 +2873,8 @@ Where the implementation departs from the plan above:
   on the server named like it `SERVER/SESSION`, so that one on the wrong server shows. The fake tmux
   answers `list-sessions` with `no server running` unless a test gives it sessions: `new` now tells
   a server without its session from no server. It fails as a server exiting does for the servers
-  `CLD_FAKE_TMUX_EXITED` names, and with `CLD_FAKE_TMUX_REAL` runs a real tmux for all but
+  `CLD_FAKE_TMUX_EXITED` names, as a socket tmux may not connect to does for those
+  `CLD_FAKE_TMUX_DENIED` names (46), and with `CLD_FAKE_TMUX_REAL` runs a real tmux for all but
   `list-sessions`, so that a second `cld new` can reach a running server as the one of two at once
   that loses the race does.
 - The mark (decision 34) is a format, `mark`, that `only` - the filter of `lookup` and `Sessions` -
@@ -3130,6 +3224,8 @@ into Enter, see Findings and 43).
   without a terminal, with its pane's `TMUX` and `TMUX_PANE` - and not by the real claude's `!`,
   which was read in its bundle (see Findings). That VS Code and the JetBrains IDEs take `Ctrl+Q`
   as #72 says, and that the settings the user guide gives free it, was not checked here.
+- The sweep of idle sessions (46) is tested with limits of seconds; a session idle for days, the
+  session of a real claude ended, and claude's cleanup of such a conversation were not seen.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

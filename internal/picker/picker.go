@@ -32,12 +32,12 @@
 // session.Tmux.End); a session whose claude exited with its server running on - what its claude
 // started through tmux keeps it running - is ended with the server, as cld kill ends it. The list
 // reads the sessions only when it opens and after its own actions, never on a timer, so a row does
-// not change under a key. While Enter looks the session up, or the kill or forget runs, and the
-// list reads the sessions again, Esc, Ctrl+C and the signals below still leave - its tmux is
-// killed - and other keys do nothing: a lookup that hangs, on a server that does, does not hold
-// the list. A session the kill has ended by then is in the sessions the list leaves with as one
-// that has ended where the list has read them again, and otherwise not at all; one the forget has
-// forgotten is not.
+// not change under a key - its LAST ACTIVE neither, which is how long ago as of the read. While
+// Enter looks the session up, or the kill or forget runs, and the list reads the sessions again,
+// Esc, Ctrl+C and the signals below still leave - its tmux is killed - and other keys do nothing:
+// a lookup that hangs, on a server that does, does not hold the list. A session the kill has ended
+// by then is in the sessions the list leaves with as one that has ended where the list has read
+// them again, and otherwise not at all; one the forget has forgotten is not.
 //
 // The list redraws the whole screen after each key and each resize - once for the bytes of a key,
 // and once for keys that come together, pasted say - and cuts every line at the terminal's
@@ -874,10 +874,13 @@ func (l *list) lines() []string {
 	for _, row := range l.rows {
 		nameWidth = max(nameWidth, cells(row.Name))
 	}
-	format := func(marker string, row session.Session) string {
-		return marker + " " + pad(row.Name, nameWidth) + "  " + pad(row.State, 8) + "  " + row.Directory
+	format := func(marker, name, state, active, directory string) string {
+		return marker + " " + pad(name, nameWidth) + "  " + pad(state, 8) + "  " + pad(active, 11) + "  " + directory
 	}
-	title := format(" ", session.Session{Name: "NAME", State: "STATE", Directory: "DIRECTORY"})
+	row := func(marker string, s session.Session) string {
+		return format(marker, s.Name, s.State, s.LastActive(), s.Directory)
+	}
+	title := format(" ", "NAME", "STATE", "LAST ACTIVE", "DIRECTORY")
 	header := []string{cut(title, l.columns)}
 	var rows []string
 	if len(l.rows) == 0 {
@@ -885,8 +888,8 @@ func (l *list) lines() []string {
 	} else {
 		// The selected row's inverse video spans the table, as far as the terminal shows it.
 		tableWidth := cells(title)
-		for _, row := range l.rows {
-			tableWidth = max(tableWidth, cells(format(">", row)))
+		for _, s := range l.rows {
+			tableWidth = max(tableWidth, cells(row(">", s)))
 		}
 		// The rows in view: as many as fit, the selected one among them.
 		fits := max(l.height-3, 1)
@@ -895,9 +898,9 @@ func (l *list) lines() []string {
 		l.top = max(min(l.top, len(l.rows)-fits), 0)
 		for i := l.top; i < min(l.top+fits, len(l.rows)); i++ {
 			if i == l.selected {
-				rows = append(rows, inverse+pad(cut(format(">", l.rows[i]), l.columns), min(tableWidth, l.columns))+noInverse)
+				rows = append(rows, inverse+pad(cut(row(">", l.rows[i]), l.columns), min(tableWidth, l.columns))+noInverse)
 			} else {
-				rows = append(rows, cut(format(" ", l.rows[i]), l.columns))
+				rows = append(rows, cut(row(" ", l.rows[i]), l.columns))
 			}
 		}
 	}

@@ -4,7 +4,9 @@ directory itself; SUFFIX is by default INDEX, 0 or, where sessions NAME-INDEX
 run or have ended within 30 days, one above the highest of their INDEX. Where
 the directory's name leaves nothing, as in /, the session is SUFFIX alone. NAME
 and SUFFIX consist of letters, digits, "_" and "-", each starting with a letter
-or digit, and make 64 characters at most.
+or digit, and make 64 characters at most. Without -s, new also ends the
+sessions idle for longer than $CLD_IDLE_DAYS days, as cld list does, once it
+has taken its INDEX.
 
 ARGS, after --, go to claude after cld's own arguments: claude's options, such
 as --model opus, and a prompt to start with. cld refuses the options it gives

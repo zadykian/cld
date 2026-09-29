@@ -138,7 +138,7 @@ func TestResumeRecorded(t *testing.T) {
 	}
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !first.Alive() })
 
-	want := "NAME   STATE     DIRECTORY\n" + "api-1  ended     " + dir + "\n"
+	want := "NAME   STATE     LAST ACTIVE  DIRECTORY\n" + "api-1  ended     -            " + dir + "\n"
 	if result := s.RunCldIn(elsewhere, nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
@@ -269,7 +269,7 @@ func TestRecordWhileRunning(t *testing.T) {
 		t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 	}
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !a.Alive() })
-	want := "NAME  STATE     DIRECTORY\n" + "a     ended     " + s.Work + "\n" + "b     attached  " + s.Work + "\n"
+	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     ended     -            " + s.Work + "\n" + "b     attached  now          " + s.Work + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
@@ -321,7 +321,7 @@ func TestRecordNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.WriteFile(indexes, strings.ReplaceAll(string(data), time.Now().UTC().Format("2006-01-02"), time.Now().UTC().AddDate(0, 0, -31).Format("2006-01-02")))
-	if result := s.RunCld(nil, "list"); result.Stdout != "NAME   STATE     DIRECTORY\n"+"API-1  ended     "+s.Work+"\n"+"api-0  ended     "+s.Work+"\n" {
+	if result := s.RunCld(nil, "list"); result.Stdout != "NAME   STATE     LAST ACTIVE  DIRECTORY\n"+"API-1  ended     -            "+s.Work+"\n"+"api-0  ended     -            "+s.Work+"\n" {
 		t.Errorf("list with the entries expired:\n%s", result.Stdout)
 	}
 	named("0")
@@ -437,8 +437,8 @@ func TestListEnded(t *testing.T) {
 		return dir
 	}
 	rows := func(s *sandbox.Sandbox, dir, selected string) []string {
-		lines := []string{"  NAME  STATE     DIRECTORY"}
-		for _, row := range []string{"a     detached  " + s.Work, "b     ended     " + dir} {
+		lines := []string{"  NAME  STATE     LAST ACTIVE  DIRECTORY"}
+		for _, row := range []string{"a     detached  now          " + s.Work, "b     ended     -            " + dir} {
 			marker := " "
 			if row[:1] == selected {
 				marker = ">"
@@ -490,7 +490,7 @@ func TestListEnded(t *testing.T) {
 				t.Error("the first Ctrl+X forgot b")
 			}
 		}, "C-x")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "> a     detached  "+s.Work, "", listHints)
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "> a     detached  now          "+s.Work, "", listHints)
 		if entry := readEntry(s, "b"); entry != "" {
 			t.Errorf("b's entry %q after the forget, want none", entry)
 		}
@@ -498,7 +498,7 @@ func TestListEnded(t *testing.T) {
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
 		}
-		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n")
+		afterList(t, term, "NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"a     detached  now          "+s.Work+"\n")
 	})
 
 	t.Run("directory gone", func(t *testing.T) {

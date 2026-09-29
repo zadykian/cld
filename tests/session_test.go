@@ -388,7 +388,7 @@ func TestResume(t *testing.T) {
 				t.Errorf("claude runs in %s, want %s", probe.Cwd, s.Work)
 			}
 			width := max(4, len(test.name))
-			list := fmt.Sprintf("%-*s  STATE     DIRECTORY\n%-*s  attached  %s\n", width, "NAME", width, test.name, s.Work)
+			list := fmt.Sprintf("%-*s  STATE     LAST ACTIVE  DIRECTORY\n%-*s  attached  now          %s\n", width, "NAME", width, test.name, s.Work)
 			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
 				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 			}
@@ -816,9 +816,9 @@ func TestList(t *testing.T) {
 		return s.Format("cld-b", "#{pane_current_path}") == moved
 	})
 
-	want := "NAME         STATE     DIRECTORY\n" +
-		"b            attached  " + moved + "\n" +
-		"long_name-1  detached  " + elsewhere + "\n"
+	want := "NAME         STATE     LAST ACTIVE  DIRECTORY\n" +
+		"b            attached  now          " + moved + "\n" +
+		"long_name-1  detached  now          " + elsewhere + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
@@ -832,9 +832,147 @@ func TestList(t *testing.T) {
 	// its new name would have: it has ended, as cld's record has it, in the directory it started
 	// in.
 	s.MustTmux("cld-long_name-1", "rename-session", "-t", "=cld-long_name-1", "cld-renamed")
-	want = "NAME         STATE     DIRECTORY\n" + "b            attached  " + moved + "\n" + "long_name-1  ended     " + elsewhere + "\n"
+	want = "NAME         STATE     LAST ACTIVE  DIRECTORY\n" + "b            attached  now          " + moved + "\n" + "long_name-1  ended     -            " + elsewhere + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("renamed: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
+	}
+}
+
+// list first ends each session idle for longer than CLD_IDLE_DAYS days - no terminal attached, and
+// neither a key typed into one nor an attach since - as kill ends it, claude and the server with
+// it, and says so on stderr; the table shows it as ended, from its entry in cld's record, as after
+// a kill. CLD_IDLE_DAYS takes a fraction of a day: 0.0001 is 8.64 s. A session with a terminal
+// attached is never idle, and a key typed into a terminal on one makes it active again: session c,
+// whose terminal attached before the limit and is detached by tmux's detach-client, which moves
+// neither time, stays for the key alone. The table shows each that runs as active now. With CLD_IDLE_DAYS 0 list ends none, and neither completion nor
+// new with -s ends one; a value that is no number of days is refused before anything runs, by
+// list and by new without -s.
+func TestEndsIdleSessions(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	probes := detachedSessions(t, s, "a", "c")
+	startCld(t, s, "tmux", nil, "new", "-s", "b")
+	s.WaitProbes(3)
+	joined := startCld(t, s, "tmux", nil, "join", "-s", "c")
+	waitClients(t, s, 2)
+	idle := map[string]string{"CLD_IDLE_DAYS": "0.0001"}
+	time.Sleep(10 * time.Second)
+
+	for _, value := range []string{"x", "-1", "1e3", "30d", " 30", "0x1p3", "inf"} {
+		want := "cld: CLD_IDLE_DAYS is not a number of days: '" + value + "'\n"
+		for _, command := range []string{"list", "new"} {
+			if result := s.RunCld(map[string]string{"CLD_IDLE_DAYS": value}, command); result.Code != 1 || result.Stdout != "" || result.Stderr != want {
+				t.Errorf("%s, CLD_IDLE_DAYS=%q: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", command, value, result.Code, result.Stdout, result.Stderr, want)
+			}
+		}
+	}
+	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" +
+		"a     detached  now          " + s.Work + "\n" +
+		"b     attached  now          " + s.Work + "\n" +
+		"c     attached  now          " + s.Work + "\n"
+	if result := s.RunCld(map[string]string{"CLD_IDLE_DAYS": "0"}, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+		t.Errorf("CLD_IDLE_DAYS=0: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
+	}
+	completions := "a\tdetached\nb\tattached\nc\tattached\n:4\n"
+	if result := s.RunCld(idle, "__complete", "join", "-s", ""); result.Code != 0 || result.Stdout != completions {
+		t.Errorf("__complete join -s: exit %d, stdout %q, want %q", result.Code, result.Stdout, completions)
+	}
+	startCld(t, s, "tmux", idle, "new", "-s", "d")
+	s.WaitProbes(4)
+	waitClients(t, s, 3)
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b", "cld-c", "cld-d"}) {
+		t.Fatalf("sessions %q, want [cld-a cld-b cld-c cld-d]", sessions)
+	}
+
+	mark := probes["c"].Mark()
+	joined.Keys("z")
+	probes["c"].WaitInput(mark, "z")
+	s.MustTmux("cld-c", "detach-client", "-s", "=cld-c")
+	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !joined.Running() })
+	want = "NAME  STATE     LAST ACTIVE  DIRECTORY\n" +
+		"a     ended     -            " + s.Work + "\n" +
+		"b     attached  now          " + s.Work + "\n" +
+		"c     detached  now          " + s.Work + "\n" +
+		"d     attached  now          " + s.Work + "\n"
+	result := s.RunCld(idle, "list")
+	ended := regexp.MustCompile(`^cld: ended session 'a', idle for ([0-9]+) seconds\n$`).FindStringSubmatch(result.Stderr)
+	if result.Code != 0 || result.Stdout != want || ended == nil {
+		t.Errorf("exit %d, stderr %q, stdout\n%s\nwant exit 0, stderr \"cld: ended session 'a', idle for N seconds\", stdout\n%s", result.Code, result.Stderr, result.Stdout, want)
+	} else if seconds, _ := strconv.Atoi(ended[1]); seconds < 9 {
+		t.Errorf("session a idle for %d seconds, want 9 or more", seconds)
+	}
+	sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
+	if _, err := s.Tmux("cld-a", "list-sessions"); err == nil {
+		t.Error("session a's server survived")
+	}
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b", "cld-c", "cld-d"}) {
+		t.Errorf("sessions %q, want [cld-b cld-c cld-d]", sessions)
+	}
+}
+
+// new without -s ends the idle sessions as list does, and says so on stderr, once it has taken
+// the index: the session it makes does not take the name of one it has just ended, whose
+// conversation cld resume finds by that name. Here, where the directory's name leaves nothing,
+// the session is the index alone: 0, which ends, and new makes session 1, with a claude of its
+// own, as cld resume with SESSION would. new runs with the TMUX of session x's claude, as in a
+// pane of x's server, and keeps x, as idle as 0: ending it would end the claude that ran cld.
+func TestNewEndsIdleSessions(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	probes := detachedSessions(t, s, "0", "x")
+	time.Sleep(10 * time.Second)
+	term := startCld(t, s, "tmux", map[string]string{"CLD_IDLE_DAYS": "0.0001", "TMUX": probes["x"].Env["TMUX"]}, "new")
+	sandbox.WaitFor(t, 10*time.Second, "claude 0 to exit", func() bool { return !probes["0"].Alive() })
+	var fresh *sandbox.Probe
+	for _, probe := range s.WaitProbes(3) {
+		if probe.PID != probes["0"].PID && probe.PID != probes["x"].PID {
+			fresh = probe
+		}
+	}
+	if !slices.Equal(fresh.Argv[:2], []string{"--name", "cld-1"}) {
+		t.Errorf("new started claude with %q, want --name cld-1", fresh.Argv)
+	}
+	waitClients(t, s, 1)
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-1", "cld-x"}) || !probes["x"].Alive() {
+		t.Errorf("sessions %q, claude x alive: %v; want [cld-1 cld-x], x alive", sessions, probes["x"].Alive())
+	}
+	if note := regexp.MustCompile(`cld: ended session '0', idle for [0-9]+ seconds\r?\n`); !note.Match(term.Output()) {
+		t.Errorf("the terminal got no note of the session ended: %q", term.Output())
+	}
+}
+
+// The kill of an idle session checks again, in the same tmux command, that the session is idle: a
+// terminal that attaches between list's read and the kill keeps the session, and list says
+// nothing of it. Its table shows the session as it read it.
+func TestKeepsAnIdleSessionJoinedMeanwhile(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	probe := detachedSessions(t, s, "a")["a"]
+	time.Sleep(10 * time.Second)
+	kill := holdTmux(t, s, "the kill of idle session a", "*' if -F -t =cld-a: '*")
+	kill.start(t)
+	env := maps.Clone(kill.env)
+	env["CLD_IDLE_DAYS"] = "0.0001"
+	list := exec.Command(sandbox.Cld, "list")
+	list.Env, list.Dir = s.Environ(env), s.Work
+	var stdout, stderr bytes.Buffer
+	list.Stdout, list.Stderr = &stdout, &stderr
+	if err := list.Start(); err != nil {
+		t.Fatal(err)
+	}
+	kill.held(t)
+	term := startCld(t, s, "tmux", nil, "join", "-s", "a")
+	waitClients(t, s, 1)
+	kill.release(t)
+	if err := list.Wait(); err != nil {
+		t.Errorf("list: %v, stderr %q", err, stderr.String())
+	}
+	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     detached  now          " + s.Work + "\n"
+	if stdout.String() != want || stderr.Len() != 0 {
+		t.Errorf("stderr %q, stdout\n%s\nwant no stderr, stdout\n%s", stderr.String(), stdout.String(), want)
+	}
+	if !probe.Alive() || !term.Running() || !slices.Equal(s.Sessions(), []string{"cld-a"}) {
+		t.Errorf("claude alive: %v, terminal attached: %v, sessions %q; want session a as it was", probe.Alive(), term.Running(), s.Sessions())
 	}
 }
 
@@ -960,11 +1098,11 @@ func TestSessionOfAnotherRepository(t *testing.T) {
 		}
 	}
 
-	list := "NAME   STATE     DIRECTORY\n" +
-		"api-0  attached  " + work + "\n" +
-		"api-1  attached  " + other + "\n" +
-		"api-2  detached  " + s.Work + "\n" +
-		"api-3  attached  " + plain + "\n"
+	list := "NAME   STATE     LAST ACTIVE  DIRECTORY\n" +
+		"api-0  attached  now          " + work + "\n" +
+		"api-1  attached  now          " + other + "\n" +
+		"api-2  detached  now          " + s.Work + "\n" +
+		"api-3  attached  now          " + plain + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 	}
@@ -1075,7 +1213,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 		t.Fatalf("sessions %q, want [cld-a cld-a/cld-a-x cld-a/cld-inside]", sessions)
 	}
 
-	want := "NAME  STATE     DIRECTORY\n" + "a     attached  " + s.Work + "\n"
+	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     attached  now          " + s.Work + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
@@ -1152,7 +1290,7 @@ func TestLingeringServer(t *testing.T) {
 		code         int
 		stdout, want string
 	}{
-		{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\na     ended     " + s.Work + "\n", ""},
+		{[]string{"list"}, 0, "NAME  STATE     LAST ACTIVE  DIRECTORY\na     ended     -            " + s.Work + "\n", ""},
 		{[]string{"join", "-s", "a"}, 1, "", refused},
 		{[]string{"detach", "-s", "a"}, 1, "", refused},
 		{[]string{"new", "-s", "a"}, 1, "", refused},
@@ -1248,7 +1386,7 @@ func TestNamesDifferingInCase(t *testing.T) {
 		}
 	}
 	refused("a running")
-	want := "NAME  STATE     DIRECTORY\n" + "a     attached  " + s.Work + "\n"
+	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     attached  now          " + s.Work + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
@@ -1292,7 +1430,7 @@ func TestStaleSocket(t *testing.T) {
 		t.Fatalf("the dead server's socket: %v", err)
 	}
 
-	want := "NAME  STATE     DIRECTORY\n" + "a     ended     " + s.Work + "\n" + "b     attached  " + s.Work + "\n"
+	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     ended     -            " + s.Work + "\n" + "b     attached  now          " + s.Work + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
@@ -1318,7 +1456,8 @@ func TestStaleSocket(t *testing.T) {
 // tmux would say no server is running. list asks only the servers that take the connection -
 // more of them here than it asks at once - and shows their sessions in the order of their names;
 // join, detach and kill of a stale socket's name run no tmux but tmux -V; new without -s looks
-// from the highest index down, only until a server runs, here one that outlives its session. The
+// from the highest index down, only until a server runs, here one that outlives its session, and
+// then reads the servers that run, and no stale socket, for its sweep of the idle sessions. The
 // sockets stay. A tmux first on the PATH writes down what it runs.
 func TestStaleSocketsRunNoTmux(t *testing.T) {
 	t.Parallel()
@@ -1342,9 +1481,9 @@ func TestStaleSocketsRunNoTmux(t *testing.T) {
 	}
 
 	slices.Sort(running)
-	want := "NAME     STATE     DIRECTORY\n"
+	want := "NAME     STATE     LAST ACTIVE  DIRECTORY\n"
 	for _, name := range running {
-		want += fmt.Sprintf("%-9sdetached  %s\n", strings.TrimPrefix(name, "cld-"), s.Work)
+		want += fmt.Sprintf("%-9sdetached  now          %s\n", strings.TrimPrefix(name, "cld-"), s.Work)
 	}
 	if result := s.RunCld(logged, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
@@ -1373,8 +1512,9 @@ func TestStaleSocketsRunNoTmux(t *testing.T) {
 	if name := s.WaitProbes(1)[0].Argv[1]; name != "cld-work-12" {
 		t.Errorf("claude named %s, want cld-work-12", name)
 	}
-	if got := asked(); !slices.Equal(got, []string{"cld-work-11"}) {
-		t.Errorf("new asked %q, want [cld-work-11]", got)
+	// The index's lookup comes first, then the sweep's read of the sessions, at once.
+	if got := asked(); len(got) == 0 || got[0] != "cld-work-11" || !slices.Equal(slices.Sorted(slices.Values(got[1:])), slices.Sorted(slices.Values(servers))) {
+		t.Errorf("new asked %q, want cld-work-11, then %q", got, servers)
 	}
 	for _, name := range stale {
 		if _, err := os.Stat(filepath.Join(s.SocketDir(), name)); err != nil {
@@ -1419,9 +1559,9 @@ func TestListAsksServersAtOnce(t *testing.T) {
 	asks.release(t)
 	err := list.Wait()
 	slices.Sort(names)
-	want := "NAME  STATE     DIRECTORY\n"
+	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n"
 	for _, name := range names {
-		want += fmt.Sprintf("%-6sdetached  %s\n", name, s.Work)
+		want += fmt.Sprintf("%-6sdetached  now          %s\n", name, s.Work)
 	}
 	if err != nil || stdout.String() != want || stderr.String() != "" {
 		t.Errorf("list: %v, stderr %q, stdout\n%s\nwant\n%s", err, stderr.String(), stdout.String(), want)
@@ -1483,7 +1623,7 @@ func TestLeavesAForeignServerAlone(t *testing.T) {
 		code           int
 		stdout, stderr string
 	}
-	runs := []run{{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\n" + "old   detached  " + s.Work + "\n", ""}}
+	runs := []run{{[]string{"list"}, 0, "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "old   detached  now          " + s.Work + "\n", ""}}
 	for _, name := range []string{"x", "y"} {
 		for _, command := range []string{"new", "resume", "join", "detach", "kill"} {
 			runs = append(runs, run{[]string{command, "-s", name}, 1, "", "cld: tmux server cld-" + name + " is not one of cld's; use another name\n"})
@@ -2089,8 +2229,8 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 				t.Error("the terminal was detached")
 			}
 
-			list := "NAME  STATE     DIRECTORY\n" +
-				"bad   exited    " + s.Work + "\n"
+			list := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" +
+				"bad   exited    now          " + s.Work + "\n"
 			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
 				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 			}
@@ -2980,18 +3120,18 @@ func TestListJoin(t *testing.T) {
 		term := terminal.New(t, "tmux", s)
 		list := startList(t, s, term, listScript, nil)
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
-			"  b     detached  "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+s.Work,
+			"  b     detached  now          "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			listHints)
 		// The selected row is drawn in inverse video, and only that one; the footer is dim.
 		styled := cells(term.Styled())
 		for i, want := range map[int]string{
-			0: "[]  NAME  STATE     DIRECTORY",
-			1: "[inverse=7]> a     detached  " + s.Work,
-			2: "[]  b     detached  " + s.Work,
+			0: "[]  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			1: "[inverse=7]> a     detached  now          " + s.Work,
+			2: "[]  b     detached  now          " + s.Work,
 			5: "[intensity=2]" + listHints,
 		} {
 			if styled[i] != want {
@@ -3087,16 +3227,16 @@ func TestListJoin(t *testing.T) {
 		waitClients(t, s, 1)
 		term := startCld(t, s, "tmux", nil, "list")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
-			"  b     attached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+s.Work,
+			"  b     attached  now          "+s.Work,
 			"",
 			listHints)
 		term.Keys("Down")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     attached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     attached  now          "+s.Work,
 			"",
 			listHints)
 		term.Keys("Enter")
@@ -3117,9 +3257,9 @@ func TestListJoin(t *testing.T) {
 		sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return s.Format("cld-b", "#{pane_dead}") == "1" })
 		term := startCld(t, s, "tmux", nil, "list")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
-			"  b     exited    "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+s.Work,
+			"  b     exited    now          "+s.Work,
 			"",
 			listHints)
 		term.Keys("Down", "Enter")
@@ -3147,16 +3287,16 @@ func TestListJoin(t *testing.T) {
 		sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return s.Format("cld-b", "#{pane_dead}") == "1" })
 		term := startCld(t, s, "tmux", nil, "list")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
-			"  b     exited    "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+s.Work,
+			"  b     exited    now          "+s.Work,
 			"",
 			listHints)
 		term.Keys("Down")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     exited    "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     exited    now          "+s.Work,
 			"",
 			listHints)
 		term.Keys("Enter")
@@ -3188,9 +3328,9 @@ func TestListJoin(t *testing.T) {
 			term := terminal.New(t, "tmux", s)
 			list := startList(t, s, term, listScript, nil)
 			waitLines(t, term,
-				"  NAME  STATE     DIRECTORY",
-				"> a     detached  "+s.Work,
-				"  b     detached  "+s.Work,
+				"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+				"> a     detached  now          "+s.Work,
+				"  b     detached  now          "+s.Work,
 				"",
 				listHints)
 			if modes := term.Modes(); !modes.AltScreen || modes.Cursor {
@@ -3200,9 +3340,9 @@ func TestListJoin(t *testing.T) {
 			if code := list.code(t); code != "0" {
 				t.Errorf("exit %s, want 0", code)
 			}
-			table := "NAME  STATE     DIRECTORY\n" +
-				"a     detached  " + s.Work + "\n" +
-				"b     detached  " + s.Work + "\n"
+			table := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" +
+				"a     detached  now          " + s.Work + "\n" +
+				"b     detached  now          " + s.Work + "\n"
 			waitLines(t, term, strings.Split(strings.TrimSuffix(table, "\n"), "\n")...)
 			afterList(t, term, table)
 			list.checkRestored(t, term)
@@ -3229,13 +3369,13 @@ func TestListJoin(t *testing.T) {
 		list := startList(t, s, term, listScript, nil)
 		selected := func(name string) {
 			t.Helper()
-			lines := []string{"  NAME  STATE     DIRECTORY"}
+			lines := []string{"  NAME  STATE     LAST ACTIVE  DIRECTORY"}
 			for _, row := range []string{"a", "b", "c"} {
 				marker := " "
 				if row == name {
 					marker = ">"
 				}
-				lines = append(lines, marker+" "+row+"     detached  "+s.Work)
+				lines = append(lines, marker+" "+row+"     detached  now          "+s.Work)
 			}
 			waitLines(t, term, append(lines, "", listHints)...)
 		}
@@ -3361,13 +3501,13 @@ func TestListJoin(t *testing.T) {
 			term := terminal.New(t, "tmux", s)
 			list := startJob(t, s, term)
 			rows := func(selected string) []string {
-				lines := []string{"  NAME  STATE     DIRECTORY"}
+				lines := []string{"  NAME  STATE     LAST ACTIVE  DIRECTORY"}
 				for _, row := range []string{"a", "b"} {
 					marker := " "
 					if row == selected {
 						marker = ">"
 					}
-					lines = append(lines, marker+" "+row+"     detached  "+s.Work)
+					lines = append(lines, marker+" "+row+"     detached  now          "+s.Work)
 				}
 				return append(lines, "", listHints)
 			}
@@ -3405,7 +3545,7 @@ func TestListJoin(t *testing.T) {
 			if code := list.code(t); code != "0" {
 				t.Errorf("exit %s, want 0", code)
 			}
-			afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n"+"b     detached  "+s.Work+"\n")
+			afterList(t, term, "NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"a     detached  now          "+s.Work+"\n"+"b     detached  now          "+s.Work+"\n")
 			list.checkRestored(t, term)
 		})
 	}
@@ -3495,7 +3635,7 @@ func TestListJoin(t *testing.T) {
 			if !gone(held) {
 				t.Error("the lookup's tmux outlived cld")
 			}
-			afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n")
+			afterList(t, term, "NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"a     detached  now          "+s.Work+"\n")
 			list.checkRestored(t, term)
 			if clients := s.Clients(); len(clients) != 0 {
 				t.Errorf("clients attached to %q, want none", clients)
@@ -3550,10 +3690,10 @@ func TestListJoin(t *testing.T) {
 		}
 		term.Keys("Down", "Enter")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     ended     "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     ended     -            "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			"session 'b' has ended")
 		if clients := s.Clients(); len(clients) != 0 {
@@ -3562,10 +3702,10 @@ func TestListJoin(t *testing.T) {
 		list.checkRaw(t)
 		term.Keys("Up")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
-			"  b     ended     "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+s.Work,
+			"  b     ended     -            "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			listHints)
 		if list.exited() {
@@ -3588,9 +3728,9 @@ func TestListJoin(t *testing.T) {
 		forget(t, s, "b")
 		term.Keys("Down", "Enter")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> c     detached  now          "+s.Work,
 			"",
 			"no session 'b'")
 		list.checkRaw(t)
@@ -3615,9 +3755,9 @@ func TestListJoin(t *testing.T) {
 		}
 		term.Keys("Down", "Enter")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> c     detached  "+s.Work,
-			"  d     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> c     detached  now          "+s.Work,
+			"  d     detached  now          "+s.Work,
 			"",
 			"no session 'b'")
 	})
@@ -3637,10 +3777,10 @@ func TestListJoin(t *testing.T) {
 		detachedSessions(t, s, "z")
 		term.Keys("Down", "Down", "Enter")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     detached  "+s.Work,
-			"  z     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     detached  now          "+s.Work,
+			"  z     detached  now          "+s.Work,
 			"",
 			"no session 'c'")
 	})
@@ -3663,10 +3803,10 @@ func TestListJoin(t *testing.T) {
 		})
 		term.Keys("Down", "Enter")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     ended     "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     ended     -            "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			"session 'b' has ended, but its tmux server still runs")
 		if clients := s.Clients(); len(clients) != 0 {
@@ -3692,10 +3832,10 @@ func TestListJoin(t *testing.T) {
 		s.WriteFile(broken, "")
 		term.Keys("Down", "Enter")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     detached  "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     detached  now          "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			"session 'b' has ended · lost the server")
 	})
@@ -3720,12 +3860,12 @@ func TestListJoin(t *testing.T) {
 			return err != nil && strings.Contains(err.Error(), "no server running")
 		})
 		term.Keys("Enter")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "no session 'a'")
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "no sessions", "", "no session 'a'")
 		term.Keys("Down")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "no sessions", "", "esc to quit")
 		// Enter has nothing to join.
 		term.Keys("Enter")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "no sessions", "", "esc to quit")
 		term.Keys("Escape")
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
@@ -3755,11 +3895,11 @@ func TestListJoin(t *testing.T) {
 	t.Run("narrow", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
-		// The row shows 22 cells of the directory, so it lives outside the sandbox, where its é
-		// shows: /tmp/éN, or /private/tmp/éN on macOS. Its first 日 takes the row's cells 40 and 41.
-		const prefix = "> a     attached  "
+		// The row shows 29 cells of the directory, so it lives outside the sandbox, where its é
+		// shows: /tmp/éN, or /private/tmp/éN on macOS. Its first 日 takes the row's cells 60 and 61.
+		const prefix = "> a     attached  now          "
 		base := shortDirectory(t, "/tmp/é")
-		shown := base + "/" + strings.Repeat("_", 39-len(prefix)-utf8.RuneCountInString(base+"/"))
+		shown := base + "/" + strings.Repeat("_", 59-len(prefix)-utf8.RuneCountInString(base+"/"))
 		dir := shown + "日本日本"
 		if err := os.Mkdir(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -3769,28 +3909,28 @@ func TestListJoin(t *testing.T) {
 		waitClients(t, s, 1)
 		detachedSessions(t, s, "b")
 		term := terminal.New(t, "tmux", s)
-		term.Resize(40, 40)
+		term.Resize(60, 40)
 		list := startList(t, s, term, listScript, nil)
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
 			prefix+shown,
-			cutTo("  b     detached  "+s.Work, 40),
+			cutTo("  b     detached  now          "+s.Work, 60),
 			"",
-			footerIn(listHints, 40))
+			footerIn(listHints, 60))
 		term.Keys("Down")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     attached  "+shown,
-			cutTo("> b     detached  "+s.Work, 40),
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     attached  now          "+shown,
+			cutTo("> b     detached  now          "+s.Work, 60),
 			"",
-			footerIn(listHints, 40))
+			footerIn(listHints, 60))
 		term.Keys("Escape")
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
 		}
-		table := "NAME  STATE     DIRECTORY\n" +
-			"a     attached  " + dir + "\n" +
-			"b     detached  " + s.Work + "\n"
+		table := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" +
+			"a     attached  now          " + dir + "\n" +
+			"b     detached  now          " + s.Work + "\n"
 		afterList(t, term, table)
 	})
 
@@ -3804,18 +3944,18 @@ func TestListJoin(t *testing.T) {
 		term.Resize(120, 6)
 		term.Start(s.CldArgv("list"), s.Env, s.Work)
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
-			"  b     detached  "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+s.Work,
+			"  b     detached  now          "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			listHints)
 		term.Keys("Down", "Down", "Down")
 		scrolled := []string{
-			"  NAME  STATE     DIRECTORY",
-			"  b     detached  " + s.Work,
-			"  c     detached  " + s.Work,
-			"> d     detached  " + s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  b     detached  now          " + s.Work,
+			"  c     detached  now          " + s.Work,
+			"> d     detached  now          " + s.Work,
 			"",
 			listHints,
 		}
@@ -3823,10 +3963,10 @@ func TestListJoin(t *testing.T) {
 		// Back up, the rows scroll back with the selection.
 		term.Keys("Up", "Up", "Up")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
-			"  b     detached  "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+s.Work,
+			"  b     detached  now          "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			listHints)
 		// A taller terminal shows the rows scrolled out above, now that they fit.
@@ -3834,11 +3974,11 @@ func TestListJoin(t *testing.T) {
 		waitLines(t, term, scrolled...)
 		term.Resize(120, 10)
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"  b     detached  "+s.Work,
-			"  c     detached  "+s.Work,
-			"> d     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"  b     detached  now          "+s.Work,
+			"  c     detached  now          "+s.Work,
+			"> d     detached  now          "+s.Work,
 			"",
 			listHints)
 	})
@@ -3860,23 +4000,25 @@ func TestListJoin(t *testing.T) {
 		})
 		term := startCld(t, s, "tmux", nil, "list")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+long,
-			"  b     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+long,
+			"  b     detached  now          "+s.Work,
 			"",
 			listHints)
+		// Cut at 30 cells, the screen shows no spaces at the end of a line.
+		cutTo30 := func(line string) string { return strings.TrimRight(cutTo(line, 30), " ") }
 		term.Resize(30, 5)
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			cutTo("> a     detached  "+long, 30),
-			cutTo("  b     detached  "+s.Work, 30),
+			cutTo30("  NAME  STATE     LAST ACTIVE  DIRECTORY"),
+			cutTo30("> a     detached  now          "+long),
+			cutTo30("  b     detached  now          "+s.Work),
 			"",
 			footerIn(listHints, 30))
 		term.Keys("Down")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			cutTo("  a     detached  "+long, 30),
-			cutTo("> b     detached  "+s.Work, 30),
+			cutTo30("  NAME  STATE     LAST ACTIVE  DIRECTORY"),
+			cutTo30("  a     detached  now          "+long),
+			cutTo30("> b     detached  now          "+s.Work),
 			"",
 			footerIn(listHints, 30))
 	})
@@ -3900,8 +4042,8 @@ func TestListJoin(t *testing.T) {
 		})
 		term := startCld(t, s, "tmux", nil, "list")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+strings.NewReplacer("\x01", "?", "\x1b", "?").Replace(reported),
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          "+strings.NewReplacer("\x01", "?", "\x1b", "?").Replace(reported),
 			"",
 			listHints)
 	})
@@ -3939,7 +4081,7 @@ func TestListJoin(t *testing.T) {
 		if string(code) != "0\n" {
 			t.Errorf("exit %s, want 0", strings.TrimSpace(string(code)))
 		}
-		want := "NAME  STATE     DIRECTORY\n" + "a     attached  " + s.Work
+		want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     attached  now          " + s.Work
 		if screen := strings.TrimRight(s.MustTmux("cld-a", "capture-pane", "-p", "-t", "=in-list:"), "\n"); screen != want {
 			t.Errorf("the pane shows\n%s\nwant\n%s", screen, want)
 		}
@@ -3952,9 +4094,9 @@ func TestListJoin(t *testing.T) {
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a", "b")
 		table := []string{
-			"NAME  STATE     DIRECTORY",
-			"a     detached  " + s.Work,
-			"b     detached  " + s.Work,
+			"NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"a     detached  now          " + s.Work,
+			"b     detached  now          " + s.Work,
 		}
 		for _, test := range []struct {
 			name, script string
@@ -4004,10 +4146,10 @@ func TestListKill(t *testing.T) {
 		term := terminal.New(t, "tmux", s)
 		list := startList(t, s, term, listScript, nil)
 		rows := []string{
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  " + s.Work,
-			"> b     attached  " + s.Work,
-			"  c     detached  " + s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          " + s.Work,
+			"> b     attached  now          " + s.Work,
+			"  c     detached  now          " + s.Work,
 			"",
 		}
 		waitScreen(t, term, listHints)
@@ -4023,10 +4165,10 @@ func TestListKill(t *testing.T) {
 			}
 		}, "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     ended     "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     ended     -            "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude b to exit", func() bool { return !probes["b"].Alive() })
@@ -4047,7 +4189,7 @@ func TestListKill(t *testing.T) {
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
 		}
-		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n"+"b     ended     "+s.Work+"\n"+"c     detached  "+s.Work+"\n")
+		afterList(t, term, "NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"a     detached  now          "+s.Work+"\n"+"b     ended     -            "+s.Work+"\n"+"c     detached  now          "+s.Work+"\n")
 		list.checkRestored(t, term)
 	})
 
@@ -4060,9 +4202,9 @@ func TestListKill(t *testing.T) {
 		term := terminal.New(t, "tmux", s)
 		list := startList(t, s, term, listScript, nil)
 		rows := []string{
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  " + s.Work,
-			"  b     detached  " + s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          " + s.Work,
+			"  b     detached  now          " + s.Work,
 			"",
 		}
 		waitLines(t, term, append(rows, listHints)...)
@@ -4085,9 +4227,9 @@ func TestListKill(t *testing.T) {
 		probes := detachedSessions(t, s, "a", "b")
 		term := startCld(t, s, "tmux", nil, "list")
 		rows := []string{
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  " + s.Work,
-			"  b     detached  " + s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          " + s.Work,
+			"  b     detached  now          " + s.Work,
 			"",
 		}
 		waitLines(t, term, append(rows, listHints)...)
@@ -4121,9 +4263,9 @@ func TestListKill(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows := []string{
-			"  NAME  STATE     DIRECTORY",
-			"> a     detached  " + s.Work,
-			"  b     detached  " + s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     detached  now          " + s.Work,
+			"  b     detached  now          " + s.Work,
 			"",
 		}
 		waitLines(t, term, append(rows, listHints)...)
@@ -4178,12 +4320,12 @@ func TestListKill(t *testing.T) {
 		for !readLate("C-x") {
 		}
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "> a     ended     "+s.Work, "  b     detached  "+s.Work, "", endedHints)
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "> a     ended     -            "+s.Work, "  b     detached  now          "+s.Work, "", endedHints)
 		term.Keys("Escape")
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
 		}
-		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     ended     "+s.Work+"\n"+"b     detached  "+s.Work+"\n")
+		afterList(t, term, "NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"a     ended     -            "+s.Work+"\n"+"b     detached  now          "+s.Work+"\n")
 		if !probes["b"].Alive() {
 			t.Error("claude b exited")
 		}
@@ -4199,13 +4341,13 @@ func TestListKill(t *testing.T) {
 		term := terminal.New(t, "tmux", s)
 		list := startList(t, s, term, listScript, nil)
 		lines := func(selected, footer string) []string {
-			lines := []string{"  NAME  STATE     DIRECTORY"}
+			lines := []string{"  NAME  STATE     LAST ACTIVE  DIRECTORY"}
 			for _, row := range []string{"a", "b"} {
 				marker := " "
 				if row == selected {
 					marker = ">"
 				}
-				lines = append(lines, marker+" "+row+"     detached  "+s.Work)
+				lines = append(lines, marker+" "+row+"     detached  now          "+s.Work)
 			}
 			return append(lines, "", footer)
 		}
@@ -4223,7 +4365,7 @@ func TestListKill(t *testing.T) {
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
 		}
-		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n"+"b     detached  "+s.Work+"\n")
+		afterList(t, term, "NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"a     detached  now          "+s.Work+"\n"+"b     detached  now          "+s.Work+"\n")
 		for name, probe := range probes {
 			if !probe.Alive() {
 				t.Errorf("claude %s exited", name)
@@ -4271,9 +4413,9 @@ func TestListKill(t *testing.T) {
 		s := sandbox.New(t)
 		probes := detachedSessions(t, s, "a", "b", "c")
 		term := startCld(t, s, "tmux", nil, "list")
-		header := "  NAME  STATE     DIRECTORY"
-		row := func(marker, name string) string { return marker + " " + name + "     detached  " + s.Work }
-		ended := func(marker, name string) string { return marker + " " + name + "     ended     " + s.Work }
+		header := "  NAME  STATE     LAST ACTIVE  DIRECTORY"
+		row := func(marker, name string) string { return marker + " " + name + "     detached  now          " + s.Work }
+		ended := func(marker, name string) string { return marker + " " + name + "     ended     -            " + s.Work }
 		waitScreen(t, term, listHints)
 		term.Keys("C-x")
 		waitScreen(t, term, killArmed)
@@ -4325,14 +4467,14 @@ func TestListKill(t *testing.T) {
 		list := startList(t, s, term, listScript, nil)
 		waitScreen(t, term, listHints)
 		term.Keys("C-x", "C-x")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "> a     ended     "+s.Work, "", endedHints)
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "> a     ended     -            "+s.Work, "", endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
 		// A letter first ends the wait after a kill (see held down).
 		term.Keys("k", "C-x", "C-x")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "no sessions", "", "esc to quit")
 		// Ctrl+X has nothing to arm, or to forget.
 		term.Keys("k", "C-x", "C-x")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "no sessions", "", "esc to quit")
 		if list.exited() {
 			t.Error("the list closed")
 		}
@@ -4359,9 +4501,9 @@ func TestListKill(t *testing.T) {
 		waitScreen(t, failed, "claude exited with status 1: cld kill -s b ends the session, C-q d or cld detach -s b detaches")
 		term := startCld(t, s, "tmux", nil, "list")
 		rows := []string{
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  " + s.Work,
-			"> b     exited    " + s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          " + s.Work,
+			"> b     exited    now          " + s.Work,
 			"",
 		}
 		waitScreen(t, term, listHints)
@@ -4369,9 +4511,9 @@ func TestListKill(t *testing.T) {
 		waitLines(t, term, append(rows, listHints)...)
 		armThen(t, term, func() { waitLines(t, term, append(rows, killArmedAttached)...) }, "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     ended     "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     ended     -            "+s.Work,
 			"",
 			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "b's terminal to be detached", func() bool { return !failed.Running() })
@@ -4397,10 +4539,10 @@ func TestListKill(t *testing.T) {
 		}
 		armThen(t, term, func() { waitScreen(t, term, killArmed) }, "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     ended     "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     ended     -            "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			"session 'b' has ended")
 		list.checkRaw(t)
@@ -4441,10 +4583,10 @@ func TestListKill(t *testing.T) {
 		}
 		armThen(t, term, func() { waitScreen(t, term, killArmed) }, "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     detached  "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     detached  now          "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			"no session 'b'")
 		if !replaced.Alive() {
@@ -4479,10 +4621,10 @@ func TestListKill(t *testing.T) {
 		})
 		armThen(t, term, func() { waitScreen(t, term, killArmed) }, "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> b     ended     "+s.Work,
-			"  c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> b     ended     -            "+s.Work,
+			"  c     detached  now          "+s.Work,
 			"",
 			endedHints)
 		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-c"}) {
@@ -4504,13 +4646,13 @@ func TestListKill(t *testing.T) {
 		term := terminal.New(t, "tmux", s)
 		list := startList(t, s, term, listScript, env)
 		waitScreen(t, term, listHints)
-		row := "> a     detached  " + s.Work
+		row := "> a     detached  now          " + s.Work
 		term.Keys("C-x", "C-x")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", row, "", "tmux: cannot kill")
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", row, "", "tmux: cannot kill")
 		s.WriteFile(silent, "")
 		// A letter first ends the wait after a kill (see held down).
 		term.Keys("k", "C-x", "C-x")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", row, "", "tmux kill-session: exit status 5")
+		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", row, "", "tmux kill-session: exit status 5")
 		list.checkRaw(t)
 		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
 			t.Errorf("sessions %q, want [cld-a]", sessions)
@@ -4534,9 +4676,9 @@ func TestListKill(t *testing.T) {
 		s.WriteFile(broken, "")
 		term.Keys("C-x", "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"  a     detached  "+s.Work,
-			"> c     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"  a     detached  now          "+s.Work,
+			"> c     detached  now          "+s.Work,
 			"",
 			"lost the server")
 		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-c"}) {
@@ -4564,9 +4706,9 @@ func TestListKill(t *testing.T) {
 		s.WriteFile(exiting, "")
 		term.Keys("C-x", "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     ended     "+s.Work,
-			"  b     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     ended     -            "+s.Work,
+			"  b     detached  now          "+s.Work,
 			"",
 			endedHints)
 		if _, err := os.Stat(exiting); err == nil {
@@ -4604,9 +4746,9 @@ func TestListKill(t *testing.T) {
 		}
 		lookup.release(t)
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     ended     "+s.Work,
-			"  b     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     ended     -            "+s.Work,
+			"  b     detached  now          "+s.Work,
 			"",
 			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
@@ -4645,10 +4787,10 @@ func TestListKill(t *testing.T) {
 			if !gone(held) {
 				t.Error("the kill's tmux outlived cld")
 			}
-			table := "NAME  STATE     DIRECTORY\n" + "a     detached  " + s.Work + "\n" + "b     detached  " + s.Work + "\n"
+			table := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     detached  now          " + s.Work + "\n" + "b     detached  now          " + s.Work + "\n"
 			sessions := []string{"cld-a", "cld-b"}
 			if step.ends {
-				table, sessions = "NAME  STATE     DIRECTORY\n"+"b     detached  "+s.Work+"\n", []string{"cld-b"}
+				table, sessions = "NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"b     detached  now          "+s.Work+"\n", []string{"cld-b"}
 			}
 			afterList(t, term, table)
 			list.checkRestored(t, term)
@@ -4674,9 +4816,9 @@ func TestListKill(t *testing.T) {
 		s.MustTmux("cld-a", "select-pane", "-t", "=cld-a:.1")
 		term.Keys("C-x", "C-x")
 		waitLines(t, term,
-			"  NAME  STATE     DIRECTORY",
-			"> a     ended     "+s.Work,
-			"  b     detached  "+s.Work,
+			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
+			"> a     ended     -            "+s.Work,
+			"  b     detached  now          "+s.Work,
 			"",
 			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
@@ -4699,8 +4841,8 @@ func TestListKill(t *testing.T) {
 		term.Resize(61, 24)
 		term.Start(s.CldArgv("list"), s.Env, s.Work)
 		rows := func(selected string) []string {
-			lines := []string{"  NAME  STATE     DIRECTORY"}
-			for _, row := range []string{"a     detached  ", "b     attached  "} {
+			lines := []string{"  NAME  STATE     LAST ACTIVE  DIRECTORY"}
+			for _, row := range []string{"a     detached  now          ", "b     attached  now          "} {
 				marker := " "
 				if row[:1] == selected {
 					marker = ">"
@@ -4744,13 +4886,13 @@ func TestListResumedSession(t *testing.T) {
 	var b *sandbox.Probe
 	sandbox.WaitFor(t, 10*time.Second, "claude b to start", func() bool { b = claude(nil); return b != nil })
 	rows := func(selected string) []string {
-		lines := []string{"  NAME  STATE     DIRECTORY"}
+		lines := []string{"  NAME  STATE     LAST ACTIVE  DIRECTORY"}
 		for _, name := range []string{"a", "b"} {
 			mark := " "
 			if name == selected {
 				mark = ">"
 			}
-			lines = append(lines, mark+" "+name+"     detached  "+s.Work)
+			lines = append(lines, mark+" "+name+"     detached  now          "+s.Work)
 		}
 		return append(lines, "")
 	}
@@ -4777,7 +4919,7 @@ func TestListResumedSession(t *testing.T) {
 	term.Keys("Down")
 	waitLines(t, term, append(rows("b"), listHints)...)
 	armThen(t, term, func() { waitLines(t, term, append(rows("b"), killArmed)...) }, "C-x")
-	waitLines(t, term, "  NAME  STATE     DIRECTORY", "  a     detached  "+s.Work, "> b     ended     "+s.Work, "", endedHints)
+	waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "  a     detached  now          "+s.Work, "> b     ended     -            "+s.Work, "", endedHints)
 	sandbox.WaitFor(t, 10*time.Second, "claude b to exit", func() bool { return !b.Alive() })
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
 		t.Errorf("sessions %q after the kill, want [cld-a]", sessions)

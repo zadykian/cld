@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"fmt"
 	"maps"
 	"net"
 	"os"
@@ -1487,7 +1488,7 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 		{[]string{"__complete", "resume", "-s", ""}, "tmux 3.4", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.4", "cld-main\tdetached\t0\t100\t0\t/w", 0, "main\n:4\n",
+		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.4", fakeSession("main", 0), 0, "main\n:4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "tmux 3.4", "", 1, "", noDocker, false},
 		{[]string{"__complete", "setup", "telemetry", "--local", ""}, "tmux 3.4", "", 0, ":4\n",
@@ -1610,7 +1611,7 @@ func TestCompletionSkipsChecks(t *testing.T) {
 			case "fake", "unreadable":
 				env["PATH"] = s.Tools("tmux")
 				env["CLD_FAKE_TMUX_VERSION"] = "tmux 3.2a"
-				env["CLD_FAKE_TMUX_SESSIONS"] = "cld-x\tdetached\t0\t100\t0\t/w"
+				env["CLD_FAKE_TMUX_SESSIONS"] = fakeSession("x", 0)
 			default:
 				s.WriteProgram(filepath.Join(env["PATH"], "tmux"), test.script, test.mode)
 			}
@@ -2098,6 +2099,197 @@ func TestTitleOnlyToATerminal(t *testing.T) {
 	}
 }
 
+// list shows how long ago each session was last active - now under a minute, and then in whole
+// minutes, hours or days - and first ends each one idle for longer than CLD_IDLE_DAYS days, 30
+// where it is unset or empty, none for 0, with a note that says how long in the largest whole
+// unit. The fake tmux lists session a with its activity and its last attach, which a case gives
+// apart where they differ, or leaves empty for no attach: the later counts. It records the kill:
+// an if -F that has tmux kill the session and its server only where it is still idle - no
+// terminal attached, and its activity and its last attach before the cutoff, the whole second at
+// or after now less the limit - and otherwise print "kept". The fake prints nothing, as tmux does
+// once the kill has ended the server.
+func TestIdleSessionsWithFakeTmux(t *testing.T) {
+	t.Parallel()
+	const day = 24 * time.Hour
+	// never is a last attach for a session no terminal has attached to.
+	const never = -1
+	for _, test := range []struct {
+		idle time.Duration
+		// attached, where it is not 0, is how long ago a terminal last attached, idle then being
+		// the time since the activity alone
+		attached time.Duration
+		days     string
+		// active is LAST ACTIVE, where the session stays
+		active string
+		// limit, where the session ends, is CLD_IDLE_DAYS as a time, and ended how long the note
+		// says the session was idle
+		limit time.Duration
+		ended string
+	}{
+		{idle: 0, active: "now"},
+		{idle: 55 * time.Second, active: "now"},
+		{idle: 61 * time.Second, active: "1m"},
+		{idle: 5*time.Minute + 30*time.Second, active: "5m"},
+		{idle: 2*time.Hour + 30*time.Minute, active: "2h"},
+		{idle: 3*day + 23*time.Hour, active: "3d"},
+		{idle: 29*day + 23*time.Hour, active: "29d"},
+		{idle: 5*time.Minute + 30*time.Second, attached: 40 * day, active: "5m"},
+		{idle: 40 * day, attached: 2*time.Hour + 30*time.Minute, active: "2h"},
+		{idle: 5*time.Minute + 30*time.Second, attached: never, active: "5m"},
+		{idle: 40*day + time.Hour, days: "0", active: "40d"},
+		{idle: 40*day + time.Hour, days: "45", active: "40d"},
+		{idle: 40*day + time.Hour, limit: 30 * day, ended: "40 days"},
+		{idle: 40 * day, attached: 31*day + time.Hour, limit: 30 * day, ended: "31 days"},
+		{idle: 31*day + time.Hour, attached: 40 * day, limit: 30 * day, ended: "31 days"},
+		{idle: 40*day + time.Hour, attached: never, limit: 30 * day, ended: "40 days"},
+		{idle: 31*day + time.Hour, days: "30", limit: 30 * day, ended: "31 days"},
+		{idle: 26 * time.Hour, days: "0.5", limit: 12 * time.Hour, ended: "1 day"},
+		{idle: 90 * time.Minute, days: ".05", limit: 72 * time.Minute, ended: "1 hour"},
+		{idle: 150 * time.Second, days: "0.001", limit: 86400 * time.Millisecond, ended: "2 minutes"},
+	} {
+		name := fmt.Sprintf("idle %v", test.idle)
+		switch test.attached {
+		case 0:
+		case never:
+			name += ", never attached"
+		default:
+			name += fmt.Sprintf(", attached %v ago", test.attached)
+		}
+		t.Run(fmt.Sprintf("%s, CLD_IDLE_DAYS %q", name, test.days), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			socket(t, s, "cld-a")
+			line := fakeSession("a", test.idle)
+			switch test.attached {
+			case 0:
+			case never:
+				line = fakeSessionAt("a", fakeTime(test.idle), "")
+			default:
+				line = fakeSessionAt("a", fakeTime(test.idle), fakeTime(test.attached))
+			}
+			started := time.Now()
+			result := s.RunCld(map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": line,
+				"CLD_IDLE_DAYS":          test.days,
+			}, "list")
+			if test.ended == "" {
+				want := fmt.Sprintf("NAME  STATE     LAST ACTIVE  DIRECTORY\n"+"a     detached  %-11s  /w\n", test.active)
+				if result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+					t.Errorf("exit %d, stderr %q, stdout\n%s\nwant exit 0, stdout\n%s", result.Code, result.Stderr, result.Stdout, want)
+				}
+				if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
+					t.Errorf("tmux ran %q", s.FakeTmuxRecord().Argv)
+				}
+				return
+			}
+			if want := "cld: ended session 'a', idle for " + test.ended + "\n"; result.Code != 0 || result.Stdout != "" || result.Stderr != want {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+			}
+			argv := s.FakeTmuxRecord().Argv
+			cutoff := regexp.MustCompile(`#\{e\|<:#\{session_activity\},([0-9]+)\}`).FindStringSubmatch(strings.Join(argv, " "))
+			if cutoff == nil {
+				t.Fatalf("tmux arguments %q compare no activity", argv)
+			}
+			idle := "#{&&:#{==:#{session_attached},0},#{&&:#{e|<:#{session_activity}," + cutoff[1] + "},#{e|<:#{session_last_attached}," + cutoff[1] + "}}}"
+			if want := []string{"-L", "cld-a", "if", "-F", "-t", "=cld-a:", idle, "kill-session -t =cld-a ; kill-server", "display-message -p kept"}; !slices.Equal(argv, want) {
+				t.Errorf("tmux arguments\n%q\nwant\n%q", argv, want)
+			}
+			seconds, _ := strconv.ParseInt(cutoff[1], 10, 64)
+			if earliest, latest := started.Add(-test.limit).Unix(), time.Now().Add(-test.limit).Unix()+1; seconds < earliest || seconds > latest {
+				t.Errorf("cutoff %d, want from %d to %d: now less %v", seconds, earliest, latest, test.limit)
+			}
+		})
+	}
+}
+
+// list keeps the session whose server cld runs on - TMUX names its socket, as in any pane of that
+// server, claude's Bash tool included - however long it has been idle: ending the server would end
+// cld, and a claude that ran it. It goes by the socket's file, as TMUX gives the socket's path with
+// the directory's symbolic links resolved, which list's own path to it need not have; a socket of
+// the same name elsewhere is another server's, and the session ends.
+func TestSweepKeepsTheSessionCldRunsIn(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		// socket is TMUX's socket, relative to the sandbox's root, whose socket directory is
+		// tmux-UID
+		socket string
+		kept   bool
+	}{
+		{name: "its socket", socket: "tmux-UID/cld-a", kept: true},
+		{name: "its socket through a symbolic link", socket: "link/tmux-UID/cld-a", kept: true},
+		{name: "a socket of that name elsewhere", socket: "other/tmux-UID/cld-a"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			socket(t, s, "cld-a")
+			if err := os.Symlink(s.Root, filepath.Join(s.Root, "link")); err != nil {
+				t.Fatal(err)
+			}
+			other := filepath.Join(s.Root, "other", filepath.Base(s.SocketDir()))
+			if err := os.MkdirAll(other, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			s.WriteFile(filepath.Join(other, "cld-a"), "")
+			own := filepath.Join(s.Root, strings.ReplaceAll(test.socket, "tmux-UID", filepath.Base(s.SocketDir())))
+			result := s.RunCld(map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": fakeSession("a", 40*24*time.Hour+time.Hour),
+				"TMUX":                   own + ",100,0",
+			}, "list")
+			if !test.kept {
+				if want := "cld: ended session 'a', idle for 40 days\n"; result.Code != 0 || result.Stdout != "" || result.Stderr != want {
+					t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+				}
+				if argv := s.FakeTmuxRecord().Argv; len(argv) < 3 || !slices.Equal(argv[:3], []string{"-L", "cld-a", "if"}) {
+					t.Errorf("tmux arguments %q, want the kill of session a", argv)
+				}
+				return
+			}
+			want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     detached  40d          /w\n"
+			if result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+				t.Errorf("exit %d, stderr %q, stdout\n%s\nwant exit 0, stdout\n%s", result.Code, result.Stderr, result.Stdout, want)
+			}
+			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
+				t.Errorf("tmux ran %q", s.FakeTmuxRecord().Argv)
+			}
+		})
+	}
+}
+
+// new without -s makes its session although a server does not answer the read of the sessions
+// for its sweep of the idle ones, and says so: the sweep is not what was asked. list, whose read
+// it is, fails with tmux's message. The fake tmux fails on server cld-x, whose socket takes the
+// connection, as tmux does where it may not connect; new's index passes over x, as x is no index,
+// and finds no socket for session 0.
+func TestNewWarnsWhereTheSweepCannotRead(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	socket(t, s, "cld-x")
+	fake := map[string]string{
+		"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+		"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
+		"CLD_FAKE_TMUX_DENIED":  "cld-x",
+	}
+	denied := "error connecting to /fake/tmux/cld-x (Permission denied)"
+	result := s.RunCldOnTerminal(fake, "new")
+	title := "\x1b]0;\u2733 cld-0\x07"
+	if want := "cld: warning: cannot end the idle sessions: " + denied + "\n"; result.Code != 0 || result.Stdout != title || result.Stderr != want {
+		t.Errorf("new: exit %d, stdout %q, stderr %q, want exit 0, stdout %q, stderr %q", result.Code, result.Stdout, result.Stderr, title, want)
+	}
+	if argv := s.FakeTmuxRecord().Argv; len(argv) < 3 || !slices.Equal(argv[:3], []string{"-u", "-L", "cld-0"}) || !slices.Contains(argv, "new-session") {
+		t.Errorf("tmux arguments %q, want new-session on server cld-0", argv)
+	}
+	result = s.RunCld(fake, "list")
+	if want := "cld: " + denied + "\n"; result.Code != 1 || result.Stdout != "" || result.Stderr != want {
+		t.Errorf("list: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+	}
+}
+
 // A server can exit while cld asks it - its claude exits, a cld kill runs - and tmux then says that
 // the server exited unexpectedly: list passes over it and lists the other sessions, and join,
 // detach and kill find no session there. The fake tmux answers every server but cld-b, which exits
@@ -2110,7 +2302,7 @@ func TestServerExitingWhileAsked(t *testing.T) {
 	fake := map[string]string{
 		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
-		"CLD_FAKE_TMUX_SESSIONS": "cld-a\tdetached\t0\t100\t0\t/w",
+		"CLD_FAKE_TMUX_SESSIONS": fakeSession("a", 0),
 		"CLD_FAKE_TMUX_EXITED":   "cld-b",
 	}
 	for _, test := range []struct {
@@ -2118,7 +2310,7 @@ func TestServerExitingWhileAsked(t *testing.T) {
 		code           int
 		stdout, stderr string
 	}{
-		{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\n" + "a     detached  /w\n", ""},
+		{[]string{"list"}, 0, "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "a     detached  now          /w\n", ""},
 		{[]string{"join", "-s", "b"}, 1, "", "cld: no session 'b'; create it with cld new -s b\n"},
 		{[]string{"kill", "-s", "b"}, 1, "", "cld: no session 'b' (see cld list)\n"},
 		{[]string{"detach", "-s", "b"}, 1, "", "cld: no session 'b' (see cld list)\n"},
@@ -2361,7 +2553,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		// before is what cobra writes to stderr first.
 		before string
 	}{
-		{[]string{"list"}, "cld-x\tdetached\t0\t100\t0\t/w", ""},
+		{[]string{"list"}, fakeSession("x", 0), ""},
 		{[]string{"help"}, "", ""},
 		{[]string{"help", "new"}, "", ""},
 		{[]string{"new", "-h"}, "", ""},
@@ -2375,7 +2567,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"completion", "bash"}, "", ""},
 		{[]string{"completion", "zsh", "--help"}, "", ""},
 		{[]string{"completion"}, "", ""},
-		{[]string{"__complete", "join", "-s", ""}, "cld-x\tdetached\t0\t100\t0\t/w", "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
+		{[]string{"__complete", "join", "-s", ""}, fakeSession("x", 0), "Completion ended with directive: ShellCompDirectiveNoFileComp\n"},
 		{[]string{"help", "setup"}, "", ""},
 		{[]string{"setup", "-h", "telemetry"}, "", ""},
 		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "", ""},
@@ -2561,6 +2753,32 @@ func TestNewRefusesADirectoryItCannotEnter(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fakeSession is the line the fake tmux prints for list-sessions as Sessions asks it: session
+// cld-NAME, detached, its claude's pid 100, the directory /w, and idle for idle - its activity and
+// its last attach that long before now.
+func fakeSession(name string, idle time.Duration) string {
+	return fakeSessionAt(name, fakeTime(idle), fakeTime(idle))
+}
+
+// fakeSessionAt is fakeSession's line with the session's activity and its last attach as tmux
+// gives them: seconds since the epoch, the last attach empty where no terminal has attached.
+func fakeSessionAt(name, activity, attached string) string {
+	return "cld-" + name + "\tdetached\t0\t100\t" + activity + " " + attached + "\t0\t/w"
+}
+
+// fakeTime is the time ago before now in whole seconds since the epoch, as tmux gives a session's
+// times, rounded up: cld then reads a time since then of ago less up to a second, plus the time
+// it takes to read it. Rounded down, it could be a second more on top, and 59 s read as a minute.
+// So a case stays more than a second above the unit it shows, and some seconds below the next.
+func fakeTime(ago time.Duration) string {
+	since := time.Now().Add(-ago)
+	seconds := since.Unix()
+	if since.Nanosecond() > 0 {
+		seconds++
+	}
+	return strconv.FormatInt(seconds, 10)
 }
 
 // socket makes the sandbox's socket of server as a running server has it, for list to find: a

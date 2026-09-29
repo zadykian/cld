@@ -50,9 +50,10 @@
 //
 // Invoked as "tmux", it fakes tmux for the checks cld makes before starting it: "tmux -V" prints
 // $CLD_FAKE_TMUX_VERSION, list-sessions prints $CLD_FAKE_TMUX_SESSIONS, whatever server it is
-// asked - where a test sets none it fails as tmux does with no server running, and on a server
+// asked - where a test sets none it fails as tmux does with no server running, on a server
 // named in $CLD_FAKE_TMUX_EXITED (-L NAME, separated by spaces) as tmux does when the server exits
-// while it asks - and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json. With
+// while it asks, and on one named in $CLD_FAKE_TMUX_DENIED as tmux does when it may not connect
+// to the socket - and any other invocation is recorded in $CLD_PROBE_DIR/tmux.json. With
 // $CLD_FAKE_TMUX_REAL, the path of a real tmux, it fakes list-sessions only, and runs that tmux
 // for the rest.
 //
@@ -141,10 +142,15 @@ func fakeTmux() error {
 		return nil
 	}
 	if slices.Contains(os.Args[1:], "list-sessions") {
-		if i := slices.Index(os.Args, "-L"); i > 0 && i+1 < len(os.Args) &&
-			slices.Contains(strings.Fields(os.Getenv("CLD_FAKE_TMUX_EXITED")), os.Args[i+1]) {
-			fmt.Fprintln(os.Stderr, "server exited unexpectedly")
-			os.Exit(1)
+		if i := slices.Index(os.Args, "-L"); i > 0 && i+1 < len(os.Args) {
+			if slices.Contains(strings.Fields(os.Getenv("CLD_FAKE_TMUX_EXITED")), os.Args[i+1]) {
+				fmt.Fprintln(os.Stderr, "server exited unexpectedly")
+				os.Exit(1)
+			}
+			if slices.Contains(strings.Fields(os.Getenv("CLD_FAKE_TMUX_DENIED")), os.Args[i+1]) {
+				fmt.Fprintf(os.Stderr, "error connecting to /fake/tmux/%s (Permission denied)\n", os.Args[i+1])
+				os.Exit(1)
+			}
 		}
 		sessions := os.Getenv("CLD_FAKE_TMUX_SESSIONS")
 		if sessions == "" {
