@@ -1,9 +1,10 @@
 PREFIX ?= $(HOME)/.local
 # Terminals the terminal contract runs against: tmux, jediterm (see tests/main_test.go).
 TERMINALS ?= tmux
-# Docker checks: tmux release TMUX_VERSION, built from source on BASE; the release the checks run
-# on is pinned here and in tests/Dockerfile, and bumped with cld's minimum (docs/design.md,
-# decision 6). Another release builds by hand for a probe: make docker-image TMUX_VERSION=X.
+# Docker checks: tmux release TMUX_VERSION, built from source on BASE; the newest release the
+# checks run on is pinned here and in tests/Dockerfile, and bumped by hand (docs/design.md,
+# decision 6). The oldest, cld's minimum, runs as make docker-check TMUX_VERSION=3.5a, as CI's
+# linux-oldest does. Another release builds by hand for a probe: make docker-image TMUX_VERSION=X.
 BASE ?= debian:trixie
 TMUX_VERSION ?= 3.7c
 DOCKER_TERMINALS ?= tmux,jediterm

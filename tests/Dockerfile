@@ -1,8 +1,9 @@
 # The environment cld's checks run in, locally and in CI: `make docker-check`.
 # The tmux under test is the release TMUX_VERSION, built from source: no released Debian or Ubuntu
-# version ships it, and a package would move with the base image. It is pinned, and bumped by hand
-# together with the oldest tmux cld runs on (docs/design.md, decision 6); another release builds
-# with `make docker-image TMUX_VERSION=X`, to try it by hand.
+# version ships the newest, and a package would move with the base image. The newest is pinned
+# here, and bumped by hand (docs/design.md, decision 6); CI's linux-oldest builds the oldest tmux
+# cld runs on, as `make docker-check TMUX_VERSION=3.5a` does, and another release builds with
+# `make docker-image TMUX_VERSION=X`, to try it by hand.
 ARG BASE=debian:trixie
 ARG GO_IMAGE=golang:1.27-bookworm
 

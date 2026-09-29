@@ -23,14 +23,16 @@ elsewhere, and `CLD_VERSION` another release, 0.4.0 or later:
 what it checks, and for installing by hand. From a clone, `make install` builds cld into
 `~/.local/bin` (`PREFIX=/usr/local` for another prefix); it needs Go 1.26 or newer.
 
-Requirements: tmux 3.7 or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
+Requirements: tmux 3.5a or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
 for `cld new -w`, and to name sessions after their repository; Docker, on Linux, for
 `cld setup telemetry`.
 
-Most distributions ship an older tmux - Debian 13 has 3.5a, Ubuntu 26.04 3.6a.
-[Homebrew](https://formulae.brew.sh/formula/tmux) has 3.7 on macOS and Linux, as do Debian testing
+Debian 13 has tmux 3.5a and Ubuntu 26.04 3.6a; Debian 12 (3.3a, 3.5a in bookworm-backports),
+Ubuntu 24.04 (3.4) and RHEL 9 and 10 (3.2a, 3.3a) ship an older one. tmux 3.7 or newer is
+recommended: only there does claude draw with synchronized output, which flickers less.
+[Homebrew](https://formulae.brew.sh/formula/tmux) has it on macOS and Linux, as do Debian testing
 and unstable; or build a [tmux release](https://github.com/tmux/tmux/releases) from source. cld
-0.3.0 still runs on tmux 3.3 to 3.6: see [Upgrading](docs/guide.md#upgrading), which also covers
+0.3.0 still runs on tmux 3.3 and 3.4: see [Upgrading](docs/guide.md#upgrading), which also covers
 upgrading tmux and cld.
 
 ### Shell completion
@@ -247,13 +249,14 @@ against each terminal:
 ## Development
 
 ```sh
-make docker-check                   # as CI: tmux 3.7c built from source, baseline and JediTerm
-make check                          # natively, baseline terminal only
-make check TERMINALS=tmux,jediterm  # natively, with JediTerm
+make docker-check                    # as CI: tmux 3.7c built from source, baseline and JediTerm
+make docker-check TMUX_VERSION=3.5a  # the same on the oldest tmux cld runs on, as CI does too
+make check                           # natively, baseline terminal only
+make check TERMINALS=tmux,jediterm   # natively, with JediTerm
 ```
 
-Natively, the checks need Go, tmux 3.7 or newer, ShellCheck and shfmt; for JediTerm also a JDK, and
-its jars, fetched once with `tests/jediterm/fetch-deps tests/jediterm/lib`.
+Natively, the checks need Go, tmux 3.5a or newer, ShellCheck and shfmt; for JediTerm also a JDK,
+and its jars, fetched once with `tests/jediterm/fetch-deps tests/jediterm/lib`.
 
 [docs/design.md](docs/design.md) records the tmux and claude behaviour cld relies on, the decisions
 taken and how the tests work. Pushing a tag `vX.Y.Z` publishes a release with cld for each

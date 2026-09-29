@@ -1088,23 +1088,28 @@ func TestIgnoresRelativePathEntries(t *testing.T) {
 	}
 }
 
-// cld requires the tmux its tests run on, 3.7. A letter, a bug-fix release, is not compared;
-// development builds are read from what follows "next-", and pass without a version.
+// cld requires the oldest tmux its tests run on, 3.5a. A letter, a bug-fix release, counts after
+// the major and minor version, so 3.5 is older; development builds are read from what follows
+// "next-", and pass without a version.
 func TestRequiresTmux(t *testing.T) {
 	t.Parallel()
 	for version, accepted := range map[string]bool{
-		"tmux 3.7":      true,
+		"tmux 3.5a":     true,
+		"tmux 3.5b":     true,
+		"tmux 3.6":      true,
+		"tmux 3.6b":     true,
 		"tmux 3.7c":     true,
 		"tmux 3.10":     true,
 		"tmux 4.0":      true,
 		"tmux next-3.9": true,
 		"tmux 3.8-rc2":  true,
 		"tmux master":   true,
-		"tmux 3.6b":     false,
-		"tmux 3.5a":     false,
+		"tmux 3.5":      false,
+		"tmux 3.5-rc":   false,
+		"tmux 3.4":      false,
 		"tmux 3.3a":     false,
 		"tmux 2.9a":     false,
-		"tmux next-3.6": false,
+		"tmux next-3.5": false,
 	} {
 		for _, args := range [][]string{{"new"}, {"resume", "SESSION"}} {
 			t.Run(args[0]+" "+version, func(t *testing.T) {
@@ -1119,7 +1124,7 @@ func TestRequiresTmux(t *testing.T) {
 				if accepted && (result.Code != 0 || !started) {
 					t.Errorf("rejected: exit %d, stderr %q", result.Code, result.Stderr)
 				}
-				if want := "cld: tmux 3.7 or newer is required, found '" + version + "'\n"; !accepted &&
+				if want := "cld: tmux 3.5a or newer is required, found '" + version + "'\n"; !accepted &&
 					(result.Code != 1 || result.Stderr != want || started) {
 					t.Errorf("accepted: exit %d, stderr %q, tmux started: %v", result.Code, result.Stderr, started)
 				}
@@ -1313,25 +1318,25 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		{[]string{"new"}, "tmux 3.7c", "", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
 		{[]string{"new", "-s", "main"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
 		{[]string{"new", "-w"}, "tmux 3.7c", "", 1, "", "cld: git is not installed\n", false},
-		{[]string{"new"}, "tmux 3.6b", "", 1, "", "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
+		{[]string{"new"}, "tmux 3.4", "", 1, "", "cld: tmux 3.5a or newer is required, found 'tmux 3.4'\n", false},
 		{[]string{"resume", "SESSION"}, "tmux 3.7c", "", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
 		{[]string{"resume", "-s", "main", "SESSION"}, "tmux 3.7c", "cld-main", 1, "", "cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n", true},
-		{[]string{"resume", "-s", "x"}, "tmux 3.6b", "", 1, "", "cld: tmux 3.7 or newer is required, found 'tmux 3.6b'\n", false},
+		{[]string{"resume", "-s", "x"}, "tmux 3.4", "", 1, "", "cld: tmux 3.5a or newer is required, found 'tmux 3.4'\n", false},
 		{[]string{"join", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main'; create it with cld new -s main\n", false},
 		{[]string{"kill", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
 		{[]string{"list"}, "tmux 3.7c", "", 0, "", "", false},
-		{[]string{"__complete", "new", "-s", ""}, "tmux 3.6b", "", 0, ":4\n",
+		{[]string{"__complete", "new", "-s", ""}, "tmux 3.4", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"__complete", "resume", "-s", ""}, "tmux 3.6b", "", 0, ":4\n",
+		{[]string{"__complete", "resume", "-s", ""}, "tmux 3.4", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.6b", "cld-main\tdetached\t0\t100\t0\t/w", 0, "main\n:4\n",
+		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.4", "cld-main\tdetached\t0\t100\t0\t/w", 0, "main\n:4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "tmux 3.6b", "", 1, "", noDocker, false},
-		{[]string{"__complete", "setup", "telemetry", "--local", ""}, "tmux 3.6b", "", 0, ":4\n",
+		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "tmux 3.4", "", 1, "", noDocker, false},
+		{[]string{"__complete", "setup", "telemetry", "--local", ""}, "tmux 3.4", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
-		{[]string{"setup", "project"}, "tmux 3.6b", "", 0,
+		{[]string{"setup", "project"}, "tmux 3.4", "", 0,
 			"Created .claude/settings.json\nCreated .claude/settings.local.json\nCreated .gitignore\n", "", false},
-		{[]string{"__complete", "setup", "project", "--mcp", "r"}, "tmux 3.6b", "", 0,
+		{[]string{"__complete", "setup", "project", "--mcp", "r"}, "tmux 3.4", "", 0,
 			"rider\tRider's MCP server, port $RIDER_MCP_PORT or 64482\n:4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 	} {

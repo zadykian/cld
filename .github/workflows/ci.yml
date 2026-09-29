@@ -30,6 +30,27 @@ jobs:
           cache-to: type=gha,scope=linux,mode=max
       - run: make docker-test IMAGE=cld-test:ci
 
+  # The same checks on the oldest tmux cld runs on, raised with its minimum (docs/design.md,
+  # decision 6), as `make docker-check TMUX_VERSION=3.5a` runs them. Advisory: the ruleset does
+  # not require it.
+  linux-oldest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: tests/Dockerfile
+          build-args: |
+            TMUX_VERSION=3.5a
+          tags: cld-test:oldest
+          load: true
+          cache-from: type=gha,scope=linux-oldest
+          cache-to: type=gha,scope=linux-oldest,mode=max
+      - run: make docker-test IMAGE=cld-test:oldest
+
   # The completion tests in bash with ble.sh, as `make docker-blesh-check` runs them: the same
   # Dockerfile, built on Ubuntu with its package ble.sh, as `make docker-blesh-image` builds it.
   blesh:

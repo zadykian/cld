@@ -64,6 +64,11 @@ rows that name none were probed against tmux 3.6.
 | a tmux server named `cld-NAME` that cld did not start - `tmux -L cld-x new -s other`, `tmux -L cld-y new -s cld-y`, and a pane of `tmux -L cld-outer new -s outer` running cld (tmux 3.7c; cld 0.8.2, and as #69 left it, in the tests that 34 added) | cld took each for one of its servers. In the pane of `cld-outer`, `new` was refused with `this terminal is a pane of the tmux server of session 'outer'; detach with C-q d first`, where `C-q` is not bound, and `list` printed its table. `new`, `resume`, `join` and `kill -s x` said that session `x` had ended and pointed at `tmux -L cld-x kill-server`, which ends the user's sessions - as #69 left it, `new`, `resume` and `join` pointed at `cld kill -s x`, and `kill -s x` ended the user's server, printing nothing; `list` showed `y`, completion offered it, `new -s y` said it existed, and `kill -s y` ended the user's server |
 | `#{@cld}`, `#{prefix}` and the mark of 34 in the formats cld runs - `lookup`'s `list-sessions` filter, `lingering`'s format, `kill`'s `if -F` and `OwnPane`'s `list-panes -a` - on servers of a private socket directory (tmux 3.7c: the snap, and for `display-message` and `if -F` the Docker image of `tests/Dockerfile`) | on a server started with `set -s @cld 1`, `#{@cld}` read `1` for every session, one made later too, and a window's or a session's `@cld 0` hid it from none; with tmux's defaults it read empty. `#{prefix}`, a session option, read `C-q` on a server started with `set -g prefix C-q`, as cld 0.8.2 and earlier start theirs, and `C-b` with tmux's defaults; a session that set its own `C-b` read that. The mark, `@cld` or else the prefix `C-q`, read `1` on both kinds of cld's server - but for that session on the unmarked one - and `0` on the other. There the filter left session `cld-NAME` out, and `list-sessions` printed nothing, with status 0; `list-panes` printed an empty line for each pane. `display-message -p` read the mark on a server without a session too: `1` with `@cld` or the global prefix `C-q`, `0` with neither. Beside the format of a server that has outlived its session (13) it read `1 1` on a marked server that had, where `if -F` ran its command, and `0 0` once `set -su @cld` had taken the mark away, where it ran the other |
 | `tmux -V` beside a server started by an older tmux (a 3.5a server from Debian's package with a 3.7c client built from source, in the image that `tests/Dockerfile` built with `BASE=debian:trixie TMUX_VERSION=3.7c` before #21, which installed Debian's tmux 3.5a beside the source build; for #21 also a 3.6 server on the default socket with a 3.7c client) | `tmux -V` reports the client: `tmux 3.7c`. The server keeps running the tmux that started it - `#{version}` read `3.5a`, and `3.6` - and answers the newer client: the 3.7c client made a session on the 3.5a server with `new-session`, and set `remain-on-exit failed` on its window. So a check of `tmux -V` passes after an upgrade while the sessions on the old server - on one shared server, as before decision 13, the new ones too - run on it until it exits |
+| what cld needs of tmux (#74): the whole suite, tmux and JediTerm terminals, in the image `tests/Dockerfile` builds with `TMUX_VERSION=3.5a`, `3.6a` and `3.5` - the last with the minimum lowered to 3.5 for the run - and tmux's `CHANGES` up to 3.7c and its commits from 3.5 to 3.5a, read | 3.5a and 3.6a pass every test, once the baseline terminal passes `paste-buffer -S` to 3.7 and newer only: with it, four tests that paste fail on 3.5a (`command paste-buffer: unknown flag -S`). 3.5 passes every test but the version checks. The probe written up in #74 found the same on 3.6b, and on 3.4 the failures of `TestClaudeFailingDetached` and `TestListJoin/exited` besides the crash above, and read the options and commands cld runs as all in 3.2 or 3.3, extended keys' mode 2 as 3.5 |
+| keys with Shift through extended keys, typed as CSI u - `CSI 65;2u`, `CSI 127;2u`, `CSI 13;2u` - into a client of a server set up as cld's (`extended-keys on`, `extkeys` for `xterm*`), whose pane asked for modifyOtherKeys mode 2 (tmux 3.5 and 3.5a, in the images `tests/Dockerfile` builds) | 3.5 hands the pane Shift+A as `CSI 27;2;65~` and Shift+Backspace as `CSI 27;2;1106324~`, Backspace taken for a Unicode character; 3.5a hands it `A` and `CSI 27;2;127~` (its commits "Report shifted keys like S-A as A" and "Do not translate BSpace as Unicode"). Shift+Enter arrives as `CSI 27;2;13~` from both, which is why the contract (C3) passes on 3.5 |
+| the shell of `run-shell` and `#()` jobs, with `default-shell` fish 4.0.2 (tmux 3.5 and 3.5a, in the same images) | 3.5 ran `run-shell 'echo "[$version]"'` with fish, which printed `[4.0.2]`; 3.5a ran it with `/bin/sh`, which printed `[]` (its `CHANGES`: "Revert to using /bin/sh for #() and run-shell and if-shell"). fish refuses the title's job, `(sleep 1; ...) >/dev/null 2>&1 &`: `command substitutions not allowed in command position`, status 127 |
+| DECRQM 2026, synchronized output, typed in a shell pane (tmux 3.7c natively and tmux 3.5a and 3.7c in the images `tests/Dockerfile` builds), and claude 2.1.284's bundle, read, not run | 3.7c answers `CSI ? 2026 ; 2 $ y` (supported, reset), 3.5a nothing; tmux's `CHANGES` has the answer, and synchronized output for applications, in 3.7. Where `TMUX` is set, claude takes synchronized output for unlikely ("tmux answers for itself"); once the terminal answers XTVERSION, as tmux does, it asks DECRQM 2026 and takes it for supported on a status of 1 to 3, and logs `no reply to DECRQM 2026` otherwise. So claude draws with it on tmux 3.7 and newer only |
+| `paste-buffer` of `a`, 0x01, `b`, ESC, `c` into a pane that reads raw bytes (tmux 3.5a and 3.7c, in the same images) | 3.7c writes `a^Ab^[c` without `-S` and the bytes as they are with it; 3.5a writes them as they are, and refuses `-S` with `command paste-buffer: unknown flag -S` |
 | how `claude` 2.1.282 resolves `remoteControlAtStartup` (read from its bundle, not run: a live check would connect the session to claude.ai) | the first of the policy settings, the `--settings` (flag) settings and the user settings that has it wins, over the old global-config key; a `false` in the project's `.claude/settings.json` or `settings.local.json` beats all of them, and a `true` there is ignored with a warning. `/config`'s "Enable Remote Control for all sessions" writes the user setting, so `--settings` overrides it either way |
 | what the claude minimum rests on (#21): Claude Code's changelog, and the linux-x64 npm bundles of 2.1.118, 2.1.119, 2.1.133, 2.1.221 and 2.1.222, read for the issue, not run | `--worktree` came in 2.1.49, `-n`/`--name` in 2.1.76 and the `worktree.baseRef` setting in 2.1.133 (changelog). `remoteControlAtStartup` moved into the settings in 2.1.119, with `/config`'s other settings ("now persist to `~/.claude/settings.json`", changelog): 2.1.118 reads it from the global config (`~/.claude.json`) only, which `--settings` does not reach. 2.1.133 and 2.1.221 decide from the merged settings, then the global config, and in the merge flag settings outrank the project's and the local ones, so cld's `true` beats a project's `false`. 2.1.222 returns `false` first when the project or local settings have it, then takes the first of the policy, flag and user settings, as the row above records for 2.1.282; its changelog agrees: repo-local settings "can no longer turn it on (they can still turn it off)". On 25 September 2026 npm's `stable` tag was at 2.1.274 and `latest` at 2.1.282; for the issue, Homebrew's default `claude-code` cask and the apt, dnf and apk `stable` repositories served 2.1.274 too |
 | how tmux starts a command given as several words, such as `new-session -c DIR claude ...` (tmux 3.7c, glibc 2.43, Ubuntu 26.04) | with `execvp`, in `DIR`, and with the `PATH` of the client that ran `new-session`, also for a second session on a server that a client with another `PATH` started. So a bare `claude` is looked up in every entry, relative ones included, from `DIR`: with `PATH=.:/abs`, or `:/abs`, and a `claude` in both, tmux started the one in `DIR`, where cld had checked `/abs/claude`. A script without `#!`, which the system will not execute (`ENOEXEC`), `execvp` ran with `/bin/sh`, by name and by path |
@@ -268,9 +273,10 @@ than skipped, so a terminal gaining or losing support flips a test.
 
 ### CI
 
-- every push and pull request: lint; contract x tmux on one pinned tmux release (3.7c, built from
-  source, in a Linux container) and on Homebrew's current tmux on macOS; contract x JediTerm; the
-  completion tests in bash with ble.sh, in the same image built on Ubuntu (27.5);
+- every push and pull request: lint; contract x tmux on two pinned tmux releases, the newest
+  (3.7c) and the oldest cld runs on (3.5a, advisory), each built from source in a Linux container
+  (6), and on Homebrew's current tmux on macOS; contract x JediTerm; the completion tests in bash
+  with ble.sh, in the same image built on Ubuntu (27.5);
 - planned with the iTerm2 driver, and not in `ci.yml` (see 8 and Status): nightly, on tags and on
   demand, contract x iTerm2 on macOS, uploading screenshots and logs on failure; non-blocking
   until it proves stable;
@@ -345,29 +351,46 @@ comment `/fast-forward` from someone who can push; a pull request that changes
    options and the hook go to claude's pane only (see 9 and 13), since #78: on its window, any
    other pane there that failed - a teammate's that claude splits off (see Findings), one split
    by hand - stayed dead with the hint, `claude exited`, while claude ran on.
-6. Versions (#21): cld runs on tmux 3.7 or newer, the release its tests run on, and starts
-   Claude Code 2.1.232 or newer, the first release that does what cld passes and relies on. Both
-   are checked at startup and raised by hand, and neither has an upper bound. The tmux check runs
-   for every command but `help`, `version`, completion (17.4), `setup telemetry`, `setup
-   project`, `update` and `setup completion`, which run no tmux (18, 19, 21, 22), and refuses an
-   older tmux with `cld: tmux 3.7 or newer is required, found 'tmux 3.6b'` and status 1.
+6. Versions (#21, #74): cld runs on tmux 3.5a or newer, the oldest release its tests run on, and
+   starts Claude Code 2.1.232 or newer, the first release that does what cld passes and relies
+   on. Both are checked at startup and raised by hand, and neither has an upper bound. The tmux
+   check runs for every command but `help`, `version`, completion (17.4), `setup telemetry`,
+   `setup project`, `update` and `setup completion`, which run no tmux (18, 19, 21, 22), and
+   refuses an older tmux with `cld: tmux 3.5a or newer is required, found 'tmux 3.4'` and
+   status 1.
    - It reads `tmux -V`: the major and minor version, after `next-` for a development build
-     (`next-3.9` is 3.9, `3.8-rc2` 3.8); a version without them (`master`) passes. Letters mark
-     bug-fix releases and are not compared, so 3.7 to 3.7c all pass, and there is no upper bound.
-   - The tests run on one tmux, 3.7c, built from source in the Docker image: no released Debian
-     or Ubuntu version ships 3.7, and a package from Debian testing would change whenever the base
-     image does. The release is pinned in `tests/Dockerfile` and the `Makefile` and bumped by hand
-     together with the minimum and these docs, as JediTerm is (7). CI's Linux job is named `linux`,
-     without the version, so a bump leaves the ruleset's required checks alone; the macOS job
-     installs Homebrew's current tmux, which runs ahead of the pin when Homebrew moves - the signal
-     to bump.
+     (`next-3.9` is 3.9, `3.8-rc2` 3.8), then the letter of a bug-fix release as a third number,
+     `a` as 1 and none as 0, so that 3.5 is older than 3.5a; a version without them (`master`)
+     passes, and there is no upper bound. Until #74 letters were not compared: the minimum, 3.7,
+     needed none.
+   - The tests run on two tmux releases, each built from source in the Docker image: the newest,
+     3.7c, in CI's job `linux`, and the oldest cld runs on, 3.5a, in `linux-oldest`
+     (`make docker-check TMUX_VERSION=3.5a`). No released Debian or Ubuntu version ships 3.7, and
+     a package from Debian testing would change whenever the base image does. The newest is
+     pinned in `tests/Dockerfile` and the `Makefile` and bumped by hand together with these docs,
+     as JediTerm is (7); the oldest is pinned in the workflow and raised with the minimum. Neither
+     job's name carries the version, so a bump leaves the ruleset's required checks alone.
+     `linux-oldest` is advisory: the ruleset requires `linux` and `macos`, and requiring it too is
+     the maintainer's call. The macOS job installs Homebrew's current tmux, which runs ahead of
+     the pin when Homebrew moves - the signal to bump. cld does nothing per tmux version; the
+     tests' baseline terminal passes `paste-buffer -S`, new in 3.7, only to a tmux that has it.
+   - Why 3.5a (#74): from #21 the minimum was 3.7, the one release the tests ran on - a minimum of
+     3.5 would have removed the same code (`remain-on-exit` stayed off below it, see Findings) but
+     3.5 and 3.6 would have run untested, and keeping 3.3 while dropping versions from the tests
+     alone would have left a branch that no CI runs. That refused the tmux of every supported
+     Debian, Ubuntu and RHEL release, while nothing cld runs needs 3.7: every option and command
+     it uses is in 3.2 or 3.3, and extended keys' mode 2 and the fix for the crash on a dead pane
+     with focus reporting came in 3.5 (see Findings). 3.5a and 3.6a pass the whole suite, and
+     3.6b did in #74's probe; 3.4 crashes, and failed two tests there. Plain 3.5 passes it too,
+     but hands claude Shift+A as `S-A` and mangles Shift+Backspace from a terminal that reports
+     them in CSI u, and runs `#()` jobs with the user's shell, where fish refuses the title's job
+     (25): 3.5a fixed both, so the floor has its letter (see Findings).
    - The cost falls on distribution packages: Debian 13 ships 3.5a (3.6b in trixie-backports),
-     Debian 12 3.3a (3.5a in bookworm-backports), Ubuntu 24.04 3.4 and 26.04 3.6a. Their users
-     need Homebrew, Debian testing or unstable, or a source build - or cld 0.3.0, which runs on
-     tmux 3.3 and newer. A minimum of 3.5 would have removed the same code - `remain-on-exit`
-     stayed off below it (see Findings) - and kept those users, but 3.5 and 3.6 would run
-     untested; keeping 3.3 and dropping versions from the tests alone would leave a branch that no
-     CI runs.
+     Debian 12 3.3a (3.5a in bookworm-backports), Ubuntu 24.04 3.4 and 26.04 3.6a, RHEL 9 and 10
+     3.2a and 3.3a. The users of those below 3.5a need Homebrew, Debian testing or unstable, or a
+     source build - or cld 0.3.0, which runs on tmux 3.3 and newer. The README recommends 3.7 all
+     the same: claude draws with synchronized output only where tmux answers its DECRQM 2026,
+     which 3.7 is the first to do (see Findings).
    - The check reads the client: a server keeps running the tmux that started it (see Findings).
      Since each session has a server of its own (13), `new` and `resume` start a fresh server with
      the tmux they checked, so after an upgrade only the sessions started before it stay on the
@@ -1967,7 +1990,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     it:
     1. the option goes with the server's options, before `new-session`: tmux 3.7 gives a pane
        that exists a new limit, but 3.5 and 3.6 keep a pane's limit from when it was made (see
-       Findings), so that it holds under a lower minimum (6) too;
+       Findings), so that it holds on the oldest tmux cld runs on (6) too;
     2. 50000 lines, as the issue proposed: the server's memory grows with the history, to
        about 35 MB for 50000 lines of 100 plain characters and 156 MB where each has an RGB colour
        (see Findings), and is freed with the session. The sessions claude makes on its server get
@@ -2061,7 +2084,8 @@ Where the implementation departs from the plan above:
   `join` attaches with `attach-session`, which moves neither claude nor the session.
 - The test image builds tmux from source, the release `TMUX_VERSION` (see 6), on `debian:trixie`.
 - tmux 3.7's `paste-buffer` writes control characters as `^X` unless given `-S`; the baseline
-  terminal always passes `-S`, since a terminal pastes them as they are.
+  terminal passes `-S`, since a terminal pastes them as they are, to a tmux 3.7 or newer, as the
+  outer server's `#{version}` says. An older one writes them as they are, and refuses `-S`.
 - `capture-pane -e` emits an SGR change at the next cell that differs, which moves between
   redraws and sizes (a colour reset can land before or after a line break); the reattach test
   compares cells - characters and attributes - rather than the captured sequences.
@@ -2387,9 +2411,12 @@ by hand in a nested tmux).
 
 ## Status
 
-- Baseline and JediTerm contracts run on tmux 3.7c (Linux, Docker, built from source), and the
-  baseline on Homebrew's tmux on macOS. Until the minimum rose to 3.7 (see 6), they also ran on
-  3.3a, 3.4 and 3.5a.
+- Baseline and JediTerm contracts run on tmux 3.7c and 3.5a, the newest release and the oldest
+  cld runs on (Linux, Docker, built from source), and the baseline on Homebrew's tmux on macOS.
+  3.6a passed the whole suite once, for #74 (see Findings), and 3.6 is not run in CI. While the
+  minimum was 3.7 (#21 to #74, see 6) only 3.7c ran; before, 3.3a, 3.4 and 3.5a ran too. What
+  the real claude makes of 3.5's Shift+A and Shift+Backspace (see Findings) was not checked: the
+  floor at 3.5a keeps them from it.
 - Links (30) are tested as tmux writes them to the baseline terminal and to JediTerm's emulator,
   and were probed with `TERM` `wezterm` and `alacritty` on a pty that answers nothing (see
   Findings). No real terminal was seen showing them, nor which click opens one.

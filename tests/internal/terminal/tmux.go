@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -161,11 +163,33 @@ func (o *tmuxTerminal) Hold(key string, delay, interval time.Duration, repeats i
 
 // Paste goes through a paste buffer: paste-buffer -p brackets the text only if the program asked
 // for bracketed paste, and turns line feeds into carriage returns, as terminals do. -S keeps it
-// from writing control characters as ^X, which tmux 3.7 does and a terminal does not.
+// from writing control characters as ^X, which tmux 3.7 does and a terminal does not; it is new
+// in 3.7, and 3.5a, which writes them as they are, refuses it.
 func (o *tmuxTerminal) Paste(text string) {
 	o.t.Helper()
+	args := []string{"paste-buffer", "-p", "-d", "-b", "paste", "-t", outerPane}
+	if !o.older(3, 7) {
+		args = append(args, "-S")
+	}
 	o.tmux("set-buffer", "-b", "paste", "--", text)
-	o.tmux("paste-buffer", "-p", "-S", "-d", "-b", "paste", "-t", outerPane)
+	o.tmux(args...)
+}
+
+// older reports whether the outer server runs a tmux older than major.minor, from #{version}:
+// "3.7c" is 3.7, and a development build's "next-3.8" 3.8. One without a version, "master", is
+// not older.
+func (o *tmuxTerminal) older(major, minor int) bool {
+	o.t.Helper()
+	match := regexp.MustCompile(`([0-9]+)\.([0-9]+)`).FindStringSubmatch(o.format("#{version}"))
+	if match == nil {
+		return false
+	}
+	var version []int
+	for _, digits := range match[1:] {
+		n, _ := strconv.Atoi(digits)
+		version = append(version, n)
+	}
+	return slices.Compare(version, []int{major, minor}) < 0
 }
 
 func (o *tmuxTerminal) send(input string) {

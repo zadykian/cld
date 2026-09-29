@@ -32,6 +32,7 @@ cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata
 make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
 make docker-check                       # same as CI: tmux 3.7c built from source, tmux + jediterm
+make docker-check TMUX_VERSION=3.5a     # the same on the oldest tmux cld runs on, as CI does too
 make docker-blesh-check                 # the completion tests in bash with ble.sh, in that image
                                         #   built on Ubuntu 26.04 with its package ble.sh
 make docker-image TMUX_VERSION=X        # an image with another tmux release, to try it by hand
@@ -40,11 +41,12 @@ make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH, linux/darwin x amd64
 make install PREFIX=DIR                 # build cld for the host into DIR/bin (VERSION stamps it)
 ```
 
-Native runs need Go, tmux 3.7 or newer, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`)
-runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, the completion tests in the
-image built on Ubuntu with ble.sh in another, `blesh`, and `make check` on macOS with Homebrew
-tmux. Pushing a tag `vX.Y.Z` runs the checks and publishes a release: a binary per
-platform, `cld.sha256` and `install.sh`.
+Native runs need Go, tmux 3.5a or newer, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`)
+runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, and in another,
+`linux-oldest`, on tmux 3.5a, the oldest cld runs on, the completion tests in the image built on
+Ubuntu with ble.sh in a third, `blesh`, and `make check` on macOS with Homebrew tmux. Pushing a
+tag `vX.Y.Z` runs the checks and publishes a release: a binary per platform, `cld.sha256` and
+`install.sh`.
 
 Pull requests land on `main` by fast-forward only, as the commits CI checked; GitHub's merge
 methods are all refused (`gh pr merge` included): the repository allows merge commits alone, and
@@ -56,9 +58,11 @@ not push such a change. Rebase onto `main` before either.
 
 ## Constraints on cld
 
-- Requires **tmux 3.7 or newer**, the release the tests run on (3.7c, pinned in
-  `tests/Dockerfile` and the `Makefile`); there is no behaviour per tmux version. The check reads
-  `tmux -V` at startup. Raising the minimum is one change: the pin, the check, the docs.
+- Requires **tmux 3.5a or newer**, the oldest release the tests run on (in CI's `linux-oldest`),
+  beside the newest (3.7c, pinned in `tests/Dockerfile` and the `Makefile`); there is no
+  behaviour per tmux version, but for the tests' `paste-buffer -S` (3.7 and newer). The check
+  reads `tmux -V` at startup, and compares the letter of a bug-fix release: 3.5 is refused.
+  Raising the minimum is one change: `linux-oldest`'s pin, the check, the docs.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
   run the real claude): they run `claude --version` before starting that claude; `join`, `kill`,
