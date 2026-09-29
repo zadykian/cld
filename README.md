@@ -5,8 +5,9 @@
 Run [Claude Code](https://code.claude.com) in named sessions, each on a private tmux server of its
 own: detach, close the terminal, and reattach later - from the same terminal or another one -
 without losing the conversation. The server ignores your `~/.tmux.conf` and is set up for claude:
-Shift+Enter, the mouse wheel, focus events, notifications and clipboard copies work, and the prefix
-is `C-q`, which claude leaves free.
+Shift+Enter, the mouse wheel, focus events and clipboard copies work, and the prefix is `C-q`,
+which claude leaves free. claude's notifications reach the terminal too, once its setting
+`preferredNotifChannel` names a channel your terminal takes: see [Notifications](#notifications).
 
 ## Install
 
@@ -99,6 +100,23 @@ The terminal's tab shows the session, `✳ cld-NAME-SUFFIX`, and while claude wo
 turn in place of the `✳`, as claude's own title does outside tmux; while claude works in a linked
 git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
 [guide](docs/guide.md#sessions) says what they miss.
+
+### Notifications
+
+claude notifies you when it finishes a task or waits for a permission while you are away - under
+tmux, only on the channel its setting `preferredNotifChannel` names. Its default, `"auto"`, goes by
+the terminal claude runs in, which in a session is tmux, and sends nothing. Name your terminal's
+channel in `~/.claude/settings.json` - `"iterm2"`, `"kitty"` or `"ghostty"`, or elsewhere
+`"terminal_bell"`, the bell - or in `/config`, as "Local notifications":
+
+```json
+{
+  "preferredNotifChannel": "iterm2"
+}
+```
+
+cld's server passes them on to every terminal on the session. See the
+[guide](docs/guide.md#notifications).
 
 ### Resuming a conversation
 
@@ -200,7 +218,8 @@ The `claude --tmux` column follows the option's row in Claude Code's
 ## Terminals
 
 The tests check one contract - title, Shift+Enter, Ctrl keys, detach, mouse wheel, focus,
-clipboard, paste, claude exiting, and the keys of the session list - against each terminal:
+clipboard, notifications, paste, claude exiting, and the keys of the session list - against each
+terminal:
 
 | Terminal | How it is tested | Differences |
 |---|---|---|

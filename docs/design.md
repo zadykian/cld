@@ -154,6 +154,8 @@ rows that name none were probed against tmux 3.6.
 | where claude runs a hook, and what `SessionStart` and `CwdChanged` see (the real `claude` 2.1.283 started in a linked worktree whose trust was accepted, alone on a scratch tmux server, Remote Control off; bash mode's `!cd /tmp`, `!cd` to the main worktree and `!cd` back - which claude answered with the model all the same, three short replies) | `SessionStart` ran in claude's directory, with it as its input's `cwd`. `!cd /tmp` fired `CwdChanged` with `new_cwd` `/tmp`, and `!cd` to the main worktree one with that; each time claude then took its shell back to the worktree the session works in ("Shell cwd was reset"), with no event, and the hooks' own directory, their `cwd` and `#{pane_current_path}` stayed the worktree throughout. `!cd` back to it fired nothing, the shell being there already |
 | where claude sets its directory (claude 2.1.283's bundle, read, not run) | a hook runs in the host's project root where a launch sets one, and otherwise in claude's current directory. claude sets that - `process.chdir` and the session's `setCwd`, whose change fires `CwdChanged` - for `--worktree` as it starts; for `EnterWorktree` and `ExitWorktree`, the latter back to the directory it came from; and for a resumed conversation that recorded a worktree. A `WorktreeCreate` hook replaces claude's own making of a worktree (its stdout names the directory), so it is no event to listen to |
 | `set-titles` under `status off` (tmux 3.7c: `server-client.c`, `format.c`, `options.c`, `status.c` and `cmd-refresh-client.c` read, and probed with a client in a pane of another server, whose `#{pane_title}` is the title that client sets) | tmux expands `set-titles-string`, a session option, with strftime whenever it redraws a client, and writes the title only where it changed; it restores no title on detach. Setting any option, a user option too, redraws every client on the server: `set @cld-status busy` turned `✳ NAME` into `◐ NAME` at once. With `status off` no timer expands the title again, and a `#()` job in it redraws nothing when it ends - only the status line's jobs do - but a job that runs `refresh-client -S`, which redraws the status alone, that is the title, a second later in the background kept it turning: `◐` and `◑` swapped every 1.0 to 1.3 s until the option changed, with the job naming a tmux whose path has a space, `#`, `%` and parentheses through `#{q:@OPTION}`. tmux runs a title's job at most once a second for each client. With `set-titles` on tmux also hands the active pane's directory (OSC 7) to the terminals it credits with `osc7`, iTerm2 and foot among them: an empty one for claude, which sets none |
+| how `claude` notifies (the linux-x64 bundles of 2.1.283 and 2.1.284, read, not run; the settings reference, read 2026-09-29, agrees: `"auto"` "does nothing elsewhere") | the setting `preferredNotifChannel` - any settings file, `--settings` too, and `/config`'s "Local notifications" - is `auto` by default, or `iterm2`, `iterm2_with_bell`, `kitty`, `ghostty`, `terminal_bell` or `notifications_disabled`. `auto` goes by the terminal claude detects: after the IDEs' markers, `TERMINAL_EMULATOR`, and a `TERM` of `xterm-ghostty` or with `kitty` in it, `TERM_PROGRAM`, whatever it says. `iTerm.app`, `kitty` and `ghostty` get their channel, `Apple_Terminal` the bell where its profile's audible bell is off, and anything else, `tmux` too, nothing (`no_method_available`); for a conversation claude runs in the background, the terminal of the client attached to it comes first. With `TMUX` set, a channel's sequences go in tmux passthrough, `ESC P tmux;` and the sequence with each `ESC` doubled, then `ESC \`: `iterm2` OSC 9 with the message (`TITLE: MESSAGE` where there is a title), `kitty` three OSC 99 (the title, `Claude Code` by default; the body; focus), `ghostty` OSC 777 `notify;TITLE;BODY`, each ended by BEL (by ST where claude detects kitty); `terminal_bell` a BEL, not wrapped, and `iterm2_with_bell` OSC 9 and the BEL. The `Notification` hooks run before claude sends, whatever the channel |
+| what reaches the terminal from a pane that notifies as claude does on each channel: OSC 9, 99 and 777 in tmux passthrough, then a BEL (tmux 3.7c; the pane on a server started with `-f /dev/null` and `allow-passthrough` on, and off; two terminals attached to its session - each a client in a pane of another server, which piped the pane's output to a file - then none) | with `allow-passthrough on`, each terminal got the three sequences with the passthrough taken off, and the BEL, under tmux's default `bell-action` and `visual-bell`; with it off, the BEL alone. Sent with no terminal attached, neither reached the terminal that attached next. The pane had `TERM_PROGRAM=tmux`, `TERM_PROGRAM_VERSION=3.7c` and `TERM=tmux-256color`, where the client that started the server had `TERM_PROGRAM=iTerm.app`; its `LC_TERMINAL=iTerm2` came through as it was |
 
 ## Distribution
 
@@ -205,7 +207,7 @@ a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the prob
 | C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, ...) | tmux |
 | C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
 | C4 | mouse wheel and focus in/out reach claude; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
-| C5 | OSC 52 / OSC 9 wrapped in tmux passthrough, and copies through `tmux load-buffer -w`, reach the outer terminal | terminal |
+| C5 | OSC 52 and notifications - claude's OSC 9, 99 and 777 - wrapped in tmux passthrough, the bell, and copies through `tmux load-buffer -w`, reach the outer terminal | terminal |
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created in the JetBrains terminal, nor does what claude starts through tmux on its server | probe env dump, tmux |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
@@ -1666,6 +1668,25 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     Out of scope: other MCP servers (19), removing the old lines or keys, and sets of a project's
     own.
 
+29. Notifications (#59): claude's notifications reach the terminal once its setting
+    `preferredNotifChannel` names a channel the terminal takes, which cld leaves to the user. Its
+    default, `auto`, goes by `TERM_PROGRAM`, which tmux sets to `tmux` in claude's pane, and sends
+    nothing there (see Findings): the README's "notifications ... work" held only for a channel
+    set by hand. Settled with it:
+    1. cld sets no channel. tmux knows the terminal attached (`#{client_termtype}`, C2), and the
+       channel could go into cld's `--settings` where the user set none; but `--settings` outranks
+       the user's settings, and a terminal that joins the session later, or beside the first
+       (23), may take another sequence than the one that started it;
+    2. the README and the user guide say so, with the channel for each terminal. The server's
+       `allow-passthrough on` passes a channel's sequences on, and tmux's defaults the bell, to
+       every terminal attached to the session;
+    3. the tests: C5 has the probe notify on the channels `iterm2`, `kitty`, `ghostty` and
+       `terminal_bell` as claude 2.1.284 writes them under tmux, and checks that each terminal
+       gets the sequences without the passthrough, and the bell. Which channel `auto` picks is
+       claude's, read in its bundle: the probe does not pick one.
+
+    Out of scope: a notification while no terminal is attached, which tmux drops (see Findings).
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -2031,6 +2052,9 @@ by hand in a nested tmux).
   were run by hand without `TMUX` and `TMUX_PANE`, not by a real background worker. What makes
   claude run a conversation in the background, and whether its worker outlives `cld kill` - its
   hooks would then say that no server runs - were not checked.
+- Notifications (29): what each channel writes was read in claude's bundle, and the contract
+  checks that the baseline terminal and JediTerm get it; a real claude notifying in a session,
+  and iTerm2, kitty and Ghostty showing it, were not seen.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

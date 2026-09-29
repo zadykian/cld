@@ -44,7 +44,11 @@
 //     on, the wheel over a program that draws in the main screen without the mouse - claude
 //     outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
 //     gets the wheel either way, as tmux passes claude's own mouse reporting on to the terminal
-//   - allow-passthrough on: claude wraps its notifications and OSC 52 copies in tmux passthrough
+//   - allow-passthrough on: claude wraps its notifications (but the bell, which tmux's default
+//     bell-action passes on) and OSC 52 copies in tmux passthrough. It sends notifications only
+//     on the channel its setting preferredNotifChannel names: its default, auto, goes by
+//     TERM_PROGRAM, which tmux sets to tmux, and sends none. cld leaves the setting to the user:
+//     in --settings it would override theirs, for whichever terminal joins later
 //   - status off: claude keeps the whole tab
 //   - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
 //     C-q; detach is C-q d, and C-q C-q sends a C-q through

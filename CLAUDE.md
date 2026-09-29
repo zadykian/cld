@@ -157,6 +157,10 @@ not push such a change. Rebase onto `main` before either.
   exist in the minimum claude.
 - `TERMINAL_EMULATOR` is removed from the environment `new` and `resume` exec tmux with, so from
   the server's; claude trusts it over `TERM_PROGRAM=tmux`.
+- claude's notifications go through the server's `allow-passthrough on`, or as a bell under
+  tmux's default `bell-action`, on the channel its `preferredNotifChannel` names; its default,
+  `auto`, sends none under tmux. cld sets no channel in `--settings`, which would override the
+  user's, for whichever terminal joins (decision 29).
 - `setup telemetry` needs Docker, and Linux (`--network host`): it replaces the container
   `cld-telemetry`, one per Docker daemon, and rewrites the `env` of claude's user settings,
   `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude/settings.json`), keeping every other key.
@@ -198,8 +202,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   `forEachTerminal` runs a body as a parallel subtest per terminal.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
-  FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `rekey`, `inline`, `cd`, `tmux`, `hook`,
-  `unsetenv`, `exit`); `hook EVENT JSON` runs the hooks of its `--settings` as claude would.
+  FIFO (`PID.ctl`: `title`, `osc52`, `loadbuffer`, `notify`, `rekey`, `inline`, `cd`, `tmux`,
+  `hook`, `unsetenv`, `exit`); `hook EVENT JSON` runs the hooks of its `--settings` as claude
+  would, and `notify CHANNEL TEXT` writes what claude writes on a notification channel.
   `CLD_PROBE_FAIL` makes it fail at startup. `claude --version` answers first, writing nothing,
   with `CLD_FAKE_CLAUDE_VERSION` (`99.0.0 (Claude Code)` when unset). Invoked as `tmux`, it fakes
   `tmux -V` via `CLD_FAKE_TMUX_VERSION` and `list-sessions` via `CLD_FAKE_TMUX_SESSIONS` (unset:
@@ -225,8 +230,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   JediTerm emulates on a thread of its own, so a test waits for modes that change while cld runs
   (`waitModes`); once `Running` is false, what the terminal shows is final.
 - `contract_test.go` — the terminal contract (C1–C10 in `docs/design.md`: title, client features,
-  Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, paste, claude exiting, the session
-  list's keys), run per terminal.
+  Shift+Enter, Ctrl keys, detach, wheel, focus, clipboard, notifications, paste, claude exiting,
+  the session list's keys), run per terminal.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, the names `new` gives from the
   repository and the index, the hooks that keep claude's status and its worktree for the title,

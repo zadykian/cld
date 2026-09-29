@@ -104,6 +104,38 @@ held down does not go on to kill the next session.
 - Whether a JetBrains IDE passes `Esc` and `Ctrl+X` on to its terminal depends on its keymap;
   `Ctrl+C` also leaves the list.
 
+## Notifications
+
+claude's setting `preferredNotifChannel` - "Local notifications" in `/config` - picks how claude
+notifies you. Its default, `"auto"`, sends a desktop notification in iTerm2, kitty and Ghostty,
+rings the bell in Terminal.app where the profile's audible bell is off, and sends nothing in other
+terminals - nor in a session of cld's: claude goes by `TERM_PROGRAM`, which tmux sets to `tmux` in
+its panes, whatever terminal is attached. Set your terminal's channel in claude's user settings,
+`~/.claude/settings.json` (`$CLAUDE_CONFIG_DIR/settings.json` if you set that variable):
+
+| Terminal | `preferredNotifChannel` | claude sends |
+|---|---|---|
+| iTerm2 | `"iterm2"`, or `"iterm2_with_bell"` to ring the bell too | OSC 9 |
+| kitty | `"kitty"` | OSC 99 |
+| Ghostty | `"ghostty"` | OSC 777 |
+| Terminal.app, any other | `"terminal_bell"` | the bell, which the terminal shows as it is set to |
+
+- claude wraps OSC 9, 99 and 777 in tmux's passthrough, and cld's server passes them on, as it
+  passes the bell, to every terminal attached to the session. A session with no terminal attached
+  shows none, then or when one attaches. The tests check what reaches the terminal; a real claude
+  notifying through cld, and iTerm2, kitty and Ghostty showing it, have not been checked yet.
+- The setting applies to every claude you run, outside cld too. There `"iterm2"`, `"kitty"` and
+  `"ghostty"` change nothing in the terminal they name, but `"terminal_bell"` rings the bell where
+  `"auto"` sends nothing: in other terminals, and in Terminal.app with its audible bell on. One
+  channel serves every terminal that joins a session. cld does not set it for you: its
+  `--settings` would override yours, and the terminal that joins later may be another.
+- iTerm2 hands its notifications to macOS once "Notification Center Alerts" is on, and "Send
+  escape sequence-generated alerts" under "Filter Alerts" (Settings › Profiles › Terminal), as
+  Claude Code's
+  [docs](https://code.claude.com/docs/en/terminal-config#get-a-terminal-bell-or-notification) say.
+- A `Notification` hook of your own - a sound, `notify-send` - runs whatever the setting, in any
+  terminal.
+
 ## Resuming a conversation
 
 A conversation stays in Claude Code's history until Claude Code removes it, after 30 days by

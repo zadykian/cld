@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -254,6 +255,33 @@ func TestContractClipboardThroughTmux(t *testing.T) {
 	})
 }
 
+// C5: a notification claude sends on the channel its setting preferredNotifChannel names -
+// iTerm2's OSC 9, kitty's OSC 99 or Ghostty's OSC 777, in tmux passthrough, or the bell - reaches
+// the terminal, the passthrough taken off. (Its default channel, auto, sends none under tmux.)
+func TestContractNotifications(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		_, term, probe := startContract(t, name)
+		for _, notification := range []struct{ channel, what, want string }{
+			{"iterm2", "iTerm2's OSC 9", "\x1b]9;claude needs you\x07"},
+			{"kitty", "kitty's OSC 99", "\x1b]99;i=1:p=body;claude needs you\x07"},
+			{"ghostty", "Ghostty's OSC 777", "\x1b]777;notify;Claude Code;claude needs you\x07"},
+		} {
+			probe.Send("notify " + notification.channel + " claude needs you")
+			sandbox.WaitFor(t, 10*time.Second, notification.what+" in the terminal", func() bool {
+				return bytes.Contains(term.Output(), []byte(notification.want))
+			})
+		}
+		if bytes.Contains(term.Output(), []byte("\x1bPtmux;")) {
+			t.Error("the terminal got tmux's passthrough, not what it wraps")
+		}
+		rung := bells(term.Output())
+		probe.Send("notify terminal_bell")
+		sandbox.WaitFor(t, 10*time.Second, "the bell in the terminal", func() bool {
+			return bells(term.Output()) > rung
+		})
+	})
+}
+
 // C8: a paste reaches claude whole and bracketed, so claude inserts it instead of submitting it
 // line by line, and a prefix key inside it is text rather than a tmux binding.
 func TestContractPaste(t *testing.T) {
@@ -380,4 +408,12 @@ func selectedRow(term terminal.Terminal) string {
 func modifiedKeysOn(output []byte) bool {
 	on := max(bytes.LastIndex(output, []byte("\x1b[>4;1m")), bytes.LastIndex(output, []byte("\x1b[>4;2m")))
 	return on > bytes.LastIndex(output, []byte("\x1b[>4m"))
+}
+
+// osc matches an OSC sequence - a title, an OSC 52 copy - which a BEL or ST ends.
+var osc = regexp.MustCompile("\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)")
+
+// bells counts the bells rung in a terminal's output: the BELs that end no OSC sequence.
+func bells(output []byte) int {
+	return bytes.Count(osc.ReplaceAll(output, nil), []byte("\x07"))
 }

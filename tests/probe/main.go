@@ -10,6 +10,11 @@
 //	            title TEXT        set the window title
 //	            osc52 TEXT        copy TEXT to the clipboard (OSC 52 in tmux passthrough)
 //	            loadbuffer TEXT   copy TEXT the way claude does inside tmux: tmux load-buffer -w
+//	            notify CHANNEL TEXT
+//	                              notify TEXT as claude does under tmux on the channel its
+//	                              setting preferredNotifChannel names: iterm2 (OSC 9), kitty
+//	                              (OSC 99) or ghostty (OSC 777), in tmux passthrough, or
+//	                              terminal_bell (BEL)
 //	            rekey             leave and re-enter the alternate screen, push the keyboard
 //	                              modes again and repaint, as claude does after an external
 //	                              editor; the repaint ends in a line "repainted"
@@ -501,6 +506,9 @@ func obey(control *os.File, write func(string), base string) {
 			write("\x1b]0;" + argument + "\x07")
 		case "osc52":
 			write(passthrough("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(argument)) + "\x07"))
+		case "notify":
+			channel, text, _ := strings.Cut(argument, " ")
+			write(notification(channel, text))
 		case "loadbuffer":
 			// tmux keeps the text in a buffer and hands it to the terminal as OSC 52.
 			load := exec.Command("tmux", "load-buffer", "-w", "-")
@@ -620,6 +628,27 @@ func screen() string {
 	return "probe " + strings.Join(args, " ") + "\r\n" +
 		"\x1b[1mbold\x1b[22m \x1b[2mdim\x1b[22m \x1b[3mitalic\x1b[23m \x1b[7minverse\x1b[27m " +
 		"\x1b[38;5;208mcolour\x1b[39m\r\n"
+}
+
+// notification is what claude 2.1.284 writes, with TMUX set, to notify text on the channel
+// its setting preferredNotifChannel names, the title left to claude's default: each sequence in
+// tmux passthrough, but for the bell. Its default channel, auto, goes by TERM_PROGRAM, which tmux
+// sets to tmux in its panes, and sends nothing there.
+func notification(channel, text string) string {
+	switch channel {
+	case "iterm2":
+		return passthrough("\x1b]9;" + text + "\x07")
+	case "kitty":
+		return passthrough("\x1b]99;i=1:d=0:p=title;Claude Code\x07") +
+			passthrough("\x1b]99;i=1:p=body;"+text+"\x07") +
+			passthrough("\x1b]99;i=1:d=1:a=focus;\x07")
+	case "ghostty":
+		return passthrough("\x1b]777;notify;Claude Code;" + text + "\x07")
+	case "terminal_bell":
+		return "\x07"
+	}
+	fmt.Fprintln(os.Stderr, "probe: no notification channel", channel)
+	return ""
 }
 
 // passthrough wraps a sequence so that tmux hands it to the outer terminal unchanged.
