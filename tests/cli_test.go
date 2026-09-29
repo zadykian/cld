@@ -1484,7 +1484,7 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // new and resume hand over to tmux with this command, word for word: a client that takes the
 // terminal for UTF-8 whatever the locale (see TestClientsTakeUTF8), the session's own server, its
 // options, the directory, claude - by the path of the one it checked - and its arguments as
-// separate words, what goes on claude's window, and the tab's title on claude's session, naming
+// separate words, what goes on claude's pane, and the tab's title on claude's session, naming
 // the tmux cld checked, as claude's hooks do. resume's claude gets new's arguments, never -w's,
 // then --resume. A word ending in ";", which tmux would take for the end of its command,
 // goes with a "\" before the ";", which tmux drops: SESSION, or the directory cld runs in. The
@@ -1563,9 +1563,9 @@ func TestNewTmuxCommand(t *testing.T) {
 			claude := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", slices.Contains(args, "-w"))
 			want = append(append(want, probe, "--name", "cld-x", "--settings", claude), after...)
 			want = append(want, ";",
-				"set", "-w", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
-				"set", "-w", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
-				"set-hook", "-w", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`, ";",
+				"set", "-p", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
+				"set", "-p", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
+				"set-hook", "-p", "-t", "=cld-x:", "pane-died", `if -F '#{window_active_clients}' "`+endHint("-s x")+`"`, ";",
 				"set", "-t", "=cld-x:", "@cld-tmux", sandbox.FakeTmux, ";",
 				"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",
 				"set", "-t", "=cld-x:", "set-titles-string", "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-x#{?@cld-worktree, [w],}", ";",
