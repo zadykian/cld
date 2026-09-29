@@ -498,6 +498,8 @@ func TestSetupCompletionBashBleSh(t *testing.T) {
 		{"cld new --wo", "cld new --worktree "},
 		{"cld join -n al", "cld join -n alpha "},
 		{"cld join -n alpha -s ", "cld join -n alpha -s 1 "},
+		{"cld det", "cld detach "},
+		{"cld detach -n al", "cld detach -n alpha "},
 		{"cld new f", "cld new f"},
 		{"cld kill -s f", "cld kill -s f"},
 		{"cld setup telemetry --collector-config f", "cld setup telemetry --collector-config f"},

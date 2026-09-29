@@ -210,6 +210,8 @@ rows that name none were probed against tmux 3.6.
 | what a title hook and the busy marker's job cost (the `PostToolUse` hook as `new` writes it, run with `sh -c` 20 times against a private server, and the job's `sh -c '(sleep 1; tmux -S SOCKET refresh-client -S -t CLIENT)'` 10 times with a terminal attached, timed with bash's `time`; tmux 3.7c from Ubuntu's snap, and built from source in the image `tests/Dockerfile` builds, on one Linux 7.0 host with 8 CPUs under a load of 3 to 9) | with the snap, a hook took 130 to 230 ms and 120 to 135 ms of CPU, whether it set the option or not, and a turn of the job 135 to 141 ms of CPU: 14% of a core for each terminal while the title is busy. Built from source, a hook took 5.5 to 6 ms and 3.7 ms of CPU, and a turn of the job 4.6 ms, 0.5% of a core. claude waits for a hook before it goes on: with the snap a turn of 40 tools waits 5 to 9 s more for `PostToolUse` alone |
 | `async` and `timeout` of a command hook (claude 2.1.284's bundle, read, not run; Claude Code's hooks reference and CHANGELOG, read on 2026-09-29) | with `async: true` claude writes the hook's input and goes on. Once the hook exits, claude hands the model only the `systemMessage` and `additionalContext` of what it printed; one that fails - exits other than 0, or writes to stderr - shows as `Async hook EVENT completed` only in verbose mode or the transcript view (Ctrl+O), since 2.1.75, and one that succeeds printing nothing shows nothing. Sending a hook to the background clears its timer: claude ends it at no timeout, as the reference says. A hook claude waits for it kills at `timeout` seconds, dropping its output; the default is 600 s (10 minutes since 2.1.3), and 30 s for `UserPromptSubmit`. The CHANGELOG has async hooks by 2.1.23 (a fix for pending ones), a fix for the empty transcript entries of an async `PostToolUse` hook that prints nothing in 2.1.119, and `timeout` per hook since 1.0.41: all before 2.1.232. claude awaits `SessionStart`'s hooks as it starts, resumes or forks a conversation, and on `/clear` and `/compact` |
 | the order a hook in the background lands in (claude 2.1.284's bundle, read, not run: the description of the `PostToolBatch` hook; and the hooks as `new` writes them against a private server, `PostToolUse`'s busy started in the background over a waiting, then after a gap `PermissionRequest`'s waiting through `sh -c`, the status read once both had ended: 20 runs a gap with tmux 3.7c from Ubuntu's snap under a load of 8 on 8 CPUs, and 40 built from source in the image `tests/Dockerfile` builds) | claude runs the tools of one answer with no call to the model between them: "PostToolUse fires per-tool", and `PostToolBatch` "once after every tool call in a batch has resolved, before the next model request". So the next tool's `PermissionRequest` can follow a tool's `PostToolUse` at once - two commands that each ask, the first answered - and an MCP server's second question its first `ElicitationResult`. A busy run in the background landed after the waiting, and left the status busy, with the snap in 10 of 20 runs at a gap of 0 ms, 8 at 5 ms, 7 at 10 ms, 5 at 20 ms, 2 at 30 ms and 1 at 50 ms; built from source in 4 of 40 at 0 ms, and in none from 5 ms on |
+| `detach-client` on a private server with two clients on session `cld-x`, each `tmux -L cld-x attach` in a pane of another server, and the commands run as claude runs a shell command: with the `TMUX` and `TMUX_PANE` of `cld-x`'s pane, input from `/dev/null`; then the pane asking for every motion of the mouse (`?1003h` and `?1006h`), as claude does, and a key typed in one client, A, before something else reached the other, B (tmux 3.7c, the snap on Ubuntu 26.04; `cmd-find.c`, `cmd-queue.c`, `cmd-detach-client.c`, `server-client.c` and `format.c` read; for the floor of #74, tmux 3.5a and 3.7c in the images `tests/Dockerfile` builds, with the commands cld runs, and 3.5a's `cmd-find.c` and `server-client.c` read) | `detach-client -s =cld-x` detaches both: each prints `[detached (from session cld-x)]` and exits 0. A bare `detach-client` detaches one, the client with the latest activity - whatever tmux reads from its terminal as a key, a mouse report or a focus event among them (`server_client_key_callback` sets `activity_time` for each), or else its attaching - on the session of the pane tmux finds by the command's tty, else by `TMUX_PANE`: of two, the one a key was typed in last, six times out of six, whichever attached first; from a shell in a pane, with a tty and without `TMUX_PANE`, the same. A mouse report with no button (`ESC[<35;10;5M`, the mouse moving) or a focus-in (`ESC[I`) sent to B after the key in A made B the one detached, once each; with nothing sent to B, A was. tmux shows a client's activity (`client_activity`, in seconds), but no format tells a key from the rest. With no client on that session, `cmd_find_best_client` takes the best client of any session on the server: with one attached to another session, `side`, the bare `detach-client` detached that one. With no client on the server at all, both fail with `no current client`, status 1: `detach-client` resolves its target client before it looks at `-s`. `if -F '#{session_attached}' detach-client` and `if -F -t =cld-x: '#{session_attached}' 'detach-client -s =cld-x'` do nothing and exit 0 in both cases, and detach as before where the session has a client. On a socket with no server tmux says `error connecting to PATH (No such file or directory)`, status 1. `display-message -p '#{||:#{@cld},#{==:#{prefix},C-q}}' ; if -F '#{&&:#{||:#{@cld},#{==:#{prefix},C-q}},#{session_attached}}' detach-client`, one tmux command run the same way (tmux 3.7c built from source, the image `tests/Dockerfile` builds, in `TestDetach` and `TestLeavesAForeignServerAlone`), detached as the bare `if` does on cld's servers, and on a server without `@cld` whose prefix is `C-b`, with a terminal attached to its session, printed `0` and detached nothing. tmux 3.5a did all of this as 3.7c did, the same run beside it: the terminal a key was typed in last detached, three times out of three, whichever had one first, and B after a mouse motion or a focus-in, three times each; both clients with `-s`; `no current client` and the `if`s doing nothing with no client on the server; the client of `side` detached by the bare `detach-client` alone; `0` and nothing detached on the server without the mark. Its `cmd_find_current_client`, `cmd_find_inside_pane` and `cmd_find_best_client` are 3.7c's, and its `server_client_key_callback` sets `activity_time` as 3.7c's does |
+| how `claude` 2.1.284 runs a shell command, `!` in its prompt and the Bash tool (read from its bundle, not run) | it quotes the command and adds `< /dev/null` - unless the command redirects its own input - and runs `eval 'COMMAND' < /dev/null` after sourcing its shell snapshot, with `&&`, then `pwd -P` into a file of its own; `!`'s output comes back as `bash-stdout` and `bash-stderr`. The command has no terminal on its input, so a `tty` there fails. Its environment is claude's with variables of claude's own added (`getEnvironmentOverrides`), which leave `TMUX` and `TMUX_PANE` alone |
 
 ## Distribution
 
@@ -334,7 +336,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 2. Inside another tmux: `cld` nests; the private socket already allows it. Inside a live pane of
    one of its own servers - claude's external editor, say - a session attached would show inside
    a session of cld's, itself or another, both taking `C-q`, and `new`, `resume` and `join`
-   refuse, pointing at `C-q d`; tmux refuses there too, but advises to unset `$TMUX`. tmux goes by
+   refuse, pointing at `C-q d` (since 44 at `cld detach` too, which acts there); tmux refuses
+   there too, but advises to unset `$TMUX`. tmux goes by
    the tty's name, and a dead pane's name comes back with the next pty opened (see Findings), so
    `cld` looks at the live panes itself and gives its client an empty `TMUX`, which tmux's check
    skips. Since 13 it looks only when the socket `TMUX` names is one of cld's, `cld-NAME`, and
@@ -391,7 +394,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
    it away, and stays through keys, detach and `join`. It needs no `window_active_clients` guard,
    as its options reach no other window (see Findings). The message line stays too, as before;
    until a key it covers the border line, which says the same. Both say what fits the pane's width
-   whole, picked by `#{pane_width}`: all of it, or without `C-q d detaches`, or how claude exited
+   whole, picked by `#{pane_width}`: all of it, or without `C-q d detaches` (since 44 without
+   `C-q d or cld detach -n NAME -s SUFFIX detaches`, after the kill), or how claude exited
    alone. tmux would cut a longer text at the width, and on a line that stays, a command cut short
    could name another session, `-s 1` of `-s 12`. The hook, some 1 KB where it was some 200
    bytes, leaves that much less of tmux's command for claude's words (41.5).
@@ -2288,10 +2292,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        resumes it there, and `join` and `kill` point at that `resume`, where 37.2 refuses a
        session that runs; a home in the entry, for `resume` to refuse as `join` and `kill` do,
        is left open;
-    5. `join` and `kill` refuse an `ended` session, `session 'S' has ended; resume it with cld
-       resume -n NAME -s SUFFIX`. `kill` leaves the entry: the maintainer chose to forget one only
-       at the expiry and with the list's Ctrl+X, so that a kill by mistake is an Enter away. cld has
-       no command of its own that forgets;
+    5. `join` and `kill` (since 44 `detach` too) refuse an `ended` session, `session 'S' has
+       ended; resume it with cld resume -n NAME -s SUFFIX`. `kill` leaves the entry: the
+       maintainer chose to forget one only at the expiry and with the list's Ctrl+X, so that a
+       kill by mistake is an Enter away. cld has no command of its own that forgets;
     6. `new` without `-s` gives the index above the highest of the sessions that run (24.1), of the
        entries, `ended` ones included, and of the index the record says was given after `NAME-`,
        which stays when its entry is forgotten; `-s`'s index counts as given too. It looks up only
@@ -2315,7 +2319,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `list`, completion and the list's lookups only read it;
     8. completion: `resume -n` and `-s` offer the NAME and SUFFIX of the `ended` sessions, each
        SUFFIX described by its directory, and `join`'s only those of the sessions that run, which
-       `join` takes (17.2);
+       `join` takes (17.2), as `detach`'s do since 44;
     9. rejected: the ID from claude's transcripts or `~/.claude/sessions` (16.4, 25.1); the name
        alone, which `/rename` and `/clear` defeat; one file for all the entries, which the hook
        could not edit without cld or jq; a hook that runs cld, which would then have to stay where
@@ -2526,6 +2530,81 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        a live tmux that cld's terminal is not, nothing is shown. Both run on the tmux of the image,
        3.7c in CI's `linux` and 3.5a in `linux-oldest`, and pass on 3.6a too; on 3.5a they fail
        without the check for 3.6, as `cld new` does, and on 3.6a without the one for 3.7.
+
+44. Detaching without the key (#72): `cld detach [-n NAME] [-s SUFFIX]` detaches terminals from a
+    session as `C-q d` does, for a terminal that keeps `C-q` from tmux: VS Code on macOS and
+    Windows - and the Remote-SSH, WSL and container windows opened from them - where `Ctrl+Q` is
+    Quick Open View, one of the commands its terminal leaves to VS Code (`commandsToSkipShell`),
+    and JetBrains IDEs with the Visual Studio 2022 keymap, bundled with Rider, where it is Find
+    Action. The session survived there - closing the tab detaches it, and
+    `cld join --detach-others` from another terminal or `tmux detach-client` in claude's pane
+    worked - but cld named `C-q d` alone, a key that did nothing. Settled with it:
+    1. with `-s`, `detach` looks the session up as `kill` does - connecting to the socket first,
+       with no tmux run where no server takes the connection (38) - and refuses what `kill`
+       refuses - no session, one that has ended pointing at `resume` (40), a server that cld did
+       not start (34) and, without `-n`, a session of another repository of the same name (37) -
+       and a server that runs without the session (13), which it leaves to `kill`, as `join` does.
+       It runs `if -F -t =cld-NAME: '#{session_attached}' 'detach-client -s =cld-NAME'` on its
+       server: every terminal on the session is detached, and the cld there, tmux by then, exits
+       with status 0. The `if` runs nothing where no terminal is on the session: `detach-client`
+       fails with `no current client` where none is attached to the server at all (see
+       Findings). `detach` then does nothing and exits 0, the terminals being detached;
+    2. without `-n` and `-s`, where `TMUX` names one of cld's servers, `cld-NAME`
+       (`session.Inside`), `detach` runs `if -F '#{session_attached}' detach-client` on that
+       server, with cld's mark (34) in the condition too, by the socket `TMUX` names, with cld's
+       input and environment: tmux finds the pane by the terminal, or else by `TMUX_PANE`, and
+       detaches the terminal used last on that pane's session, leaving the others attached. That is
+       the one `! cld detach` was typed in, unless another terminal of the session has since had a
+       click, a focus event or the mouse moving over it - claude asks for every motion - which tmux
+       counts as it counts a key (see Findings). tmux shows no client's last key to go by instead,
+       and the window between Enter and claude running the command is short, so `detach` leaves the
+       choice to tmux. claude runs a shell command without a terminal (see Findings), so `detach`
+       does not look at `tty` as the check for cld's own pane does (2): it is the one command that
+       acts in a pane of cld's servers, where `new`, `resume` and `join` refuse to. The `if`
+       matters more here: with no terminal on the session, a bare `detach-client` detaches the
+       terminal of another session on the server - one claude made - where one is attached. `-n`
+       without `-s` is refused as outside cld's servers, `-s` missing, rather than detach a
+       terminal of a session it does not name; `-s` names the session there as anywhere. Unlike the
+       lookup of a name (38), and like the check for cld's own pane, the bare `detach` runs its
+       tmux command with no connection first: the socket is that of the server it runs in, and
+       where that server has gone, tmux's message ends `detach` with status 1,
+       `error connecting to ...` or `no server running on ...`. On a server named `cld-NAME` that
+       cld did not start, the user's own, the `if` runs nothing, and `display-message -p` of the
+       mark before it, in the same tmux command, has `detach` refuse, status 1:
+       `tmux server cld-NAME is not one of cld's; name the session with -s SUFFIX (see cld list)`;
+    3. the `pane-died` hint (5), on the message line and the line of the pane's border, reads
+       `cld kill -n NAME -s SUFFIX ends the session, C-q d or cld detach -n NAME -s SUFFIX
+       detaches` - a claude that exited runs no `!`, so the hint names the command for another
+       terminal. `kill` goes first, as ending the session is what the hint is for: where the
+       pane is too narrow for all of it, the hint leaves out `C-q d` and `cld detach` together,
+       as it left out `C-q d` alone before, and then the kill (5). For `-s 1` all of it takes 105
+       columns where it took 86, counting the widest way claude exits, and the hook stays some
+       1 KB. The refusal in a pane of cld's servers (2) reads
+       `detach with C-q d or cld detach first`, and the root help `! cld detach` in claude. The
+       user guide's "Terminals that take C-q" says how to give the key back to tmux in those
+       IDEs, and the other ways out;
+    4. `detach -n` and `-s` complete as `join`'s (17); `detach` runs no claude, and makes the
+       checks `kill` makes before tmux;
+    5. not taken, the issue's open decision: `--others`, to detach every terminal but this one -
+       `join --detach-others` does as much from the terminal that joins;
+    6. the tests, on tmux 3.7c and on 3.5a, the oldest cld runs on (6), where each tmux command
+       of `detach` does as on 3.7c (see Findings): `TestDetach` - `cld detach` run as claude runs
+       `! cld detach`, with its pane's `TMUX` and `TMUX_PANE` and no terminal, detaching the
+       terminal a key was typed in last, whichever attached first; `-s` from claude's pane and
+       from elsewhere; nothing done, and nothing said, with no terminal on the server, and with a
+       terminal on a session claude made only; a shell in a window on the server, without
+       `TMUX_PANE`; a `TMUX` whose server is gone. Without either `if`, or without cld's input
+       handed to tmux, it fails. `TestDetachTmuxCommand` has the commands tmux gets, and a `TMUX`
+       that names no server of cld's; `TestLeavesAForeignServerAlone` a bare `detach` in a pane of
+       a server cld did not start, refused with the terminal there left attached, and `detach -s`
+       refusing such a server's name and finding cld 0.8.2's session;
+       `TestSessionOfAnotherRepository` `detach -s` refusing another repository's session, taking
+       one with `-n` and from a linked worktree, and completing as `join -s` does;
+       `TestStaleSocket` `detach -s` refusing a session that has ended, pointing at `resume`, as
+       `join` and `kill` do; `TestFailedClaudeLinesFit` the hint and the border line with and
+       without `C-q d or cld detach`. `detach` joins `join` and `kill` in the tests of names,
+       arguments, lookups, stale sockets and a socket directory open to others (38), a server that
+       outlived its session, completion - ble.sh's included - failures and the help.
 
 ## Implementation notes
 
@@ -2922,8 +3001,8 @@ into Enter, see Findings and 43).
 - `new -w`'s worktree `cld-NAME-SUFFIX` (24.7) was not run with the real `claude`: its name has the
   characters of the `wt` probed with 2.1.281 (see Findings). The repository's name is tested with
   git 2.47.3 in the Linux image, and with the git of the macOS runner, and so is the home that
-  `join` and `kill` check (37); a home reached by a path in other letters, on a file system that
-  ignores case, was not tried.
+  `join`, `detach` and `kill` check (37, 44); a home reached by a path in other letters, on a file
+  system that ignores case, was not tried.
 - A failed claude's options and hook on its pane (5) are tested with a pane split by hand; a
   teammate's pane that claude splits off was read in claude 2.1.284's bundle, not run.
 - The title's hooks were run by the real `claude` 2.1.283 only as far as a prompt that a hook
@@ -2991,6 +3070,10 @@ into Enter, see Findings and 43).
   with no terminal. Another release on the outside than cld's, a real terminal behind it - one
   that sends modified keys only when asked, recognised by tmux or not - and the message line
   under the real claude's renderers were not checked.
+- `cld detach` (44) is tested against tmux 3.7c and 3.5a, run as claude runs a shell command -
+  without a terminal, with its pane's `TMUX` and `TMUX_PANE` - and not by the real claude's `!`,
+  which was read in its bundle (see Findings). That VS Code and the JetBrains IDEs take `Ctrl+Q`
+  as #72 says, and that the settings the user guide gives free it, was not checked here.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

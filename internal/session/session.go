@@ -11,9 +11,9 @@
 //
 // Repositories and directories of one name - two clones of a project, a fork beside it - share
 // that NAME and its indexes. new and resume record on the session the option @cld-home, where
-// they made it: the repository or, outside one, the directory (see Home). join and kill, where NAME
-// is the current directory's by default, refuse a session made elsewhere (see foreign); with -n
-// they take it, as they take a session of a cld that recorded none.
+// they made it: the repository or, outside one, the directory (see Home). join, detach and kill,
+// where NAME is the current directory's by default, refuse a session made elsewhere (see foreign);
+// with -n they take it, as they take a session of a cld that recorded none.
 //
 // `cld new` creates the tmux session "cld-NAME" on the server cld-NAME (tmux -L cld-NAME), running
 // `claude --name cld-NAME` in the current directory, and attaches to it; with -w claude also gets
@@ -25,20 +25,22 @@
 // where cld keeps no record of the session, and with SESSION that, in the current directory. It
 // also gets --resume ID, --resume cld-NAME or --resume SESSION (see Tmux.Resume). The words given
 // to either after "--" go to claude after these, as they are.
-// `cld join` attaches to the session again, `cld kill` ends it with its server (see Tmux.Kill),
+// `cld join` attaches to the session again, `cld detach` detaches terminals from it without the
+// keys (see Tmux.Detach and DetachTerminal), `cld kill` ends it with its server (see Tmux.Kill),
 // and `cld list` shows the sessions, asking each server for its own (see Tmux.Sessions) - on a
 // terminal as a list to pick one from with the arrow keys, to join with Enter, as join does, or to
 // kill with Ctrl+X pressed twice, as kill does (see internal/picker). The shell completion that
-// `cld completion SHELL` prints reads the same sessions, where `cld join -n` completes the NAME of
-// NAME-SUFFIX for the names `cld list` shows that run, and `cld join -s` their SUFFIX.
+// `cld completion SHELL` prints reads the same sessions, where `cld join -n` and `cld detach -n`
+// complete the NAME of NAME-SUFFIX for the names `cld list` shows that run, and their -s the
+// SUFFIX.
 //
 // cld keeps a record of its sessions beside tmux, which forgets a session with its server (see
 // entry): new and resume write each session's entry - the directory claude starts in and,
 // through claude's hooks, the ID of its conversation - so that list shows a session whose server
 // no longer runs as ended, for 30 days, resume brings its conversation back by that ID in that
 // directory, and new gives no index that names a conversation of that time. `cld list` resumes a
-// session that has ended with Enter, as resume does, and forgets it with Ctrl+X twice; join and
-// kill refuse it, pointing at resume, and `cld resume -n` and `-s` complete its name.
+// session that has ended with Enter, as resume does, and forgets it with Ctrl+X twice; join,
+// detach and kill refuse it, pointing at resume, and `cld resume -n` and `-s` complete its name.
 //
 // cld looks for session cld-NAME on server cld-NAME only, and for no other session there.
 // Whatever claude runs inherits TMUX, which takes a bare tmux to claude's own server: a session
@@ -48,8 +50,8 @@
 // that started the server, but for PATH and the update-environment variables, so on one server
 // for every session each claude had the first one's. new and resume refuse a NAME whose server
 // outlives its session - claude exited, and the tmux sessions it made keep the server running -
-// rather than start claude there with that server's environment, and join refuses it the same
-// way, each pointing at kill, which ends such a server (see lingering). A private server
+// rather than start claude there with that server's environment, and join and detach refuse it
+// the same way, each pointing at kill, which ends such a server (see lingering). A private server
 // (-f /dev/null: no ~/.tmux.conf) keeps these options away from any other tmux use:
 //
 //   - @cld 1: marks the server as cld's: a server named cld-NAME without it - the user's own
@@ -90,19 +92,20 @@
 //     in --settings it would override theirs, for whichever terminal joins later
 //   - status off: claude keeps the whole tab
 //   - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
-//     C-q; detach is C-q d, and C-q C-q sends a C-q through
+//     C-q; detach is C-q d - or cld detach, where the terminal keeps C-q from tmux - and C-q C-q
+//     sends a C-q through
 //   - remain-on-exit failed: a claude that fails - at startup, say, for a worktree in a directory
 //     it does not trust - leaves its pane on screen with its message, instead of taking both
 //     away; /exit and claude's other ways out exit with status 0. An empty remain-on-exit-format
 //     keeps tmux from scrolling the pane for its own line, which would push a short error at the
-//     top out of sight; the pane-died hook says how claude exited and how to end the session
-//     instead, on a line of the pane's border below it, and on the message line until a key is
-//     pressed. The border line - pane-border-status bottom on the window, pane-border-format on
-//     the dead pane, so that a pane beside it keeps tmux's own - takes the pane's last row, and
-//     stays through keys, detach and join. For that row tmux deletes the pane's last where the
-//     cursor is above it, whatever it holds - an empty one below a short error - and otherwise
-//     scrolls the top line into the history. Both lines say as much as fits whole (see ending),
-//     and name the session as cld kill takes it, -n and -s,
+//     top out of sight; the pane-died hook says how claude exited, how to end the session and
+//     how to detach from it instead, on a line of the pane's border below it, and on the message
+//     line until a key is pressed. The border line - pane-border-status bottom on the window,
+//     pane-border-format on the dead pane, so that a pane beside it keeps tmux's own - takes the
+//     pane's last row, and stays through keys, detach and join. For that row tmux deletes the
+//     pane's last where the cursor is above it, whatever it holds - an empty one below a short
+//     error - and otherwise scrolls the top line into the history. Both lines say as much as fits
+//     whole (see ending), and name the session as cld kill and cld detach take it, -n and -s,
 //     written into the hook as the session is made: the hook's formats know the pane and its
 //     window, not the session. The hook shows the message only to
 //     a terminal on that window - of several, the one used last: tmux would show it on the
@@ -475,15 +478,18 @@ const (
 )
 
 // ending says how claude exited and how to end session cld-SUFFIX, whose claude failed, as a tmux
-// format. It names the session as cld kill takes it (see Options), in characters that tmux's
-// quotes and formats keep as they are. It says what fits the pane's width whole: all of it, or
-// where that does not fit, all but C-q d, or where the command does not fit either, how claude
-// exited alone; tmux would cut the text at the width, and a command cut short could name
-// another session, -s 1 of -s 12.
+// format. It names the session as cld kill and cld detach take it (see Options), in characters
+// that tmux's quotes and formats keep as they are: cld detach, from another terminal, for one
+// that keeps C-q from tmux, where a dead claude runs no ! cld detach. It says what fits the
+// pane's width whole: all of it, or where that does not fit, all but C-q d and cld detach, or
+// where the kill does not fit either, how claude exited alone; tmux would cut the text at the
+// width, and a command cut short could name another session, -s 1 of -s 12. cld kill comes
+// first: ending the session is what the text is for.
 func ending(suffix string) string {
+	options := Options(suffix)
 	exited := "claude exited with " + how
-	kill := exited + ": cld kill " + Options(suffix) + " ends the session"
-	all := exited + ": C-q d detaches#, cld kill " + Options(suffix) + " ends the session"
+	kill := exited + ": cld kill " + options + " ends the session"
+	all := kill + "#, C-q d or cld detach " + options + " detaches"
 	return fits(all, fits(kill, exited))
 }
 
@@ -740,11 +746,11 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 		// tmux would close them - takes effect before tmux sees claude exit, however soon; tmux
 		// cuts the command short when new-session fails, as when another cld new or cld resume -n
 		// NAME got there first. The title's options go to claude's session only, for the same
-		// reason (see titles), and so does its home, which join and kill check (see foreign). The
-		// targets end in ":" because set takes a pane, which "=NAME" does not find: "=NAME:" is
-		// the active pane of the session's window, claude's, its only one yet. -u takes the
-		// terminal for UTF-8 whatever the locale (see the package comment). What the tmux cld
-		// runs in keeps from claude goes last, to the terminal new-session attached (see
+		// reason (see titles), and so does its home, which join, detach and kill check (see
+		// foreign). The targets end in ":" because set takes a pane, which "=NAME" does not find:
+		// "=NAME:" is the active pane of the session's window, claude's, its only one yet. -u
+		// takes the terminal for UTF-8 whatever the locale (see the package comment). What the
+		// tmux cld runs in keeps from claude goes last, to the terminal new-session attached (see
 		// showKept); the pane-died hook's hint, for a claude that exits however soon, comes after
 		// it.
 		target := "=" + name + ":"
@@ -948,9 +954,9 @@ func (t *Tmux) taken(suffix, made string) error {
 	return fail.Runtime(fmt.Sprintf("session '%s' exists%s; attach to it with cld join %s", suffix, made, Options(suffix)))
 }
 
-// ended is how join and kill refuse session cld-SUFFIX, which has ended, where cld's record has
-// its entry (see recorded): resume brings its conversation back. The advice for the command line
-// is kept apart (fail.Error's Advice). nil where there is no entry.
+// ended is how join, detach and kill refuse session cld-SUFFIX, which has ended, where cld's
+// record has its entry (see recorded): resume brings its conversation back. The advice for the
+// command line is kept apart (fail.Error's Advice). nil where there is no entry.
 func ended(suffix string) error {
 	if _, ok := recorded(suffix); !ok {
 		return nil
@@ -1029,6 +1035,69 @@ func (t *Tmux) attach(suffix string, detachOthers bool, kept []string) error {
 	// attached by then: the hint, for a claude that exited, in place of the keys.
 	attach = append(append(attach, "-t", "="+name), showKept(kept)...)
 	return t.become(append(attach, ";", "if", "-F", "#{pane_dead}", hint(suffix)), os.Environ())
+}
+
+// Detach detaches every terminal attached to session cld-SUFFIX, for cld detach -s, as C-q d in
+// each would: a terminal that keeps C-q from tmux - VS Code's on macOS and Windows, where Ctrl+Q is
+// Quick Open View, a JetBrains IDE's with the Visual Studio 2022 keymap, where it is Find Action -
+// never gets the key through. Each tmux client there exits with status 0, and claude keeps
+// running. With a home, it detaches only from a session made there, or one that has none (see
+// foreign). With no terminal on the session there is nothing to detach: the if keeps
+// detach-client, which fails with "no current client" where no terminal is attached to the server
+// at all, from running (see Findings in docs/design.md). No session is an error, with the advice
+// for the command line kept apart (fail.Error's Advice) - for one that has ended, of cld's record,
+// pointing at resume (see ended) - and so is a server that runs without it (see lingering); a
+// detach that fails is its exit status, after tmux's message.
+func (t *Tmux) Detach(suffix string, home Home) error {
+	server, exists, _, made, err := t.lookup(context.Background(), suffix)
+	if err != nil {
+		return err
+	}
+	if !exists && server {
+		_, refused := t.lingering(context.Background(), suffix)
+		return refused
+	}
+	if !exists {
+		if err := ended(suffix); err != nil {
+			return err
+		}
+		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: " (see cld list)"}
+	}
+	if err := foreign("detach", suffix, made, home); err != nil {
+		return err
+	}
+	name := "=cld-" + suffix
+	if err := t.server(suffix, "if", "-F", "-t", name+":", "#{session_attached}", "detach-client -s "+name).Run(); err != nil {
+		return t.exitStatus(err)
+	}
+	return nil
+}
+
+// DetachTerminal detaches the terminal cld is in, for cld detach without -n and -s where Inside:
+// in claude, ! cld detach, which claude runs in its pane without a terminal. tmux takes the pane
+// cld runs in by its terminal or else by TMUX_PANE, and detaches the terminal used last on that
+// pane's session, leaving the others attached: normally the one the command was typed in, but a
+// mouse report or a focus event counts as a key does - the mouse moving over another terminal of
+// the session too, as claude has tmux ask for every motion - and tmux shows no client's last key
+// to go by instead (see Findings in docs/design.md). It is the one command that acts inside a pane
+// of cld's servers, where new, resume and join refuse to (see readyClient). With no terminal on
+// the session there is nothing to detach: a bare detach-client would detach the terminal of
+// another session on the server - one claude made - where any is attached (see Findings in
+// docs/design.md). A server that cld did not start (see mark) is not cld's to act on: the if runs
+// nothing there either, and the mark, which the same tmux command prints first, refuses it. A
+// detach that fails - on a server that has exited, say - is its exit status, after tmux's message.
+func (t *Tmux) DetachTerminal() error {
+	socket, suffix, _ := ownServer()
+	detach := t.command("-S", socket, "display-message", "-p", mark, ";",
+		"if", "-F", "#{&&:"+mark+",#{session_attached}}", "detach-client")
+	marked, err := detach.Output()
+	if err != nil {
+		return t.exitStatus(err)
+	}
+	if strings.TrimSuffix(string(marked), "\n") == "0" {
+		return &fail.Error{Status: 1, Message: fmt.Sprintf("tmux server cld-%s is not one of cld's", suffix), Advice: "; name the session with -s SUFFIX (see cld list)"}
+	}
+	return nil
 }
 
 // Kill ends session cld-SUFFIX with its server, for cld kill: End, whatever its panes' pids, with
@@ -1399,11 +1468,11 @@ func (t *Tmux) lookup(ctx context.Context, suffix string) (server, session bool,
 	return true, true, strings.Fields(rest), home, nil
 }
 
-// foreign is how join and kill, named in the advice as command, refuse session cld-SUFFIX, made in
-// the home made, where home, the current directory's, does not take it (see Home.Takes): a
-// repository or directory of the same name made it, and -n NAME was not given. The advice names
-// the session with -n (see Options), which join and kill then take from anywhere; it is kept apart
-// (fail.Error's Advice).
+// foreign is how join, detach and kill, named in the advice as command, refuse session
+// cld-SUFFIX, made in the home made, where home, the current directory's, does not take it (see
+// Home.Takes): a repository or directory of the same name made it, and -n NAME was not given. The
+// advice names the session with -n (see Options), which they then take from anywhere; it is kept
+// apart (fail.Error's Advice).
 func foreign(command, suffix, made string, home Home) error {
 	if home.Takes(made) {
 		return nil
@@ -1417,18 +1486,18 @@ func foreign(command, suffix, made string, home Home) error {
 		Advice:  fmt.Sprintf("; name it with cld %s %s", command, Options(suffix))}
 }
 
-// lingering is how new, resume, join and kill refuse session cld-SUFFIX when its server runs
-// without it, and whether the server has outlived the session, which kill ends instead (see End).
-// A server that cld did not start (see mark) is not cld's to use or to end: cld refuses the name,
-// pointing at no kill, which would end the sessions there. Mostly the server has outlived the
-// session: claude exited, and the tmux sessions it made keep the server running. new and
+// lingering is how new, resume, join, detach and kill refuse session cld-SUFFIX when its server
+// runs without it, and whether the server has outlived the session, which kill ends instead (see
+// End). A server that cld did not start (see mark) is not cld's to use or to end: cld refuses the
+// name, pointing at no kill, which would end the sessions there. Mostly the server has outlived
+// the session: claude exited, and the tmux sessions it made keep the server running. new and
 // resume would start claude there with the environment of the cld that started the server, not
-// their own, and join finds no session there, so they refuse the name, pointing at kill. The
-// server has outlived the session where it has sessions, none of them cld-SUFFIX, and its socket
-// is that of server cld-SUFFIX (see outlives). A server with none is one a cld new is starting,
-// before new-session makes its session, or one exiting, and one with session cld-SUFFIX by now
-// has had it made since the lookup, by the cld new starting the server, say: kill refuses the
-// name there as well, pointing at no kill. A session of claude's that was
+// their own, and join and detach find no session there, so they refuse the name, pointing at
+// kill. The server has outlived the session where it has sessions, none of them cld-SUFFIX, and
+// its socket is that of server cld-SUFFIX (see outlives). A server with none is one a cld new is
+// starting, before new-session makes its session, or one exiting, and one with session cld-SUFFIX
+// by now has had it made since the lookup, by the cld new starting the server, say: kill refuses
+// the name there as well, pointing at no kill. A session of claude's that was
 // renamed - by hand, or by a tmux rename-session that claude runs, which renames the session of
 // its pane - is not the one its server is named after, and counts as ended: kill ends its server,
 // claude with it. And where tmux's socket directory ignores case, as macOS's does by default, the
@@ -1492,11 +1561,12 @@ func noServer(message string) bool {
 // check skips; set, even empty, TMUX still tells the client that the terminal takes UTF-8.
 
 // readyClient readies cld to become a tmux client: it refuses a terminal that is a live pane of
-// one of cld's servers, reads the keys that any other tmux it is a pane of keeps from claude (see
+// one of cld's servers, pointing at C-q d and at cld detach, which acts there (see
+// DetachTerminal), reads the keys that any other tmux it is a pane of keeps from claude (see
 // keptKeys), and empties a TMUX that is set, for the client and every tmux command before it.
 func (t *Tmux) readyClient() ([]string, error) {
 	if suffix, found := t.OwnPane(); found {
-		return nil, fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d first", suffix))
+		return nil, fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d or cld detach first", suffix))
 	}
 	kept := t.keptKeys()
 	return kept, emptyTMUX()
@@ -1519,9 +1589,8 @@ func emptyTMUX() error {
 // started by cld (see mark): the terminal of any other tmux nests. tty names the terminal on its
 // stdin, cld's.
 func (t *Tmux) OwnPane() (string, bool) {
-	socket, _, _ := strings.Cut(os.Getenv("TMUX"), ",")
-	suffix, found := strings.CutPrefix(filepath.Base(socket), "cld-")
-	if !found || !ValidName(suffix) {
+	socket, suffix, found := ownServer()
+	if !found {
 		return "", false
 	}
 	tty, err := tool.Command("tty")
@@ -1636,10 +1705,32 @@ func showKept(kept []string) []string {
 		";", "run-shell", "-b", "-C", "-d", "3", "refresh-client"}
 }
 
+// Inside reports whether cld runs inside one of cld's servers, where cld detach without -n and -s
+// detaches the terminal (see DetachTerminal): TMUX, which tmux gives the programs in its panes and
+// they hand on, names the socket of server cld-NAME. Whether cld started that server (see mark)
+// DetachTerminal asks tmux, in the command that detaches. Unlike OwnPane it does not look at the
+// terminal: claude runs a shell command, ! cld detach among them, without one, its input from
+// /dev/null (claude 2.1.284; see Findings in docs/design.md).
+func Inside() bool {
+	_, _, found := ownServer()
+	return found
+}
+
+// ownServer is the socket TMUX names and the NAME of its server, cld-NAME, where it is named like
+// one of cld's.
+func ownServer() (socket, suffix string, found bool) {
+	socket, _, _ = strings.Cut(os.Getenv("TMUX"), ",")
+	suffix, found = strings.CutPrefix(filepath.Base(socket), "cld-")
+	if !found || !ValidName(suffix) {
+		return "", "", false
+	}
+	return socket, suffix, true
+}
+
 // Home is where the sessions made in the current directory belong, and where the NAME they take
 // by default comes from (see DefaultName): the git repository the directory is in or, outside
-// one, the directory itself. new and resume record Dir on the session as @cld-home, and join and
-// kill refuse a session of the directory's NAME made in another (see foreign).
+// one, the directory itself. new and resume record Dir on the session as @cld-home, and join,
+// detach and kill refuse a session of the directory's NAME made in another (see foreign).
 type Home struct {
 	// Dir is the directory whose name DefaultName takes - the repository's (see repository), or
 	// the current directory - by the path that gives the name; "" where there is none.
@@ -1648,12 +1739,12 @@ type Home struct {
 	Repository bool
 }
 
-// Takes reports whether join and kill, run in home h, take a session whose @cld-home is made:
-// where either is "" - a session of a cld that recorded no home, or no home here, as with -n - and
-// where both are one directory. Paths that differ are compared as files: git names the common
-// .git by its real path from a linked worktree, and from the main work tree by a path from the
-// current directory, which the shell's PWD can name through a symbolic link; and a file system
-// that ignores case, as macOS's does by default, finds a directory by paths in other cases.
+// Takes reports whether join, detach and kill, run in home h, take a session whose @cld-home is
+// made: where either is "" - a session of a cld that recorded no home, or no home here, as with
+// -n - and where both are one directory. Paths that differ are compared as files: git names the
+// common .git by its real path from a linked worktree, and from the main work tree by a path from
+// the current directory, which the shell's PWD can name through a symbolic link; and a file
+// system that ignores case, as macOS's does by default, finds a directory by paths in other cases.
 func (h Home) Takes(made string) bool {
 	if made == "" || h.Dir == "" || made == h.Dir {
 		return true

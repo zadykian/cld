@@ -31,7 +31,7 @@ var update = flag.Bool("update", false, "rewrite the help in testdata/help from 
 // helpTopics are what cld help takes, "" for none, in the order the help lists them: a command
 // of cld's, followed by the commands it has, "setup telemetry" for setup's telemetry, and theirs,
 // "setup completion zsh" for zsh's.
-var helpTopics = []string{"", "new", "resume", "join", "kill", "list", "setup", "setup project", "setup telemetry",
+var helpTopics = []string{"", "new", "resume", "join", "detach", "kill", "list", "setup", "setup project", "setup telemetry",
 	"setup completion", "setup completion bash", "setup completion zsh", "setup completion fish", "update", "completion", "help", "version"}
 
 // goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
@@ -178,6 +178,9 @@ func TestHelp(t *testing.T) {
 		{[]string{"resume", "-s", "x", "-h"}, "resume"},
 		{[]string{"resume", "-h", "a", "b"}, "resume"},
 		{[]string{"join", "-s", "x", "-h"}, "join"},
+		{[]string{"help", "detach"}, "detach"},
+		{[]string{"detach", "-h"}, "detach"},
+		{[]string{"detach", "-s", "x", "--help"}, "detach"},
 		{[]string{"kill", "--help"}, "kill"},
 		{[]string{"list", "-h"}, "list"},
 		{[]string{"update", "-h"}, "update"},
@@ -314,6 +317,7 @@ func TestCompleteCommands(t *testing.T) {
 	commands := "new\tcreate session NAME-SUFFIX in this directory and attach to it\n" +
 		"resume\tcreate session NAME-SUFFIX with claude resuming its conversation\n" +
 		"join\tattach to session NAME-SUFFIX\n" +
+		"detach\tdetach the terminals attached to session NAME-SUFFIX\n" +
 		"kill\tend session NAME-SUFFIX and its tmux server\n" +
 		"list\tlist cld's sessions; on a terminal, join, kill or resume one\n" +
 		"setup\tset up claude in a project, its telemetry, or shell completion\n" +
@@ -345,6 +349,7 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", "c"}, "completion\tprint the completion script for a shell\n:4\n"},
 		{[]string{"__complete", "help", ""}, commands + ":4\n"},
 		{[]string{"__complete", "help", "j"}, "join\tattach to session NAME-SUFFIX\n:4\n"},
+		{[]string{"__complete", "help", "d"}, "detach\tdetach the terminals attached to session NAME-SUFFIX\n:4\n"},
 		{[]string{"__complete", "help", "x"}, ":4\n"},
 		{[]string{"__complete", "help", "new", ""}, ":4\n"},
 		// After a command with commands of its own, help takes one of those, and nothing after it.
@@ -394,6 +399,11 @@ func TestCompleteCommands(t *testing.T) {
 		// cobra describes an option by the first line of its usage, backquotes included.
 		{[]string{"__complete", "join", "-"}, "--detach-others\tdetach any other terminal attached to the session\n" +
 			"--help\thelp for join\n-h\thelp for join\n" +
+			"--name\tthe session's `NAME`, before -SUFFIX: by default the\n" +
+			"-n\tthe session's `NAME`, before -SUFFIX: by default the\n" +
+			"--suffix\tthe session's `SUFFIX`, after NAME-\n" +
+			"-s\tthe session's `SUFFIX`, after NAME-\n:4\n"},
+		{[]string{"__complete", "detach", "-"}, "--help\thelp for detach\n-h\thelp for detach\n" +
 			"--name\tthe session's `NAME`, before -SUFFIX: by default the\n" +
 			"-n\tthe session's `NAME`, before -SUFFIX: by default the\n" +
 			"--suffix\tthe session's `SUFFIX`, after NAME-\n" +
@@ -461,7 +471,7 @@ func TestRejectsInvalidNames(t *testing.T) {
 	t.Parallel()
 	// tmux would rename "." and ":" to "_", a space would split claude's arguments.
 	for _, name := range []string{"", "a b", "foo.bar", "a:b", "x/y", "-x", "_x", "café", "a\nb"} {
-		for _, args := range [][]string{{"new", "-n", name}, {"resume", "-n", name}, {"join", "--name", name}, {"kill", "-n", name}, {"new", "--name=" + name}} {
+		for _, args := range [][]string{{"new", "-n", name}, {"resume", "-n", name}, {"join", "--name", name}, {"detach", "-n", name}, {"kill", "-n", name}, {"new", "--name=" + name}} {
 			t.Run(strings.Join(args, " "), func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
@@ -517,6 +527,7 @@ func TestNameLength(t *testing.T) {
 		{[]string{"new", "-n", tooLong}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{"join", "--name", tooLong}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{"kill", "-n", tooLong}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
+		{[]string{"detach", "--name", tooLong}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{"resume", "-n", tooLong, "SESSION"}, "cld: name '" + tooLong + "' is longer than 64 characters (see cld help)\n"},
 		{[]string{"new", "-n", tooLong[:60] + "a.b.c"}, "cld: name '" + tooLong[:60] + "a.b.c' is longer than 64 characters (see cld help)\n"},
 		{[]string{"new", "-n", tooLong[:60] + "a.b"}, "cld: invalid name '" + tooLong[:60] + "a.b' (see cld help)\n"},
@@ -552,8 +563,9 @@ func TestNameLength(t *testing.T) {
 	}
 }
 
-// new, resume, join and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX; join and
-// kill need -s, and resume -s or SESSION. -n is checked first, then -s, each its length first,
+// new, resume, join, detach and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX;
+// join and kill need -s - detach too, outside a pane of cld's servers, as here, -n alone
+// included - and resume -s or SESSION. -n is checked first, then -s, each its length first,
 // whatever its characters, then its characters - an empty one and one of spaces are invalid too;
 // SUFFIX is checked as NAME is, since where the directory's name leaves nothing it is the whole
 // name. Each is a mistake on the command line, exit status 2, found before any tool is looked for:
@@ -570,6 +582,9 @@ func TestNameOptions(t *testing.T) {
 		{[]string{"join", "-n", "x"}, "cld: join: missing -s SUFFIX (see cld list)\n"},
 		{[]string{"kill"}, "cld: kill: missing -s SUFFIX (see cld list)\n"},
 		{[]string{"kill", "--name", "x"}, "cld: kill: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"detach"}, "cld: detach: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"detach", "-n", "x"}, "cld: detach: missing -s SUFFIX (see cld list)\n"},
+		{[]string{"detach", "-s", "a.b"}, "cld: invalid suffix 'a.b' (see cld help)\n"},
 		{[]string{"resume"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
 		{[]string{"resume", "-n", "x"}, "cld: resume: missing -s SUFFIX or SESSION (see cld help)\n"},
 		{[]string{"kill", "-n", "", "-s", ""}, "cld: invalid name '' (see cld help)\n"},
@@ -625,6 +640,7 @@ func TestLongPrefix(t *testing.T) {
 		{60, true, []string{"new", "-s", "abcd"}, "-abcd", false},
 		{60, true, []string{"join", "-s", "abcd"}, "-abcd", false},
 		{60, true, []string{"kill", "-s", "abcd"}, "-abcd", false},
+		{60, true, []string{"detach", "-s", "abcd"}, "-abcd", false},
 		{62, false, []string{"new"}, "-0", true},
 		{63, false, []string{"new"}, "-0", false},
 		{60, false, []string{"join", "-s", "abcd"}, "-abcd", false},
@@ -694,6 +710,7 @@ func TestSocketPathTooLong(t *testing.T) {
 		{[]string{"new", "-s", name}, want},
 		{[]string{"join", "-s", name}, want},
 		{[]string{"kill", "-s", name}, want},
+		{[]string{"detach", "-s", name}, want},
 		{[]string{"list"}, ""},
 	} {
 		result := s.RunCld(map[string]string{"TMUX_TMPDIR": dir}, test.args...)
@@ -705,7 +722,7 @@ func TestSocketPathTooLong(t *testing.T) {
 
 // list reads tmux's socket directory to find the servers, and one it cannot read ends it with
 // the reason, rather than show no session: here a file where tmux-UID would be. So does new
-// without -s, which reads it for the next index. new, join and kill with -s SUFFIX end with
+// without -s, which reads it for the next index. new, join, detach and kill with -s SUFFIX end with
 // tmux's message, as for a socket path too long (tmux 3.3a to 3.7c). Where
 // TMUX_TMPDIR is unset, empty or names nothing, cld reads /tmp/tmux-UID, as tmux falls back to it;
 // no test reaches that, which would read the user's own sockets.
@@ -722,6 +739,7 @@ func TestUnreadableSocketDirectory(t *testing.T) {
 		{[]string{"new", "-s", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
 		{[]string{"join", "-s", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
 		{[]string{"kill", "-s", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
+		{[]string{"detach", "-s", "a"}, "cld: " + s.SocketDir() + " is not a directory\n"},
 	} {
 		if result := s.RunCld(nil, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", test.args[0], result.Code, result.Stdout, result.Stderr, test.want)
@@ -746,7 +764,7 @@ func TestUnsafeSocketDirectory(t *testing.T) {
 	}
 	logged, asked := loggedTmux(t, s)
 	want := "cld: directory " + s.SocketDir() + " has unsafe permissions\n"
-	for _, args := range [][]string{{"list"}, {"new"}, {"new", "-s", "a"}, {"join", "-s", "0"}, {"kill", "-s", "a"}} {
+	for _, args := range [][]string{{"list"}, {"new"}, {"new", "-s", "a"}, {"join", "-s", "0"}, {"detach", "-s", "1"}, {"kill", "-s", "a"}} {
 		if result := s.RunCld(logged, args...); result.Code != 1 || result.Stdout != "" || result.Stderr != want {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", strings.Join(args, " "), result.Code, result.Stdout, result.Stderr, want)
 		}
@@ -810,6 +828,11 @@ func TestRejectsUnexpectedArguments(t *testing.T) {
 		{[]string{"join", "--detach-others=maybe"}, "cld: join: unexpected argument '--detach-others=maybe' (see cld help)\n"},
 		{[]string{"join", "--detach-others", "a"}, "cld: join: unexpected argument 'a' (see cld help)\n"},
 		{[]string{"new", "--detach-others"}, "cld: new: unexpected argument '--detach-others' (see cld help)\n"},
+		{[]string{"detach", "x"}, "cld: detach: unexpected argument 'x' (see cld help)\n"},
+		{[]string{"detach", "-s", "x", "y"}, "cld: detach: unexpected argument 'y' (see cld help)\n"},
+		{[]string{"detach", "--detach-others"}, "cld: detach: unexpected argument '--detach-others' (see cld help)\n"},
+		{[]string{"detach", "--others"}, "cld: detach: unexpected argument '--others' (see cld help)\n"},
+		{[]string{"detach", "--"}, "cld: detach: unexpected argument '--' (see cld help)\n"},
 		// An empty argument is one too (cld's shell script took it for none).
 		{[]string{"list", ""}, "cld: list: unexpected argument '' (see cld help)\n"},
 		{[]string{"resume", "-w"}, "cld: resume: unexpected argument '-w' (see cld help)\n"},
@@ -1127,7 +1150,7 @@ func TestCannotRunDocker(t *testing.T) {
 }
 
 // new and resume need tmux and claude, and new -w git; the other commands only tmux: the fake tmux
-// finds no session, so join and kill get as far as saying so.
+// finds no session, so join, detach and kill get as far as saying so.
 func TestRequiresTools(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -1144,6 +1167,8 @@ func TestRequiresTools(t *testing.T) {
 		{[]string{"join", "-s", "main"}, []string{"tmux"}, "cld: no session 'main'; create it with cld new -s main\n"},
 		{[]string{"kill", "-s", "x"}, []string{"claude"}, "cld: tmux is not installed\n"},
 		{[]string{"kill", "-s", "x"}, []string{"tmux"}, "cld: no session 'x' (see cld list)\n"},
+		{[]string{"detach", "-s", "x"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"detach", "-s", "x"}, []string{"tmux"}, "cld: no session 'x' (see cld list)\n"},
 		{[]string{"list"}, []string{"claude"}, "cld: tmux is not installed\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {
@@ -1403,8 +1428,8 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 	}
 }
 
-// new and resume run claude; join, kill, list and setup telemetry never do, and neither does
-// completion - __complete and __completeNoDesc - which makes no check at all (see
+// new and resume run claude; join, detach, kill, list and setup telemetry never do, and neither
+// does completion - __complete and __completeNoDesc - which makes no check at all (see
 // TestCompletionSkipsChecks), for new's, resume's and setup telemetry's arguments too and with a
 // tmux the check refuses: with a claude too old for new and resume, which records that it ran,
 // the others do as they do with any other - setup telemetry, which checks no tmux, looks for
@@ -1441,6 +1466,7 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		{[]string{"resume", "-s", "x"}, "tmux 3.4", "", 1, "", "cld: tmux 3.5a or newer is required, found 'tmux 3.4'\n", false},
 		{[]string{"join", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main'; create it with cld new -s main\n", false},
 		{[]string{"kill", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
+		{[]string{"detach", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
 		{[]string{"list"}, "tmux 3.7c", "", 0, "", "", false},
 		{[]string{"__complete", "new", "-s", ""}, "tmux 3.4", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
@@ -1590,18 +1616,20 @@ func TestCompletionSkipsChecks(t *testing.T) {
 }
 
 // endText says how claude exited and how to end its session, with cld kill and options, which
-// name the session, as much of it as fits the pane's width whole: without C-q d where all of it
-// does not fit, and without the command where that does not fit either. The widths count how
-// claude exited as its widest, signal vtalrm, and the border line's spaces and 4 cells of border.
+// name the session, and then how to detach, with C-q d or cld detach and options, as much of it
+// as fits the pane's width whole: without C-q d and cld detach where all of it does not fit, and
+// without the kill where that does not fit either. The widths count how claude exited as its
+// widest, signal vtalrm, and the border line's spaces and 4 cells of border.
 func endText(options string) string {
 	exited := "claude exited with #{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}"
 	width := func(text string) string {
 		return strconv.Itoa(len("claude exited with signal vtalrm"+text) + 6)
 	}
 	kill := ": cld kill " + options + " ends the session"
-	return "#{?#{e|<:#{pane_width}," + width(": C-q d detaches, cld kill "+options+" ends the session") + "}," +
+	detach := " C-q d or cld detach " + options + " detaches"
+	return "#{?#{e|<:#{pane_width}," + width(kill+","+detach) + "}," +
 		"#{?#{e|<:#{pane_width}," + width(kill) + "}," + exited + "," + exited + kill + "}," +
-		exited + ": C-q d detaches#, cld kill " + options + " ends the session}"
+		exited + kill + "#," + detach + "}"
 }
 
 // endHint is how the pane-died hook that new and resume set, and join, show endText on the
@@ -1858,6 +1886,91 @@ func TestJoinTmuxCommand(t *testing.T) {
 	}
 }
 
+// detach hands tmux this command, word for word, and prints nothing. With -s, once the fake tmux
+// has found the session on its server: detach-client -s for the session, in an if that runs it
+// only while a terminal is attached to the session. Without -n and -s, where TMUX names one of
+// cld's servers - as in claude's pane, or a program claude runs there - a bare detach-client, by
+// the socket TMUX names, under the same if, which also asks for the server's mark, printed first
+// in the same command; no session lookup precedes it. tmux gets the environment cld got, TMUX and
+// TMUX_PANE as they were, since it finds the pane through them. -n or -s there name the session
+// as elsewhere; -n alone, or a TMUX that names another server - the default one, the one cld
+// 0.3.0 and earlier shared, or one named like no session of cld's - is refused as outside cld's
+// servers, and tmux gets nothing.
+func TestDetachTmuxCommand(t *testing.T) {
+	t.Parallel()
+	// mark is 1 on a server that cld started (see TestLeavesAForeignServerAlone).
+	const mark = "#{||:#{@cld},#{==:#{prefix},C-q}}"
+	for _, test := range []struct {
+		args []string
+		// server is the server of the socket TMUX names; TMUX is unset where it is empty
+		server string
+		// session is the session the fake tmux finds, on whatever server it is asked
+		session string
+		// argv is what tmux gets, SOCKET standing for the socket TMUX names; nil where detach
+		// refuses the command line
+		argv []string
+	}{
+		{[]string{"detach", "-s", "x"}, "", "cld-x",
+			[]string{"-L", "cld-x", "if", "-F", "-t", "=cld-x:", "#{session_attached}", "detach-client -s =cld-x"}},
+		{[]string{"detach", "-n", "a", "-s", "b"}, "", "cld-a-b",
+			[]string{"-L", "cld-a-b", "if", "-F", "-t", "=cld-a-b:", "#{session_attached}", "detach-client -s =cld-a-b"}},
+		{[]string{"detach"}, "cld-x", "",
+			[]string{"-S", "SOCKET", "display-message", "-p", mark, ";", "if", "-F", "#{&&:" + mark + ",#{session_attached}}", "detach-client"}},
+		{[]string{"detach", "-s", "y"}, "cld-x", "cld-y",
+			[]string{"-L", "cld-y", "if", "-F", "-t", "=cld-y:", "#{session_attached}", "detach-client -s =cld-y"}},
+		{[]string{"detach", "-n", "x"}, "cld-x", "", nil},
+		{[]string{"detach"}, "default", "", nil},
+		{[]string{"detach"}, "cld", "", nil},
+		{[]string{"detach"}, "cld-x.y", "", nil},
+	} {
+		name := strings.Join(test.args, " ")
+		if test.server != "" {
+			name += " in " + test.server
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			given := map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": test.session,
+				"TERMINAL_EMULATOR":      "JetBrains-JediTerm",
+			}
+			tmux := filepath.Join(s.SocketDir(), test.server)
+			if test.server != "" {
+				given["TMUX"] = tmux + ",123,0"
+				given["TMUX_PANE"] = "%0"
+			}
+			result := s.RunCld(given, test.args...)
+			if test.argv == nil {
+				if want := "cld: detach: missing -s SUFFIX (see cld list)\n"; result.Code != 2 || result.Stdout != "" || result.Stderr != want {
+					t.Errorf("exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+				}
+				if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
+					t.Error("tmux ran")
+				}
+				return
+			}
+			if result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0 and no output", result.Code, result.Stdout, result.Stderr)
+			}
+			record := s.FakeTmuxRecord()
+			want := slices.Clone(test.argv)
+			if i := slices.Index(want, "SOCKET"); i >= 0 {
+				want[i] = tmux
+			}
+			if !slices.Equal(record.Argv, want) {
+				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
+			}
+			env := passedOn(s, given)
+			if test.server != "" {
+				env["TMUX"] = given["TMUX"]
+			}
+			checkEnv(t, record.Env, env)
+		})
+	}
+}
+
 // new, resume and join hand tmux the terminal of their stdin, and refuse without one - as from
 // cron, ssh without -t or a script whose input is not the terminal - or with TERM unset, empty or
 // dumb, with status 1, saying so, and nothing on stdout. tmux failed there instead, with no word
@@ -1967,9 +2080,9 @@ func TestTitleOnlyToATerminal(t *testing.T) {
 }
 
 // A server can exit while cld asks it - its claude exits, a cld kill runs - and tmux then says that
-// the server exited unexpectedly: list passes over it and lists the other sessions, and join and
-// kill find no session there. The fake tmux answers every server but cld-b, which exits as it is
-// asked.
+// the server exited unexpectedly: list passes over it and lists the other sessions, and join,
+// detach and kill find no session there. The fake tmux answers every server but cld-b, which exits
+// as it is asked.
 func TestServerExitingWhileAsked(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1989,6 +2102,7 @@ func TestServerExitingWhileAsked(t *testing.T) {
 		{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\n" + "a     detached  /w\n", ""},
 		{[]string{"join", "-s", "b"}, 1, "", "cld: no session 'b'; create it with cld new -s b\n"},
 		{[]string{"kill", "-s", "b"}, 1, "", "cld: no session 'b' (see cld list)\n"},
+		{[]string{"detach", "-s", "b"}, 1, "", "cld: no session 'b' (see cld list)\n"},
 	} {
 		if result := s.RunCld(fake, test.args...); result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.stderr {
 			t.Errorf("%s: exit %d, stderr %q, stdout\n%s\nwant exit %d, stderr %q, stdout\n%s",
@@ -2029,15 +2143,17 @@ func checkEnv(t *testing.T, got, want map[string]string) {
 	}
 }
 
-// A tmux that fails where cld expects it to work - tmux -V, or the kill-session and kill-server
-// that kill runs - ends cld with tmux's exit status, after tmux's own message: cld adds none. A
-// signal ends it with 128 and the signal's number, as a shell reports it.
+// A tmux that fails where cld expects it to work - tmux -V, the kill-session and kill-server that
+// kill runs, or the detach-client that detach runs - ends cld with tmux's exit status, after
+// tmux's own message: cld adds none. A signal ends it with 128 and the signal's number, as a shell
+// reports it.
 func TestPassesTmuxFailuresThrough(t *testing.T) {
 	t.Parallel()
 	const (
 		versionFails = `echo "tmux: broken" >&2; exit 3`
 		versionDies  = `kill -TERM $$`
 		killFails    = `case "$*" in -V) echo "tmux 3.7c" ;; *list-sessions*) echo cld-x ;; *kill-server*) echo "tmux: cannot kill" >&2; exit 5 ;; esac`
+		detachFails  = `case "$*" in -V) echo "tmux 3.7c" ;; *list-sessions*) echo cld-x ;; *detach-client*) echo "tmux: cannot detach" >&2; exit 6 ;; esac`
 	)
 	for _, test := range []struct {
 		failure, script string
@@ -2050,6 +2166,8 @@ func TestPassesTmuxFailuresThrough(t *testing.T) {
 		{"-V gets SIGTERM", versionDies, []string{"list"}, 128 + 15, ""},
 		{"-V gets SIGTERM", versionDies, []string{"join", "-s", "x"}, 128 + 15, ""},
 		{"the kill exits 5", killFails, []string{"kill", "-s", "x"}, 5, "tmux: cannot kill\n"},
+		{"-V exits 3", versionFails, []string{"detach", "-s", "x"}, 3, "tmux: broken\n"},
+		{"the detach exits 6", detachFails, []string{"detach", "-s", "x"}, 6, "tmux: cannot detach\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+", "+test.failure, func(t *testing.T) {
 			t.Parallel()
@@ -2072,7 +2190,8 @@ func TestPassesTmuxFailuresThrough(t *testing.T) {
 // and 126 otherwise - here a text file without #!, which bash ran as a script, and a file
 // without the execute permission, which cld, like bash, takes when the PATH has no executable
 // tmux. So does a tmux that stops being runnable once it has answered tmux -V and the session
-// lookup: new and join cannot hand over to it, and kill cannot end the session with it. A lookup
+// lookup: new and join cannot hand over to it, kill cannot end the session with it, and detach
+// cannot detach its terminals. A lookup
 // that cannot run, once tmux -V has answered, ends cld with status 1 and the same message, as
 // the script's lookups ended it with bash's. list's lookup asks the server of a socket cld-x.
 func TestCannotRunTmux(t *testing.T) {
@@ -2101,12 +2220,15 @@ func TestCannotRunTmux(t *testing.T) {
 			{[]string{"list"}, "", false, ""},
 			{[]string{"join", "-s", "x"}, "", false, ""},
 			{[]string{"kill", "-s", "x"}, "", false, ""},
+			{[]string{"detach", "-s", "x"}, "", false, ""},
 			{[]string{"list"}, "echo 'tmux 3.7c'", true, ""},
 			{[]string{"join", "-s", "x"}, "echo 'tmux 3.7c'", true, ""},
 			{[]string{"kill", "-s", "x"}, "echo 'tmux 3.7c'", true, ""},
+			{[]string{"detach", "-s", "x"}, "echo 'tmux 3.7c'", true, ""},
 			{[]string{"new", "-s", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo 'no server running on /fake' >&2; trap 'exit 1' EXIT`, false, title},
 			{[]string{"join", "-s", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, title},
 			{[]string{"kill", "-s", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, ""},
+			{[]string{"detach", "-s", "x"}, `case "$1" in -V) echo 'tmux 3.7c'; exit ;; esac; echo cld-x`, false, ""},
 		} {
 			stage := "at once"
 			if test.answers != "" {
@@ -2225,6 +2347,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"help", "new"}, "", ""},
 		{[]string{"new", "-h"}, "", ""},
 		{[]string{"join", "-h"}, "", ""},
+		{[]string{"detach", "-h"}, "", ""},
 		{[]string{"kill", "-h", "-x"}, "", ""},
 		{[]string{"version"}, "", ""},
 		{[]string{"new", "-s", "x"}, "", ""},
@@ -2281,31 +2404,44 @@ func TestFailedWriteEndsCld(t *testing.T) {
 
 // With nothing to print, cld writes nothing, since even an empty write to a stdout that cannot
 // take one fails: kill, which prints nothing, ends the session and exits 0 with stdout open for
-// reading only, where it would fail with status 1 once the session was gone.
+// reading only, where it would fail with status 1 once the session was gone; so does detach,
+// which prints nothing either, once it has detached the session's terminals.
 func TestNothingToPrintWritesNothing(t *testing.T) {
 	t.Parallel()
-	s := sandbox.New(t)
-	stdout, err := os.Open(os.DevNull)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stdout.Close()
-	cmd := exec.Command(sandbox.Cld, "kill", "-s", "a")
-	// The fake tmux finds session a on its server, then records the kill.
-	cmd.Env = s.Environ(map[string]string{
-		"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
-		"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
-		"CLD_FAKE_TMUX_SESSIONS": "cld-a",
-	})
-	cmd.Dir = s.Work
-	var stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = stdout, &stderr
-	_ = cmd.Run()
-	if code := cmd.ProcessState.ExitCode(); code != 0 || stderr.Len() != 0 {
-		t.Errorf("exit %d, stderr %q, want exit 0, no stderr", code, stderr.String())
-	}
-	if argv, want := s.FakeTmuxRecord().Argv, []string{"-L", "cld-a", "kill-session", "-t", "=cld-a", ";", "kill-server"}; !slices.Equal(argv, want) {
-		t.Errorf("tmux arguments\n%q\nwant\n%q", argv, want)
+	for _, test := range []struct {
+		args []string
+		// argv is what tmux gets
+		argv []string
+	}{
+		{[]string{"kill", "-s", "a"}, []string{"-L", "cld-a", "kill-session", "-t", "=cld-a", ";", "kill-server"}},
+		{[]string{"detach", "-s", "a"}, []string{"-L", "cld-a", "if", "-F", "-t", "=cld-a:", "#{session_attached}", "detach-client -s =cld-a"}},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			stdout, err := os.Open(os.DevNull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stdout.Close()
+			cmd := exec.Command(sandbox.Cld, test.args...)
+			// The fake tmux finds session a on its server, then records the command.
+			cmd.Env = s.Environ(map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": "cld-a",
+			})
+			cmd.Dir = s.Work
+			var stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = stdout, &stderr
+			_ = cmd.Run()
+			if code := cmd.ProcessState.ExitCode(); code != 0 || stderr.Len() != 0 {
+				t.Errorf("exit %d, stderr %q, want exit 0, no stderr", code, stderr.String())
+			}
+			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv, test.argv) {
+				t.Errorf("tmux arguments\n%q\nwant\n%q", argv, test.argv)
+			}
+		})
 	}
 }
 

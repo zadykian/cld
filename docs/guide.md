@@ -46,16 +46,18 @@ install it as `cld`, executable, in a directory on your `PATH`.
   30 days, a forgotten session's too; a gap stays a gap. So a name comes back only once claude has
   removed the conversation of that name, 30 days after it was last written by default. Two
   `cld new` started at the same moment take two names: the second waits for the first.
-- `cld join` and `cld kill` need `-s`: in the session's repository or directory `-s SUFFIX` alone,
-  elsewhere `-n NAME -s SUFFIX` too. cld's own messages name a session that way, splitting `S` at
-  its last `-`. A name without one, made where `NAME` leaves nothing, takes `-s S` in such a
-  directory - `cd / && cld kill -s S` - or `cld list`, whose `Enter` and `Ctrl+X` take any
-  session.
+- `cld join` and `cld kill` need `-s`, as `cld detach` does outside claude (see
+  [Terminals that take C-q](#terminals-that-take-c-q)): in the session's repository or directory
+  `-s SUFFIX` alone, elsewhere `-n NAME -s SUFFIX` too. cld's own messages name a session that
+  way, splitting `S` at its last `-`. A name without one, made where `NAME` leaves nothing, takes
+  `-s S` in such a directory - `cd / && cld kill -s S` - or `cld list`, whose `Enter` and
+  `Ctrl+X` take any session.
 - Repositories of one name share `NAME` and its indexes - two clones of a project, a fork beside
   its upstream, `api` in two places - and so do directories of one name outside a repository.
   `cld new` and `cld resume` record where they made a session: the repository's directory, or
-  outside one the current directory. Without `-n`, `cld join` and `cld kill` refuse a session made
-  in another - the repository's worktrees and subdirectories are its own - and say where:
+  outside one the current directory. Without `-n`, `cld join`, `cld detach` and `cld kill` refuse
+  a session made in another - the repository's worktrees and subdirectories are its own - and say
+  where:
 
   ```
   cld: session 'api-0' belongs to /work/api, not to this repository; name it with cld kill -n api -s 0
@@ -64,8 +66,8 @@ install it as `cld`, executable, in a directory on your `PATH`.
   With `-n`, and with `-s S` where `NAME` leaves nothing, they take the session from anywhere, as
   `cld list` does; they take a session that cld 0.8.2 or earlier made, which records nothing,
   from anywhere too. `cld new` and `cld resume` name the directory of a session whose name they
-  refuse, and `cld join -s` completes only the sessions `cld join` takes. cld's record of a
-  session that has ended keeps no such home: from a repository of the same name,
+  refuse, and `cld join -s` and `cld detach -s` complete only the sessions they take. cld's record
+  of a session that has ended keeps no such home: from a repository of the same name,
   `cld resume -s SUFFIX` resumes it in the directory it ran in, which `cld list` shows.
 - Each claude gets the environment of the shell that ran `cld new` or `cld resume` -
   `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like - but for the variables that
@@ -93,12 +95,13 @@ install it as `cld`, executable, in a directory on your `PATH`.
   has ended the session, without waiting for claude, whose hooks may still run for a moment:
   `cld kill -s 1 && cld resume -s 1` can briefly run the old claude beside the new one.
 - A session whose claude failed keeps what claude printed on screen, with a line below it that
-  says how claude exited - `status 1`, say, or `signal 15` - and how to end the session. The line
-  stays through keys, `C-q d` and `cld join`; until the first key, the message line at the bottom
-  says the same. It takes the screen's last row: where claude's output fills the screen, what was
-  on that row goes if claude's cursor was above it, and otherwise the top line moves up out of
-  sight. In a narrow terminal the line leaves out `C-q d detaches`, and then the command, rather
-  than show them cut short. A session that an older cld started has the message line only.
+  says how claude exited - `status 1`, say, or `signal 15` - how to end the session, and how to
+  detach from it. The line stays through keys, `C-q d` and `cld join`; until the first key, the
+  message line at the bottom says the same. It takes the screen's last row: where claude's output
+  fills the screen, what was on that row goes if claude's cursor was above it, and otherwise the
+  top line moves up out of sight. In a narrow terminal the line leaves out how to detach, and then
+  the command that ends the session, rather than show them cut short. A session that an older cld
+  started has the message line only.
 - Only claude's own pane stays on screen when it fails: a pane split off in its window - by
   claude for a teammate, or with `C-q %` - closes when its program ends, as in plain tmux,
   whatever its exit status.
@@ -186,6 +189,39 @@ screen goes to tmux's history of the pane instead, the last 50000 lines of it.
   and the terminal's search, and marks each turn (OSC 133) for the terminal's jump between
   prompts. Under cld the scrollback holds nothing, and tmux passes no marks on. Read back in copy
   mode, `C-q [`, a screen at a time, or run `claude` itself, without cld.
+
+## Terminals that take C-q
+
+`C-q d` detaches only where the terminal hands `Ctrl+Q` on to tmux. Some keep it, and the key does
+nothing there:
+
+- VS Code on macOS and Windows - and the Remote-SSH, WSL and container windows opened from them -
+  where `Ctrl+Q` is Quick Open View, one of the commands its terminal leaves to VS Code. Give the
+  key to the terminal in your `settings.json` (not checked yet):
+
+  ```json
+  "terminal.integrated.commandsToSkipShell": ["-workbench.action.quickOpenView"]
+  ```
+
+- JetBrains IDEs with the Visual Studio 2022 keymap, which Rider bundles, where `Ctrl+Q` is Find
+  Action: keep "Override IDE shortcuts" on in Settings › Tools › Terminal, and remove `Ctrl+Q`
+  from Find Action in Settings › Keymap (not checked yet).
+
+Without the key:
+
+- `! cld detach` in claude detaches the terminal you typed it in, and leaves any other terminal on
+  the session attached. `cld detach` alone does so wherever the session's tmux server runs it -
+  claude, or a shell in a window you open there - as it detaches the terminal used last on the
+  session; where no terminal is attached, it does nothing. With the session open in two terminals,
+  a click, the focus or the mouse moving over the other one counts as using it too: move the
+  mouse over the other terminal before claude runs the command, and that one is detached.
+- `cld detach -n NAME -s SUFFIX`, from another terminal or in claude, detaches every terminal on
+  the session; `cld join --detach-others` detaches them too, as it attaches the terminal it runs
+  in.
+- Closing the terminal's tab detaches it as well. claude keeps running either way.
+
+When claude has exited with an error, the line on screen names `cld detach -n NAME -s SUFFIX`, where
+the terminal is wide enough, for another terminal: claude no longer runs `!`.
 
 ## The session list
 
@@ -523,14 +559,15 @@ cld reads the file when it runs: edits apply when you run it again. The containe
 
 ## Shell completion
 
-`cld join -n <TAB>` offers the `NAME` of the sessions' names, with how many sessions have it;
-`cld join -s <TAB>` offers the `SUFFIX` of each session whose `NAME` is `-n`'s, or else that of the
-repository or directory you are in and that was made there (or by cld 0.8.2 or earlier), with its
-state; `--mcp` the next server after a comma; and `--permissions` its sets. No file names are
-offered, and `cld new`, `cld resume`, `cld kill` and the values of `cld setup telemetry` offer
-nothing. The script runs `cld` on every TAB, so the names are always current.
-`CLD_COMPLETION_DESCRIPTIONS=0` in the environment leaves out the states and the other
-descriptions.
+`cld join -n <TAB>` offers the `NAME` of the names of the sessions that run, with how many
+sessions have it; `cld join -s <TAB>` offers the `SUFFIX` of each session that runs whose `NAME` is
+`-n`'s, or else that of the repository or directory you are in and that was made there (or by
+cld 0.8.2 or earlier), with its state; `--mcp` the next server after a comma; and `--permissions`
+its sets. `cld detach -n` and `-s` complete as `cld join`'s, and `cld resume -n` and `-s` the same
+of the sessions that have ended, each `SUFFIX` with the directory it ran in. No file names are
+offered, and `cld new`, `cld kill` and the values of `cld setup telemetry` offer nothing. The
+script runs `cld` on every TAB, so the names are always current. `CLD_COMPLETION_DESCRIPTIONS=0` in
+the environment leaves out the states and the other descriptions.
 
 `cld setup completion SHELL` writes the script that `cld completion SHELL` prints where the shell
 reads it, making its directories, and says what it wrote; start a new shell for it to take effect.
@@ -620,14 +657,17 @@ to bring the conversation back into cld.
   not the terminal - or with `TERM` unset, empty or `dumb`. Over ssh, `ssh -t host cld new` gives
   them one.
 - **A server without its session.** If claude exits while what it started through tmux keeps its
-  server running, `cld list` does not show the session, and `cld new`, `cld resume` and `cld join`
-  refuse the name: `tmux -L cld-S ls` shows what runs there, and `cld kill` ends it with the
-  server. So it goes where the session was renamed (`tmux rename-session`): claude may still run
-  there, and `cld kill` ends it too.
+  server running, `cld list` does not show the session, and `cld new`, `cld resume`, `cld join`
+  and `cld detach` refuse the name: `tmux -L cld-S ls` shows what runs there, and `cld kill` ends
+  it with the server. So it goes where the session was renamed (`tmux rename-session`): claude may
+  still run there, and `cld kill` ends it too.
 - **A tmux server of your own named `cld-S`.** cld marks the servers it starts and leaves any other
-  alone: `cld list` does not show it, cld runs in its panes as in any other tmux, and `cld new`,
-  `cld resume`, `cld join` and `cld kill` refuse the name `S` - use another. One whose prefix is
-  `C-q` counts as cld's, as the servers of cld 0.8.2 and earlier do.
+  alone: `cld list` does not show it, cld runs in its panes as in any other tmux, where
+  `cld detach` needs `-s`, and `cld new`, `cld resume`, `cld join`, `cld detach` and `cld kill`
+  refuse the name `S` - use another. One whose prefix is `C-q` counts as cld's, as the servers of
+  cld 0.8.2 and earlier do.
+- **`C-q d` does nothing.** The terminal keeps `Ctrl+Q` from tmux: see
+  [Terminals that take C-q](#terminals-that-take-c-q).
 - **Names that differ only in case.** Where tmux's socket directory ignores case, as on macOS's
   default file system, `A` and `a` share one socket: while one of them runs, cld refuses the other.
   They share one file of cld's record too, which holds the one that started last.
@@ -639,16 +679,17 @@ to bring the conversation back into cld.
   resolved (on macOS `/tmp` is `/private/tmp`), must stay within 103 bytes on macOS and 107 on
   Linux: under a long `TMUX_TMPDIR`, use a shorter name.
 - **A slow cld.** Each command runs tmux a few times - `tmux -V`, but for completion, a command
-  for each running server it asks, and then the tmux that starts, joins or kills the session - and
-  each run takes as long as tmux takes to start: 6-20 ms built from source or from most packages,
-  100-200 ms from Ubuntu's tmux snap. `cld list` and a TAB ask every server of cld's that runs,
-  eight at a time: over 10 sessions, under half a second through the snap. The sockets that ended
-  sessions leave in `tmux-UID`, which neither tmux nor cld removes, cost no tmux. In a session,
-  each hook of the tab's title runs tmux too, and claude waits for all of them but the one on a
-  change of its directory: after every tool among others, through the snap a tenth of a second
-  and more each time (see [Sessions](#sessions)). Inside your own tmux, where cld's own tmux is
-  3.6 or newer, `new`, `resume`, `join` and `Enter` in `cld list` run one tmux more, which asks
-  yours what it keeps from claude (see [Inside your own tmux](#inside-your-own-tmux)).
+  for each running server it asks, and then the tmux that starts, joins, detaches or kills the
+  session - and each run takes as long as tmux takes to start: 6-20 ms built from source or from
+  most packages, 100-200 ms from Ubuntu's tmux snap. `cld list` and a TAB ask every server of
+  cld's that runs, eight at a time: over 10 sessions, under half a second through the snap. The
+  sockets that ended sessions leave in `tmux-UID`, which neither tmux nor cld removes, cost no
+  tmux. In a session, each hook of the tab's title runs tmux too, and claude waits for all of them
+  but the one on a change of its directory: after every tool among others, through the snap a
+  tenth of a second and more each time (see [Sessions](#sessions)). Inside your own tmux, where
+  cld's own tmux is 3.6 or newer, `new`, `resume`, `join` and `Enter` in `cld list` run one tmux
+  more, which asks yours what it keeps from claude (see
+  [Inside your own tmux](#inside-your-own-tmux)).
 
 ## Upgrading
 

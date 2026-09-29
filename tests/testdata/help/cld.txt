@@ -5,8 +5,9 @@ SUFFIX, for a new session, the next index. Session S is the tmux session
 "cld-S" on the server "tmux -L cld-S", running "claude --name cld-S". What
 claude starts through tmux runs on that server too, and ends with it.
 
-Detach with C-q d; C-q C-q sends C-q to claude. A session whose claude fails
-stays, showing why, until cld kill ends it.
+Detach with C-q d, or ! cld detach in claude where the terminal keeps C-q from
+tmux; C-q C-q sends C-q to claude. A session whose claude fails stays, showing
+why, until cld kill ends it.
 
 Usage:
   cld [command]
@@ -15,6 +16,7 @@ Available Commands:
   new         create session NAME-SUFFIX in this directory and attach to it
   resume      create session NAME-SUFFIX with claude resuming its conversation
   join        attach to session NAME-SUFFIX
+  detach      detach the terminals attached to session NAME-SUFFIX
   kill        end session NAME-SUFFIX and its tmux server
   list        list cld's sessions; on a terminal, join, kill or resume one
   setup       set up claude in a project, its telemetry, or shell completion

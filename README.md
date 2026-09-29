@@ -40,8 +40,9 @@ upgrading tmux and cld.
 ### Shell completion
 
 `cld setup completion SHELL` sets up completion in bash, zsh or fish: TAB then completes the
-commands and their options, the sessions of `cld join -n` and `-s` and the servers of
-`cld setup project --mcp`. Run it once, then start a new shell:
+commands and their options, the sessions of `-n` and `-s` - for `cld join` and `cld detach` those
+that run, for `cld resume` those that have ended - and the servers of `cld setup project --mcp`.
+Run it once, then start a new shell:
 
 ```sh
 cld setup completion zsh   # or bash, or fish
@@ -65,16 +66,17 @@ where sessions `NAME-INDEX` run or have ended within 30 days, the index above th
 In a repository `api`, `cld new` twice, `cld new -s fix` and `cld new -n web` make the sessions
 `cld-api-0`, `cld-api-1`, `cld-api-fix` and `cld-web-0`, which `cld join -s 1` and
 `cld kill -n web -s 0` then reach; in `/root`, outside any repository, `cld new` makes
-`cld-root-0`. `cld join` and `cld kill` need `-s`, and `cld resume` `-s` or `SESSION`, with which
-it names its session as `cld new` does. Repositories of one name share `NAME`: without `-n`,
-`cld join` and `cld kill` refuse a session that another repository or directory of the same name
-made.
+`cld-root-0`. `cld join` and `cld kill` need `-s`, as `cld detach` does outside claude, and
+`cld resume` `-s` or `SESSION`, with which it names its session as `cld new` does. Repositories of
+one name share `NAME`: without `-n`, `cld join`, `cld detach` and `cld kill` refuse a session that
+another repository or directory of the same name made.
 
 | Command | Action |
 |---|---|
 | `cld new [-n NAME] [-s SUFFIX] [-w] [-- ARGS...]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME-SUFFIX`; `ARGS` go to claude |
 | `cld resume [-n NAME] [-s SUFFIX] [SESSION] [-- ARGS...]` | create the session with claude resuming its conversation, where the session ran, or `SESSION`; `ARGS` go to claude |
 | `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
+| `cld detach [-n NAME] [-s SUFFIX]` | detach every terminal from the session; without `-n` and `-s`, as `! cld detach` in claude, the terminal used last, normally the one you typed it in |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
 | `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`) and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
 | `cld setup project [--mcp SERVER] [--permissions SET]` | set claude up in the project in the current directory |
@@ -87,7 +89,7 @@ made.
 
 | Keys | Action |
 |---|---|
-| `C-q d` | detach; claude keeps running |
+| `C-q d` | detach; claude keeps running. Where the terminal keeps `Ctrl+Q` to itself, as VS Code and Rider can, `! cld detach` in claude does the same (see the [guide](docs/guide.md#terminals-that-take-c-q)) |
 | `C-q C-q` | send `C-q` to claude |
 
 | Keys in `cld list` | Action |

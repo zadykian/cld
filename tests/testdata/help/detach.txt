@@ -1,0 +1,16 @@
+detach every terminal attached to session NAME-SUFFIX; claude keeps running.
+Without -n and -s, as ! cld detach in claude, or in a shell on the session's
+tmux server, detach the terminal used last on that session, as C-q d does, for
+a terminal that keeps C-q from tmux: the one it was typed in, unless the mouse
+moved over another since, or another took the focus. Elsewhere, -s is needed.
+With -s and without -n, a session made in another repository or directory of
+the same name is refused.
+
+Usage:
+  cld detach [-n NAME] [-s SUFFIX] [flags]
+
+Flags:
+  -h, --help            help for detach
+  -n, --name NAME       the session's NAME, before -SUFFIX: by default the
+                        git repository's name here, or else the directory's
+  -s, --suffix SUFFIX   the session's SUFFIX, after NAME-
