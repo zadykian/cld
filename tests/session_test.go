@@ -1718,11 +1718,17 @@ func TestServerOptions(t *testing.T) {
 		{"-gv", "mouse", "on"},
 		{"-gv", "allow-passthrough", "on"},
 		{"-gv", "status", "off"},
+		{"-gv", "history-limit", "50000"},
 		{"-gv", "prefix", "C-q"},
 	} {
 		if value := s.MustTmux("cld-0", "show", option.scope, option.name); value != option.value {
 			t.Errorf("%s is %q, want %q", option.name, value, option.value)
 		}
+	}
+	// claude's pane has the history cld sets, which tmux before 3.7 gives only a pane made after
+	// the option.
+	if limit := s.Format("cld-0", "#{history_limit}"); limit != "50000" {
+		t.Errorf("claude's pane keeps %q lines of history, want 50000", limit)
 	}
 	// What cld sets for a failed claude goes to claude's window, and the tab's title - the tmux the
 	// title's job runs is the one cld checked - to claude's session; the sessions claude makes on

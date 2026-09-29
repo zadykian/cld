@@ -59,6 +59,11 @@
 //     are the server's, so the panes and sessions claude makes there lose the two as well: C-q {
 //     and C-q } still swap panes, C-q > opens the pane menu, and so does a right-click over a
 //     program that does not take the mouse
+//   - history-limit 50000: while a terminal is attached it shows tmux in its alternate screen,
+//     and its own scrollback gets nothing; what claude's classic renderer would leave there, the
+//     whole conversation, goes to the pane's history, which tmux cuts at 2000 lines by default.
+//     It goes before new-session: tmux 3.7 gives existing panes a new limit too, but earlier
+//     releases only the panes made after it
 //   - allow-passthrough on: claude wraps its notifications (but the bell, which tmux's default
 //     bell-action passes on) and OSC 52 copies in tmux passthrough. It sends notifications only
 //     on the channel its setting preferredNotifChannel names: its default, auto, goes by
@@ -603,6 +608,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 		"set", "-g", "mouse", "on", ";",
 		"unbind", "-n", "C-MouseDown1Pane", ";", "unbind", "-n", "M-MouseDown3Pane", ";",
 		"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
+		"set", "-g", "history-limit", "50000", ";",
 		"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
 		"new-session", "-s", name, "-n", suffix, "-c", literal(unexpanded(dir))}
 	for _, word := range claude {

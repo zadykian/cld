@@ -121,6 +121,27 @@ install it as `cld`, executable, in a directory on your `PATH`.
   terminal takes them. Other terminals under another `TERM`, and a session an older cld started,
   show them as plain text.
 
+## Scrollback
+
+While a terminal is attached, tmux draws the session in the terminal's alternate screen: the
+terminal's own scrollback, scroll bar and search get nothing from it. What scrolls off claude's
+screen goes to tmux's history of the pane instead, the last 50000 lines of it.
+
+- The mouse wheel, or `C-q [`, shows the history in tmux's copy mode: `PgUp` and the arrows move,
+  `C-r` searches up and `C-s` down - `?` and `/` where `VISUAL` or `EDITOR`, in the shell that
+  ran `cld new`, names vi - and `q` leaves.
+- That is claude's classic renderer, which draws in the main screen as a shell does: without
+  tmux the conversation would be in the terminal's scrollback. claude's fullscreen renderer draws
+  in the alternate screen and scrolls its own transcript: the wheel goes to it, and `Ctrl+O`,
+  then `/`, searches it; `Ctrl+O`, then `[`, writes the conversation out for copy mode. `/tui`
+  says which renderer runs, and `/tui default` and `/tui fullscreen` switch.
+- A session an older cld started keeps tmux's 2000 lines.
+- With a screen reader: Claude Code's screen-reader mode, which always runs the classic renderer,
+  leaves the conversation in the terminal's scrollback for your screen reader's review commands
+  and the terminal's search, and marks each turn (OSC 133) for the terminal's jump between
+  prompts. Under cld the scrollback holds nothing, and tmux passes no marks on. Read back in copy
+  mode, `C-q [`, a screen at a time, or run `claude` itself, without cld.
+
 ## The session list
 
 On a terminal, `cld list` shows the sessions full screen, the first one selected. `Enter` joins
