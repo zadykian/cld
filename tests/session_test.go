@@ -521,9 +521,9 @@ func TestNamePrefixes(t *testing.T) {
 }
 
 // new and resume refuse a session that exists, before touching it: the attached client and its
-// claude carry on. The message names the session as join takes it: -n what comes before the last
-// "-" of its name and -s what follows - here, where the directory's name leaves nothing, -s alone
-// for a name without one.
+// claude carry on. The message names the directory the session was made in, and the session as
+// join takes it: -n what comes before the last "-" of its name and -s what follows - here, where
+// the directory's name leaves nothing, -s alone for a name without one.
 func TestNewRefusesExistingSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -538,12 +538,12 @@ func TestNewRefusesExistingSession(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"new", "-s", "dup"}, "cld: session 'dup' exists; attach to it with cld join -s dup\n"},
-		{[]string{"resume", "-s", "dup"}, "cld: session 'dup' exists; attach to it with cld join -s dup\n"},
-		{[]string{"resume", "-s", "dup", "other"}, "cld: session 'dup' exists; attach to it with cld join -s dup\n"},
-		{[]string{"new", "-n", "my-api", "-s", "fix"}, "cld: session 'my-api-fix' exists; attach to it with cld join -n my-api -s fix\n"},
-		{[]string{"new", "-n", "my", "-s", "api-fix"}, "cld: session 'my-api-fix' exists; attach to it with cld join -n my-api -s fix\n"},
-		{[]string{"new", "-s", "my-api-fix"}, "cld: session 'my-api-fix' exists; attach to it with cld join -n my-api -s fix\n"},
+		{[]string{"new", "-s", "dup"}, "cld: session 'dup' exists in " + s.Work + "; attach to it with cld join -s dup\n"},
+		{[]string{"resume", "-s", "dup"}, "cld: session 'dup' exists in " + s.Work + "; attach to it with cld join -s dup\n"},
+		{[]string{"resume", "-s", "dup", "other"}, "cld: session 'dup' exists in " + s.Work + "; attach to it with cld join -s dup\n"},
+		{[]string{"new", "-n", "my-api", "-s", "fix"}, "cld: session 'my-api-fix' exists in " + s.Work + "; attach to it with cld join -n my-api -s fix\n"},
+		{[]string{"new", "-n", "my", "-s", "api-fix"}, "cld: session 'my-api-fix' exists in " + s.Work + "; attach to it with cld join -n my-api -s fix\n"},
+		{[]string{"new", "-s", "my-api-fix"}, "cld: session 'my-api-fix' exists in " + s.Work + "; attach to it with cld join -n my-api -s fix\n"},
 	} {
 		result := s.RunCld(nil, test.args...)
 		if result.Code != 1 || result.Stderr != test.want {
@@ -717,6 +717,132 @@ func TestKillRequiresSession(t *testing.T) {
 	}
 }
 
+// Repositories of one name share NAME and its indexes: work/api and scratch/api here, and the
+// directory api outside a repository, whose path holds a tab. new records where it made a session,
+// the repository's directory - by a symbolic link to work here, as PWD names it - or outside one
+// the directory. Without -n, join and kill refuse a session of NAME made elsewhere, naming where,
+// and new and resume name the directory of a session they refuse; list shows each session's
+// directory whatever its home. A subdirectory and a linked worktree of the repository, where git
+// names it by its real path, take its sessions, and join -s offers only the sessions join takes,
+// the refusals and completion in a locale without UTF-8 too. With -n, in the root directory,
+// where -s names a session whole, and for a session that records no home, as an older cld's, the
+// session is taken from anywhere.
+func TestSessionOfAnotherRepository(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	work, other, plain := filepath.Join(s.Root, "work", "api"), filepath.Join(s.Root, "scratch", "api"), filepath.Join(s.Root, "pla\tin", "api")
+	for _, dir := range []string{work, other} {
+		runGit(t, s, s.Root, "init", "-q", dir)
+	}
+	runGit(t, s, work, "commit", "-q", "--allow-empty", "-m", "first")
+	runGit(t, s, work, "worktree", "add", "-q", "-b", "worktree-x", filepath.Join(".claude", "worktrees", "x"))
+	worktree, sub := filepath.Join(work, ".claude", "worktrees", "x"), filepath.Join(work, "sub")
+	for _, dir := range []string{plain, sub} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linked := filepath.Join(s.Root, "link", "api")
+	if err := os.Symlink(filepath.Join(s.Root, "work"), filepath.Dir(linked)); err != nil {
+		t.Fatal(err)
+	}
+	startCldIn(t, s, "tmux", linked, map[string]string{"PWD": linked}, "new")
+	s.WaitProbes(1)
+	startCldIn(t, s, "tmux", other, nil, "new")
+	s.WaitProbes(2)
+	// An older cld's server: no @cld-home, and no @cld, but its prefix, C-q, marks it as cld's (see
+	// TestLeavesAForeignServerAlone).
+	s.MustTmux("cld-api-2", "-f", "/dev/null", "set", "-g", "prefix", "C-q", ";",
+		"new-session", "-d", "-s", "cld-api-2", "-c", s.Work, "sleep", "600")
+	startCldIn(t, s, "tmux", plain, nil, "new")
+	claudes := s.WaitProbes(3)
+	waitClients(t, s, 3)
+	for session, home := range map[string]string{"cld-api-0": linked, "cld-api-1": other, "cld-api-3": plain} {
+		if made := s.MustTmux(session, "show", "-v", "-t", "="+session+":", "@cld-home"); made != home {
+			t.Errorf("%s's @cld-home is %q, want %q", session, made, home)
+		}
+	}
+
+	list := "NAME   STATE     DIRECTORY\n" +
+		"api-0  attached  " + work + "\n" +
+		"api-1  attached  " + other + "\n" +
+		"api-2  detached  " + s.Work + "\n" +
+		"api-3  attached  " + plain + "\n"
+	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
+		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
+	}
+	// tmux writes to a client whose locale is not UTF-8 with "_" for what it cannot print, the tab
+	// before the home among them, which would leave the home unread and the session taken: cld's
+	// -u has it write them as they are.
+	notUTF8 := map[string]string{"LC_ALL": "", "LC_CTYPE": "", "LANG": "C"}
+	for _, env := range []map[string]string{nil, notUTF8} {
+		for _, test := range []struct {
+			dir  string
+			args []string
+			want string
+		}{
+			{other, []string{"join", "-s", "0"}, "cld: session 'api-0' belongs to " + linked + ", not to this repository; name it with cld join -n api -s 0\n"},
+			{other, []string{"kill", "-s", "0"}, "cld: session 'api-0' belongs to " + linked + ", not to this repository; name it with cld kill -n api -s 0\n"},
+			{plain, []string{"kill", "-s", "0"}, "cld: session 'api-0' belongs to " + linked + ", not to this directory; name it with cld kill -n api -s 0\n"},
+			{work, []string{"join", "-s", "1"}, "cld: session 'api-1' belongs to " + other + ", not to this repository; name it with cld join -n api -s 1\n"},
+			{sub, []string{"kill", "-s", "3"}, "cld: session 'api-3' belongs to " + plain + ", not to this repository; name it with cld kill -n api -s 3\n"},
+			{other, []string{"new", "-s", "0"}, "cld: session 'api-0' exists in " + linked + "; attach to it with cld join -n api -s 0\n"},
+			{other, []string{"resume", "-s", "0"}, "cld: session 'api-0' exists in " + linked + "; attach to it with cld join -n api -s 0\n"},
+			{other, []string{"new", "-s", "2"}, "cld: session 'api-2' exists; attach to it with cld join -n api -s 2\n"},
+		} {
+			if result := s.RunCldIn(test.dir, env, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
+				t.Errorf("%s in %s, environment %q: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", strings.Join(test.args, " "), test.dir, env, result.Code, result.Stdout, result.Stderr, test.want)
+			}
+		}
+	}
+	for _, claude := range claudes {
+		if !claude.Alive() {
+			t.Errorf("claude %s has exited", claude.Argv[1])
+		}
+	}
+
+	for _, test := range []struct {
+		dir  string
+		args []string
+		want string
+	}{
+		{work, []string{"-s", ""}, "0\tattached\n2\tdetached\n:4\n"},
+		{sub, []string{"-s", ""}, "0\tattached\n2\tdetached\n:4\n"},
+		{worktree, []string{"-s", ""}, "0\tattached\n2\tdetached\n:4\n"},
+		{other, []string{"-s", ""}, "1\tattached\n2\tdetached\n:4\n"},
+		{plain, []string{"-s", ""}, "2\tdetached\n3\tattached\n:4\n"},
+		{other, []string{"-n", "api", "-s", ""}, "0\tattached\n1\tattached\n2\tdetached\n3\tattached\n:4\n"},
+		{"/", []string{"-s", "api"}, "api-0\tattached\napi-1\tattached\napi-2\tdetached\napi-3\tattached\n:4\n"},
+	} {
+		args := append([]string{"__complete", "join"}, test.args...)
+		for _, env := range []map[string]string{nil, notUTF8} {
+			if result := s.RunCldIn(test.dir, env, args...); result.Code != 0 || result.Stdout != test.want {
+				t.Errorf("join %q in %s, environment %q: exit %d, stdout\n%s\nwant\n%s", test.args, test.dir, env, result.Code, result.Stdout, test.want)
+			}
+		}
+	}
+
+	startCldIn(t, s, "tmux", worktree, nil, "join", "-s", "0")
+	startCldIn(t, s, "tmux", other, nil, "join", "-n", "api", "-s", "3")
+	sandbox.WaitFor(t, 10*time.Second, "the joins to attach", func() bool {
+		return slices.Equal(s.Clients(), []string{"cld-api-0", "cld-api-0", "cld-api-1", "cld-api-3", "cld-api-3"})
+	})
+	for _, test := range []struct {
+		dir  string
+		args []string
+	}{
+		{other, []string{"kill", "-s", "2"}},
+		{sub, []string{"kill", "-s", "0"}},
+		{other, []string{"kill", "-n", "api", "-s", "3"}},
+		{"/", []string{"kill", "-s", "api-1"}},
+	} {
+		if result := s.RunCldIn(test.dir, nil, test.args...); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
+			t.Errorf("%s in %s: exit %d, stdout %q, stderr %q, want exit 0 and no output", strings.Join(test.args, " "), test.dir, result.Code, result.Stdout, result.Stderr)
+		}
+	}
+	sandbox.WaitFor(t, 10*time.Second, "the sessions to end", func() bool { return len(s.Sessions()) == 0 })
+}
+
 // cld sees only the sessions it started, each cld-NAME on its server cld-NAME. A bare tmux that
 // claude runs reaches claude's own server through TMUX, and a session made that way has another
 // name there, even named like a session of cld's: list leaves it out, join and kill act as for no
@@ -751,7 +877,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
-	exists := "cld: session 'a' exists; attach to it with cld join -s a\n"
+	exists := "cld: session 'a' exists in " + s.Work + "; attach to it with cld join -s a\n"
 	for _, command := range []string{"new", "resume"} {
 		if result := s.RunCld(nil, command, "-s", "a"); result.Code != 1 || result.Stdout != "" || result.Stderr != exists {
 			t.Errorf("%s -n a: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", command, result.Code, result.Stdout, result.Stderr, exists)
@@ -1440,7 +1566,7 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
 				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 			}
-			want := "cld: session 'bad' exists, but its claude exited; end it with cld kill -s bad\n"
+			want := "cld: session 'bad' exists in " + s.Work + ", but its claude exited; end it with cld kill -s bad\n"
 			for _, command := range []string{"new", "resume"} {
 				if result := s.RunCld(nil, command, "-s", "bad"); result.Code != 1 || result.Stderr != want {
 					t.Errorf("%s: exit %d, stderr %q, want exit 1, stderr %q", command, result.Code, result.Stderr, want)
@@ -1742,9 +1868,10 @@ func TestServerOptions(t *testing.T) {
 		t.Errorf("claude's pane keeps %q lines of history, want 50000", limit)
 	}
 	// What cld sets for a failed claude goes to claude's pane, not its window, and the tab's title -
-	// the tmux the title's job runs is the one cld checked - to claude's session; the other panes of
-	// claude's window, and the sessions claude makes on its server, keep tmux's (see
-	// TestFailedClaudeKeepsSession). show without -v prints an option only where it is set.
+	// the tmux the title's job runs is the one cld checked - and the session's home, the work
+	// directory, to claude's session; the other panes of claude's window, and the sessions claude
+	// makes on its server, keep tmux's (see TestFailedClaudeKeepsSession). show without -v prints
+	// an option only where it is set.
 	for _, option := range []struct {
 		args  []string
 		value string
@@ -1758,6 +1885,7 @@ func TestServerOptions(t *testing.T) {
 		{[]string{"-v", "-t", "=cld-0:", "set-titles-string"}, "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-0#{?@cld-worktree, [w],}"},
 		{[]string{"-v", "-t", "=cld-0:", "@cld-busy"}, busyMarker},
 		{[]string{"-v", "-t", "=cld-0:", "@cld-tmux"}, sandbox.RealTmux},
+		{[]string{"-v", "-t", "=cld-0:", "@cld-home"}, s.Work},
 		{[]string{"-gv", "set-titles"}, "off"},
 	} {
 		if value := s.MustTmux("cld-0", append([]string{"show"}, option.args...)...); value != option.value {
@@ -3666,7 +3794,7 @@ func TestListKill(t *testing.T) {
 		name, pattern string
 		ends          bool
 	}{
-		{"lookup", "*'#{==:#{session_name},cld-a},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}'", false},
+		{"lookup", "*'#{==:#{session_name},cld-a},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}\t#{@cld-home}'", false},
 		{"kill-session", "*kill-session*", false},
 		{"read", "*'#{?pane_dead,exited'*", true},
 	} {
@@ -4073,7 +4201,7 @@ type heldTmux struct {
 // by the one format that follows.
 func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldTmux {
 	t.Helper()
-	lookup := holdTmux(t, s, "the lookup of cld-"+name, "*'#{==:#{session_name},cld-"+name+"},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}'")
+	lookup := holdTmux(t, s, "the lookup of cld-"+name, "*'#{==:#{session_name},cld-"+name+"},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}\t#{@cld-home}'")
 	lookup.start(t)
 	return lookup
 }

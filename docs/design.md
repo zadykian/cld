@@ -150,6 +150,8 @@ rows that name none were probed against tmux 3.6.
 | `/.claude/*`, then `!/.claude/settings.json`, in `.gitignore` (git 2.53.0 on Ubuntu 26.04; the tests' cases also on git 2.47.3, in the image `tests/Dockerfile` builds) | git ignores `.claude/settings.local.json` and would add `.claude/settings.json`; `.claude/*` and `!.claude/settings.json`, without the leading slash, do the same. A `.claude/` before them in `.gitignore`, or a `.claude` in `.git/info/exclude`, keeps git out of the directory, and the settings stay ignored whatever follows; `*.json` after them ignores the settings again. git reads a line without the carriage return of a CRLF and without trailing spaces, but a trailing tab stays in the pattern: `!/.claude/settings.json` and a tab excepts nothing. `git check-ignore -v PATH` names the last pattern that matches, an exception too, with exit status 0 either way, as `SOURCE:LINE:PATTERN`, a tab, `PATH`; `-q` without `-v` exits 1 for a path an exception keeps. `-z` needs `--stdin` (`fatal: -z only makes sense with --stdin`), and then ends `SOURCE`, `LINE`, `PATTERN` and `PATH` each with a NUL. Outside a work tree it exits 128: `fatal: not a git repository` |
 | `git init -q DIR` as a command of `git rebase --exec` (git 2.53.0 on Ubuntu 26.04) | in the main work tree git runs the command with no `GIT_DIR` (`GIT_EXEC_PATH`, `GIT_PREFIX` and others); in a linked worktree with `GIT_DIR` naming its git directory, `.git/worktrees/NAME`, and `git init DIR` initialises that one again, leaving `DIR` an empty directory. git takes a git directory named other than `.git` for a bare repository: it wrote `core.bare = true` into the repository's `.git/config`, and the main work tree stopped working (`fatal: this operation must be run in a work tree`) |
 | `git rev-parse --is-inside-work-tree --git-common-dir`, as `cld new` runs it for the repository's name (24.3), read through the names cld gives (git 2.47.3, in the image `tests/Dockerfile` builds) | in the main work tree, a subdirectory of it and a linked worktree under `.claude/worktrees`, the common git directory is the main work tree's `.git`; in a worktree of a bare repository it is the bare repository, `bare.git`; in a submodule the superproject's `.git/modules/NAME`, whose name is the submodule's path, `module.x`. In `.git` itself `--is-inside-work-tree` is `false`, and outside a repository `git rev-parse` fails (`fatal: not a git repository`) |
+| the same through a symbolic link, `link` to the directory that holds the repository `work`, from `link/work` with `PWD` naming it (git 2.53.0 on Ubuntu 26.04, and 2.47.3 in the image `tests/Dockerfile` builds) | the common git directory is `.git` from the main work tree and `../.git` from a subdirectory, which cld joins to the current directory as `PWD` names it, `link/work/.git`; from a linked worktree under `link/work/.claude/worktrees` it is the real path, `real/work/.git`. `--path-format=absolute` gives the real path from all three. So one repository's home (37) has two paths, which `os.SameFile` finds one directory |
+| `set -t =cld-a: @cld-home VALUE`, then `#{@cld-home}` and `#{n:@cld-home}` in `list-sessions -F` (tmux 3.7c, in the image `tests/Dockerfile` builds; `format.c` and `options.c` read) | `set` keeps the value as it is: a tab, a space, a `;` inside it and `#{session_name}`, unexpanded; a `;` at its end ends the command, and the value with it, where `\;` keeps it. `#{@cld-home}` gives the value as set, `#{n:@cld-home}` its length in bytes - 8 for `/x/café` - and an unset option expands to nothing, of length `0`. A client whose locale does not name UTF-8 gets `_` for the tab and for the `é`, as `cld list` did (see above), and with `-u` both as they are. A window option `@cld-home` hides the session's, as for `@cld` |
 | `claude mcp list` (2.1.283, Linux, a scratch `CLAUDE_CONFIG_DIR`) in a project that `cld setup project --mcp goland,jbcontext,rider` wrote, GoLand and Rider 2026.2 running with their MCP servers on 64422 and 64482 | claude lists the three from `.mcp.json` - `claude mcp get jbcontext` names its scope `Project config (shared via .mcp.json)` - as `Pending approval (run claude to approve)` while the folder's workspace trust is not accepted; once it is, all three are `Connected`. Trusted, but without `enabledMcpjsonServers` in `.claude/settings.json`, they stay `Pending approval` |
 | the port of a JetBrains IDE's MCP server (GoLand 2026.2.3's `mcpserver` plugin, `McpServerSettings` and `McpServerService` read with `javap`; GoLand 2026.2.3 and Rider 2026.2.1 remote-development backends listening) | the default is 64342 plus an offset per product, chosen by `PlatformUtils.getPlatformPrefix()`: IntelliJ IDEA 0, CLion 20, DataGrip 60, GoLand 80, PhpStorm 100, PyCharm 120, Rider 140, RubyMine 160, RustRover 180, WebStorm 200, any other 0 - so GoLand listens on 64422 and Rider on 64482, as they do here, the two running at once; an authorized endpoint takes the port 100 above (64522, 64582). The MCP Server settings keep a port of their own (`mcpServerPort`), and the system property `idea.mcp.server.force.port` overrides both; where the port was never changed, the options file (`mcpServer.xml`) holds `enableMcpServer` alone. "Copy HTTP Stream Config" in those settings gives `http://127.0.0.1:PORT/stream` |
 | `${VAR:-DEFAULT}` in the URL of an `.mcp.json` server (claude 2.1.283, `claude mcp list` and `claude mcp get`, a scratch `CLAUDE_CONFIG_DIR`, the folder trusted, GoLand and Rider as above) | claude expands it as it connects: to DEFAULT where VAR is unset, and to VAR from its environment, or from the `env` of `$CLAUDE_CONFIG_DIR/settings.json`; VAR in the `env` of the project's `.claude/settings.local.json` was not used. It shows the URL with `${VAR}`, the default left out. `${VAR}` without a default, VAR unset: `[Warning] [goland] mcpServers.goland: Missing environment variables: VAR`, and the server fails with `'url' is not a valid URL` |
@@ -1488,7 +1490,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        take every session - those of 0.7.1 and earlier, `main` among them, too;
     6. cld's messages name a session as `join` and `kill` take it (`session.Options`): its name
        split at its last `-`, `-n` what comes before and `-s` what follows, where both are NAMEs,
-       and else `-s` alone - `session 'api-fix' exists; attach to it with cld join -n api -s fix`.
+       and else `-s` alone - `session 'api-fix' exists; attach to it with cld join -n api -s fix`
+       (since 37, `exists in DIR` for a session that records its home).
        So does the `pane-died` hint (5), which named the session through its window,
        `cld kill -n #{window_name}`: cld writes the options into the hook as it makes the session,
        and `join` into its own `display-message`, rather than have tmux take the window's name
@@ -1978,6 +1981,63 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        alternate screen (`terminal-overrides` without `smcup`), not tried;
     5. the tests: `TestServerOptions` pins the option and the limit of claude's pane, and
        `TestNewTmuxCommand` the option's place in tmux's command.
+37. Sessions of another repository (#80): repositories of one name share `NAME` and its indexes
+    (24.1, 24.3) - two clones of a project, a fork beside its upstream, generic names such as
+    `api` - and so do directories of one name outside a repository. With cld 0.8.0 and tmux 3.7c,
+    from `scratch/api`, `cld join -s 0` attached to the claude of `work/api`'s `api-0`, and
+    `cld kill -s 0` ended it, printing nothing. Settled with it:
+    1. `new` and `resume` record where they made the session, its home, as `@cld-home` on
+       claude's session, beside `@cld-tmux` (25.4): the directory whose name `NAME` defaults to -
+       the one that holds the repository's common `.git`, or its git directory (24.3), or outside
+       a work tree the current directory - by the path that gives the name, with `-n` too, as the
+       session belongs where it was made whatever its name. It goes as a word of its own, with a
+       `\` before a `;` at its end, as the directory does (see Findings); `set` does not expand
+       it, so its `#` stay single;
+    2. `join` and `kill` refuse with status 1, before they attach or kill, a session whose
+       `@cld-home` is set and is another directory than the current one's home, where `-n` was
+       not given and `NAME`'s default is not `""`: `session 'api-0' belongs to /work/api, not to
+       this repository; name it with cld kill -n api -s 0`, or `not to this directory` outside a
+       repository. Homes whose paths differ are compared as files (`os.SameFile`): git names the
+       common `.git` by its real path from a linked worktree, and by a path from `PWD`, which can
+       go through a symbolic link, from the main work tree (see Findings), and a file system that
+       ignores case finds one directory by paths in other letters (worked out, not checked on
+       macOS). `-n` takes a session from anywhere, and so does `-s S` where `NAME` leaves nothing
+       (24.5), and `cld list`'s Enter and Ctrl+X, which name a session whole; a session of cld
+       0.8.2 or earlier, which records no home, is taken as before. So is a server that has
+       outlived its session (13), which `kill` ends: the home went with the session. The
+       maintainer chose that `join` refuse, as `kill` does, rather than warn and attach: a warning
+       printed before tmux takes the terminal over would be gone as it attaches;
+    3. the lookup reads `@cld-home` in the `list-sessions` that finds the session and its pids,
+       `#{session_name} PIDS` then a tab and `#{@cld-home}`, which takes the rest: the check costs
+       no tmux command. The lookup now runs with `-u`, as `list` does (13.1): under a locale
+       without UTF-8, tmux would write the tab, and a home's characters other than ASCII, as `_`
+       (see Findings);
+    4. `new` and `resume` name the home of the session whose name they refuse:
+       `session 'api-2' exists in /work/api; attach to it with cld join -n api -s 2`, and
+       `exists in DIR, but its claude exited`; a session without a home, as before;
+    5. `join -s`'s completion (24.8) offers only the sessions `join` takes: without `-n`, those
+       whose home is the current directory's or unset. `list`'s read of the sessions takes the
+       home with the rest: the home and the directory, both paths, which can hold a tab, end the
+       line, after the home's length in bytes (`#{n:@cld-home}`), so the directory still takes
+       the rest of it. `list` shows no home;
+    6. names stay as they are. Making `NAME` unique on a collision - `scratch-api`, or a short
+       hash - was the other way: a name would then hang on what else runs, and the same
+       repository would get another name once the other's sessions ended; the maintainer kept
+       names stable. The remote's name stays out, as 24.3 has it;
+    7. the tests: two repositories `api`, one reached through a symbolic link, and a directory
+       `api` outside a repository whose path holds a tab, with a session each and one of an older
+       cld made by hand; `@cld-home` on each; `list`'s directories; the refusals of `join` and
+       `kill`, from the other repository, the directory and a subdirectory, and `new` and
+       `resume` naming the home; completion from each place, a subdirectory, a linked worktree,
+       with `-n` and in `/`; the refusals and completion again under a locale without UTF-8,
+       where they hang on the lookup's `-u` (3); the joins and kills that pass - from a linked
+       worktree and a subdirectory of a session made through the link, with `-n`, in `/`, and for
+       the older session. The command `new` hands tmux, word for word, has the home, one that
+       ends in `;` and holds a `#` among them, and the fake tmux's `list-sessions` lines the
+       home's length, `0`, before the directory.
+
+    Out of scope: showing the home in `cld list`, a home for the sessions of older clds, and
+    `new`'s index, which the repositories of one name still share.
 
 ## Implementation notes
 
@@ -2356,7 +2416,9 @@ by hand in a nested tmux).
   a release that has `setup completion` to one that prints other scripts.
 - `new -w`'s worktree `cld-NAME-SUFFIX` (24.7) was not run with the real `claude`: its name has the
   characters of the `wt` probed with 2.1.281 (see Findings). The repository's name is tested with
-  git 2.47.3 in the Linux image, and with the git of the macOS runner.
+  git 2.47.3 in the Linux image, and with the git of the macOS runner, and so is the home that
+  `join` and `kill` check (37); a home reached by a path in other letters, on a file system that
+  ignores case, was not tried.
 - A failed claude's options and hook on its pane (5) are tested with a pane split by hand; a
   teammate's pane that claude splits off was read in claude 2.1.284's bundle, not run.
 - The title's hooks were run by the real `claude` 2.1.283 only as far as a prompt that a hook
