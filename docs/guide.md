@@ -190,6 +190,31 @@ default. `cld resume -n NAME -s SUFFIX` runs `claude --resume cld-S` in session 
   (`Remote Control not started here`) until `/remote-control` moves it over; whether a cld
   session, which turns Remote Control on as it starts, records that session in its conversation has
   not been checked yet.
+- Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) moves a conversation to
+  its background sessions, where claude's supervisor process runs it on as a copy, with a new
+  session ID and the same name, which Claude Code's docs say it numbers, as in `cld-S (2)`, where a
+  background session has it already. `/background` (`/bg`), and "Move to background and exit" in
+  the dialog `/exit` shows while background work runs, exit claude without an error, which ends
+  the session and its server. `←` on an empty prompt leaves claude in the session, in agent view,
+  where `Esc`, or `Enter` on the conversation's row, goes back to the conversation (not checked
+  yet), which the supervisor goes on running: `cld kill` ends the claude in the session but not
+  the copy. `cld list` does not tell that a conversation moved; `claude agents` lists the
+  background sessions. While the copy runs, `cld resume -n NAME -s SUFFIX` finds it by the name,
+  and claude refuses it and exits with an error, which leaves the session `exited`:
+
+  ```text
+  Session UUID is running as a background session (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.
+  ```
+
+  `claude attach ID` opens the copy in the terminal you run it in, outside cld. The copy keeps
+  the hooks for the tab's title, which name cld's session `S`: while a session `S` runs - the one
+  it left, or a later `cld new` that gives the index again - its tab shows the copy's status
+  until the copy stops, and while none runs the hooks fail after each tool, with a hook error (not
+  checked yet). To bring the conversation back into cld, run `claude stop ID`, then
+  `cld kill -n NAME -s SUFFIX` where the session stays, and `cld resume -n NAME -s SUFFIX` (not
+  checked yet: the old transcript has the name too). cld does not pass `--fork-session`.
+  claude's `disableAgentView` setting turns agent view off, `/bg` with it; `/config` has
+  `← opens agents` to turn off the key alone.
 
 ## Worktrees
 
@@ -384,6 +409,8 @@ A cld session is not one of them: `claude agents --json` lists it as `"kind": "i
 and agent view does not show it; nor does `cld list` show background sessions. The two combine: in
 a cld session, `/bg` or `←` on an empty prompt moves the conversation to a background session, and
 `/fork` copies it into one while the original stays in the session.
+[Resuming a conversation](#resuming-a-conversation) says what a move does to the session, and how
+to bring the conversation back into cld.
 
 ## Troubleshooting
 
@@ -431,8 +458,11 @@ a cld session, `/bg` or `←` on an empty prompt moves the conversation to a bac
   with. In cld 0.8.0 and 0.8.1 they found the session through claude's `TMUX` and `TMUX_PANE`,
   which claude does not give a conversation it runs in the background, in a worker of its daemon
   that the claude in the pane shows: there every hook failed, after each tool, with
-  `PostToolUse:Bash hook error` and `no current session`, and the title stayed `✳`. End such a
-  session with `cld kill` and bring its conversation back with `cld resume`.
+  `PostToolUse:Bash hook error` and `no current session`, and the title stayed `✳`. `cld kill`
+  leaves such a worker running, and claude refuses to resume its conversation: stop it with
+  `claude stop ID` (`claude agents` lists the IDs), then end the session with `cld kill` and
+  bring the conversation back with `cld resume`, as
+  [Resuming a conversation](#resuming-a-conversation) says.
 - **Shift+Enter in a session made in an IDE.** In cld 0.8.2 and earlier, a session made in the
   terminal of Cursor, Windsurf, Antigravity or Visual Studio, or on macOS of a JetBrains IDE or
   VSCodium, handed that terminal's variables to its claude, which then took Shift+Enter for Enter

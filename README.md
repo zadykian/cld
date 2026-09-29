@@ -96,6 +96,12 @@ Leaving claude (`/exit`, `Ctrl+C` twice) ends its session. If claude exits with 
 session stays with its message on screen, as `exited` in `cld list`, until `cld kill` ends it.
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
+`/background` (`/bg`), and "Move to background and exit" where `/exit` offers it, end the session
+too: they move the conversation to Claude Code's
+[background sessions](https://code.claude.com/docs/en/agent-view), where it goes on without cld.
+`←` on an empty prompt moves it there as well, and leaves claude in the session, in agent view,
+where `Esc` goes back to the conversation, which goes on in the background all the same.
+
 The terminal's tab shows the session, `✳ cld-NAME-SUFFIX`, and while claude works `◐` and `◑` in
 turn in place of the `✳`, as claude's own title does outside tmux; while claude works in a linked
 git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
@@ -126,8 +132,11 @@ session - `-s SUFFIX` alone where `NAME` is the repository's. Run it in the conv
 directory, or anywhere in its git repository. `cld resume SESSION` resumes another conversation: a
 session ID, a name, or a search term for claude's picker. Do not resume a
 conversation that is open elsewhere: two claudes would write to one transcript, their messages
-interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions) say. See the
-[guide](docs/guide.md#resuming-a-conversation) for what is not checked yet.
+interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions) say. claude
+refuses one that runs in its background sessions, naming `claude attach ID`, which opens it
+outside cld, and `claude stop ID`, after which `cld resume` brings it back - after `cld kill`,
+where the session stays. See the [guide](docs/guide.md#resuming-a-conversation) for what is not
+checked yet.
 
 ### Worktrees
 
