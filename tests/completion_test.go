@@ -447,6 +447,11 @@ func TestSetupCompletionBashBleSh(t *testing.T) {
 		t.Fatalf("setup completion bash: %+v", result)
 	}
 	s.WriteFile(filepath.Join(s.Home, ".bashrc"), fmt.Sprintf(blesh, main, ble))
+	// ble.sh keeps its cache in ~/.cache where that is a directory, as in a home a desktop or
+	// another program has used, and else in its own directory, which only root may write to.
+	if err := os.Mkdir(filepath.Join(s.Home, ".cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	s.WriteFile(filepath.Join(s.Work, "file"), "")
 	// Session alpha-1, as list reads it: session cld-alpha-1 on the server cld-alpha-1.
 	s.MustTmux("cld-alpha-1", "-f", "/dev/null", "new-session", "-d", "-s", "cld-alpha-1", "sleep", "600")
@@ -471,11 +476,15 @@ func TestSetupCompletionBashBleSh(t *testing.T) {
 		s.MustTmux("bash", "send-keys", "-t", "="+name+":", "-l", typed)
 		s.MustTmux("bash", "send-keys", "-t", "="+name+":", "C-i")
 		var data []byte
-		sandbox.WaitFor(t, 20*time.Second, "ble.sh to complete "+strconv.Quote(typed), func() bool {
+		for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(50 * time.Millisecond) {
 			var err error
-			data, err = os.ReadFile(filepath.Join(s.Home, "tab."+pid))
-			return err == nil
-		})
+			if data, err = os.ReadFile(filepath.Join(s.Home, "tab."+pid)); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%q: ble.sh wrote no line in 20s; the pane:\n%s", typed, screen(name))
+			}
+		}
 		// A completion that a key cancels leaves the line as it was, and ends with 148.
 		status, line, _ := strings.Cut(string(data), "\n")
 		if status == "148" {
