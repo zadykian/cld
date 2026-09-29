@@ -83,6 +83,9 @@
 // join attaches beside any other terminal on the session, which stays attached: the window takes
 // the size of the terminal used last (window-size latest), and a larger one shows the rest of its
 // screen dotted. With --detach-others it attaches with -d, detaching the others.
+// new, resume and join hand tmux the terminal of cld's stdin: without one, or with TERM unset,
+// empty or dumb, they refuse once their other checks pass, before tmux starts a server that would
+// fail on it (see checkTerminal), and they print the title only where stdout is a terminal.
 // claude trusts TERMINAL_EMULATOR over TERM_PROGRAM=tmux, and its environment comes from the
 // client that started its server: a session created in the JetBrains terminal would keep its
 // claude, and whatever claude starts through tmux, acting as if in JediTerm (extended keys off, so
@@ -110,6 +113,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/output"
@@ -545,10 +549,15 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	if worktree {
 		claude = append(claude, "--worktree", name)
 	}
+	command := "new"
 	if conversation != "" {
 		claude = append(claude, "--resume", conversation)
+		command = "resume"
 	}
-	if err := output.Print(Title(suffix)); err != nil {
+	if err := checkTerminal(command); err != nil {
+		return err
+	}
+	if err := printTitle(suffix); err != nil {
 		return err
 	}
 	// claude and its arguments go to tmux as separate words: tmux then executes them directly
@@ -610,8 +619,8 @@ func unexpanded(text string) string {
 
 // Join becomes a tmux client attached to session cld-SUFFIX, beside any other or, with
 // detachOthers, detaching them. It returns only when it does not get as far. Joinable and Attach
-// are its steps after the terminal's check, for a caller that has to look the session up before it
-// hands the terminal over.
+// are its steps after the check for cld's own pane, for a caller that has to look the session up
+// before it hands the terminal over.
 func (t *Tmux) Join(suffix string, detachOthers bool) error {
 	if err := t.readyClient(); err != nil {
 		return err
@@ -640,15 +649,18 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 }
 
 // Attach is the rest of join, for a session Joinable found, from a terminal that is not a live
-// pane of one of cld's servers (see OwnPane): it becomes a tmux client attached to session
-// cld-SUFFIX, beside any other or, with detachOthers, detaching them. It returns only when it does
-// not get as far.
+// pane of one of cld's servers (see OwnPane): it refuses a terminal tmux could not attach from
+// (see checkTerminal), and becomes a tmux client attached to session cld-SUFFIX, beside any other
+// or, with detachOthers, detaching them. It returns only when it does not get as far.
 func (t *Tmux) Attach(suffix string, detachOthers bool) error {
 	if err := emptyTMUX(); err != nil {
 		return err
 	}
+	if err := checkTerminal("join"); err != nil {
+		return err
+	}
 	name := "cld-" + suffix
-	if err := output.Print(Title(suffix)); err != nil {
+	if err := printTitle(suffix); err != nil {
 		return err
 	}
 	attach := []string{"tmux", "-L", name, "attach-session"}
@@ -1039,9 +1051,43 @@ func inWorkTree() bool {
 	return strings.TrimRight(string(out), "\n") == "true"
 }
 
+// checkTerminal refuses a terminal tmux could not attach from, for command - new, resume or join -
+// once its other checks have passed: cld's stdin, which tmux takes for the client's terminal, has
+// to be a terminal, and TERM set, not empty and not dumb. tmux would fail on either - "open
+// terminal failed: not a terminal", "terminal does not support clear" (tmux 3.7c) - with no word
+// of cld's, after cld had printed the title to a pipe or a file, and for new and resume only once
+// it had started the server, whose socket stays behind for list and every TAB to ask (see
+// Sessions). A TERM that names no terminal tmux knows is left to tmux, which says so.
+func checkTerminal(command string) error {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return fail.Runtime(command + " needs a terminal, and its input is not one")
+	}
+	name, set := os.LookupEnv("TERM")
+	switch {
+	case !set:
+		return fail.Runtime(command + " needs a terminal, and TERM is not set")
+	case name == "":
+		return fail.Runtime(command + " needs a terminal, and TERM is empty")
+	case name == "dumb":
+		return fail.Runtime(command + " needs a terminal, and TERM is dumb")
+	}
+	return nil
+}
+
+// printTitle prints Title for new, resume and join, where stdout is a terminal: tmux draws on the
+// terminal of cld's stdin, and a stdout that is no terminal - cld new | tee, say - would only take
+// the escape in as text.
+func printTitle(suffix string) error {
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		return nil
+	}
+	return output.Print(Title(suffix))
+}
+
 // Title is what sets the terminal's title to the name of session cld-SUFFIX after the marker ✳,
-// as new, resume and join print it before tmux starts, and the session list before it hands the
-// terminal over: tmux, once attached, keeps the title itself (see titles).
+// as new, resume and join print it before tmux starts, where stdout is a terminal (see
+// printTitle), and the session list before it hands the terminal over: tmux, once attached, keeps
+// the title itself (see titles).
 func Title(suffix string) string {
 	return "\033]0;✳ cld-" + suffix + "\007"
 }

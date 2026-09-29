@@ -373,6 +373,10 @@ a cld session, `/bg` or `←` on an empty prompt moves the conversation to a bac
 - **claude too old.** `cld new` and `cld resume` name the version they found. Update claude the way
   you installed it: `claude update` for the native installer, or through Homebrew, npm or your
   system's package manager.
+- **`needs a terminal`.** `cld new`, `cld resume` and `cld join` attach the terminal their input
+  comes from, and refuse without one - from cron, `ssh host cld new` or a script whose input is
+  not the terminal - or with `TERM` unset, empty or `dumb`. Over ssh, `ssh -t host cld new` gives
+  them one.
 - **A server without its session.** If claude exits while what it started through tmux keeps its
   server running, `cld new`, `cld resume`, `cld join` and `cld kill` refuse the name: end the
   server with `tmux -L cld-S kill-server`.

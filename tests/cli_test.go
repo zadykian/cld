@@ -21,7 +21,9 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// Everything cld does before it hands over to tmux; no terminal needed.
+// Everything cld does before it hands over to tmux; no terminal emulator needed. The tests that
+// hand over run cld on a pseudo-terminal of their own (sandbox.RunCldOnTerminal), since new,
+// resume and join refuse to hand over without one.
 
 var update = flag.Bool("update", false, "rewrite the help in testdata/help from what cld help prints")
 
@@ -532,7 +534,7 @@ func TestNameLength(t *testing.T) {
 		t.Run(command+" -s "+longest, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			result := s.RunCld(map[string]string{
+			result := s.RunCldOnTerminal(map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
 			}, command, "-s", longest)
@@ -643,7 +645,7 @@ func TestLongPrefix(t *testing.T) {
 			} else if err := os.Mkdir(filepath.Join(s.Root, repository), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			result := s.RunCldIn(filepath.Join(s.Root, repository), map[string]string{
+			result := s.RunCldOnTerminalIn(filepath.Join(s.Root, repository), map[string]string{
 				"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
 			}, test.args...)
@@ -1071,7 +1073,7 @@ func TestIgnoresRelativePathEntries(t *testing.T) {
 				}
 				tools := s.Tools(test.present...)
 				path := relative + string(os.PathListSeparator) + tools
-				if result := s.RunCld(map[string]string{"PATH": path}, test.args...); result.Code != test.code || result.Stderr != test.want {
+				if result := s.RunCldOnTerminal(map[string]string{"PATH": path}, test.args...); result.Code != test.code || result.Stderr != test.want {
 					t.Errorf("PATH %s: exit %d, stderr %q, want exit %d, stderr %q", path, result.Code, result.Stderr, test.code, test.want)
 				}
 				if test.code != 0 {
@@ -1107,7 +1109,7 @@ func TestRequiresTmux(t *testing.T) {
 			t.Run(args[0]+" "+version, func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
-				result := s.RunCld(map[string]string{
+				result := s.RunCldOnTerminal(map[string]string{
 					"PATH":                  s.Tools("tmux", "claude"),
 					"CLD_FAKE_TMUX_VERSION": version,
 				}, args...)
@@ -1149,7 +1151,7 @@ func TestRequiresClaude(t *testing.T) {
 			t.Run(args[0]+" "+version, func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
-				result := s.RunCld(map[string]string{
+				result := s.RunCldOnTerminal(map[string]string{
 					"PATH":                    s.Tools("tmux", "claude"),
 					"CLD_FAKE_TMUX_VERSION":   "tmux 3.7c",
 					"CLD_FAKE_CLAUDE_VERSION": version,
@@ -1258,7 +1260,7 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 				}
 			})
 			start := time.Now()
-			result := s.RunCld(map[string]string{"PATH": tools, "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new")
+			result := s.RunCldOnTerminal(map[string]string{"PATH": tools, "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new")
 			if took := time.Since(start); took > 20*time.Second {
 				t.Errorf("new took %v, waiting on the process claude left behind", took)
 			}
@@ -1391,7 +1393,7 @@ func TestChecksClaudeWhereItStarts(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(s.Work, ".claude-version"), []byte(test.pinned+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			result := s.RunCld(map[string]string{"PATH": tools, "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new")
+			result := s.RunCldOnTerminal(map[string]string{"PATH": tools, "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new")
 			if test.accepted {
 				if title := "\x1b]0;\u2733 cld-0\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 					t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
@@ -1536,7 +1538,7 @@ func TestNewTmuxCommand(t *testing.T) {
 				"TMUX":                  filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
 				"PS1":                   `\u@\h$ `,
 			}
-			result := s.RunCldIn(filepath.Join(s.Work, dir), given, args...)
+			result := s.RunCldOnTerminalIn(filepath.Join(s.Work, dir), given, args...)
 			if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
@@ -1601,7 +1603,7 @@ func TestJoinTmuxCommand(t *testing.T) {
 				"TMUX":                   filepath.Join(s.Root, "elsewhere", "default") + ",1,0",
 				"PS1":                    `\u@\h$ `,
 			}
-			result := s.RunCld(given, args...)
+			result := s.RunCldOnTerminal(given, args...)
 			if title := "\x1b]0;\u2733 cld-x\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
@@ -1611,6 +1613,114 @@ func TestJoinTmuxCommand(t *testing.T) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 			}
 			checkEnv(t, record.Env, passedOn(s, given))
+		})
+	}
+}
+
+// new, resume and join hand tmux the terminal of their stdin, and refuse without one - as from
+// cron, ssh without -t or a script whose input is not the terminal - or with TERM unset, empty or
+// dumb, with status 1, saying so, and nothing on stdout. tmux failed there instead, with no word
+// of cld's ("open terminal failed: not a terminal", "terminal does not support clear", tmux 3.7c),
+// after cld had printed the title, and for new and resume only once it had started the server,
+// whose socket stayed behind for list and every TAB to ask. new and resume run the real tmux here,
+// and leave no socket; join finds session x on the fake tmux's server, which would record the
+// attach. What they check before - a session that exists or none, a lingering server, a claude
+// too old - comes first, as TestNewRefusesExistingSession, TestJoinRequiresSession,
+// TestRefusesALingeringServer and TestOnlyNewAndResumeRunClaude, which run cld without a
+// terminal, pin.
+func TestRefusesWithoutATerminal(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		// terminal is whether cld runs on a terminal; term is TERM, unset where it is "unset"
+		terminal bool
+		term     string
+		want     string
+	}{
+		{[]string{"new", "-s", "x"}, false, "xterm-256color", "cld: new needs a terminal, and its input is not one\n"},
+		{[]string{"resume", "-s", "x"}, false, "xterm-256color", "cld: resume needs a terminal, and its input is not one\n"},
+		{[]string{"resume", "-s", "x", "SESSION"}, false, "xterm-256color", "cld: resume needs a terminal, and its input is not one\n"},
+		{[]string{"join", "-s", "x"}, false, "xterm-256color", "cld: join needs a terminal, and its input is not one\n"},
+		{[]string{"new", "-s", "x"}, true, "dumb", "cld: new needs a terminal, and TERM is dumb\n"},
+		{[]string{"new", "-s", "x"}, true, "unset", "cld: new needs a terminal, and TERM is not set\n"},
+		{[]string{"new", "-s", "x"}, true, "", "cld: new needs a terminal, and TERM is empty\n"},
+		{[]string{"resume", "-s", "x"}, true, "dumb", "cld: resume needs a terminal, and TERM is dumb\n"},
+		{[]string{"resume", "-s", "x"}, true, "unset", "cld: resume needs a terminal, and TERM is not set\n"},
+		{[]string{"join", "-s", "x"}, true, "dumb", "cld: join needs a terminal, and TERM is dumb\n"},
+		{[]string{"join", "-s", "x"}, true, "unset", "cld: join needs a terminal, and TERM is not set\n"},
+	} {
+		name := strings.Join(test.args, " ") + ", no terminal"
+		if test.terminal {
+			name = strings.Join(test.args, " ") + ", TERM=" + test.term
+			if test.term == "unset" {
+				name = strings.Join(test.args, " ") + ", TERM unset"
+			}
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			extra := map[string]string{"TERM": test.term}
+			if test.term == "unset" {
+				delete(s.Env, "TERM")
+				delete(extra, "TERM")
+			}
+			if test.args[0] == "join" {
+				extra["PATH"] = filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"]
+				extra["CLD_FAKE_TMUX_VERSION"] = "tmux 3.7c"
+				extra["CLD_FAKE_TMUX_SESSIONS"] = "cld-x"
+			}
+			run := s.RunCld
+			if test.terminal {
+				run = s.RunCldOnTerminal
+			}
+			result := run(extra, test.args...)
+			if result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, test.want)
+			}
+			if servers := s.Servers(); len(servers) != 0 {
+				t.Errorf("sockets %q left behind, want none", servers)
+			}
+			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err == nil {
+				t.Error("cld handed over to tmux")
+			}
+		})
+	}
+}
+
+// new, resume and join print the title only where stdout is a terminal: tmux draws on the
+// terminal of their stdin, and a stdout that is no terminal - cld new | tee or $(cld new), say -
+// would only take the escape in as text. With stdin a terminal and stdout a pipe, neither gets the
+// title, and cld hands over to the fake tmux, which finds session x for join.
+func TestTitleOnlyToATerminal(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"new", "-s", "x"}, {"resume", "-s", "x"}, {"join", "-s", "x"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			sessions := ""
+			if args[0] == "join" {
+				sessions = "cld-x"
+			}
+			pty := sandbox.OpenPty(t)
+			cmd := exec.Command(sandbox.Cld, args...)
+			cmd.Env = s.Environ(map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": sessions,
+			})
+			cmd.Dir = s.Work
+			var stdout, stderr bytes.Buffer
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = pty.Terminal, &stdout, &stderr
+			_ = cmd.Run()
+			if code := cmd.ProcessState.ExitCode(); code != 0 || stdout.Len() != 0 || stderr.Len() != 0 {
+				t.Errorf("exit %d, stdout %q, stderr %q, want exit 0 and no output", code, stdout.String(), stderr.String())
+			}
+			if written := pty.Output(); written != "" {
+				t.Errorf("the terminal got %q, want nothing", written)
+			}
+			if _, err := os.Stat(filepath.Join(s.ProbeDir, "tmux.json")); err != nil {
+				t.Error("cld did not hand over to tmux")
+			}
 		})
 	}
 }
@@ -1783,7 +1893,7 @@ func TestCannotRunTmux(t *testing.T) {
 				}
 				// No other tmux on the PATH, so that cld takes one without the execute permission.
 				path := fake + string(os.PathListSeparator) + s.Tools("claude", "mv")
-				result := s.RunCld(map[string]string{"PATH": path}, test.args...)
+				result := s.RunCldOnTerminal(map[string]string{"PATH": path}, test.args...)
 				code := broken.code
 				if test.lookup {
 					code = 1
@@ -1833,7 +1943,7 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			result := s.RunCld(map[string]string{
+			result := s.RunCldOnTerminal(map[string]string{
 				"PATH":                  denied + string(os.PathListSeparator) + s.Tools(test.present...),
 				"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
 			}, test.args...)
@@ -1858,7 +1968,8 @@ func TestToolsWithoutExecutePermission(t *testing.T) {
 // and from -h - and the version, and new, resume and join, which then do not hand over to tmux;
 // the completion scripts and the answers to __complete, which cobra prints for cld; and setup
 // telemetry's report, once it is done. stdout is open for reading only here, so that every write
-// to it fails; list and __complete find session x through a socket cld-x.
+// to it fails - for new, resume and join, which need a terminal and print the title only to one,
+// a terminal that is their stdin too; list and __complete find session x through a socket cld-x.
 func TestFailedWriteEndsCld(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -1897,12 +2008,17 @@ func TestFailedWriteEndsCld(t *testing.T) {
 			}
 			s := sandbox.New(t)
 			socket(t, s, "cld-x")
-			stdout, err := os.Open(os.DevNull)
+			cmd := exec.Command(sandbox.Cld, test.args...)
+			written := os.DevNull
+			if slices.Contains([]string{"new", "resume", "join"}, test.args[0]) {
+				pty := sandbox.OpenPty(t)
+				cmd.Stdin, written = pty.Terminal, pty.Path
+			}
+			stdout, err := os.OpenFile(written, os.O_RDONLY|syscall.O_NOCTTY, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer stdout.Close()
-			cmd := exec.Command(sandbox.Cld, test.args...)
 			cmd.Env = s.Environ(map[string]string{
 				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",

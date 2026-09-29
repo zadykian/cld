@@ -502,7 +502,7 @@ func TestNamePrefixes(t *testing.T) {
 				{[]string{"new", "-s", "fix"}, "cld-" + test.prefix + "fix"},
 				{[]string{"resume", "-s", "fix"}, "cld-" + test.prefix + "fix"},
 			} {
-				result := s.RunCldIn(dir, fake, command.args...)
+				result := s.RunCldOnTerminalIn(dir, fake, command.args...)
 				if title := "\x1b]0;\u2733 " + command.want + "\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
 					t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", strings.Join(command.args, " "), result.Code, result.Stdout, result.Stderr, title)
 					continue
@@ -1524,7 +1524,7 @@ func TestWorktreeHooks(t *testing.T) {
 func TestWorktreeHooksWithoutGit(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	result := s.RunCld(map[string]string{"PATH": s.Tools("tmux", "claude"), "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new", "-s", "x")
+	result := s.RunCldOnTerminal(map[string]string{"PATH": s.Tools("tmux", "claude"), "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new", "-s", "x")
 	if result.Code != 0 {
 		t.Fatalf("exit %d, stderr %q, want exit 0", result.Code, result.Stderr)
 	}
@@ -1584,7 +1584,7 @@ func TestHooksOutsideThePane(t *testing.T) {
 func TestHooksUnderRelativeTmuxTmpdir(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	result := s.RunCld(map[string]string{
+	result := s.RunCldOnTerminal(map[string]string{
 		"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
 		"TMUX_TMPDIR":           "..",
@@ -1655,7 +1655,7 @@ func TestServerOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := s.RunCld(map[string]string{
+	second := s.RunCldOnTerminal(map[string]string{
 		"PATH":               filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_REAL": realTmux,
 	}, "new")

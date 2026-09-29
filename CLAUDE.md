@@ -161,6 +161,9 @@ not push such a change. Rebase onto `main` before either.
   tmux's default `bell-action`, on the channel its `preferredNotifChannel` names; its default,
   `auto`, sends none under tmux. cld sets no channel in `--settings`, which would override the
   user's, for whichever terminal joins (decision 29).
+- `new`, `resume` and `join` need a terminal - their stdin one, `TERM` set and not `dumb` -
+  checked last, just before the title: tmux would fail without it, and `new-session` leave its
+  socket behind (decision 31). The title goes to stdout only where stdout is a terminal.
 - `setup telemetry` needs Docker, and Linux (`--network host`): it replaces the container
   `cld-telemetry`, one per Docker daemon, and rewrites the `env` of claude's user settings,
   `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude/settings.json`), keeping every other key.
@@ -222,7 +225,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   session `x` there. Tests are
   parallel and never touch the user's own cld sessions. `Tmux(server, ...)` runs tmux against one
   server (`cld-NAME` for session NAME); `Sessions()` and `Clients()` span every `cld-*` server,
-  naming a session that is not on its own server `SERVER/SESSION`.
+  naming a session that is not on its own server `SERVER/SESSION`. `RunCld` runs cld without a
+  terminal, `RunCldOnTerminal` on a pseudo-terminal of the test's (`OpenPty`), as the handover
+  of `new`, `resume` and `join` needs, returning what cld wrote there.
 - `internal/terminal` — the `Terminal` interface with one driver per outer terminal: `tmux.go`
   (an outer tmux server provides the pty; input as raw xterm bytes via `send-keys -H`) and
   `jediterm.go`, which talks line-by-line to `jediterm/JediTermDriver.java` (headless JediTerm

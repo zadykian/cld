@@ -158,6 +158,7 @@ rows that name none were probed against tmux 3.6.
 | what reaches the terminal from a pane that notifies as claude does on each channel: OSC 9, 99 and 777 in tmux passthrough, then a BEL (tmux 3.7c; the pane on a server started with `-f /dev/null` and `allow-passthrough` on, and off; two terminals attached to its session - each a client in a pane of another server, which piped the pane's output to a file - then none) | with `allow-passthrough on`, each terminal got the three sequences with the passthrough taken off, and the BEL, under tmux's default `bell-action` and `visual-bell`; with it off, the BEL alone. Sent with no terminal attached, neither reached the terminal that attached next. The pane had `TERM_PROGRAM=tmux`, `TERM_PROGRAM_VERSION=3.7c` and `TERM=tmux-256color`, where the client that started the server had `TERM_PROGRAM=iTerm.app`; its `LC_TERMINAL=iTerm2` came through as it was |
 | claude's links under tmux, and what tmux passes on (the bundles of claude 2.1.283 and 2.1.284, read, not run; tmux 3.7c's `tty-features.c`, `tty-term.c`, `tty.c` and `hyperlinks.c` read, and run in the image `tests/Dockerfile` builds, a client attached from a pty of `script`, which answers no query, XTVERSION included, with ncurses 6.6's terminfo) | claude marks file paths and URLs as OSC 8 links, `ESC ] 8 ; ; URI BEL TEXT ESC ] 8 ; ; BEL`, where `TERM_PROGRAM` is `tmux` and `TERM_PROGRAM_VERSION` 3.4 or newer. tmux keeps a link with the pane's cells, and writes it to a terminal only where that has the `hyperlinks` feature - the capability `Hls`, which no terminfo entry of ncurses 6.6 has, nor those WezTerm and Alacritty ship - as `ESC ] 8 ; id=tmuxN ; URI ESC \`, the text and `ESC ] 8 ; ; ESC \`. Its table of terminals known by XTVERSION gives the feature to iTerm2, foot and tmux; WezTerm, XTerm, mintty and rxvt-unicode are in it without. An OSC 8 printed in a pane reached a client with `TERM=xterm-256color`, under cld's `terminal-features` entry `xterm*:extkeys`, as its text alone (features `bpaste,ccolour,clipboard,cstyle,extkeys,focus,title`), and whole under `xterm*:extkeys:hyperlinks`; with `TERM=wezterm` or `TERM=alacritty` only under an entry for that `TERM`, `wezterm:hyperlinks` or `alacritty:hyperlinks`. An entry's features are separated by `:`: `xterm*:extkeys,hyperlinks` added neither, as tmux stops at a feature it does not know. Entries set twice at their indexes, as two `cld new` at once set them, stayed one each |
 | which terminals take OSC 8 links, and under which `TERM` (OSC 8's spec, [egmontkob's gist](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda), and the list [OSC8-Adoption](https://github.com/Alhadis/OSC8-Adoption), read 2026-09-29; WezTerm's docs `term.md` and `hyperlinks.md`; Alacritty's changelog and `alacritty_terminal/src/tty/mod.rs`; the classes of jediterm-core 3.76; xterm 411's `misc.c`) | kitty (`xterm-kitty`), Ghostty (`xterm-ghostty`), WezTerm (`xterm-256color`, or `wezterm` where its `term` says so), Alacritty since 0.11 (`alacritty` where that terminfo entry is installed, otherwise `xterm-256color`), VTE's terminals, Konsole (off by default), Windows Terminal, VS Code, mintty, foot, iTerm2 and JediTerm, whose emulator handles OSC 8 (`setLinkUriStarted`), take links. A terminal that parses OSC as ECMA-48 and takes no links shows the text alone - xterm 411 has no OSC 8, and ignores it as it ignores any code it does not know; the spec names VTE up to 0.48.1, Windows Terminal up to 0.9, Emacs's terminal and screen (for URIs of 700 characters or more) as garbling them |
+| `new-session` and `attach-session` without a terminal to attach from (tmux 3.7c, Ubuntu's snap, on a private socket: stdin `/dev/null`, and a pty from `script` with `TERM` `dumb`, empty, unset and `nosuchterm`; `cld new`, `resume` and `join` before 31, in `TestRefusesWithoutATerminal`) | status 1 each time, with tmux's message alone: `open terminal failed: not a terminal` for stdin `/dev/null`, `open terminal failed: terminal does not support clear` for `dumb`, empty and unset, `missing or unsuitable terminal: nosuchterm` for a `TERM` terminfo does not know. `new-session` starts the server before it looks at the terminal, and the socket stays behind, where `tmux -L NAME ls` then finds no server running; `attach-session` leaves the session and its server as they were. cld had printed the title to stdout first, whatever stdout was. With stdin a terminal and stdout a pipe, tmux draws on stdin's terminal and writes only `[exited]` to the pipe as it ends |
 
 ## Distribution
 
@@ -199,7 +200,8 @@ rows that name none were probed against tmux 3.6.
 
 Isolation needs no seams in the program: `TMUX_TMPDIR` moves cld's sockets (`-L cld-NAME`) into
 a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the probe is first on
-`PATH`. `cld new` and `cld join` attach, so they need a pty; a terminal driver provides one.
+`PATH`. `cld new` and `cld join` attach, so they need a pty: a terminal driver provides one, and
+for the tests that hand over to the fake tmux, the sandbox's own (see 31.6).
 
 ### Terminal contract
 
@@ -1502,10 +1504,11 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `#{q:@cld-tmux}`, since a path in the format could hold a `#` or `%`, which formats and
        strftime take up, or a `)`, which ends the job. No job runs for an idle claude or a session
        no terminal is on, and the last one ends within a second of the turn;
-    6. cld still prints `✳ cld-S` before tmux starts, and the list before it hands the terminal
-       over (14), which tmux replaces on attach with the session's title as it stands. A terminal
-       that detaches keeps the title tmux set last - a busy marker, if claude was busy - and a
-       session an older cld started keeps `✳ cld-S`, as it has neither the hooks nor the title;
+    6. cld still prints `✳ cld-S` before tmux starts, to a terminal only (31), and the list
+       before it hands the terminal over (14), which tmux replaces on attach with the session's
+       title as it stands. A terminal that detaches keeps the title tmux set last - a busy marker,
+       if claude was busy - and a session an older cld started keeps `✳ cld-S`, as it has neither
+       the hooks nor the title;
     7. the tests: the probe runs the hooks of its `--settings` as claude would (`hook EVENT
        JSON`), and fails a test on one that fails or prints anything; the events one by one, and
        the status each leaves; C1 with `✳`, then `◐` and `◑` in turn and `✳` again, and `✳` for a
@@ -1716,6 +1719,41 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        feature from XTVERSION whatever cld sets; JediTerm has it from cld's `xterm*` entry, and
        failed both without it. `TestServerOptions` checks the three entries, one each after a
        second `cld new` set them again.
+31. A terminal to attach from (#63): `new`, `resume` and `join` refuse to hand tmux anything but a
+    terminal it can draw on. Run from cron, `ssh host cld new` without `-t` or a script whose
+    input is not the terminal, they printed the title to stdout and became tmux, which failed with
+    a message of its own and status 1, and for `new` and `resume` left the socket of the server it
+    had started first, which `list` and every TAB went on asking (see Findings). Settled with it:
+    1. what: cld's stdin is a terminal (`term.IsTerminal`), which tmux takes for the client's, and
+       `TERM` is set, not empty and not `dumb` - the list's conditions on stdin and `TERM` (14.1),
+       without stdout, which tmux does not draw on, and the foreground. Otherwise status 1 and
+       `cld: new needs a terminal, and its input is not one`, `..., and TERM is not set`,
+       `..., and TERM is empty` or `..., and TERM is dumb`, with `resume` or `join` for `new`. A
+       `TERM` that terminfo does not know stays tmux's to refuse, socket and all: cld reads no
+       terminfo;
+    2. when: once every other check has passed - the name, the tools and their versions, the
+       lookup (a session that exists or none, a lingering server), the directory and `-w`'s
+       repository - just before the title, so that each of those says what it said without a
+       terminal too. `Attach`, the rest of `join`, which the list's Enter takes too, makes it
+       there: where the list runs it passes;
+    3. the message says what is missing, and no more: most ways into it involve no ssh, so
+       `ssh -t` is in the user guide's Troubleshooting instead;
+    4. the title goes to stdout only where stdout is a terminal: tmux draws on stdin's terminal,
+       and a pipe or a file took the escape in as text (`cld new | tee`, say). `$(cld new)` in a
+       shell on a terminal is no refusal: its stdin is the terminal, and claude runs there, while
+       the substitution no longer captures the title;
+    5. not done: a detached start (`cld new -d`, as `claude --bg` has), a feature of its own, and
+       the check of the foreground that the list makes (14.1);
+    6. the tests: `TestRefusesWithoutATerminal` runs each command without a terminal, and on one
+       with `TERM` `dumb`, empty or unset - status 1, the message, nothing on stdout, no socket
+       left by the real tmux for `new` and `resume`, no attach recorded by the fake tmux for
+       `join` - and fails before the change; `TestTitleOnlyToATerminal` hands over with stdin a
+       terminal and stdout a pipe, with nothing written to either. The tests that hand over to the
+       fake tmux run cld on a pseudo-terminal of the test's (`RunCldOnTerminal` in
+       `tests/internal/sandbox`), its stdin, stdout and controlling terminal, and read the title
+       from it; `TestFailedWriteEndsCld` has `new`, `resume` and `join` write the title to a
+       terminal open for reading only. The tests that ran them without a terminal for a refusal
+       that comes first still do, and pin the order (2).
 
 ## Implementation notes
 
@@ -2006,6 +2044,14 @@ Where the implementation departs from the plan above:
   test's cld choosing its port can get that one, as any program can outside the tests. In the
   range of 200 ports in Findings that failed 2 tests in 20 runs; the default range has 141 times
   as many.
+- The tests' pseudo-terminal (31), for cld to run on where no terminal emulator is needed, is the
+  sandbox's `OpenPty`, without cgo: `/dev/ptmx`, then `TIOCSPTLCK` and `TIOCGPTN` on Linux, and
+  `TIOCPTYGRANT`, `TIOCPTYUNLK` and `TIOCPTYGNAME` on macOS, as libc's `unlockpt` and `ptsname`
+  do. A goroutine reads its other end from the start, as a terminal emulator would, so that
+  nothing written there waits on the test; `Output` closes the test's copy of the terminal and
+  returns what was written once no program has it open, when that read ends (with EIO on Linux).
+  `RunCldOnTerminal` gives cld the terminal as a shell does: its stdin, stdout and
+  controlling terminal, in a session of its own (`Setsid`, `Setctty`).
 
 ## What the tests found
 
