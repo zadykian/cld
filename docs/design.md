@@ -156,6 +156,8 @@ rows that name none were probed against tmux 3.6.
 | `set-titles` under `status off` (tmux 3.7c: `server-client.c`, `format.c`, `options.c`, `status.c` and `cmd-refresh-client.c` read, and probed with a client in a pane of another server, whose `#{pane_title}` is the title that client sets) | tmux expands `set-titles-string`, a session option, with strftime whenever it redraws a client, and writes the title only where it changed; it restores no title on detach. Setting any option, a user option too, redraws every client on the server: `set @cld-status busy` turned `✳ NAME` into `◐ NAME` at once. With `status off` no timer expands the title again, and a `#()` job in it redraws nothing when it ends - only the status line's jobs do - but a job that runs `refresh-client -S`, which redraws the status alone, that is the title, a second later in the background kept it turning: `◐` and `◑` swapped every 1.0 to 1.3 s until the option changed, with the job naming a tmux whose path has a space, `#`, `%` and parentheses through `#{q:@OPTION}`. tmux runs a title's job at most once a second for each client. With `set-titles` on tmux also hands the active pane's directory (OSC 7) to the terminals it credits with `osc7`, iTerm2 and foot among them: an empty one for claude, which sets none |
 | how `claude` notifies (the linux-x64 bundles of 2.1.283 and 2.1.284, read, not run; the settings reference, read 2026-09-29, agrees: `"auto"` "does nothing elsewhere") | the setting `preferredNotifChannel` - any settings file, `--settings` too, and `/config`'s "Local notifications" - is `auto` by default, or `iterm2`, `iterm2_with_bell`, `kitty`, `ghostty`, `terminal_bell` or `notifications_disabled`. `auto` goes by the terminal claude detects: after the IDEs' markers, `TERMINAL_EMULATOR`, and a `TERM` of `xterm-ghostty` or with `kitty` in it, `TERM_PROGRAM`, whatever it says. `iTerm.app`, `kitty` and `ghostty` get their channel, `Apple_Terminal` the bell where its profile's audible bell is off, and anything else, `tmux` too, nothing (`no_method_available`); for a conversation claude runs in the background, the terminal of the client attached to it comes first. With `TMUX` set, a channel's sequences go in tmux passthrough, `ESC P tmux;` and the sequence with each `ESC` doubled, then `ESC \`: `iterm2` OSC 9 with the message (`TITLE: MESSAGE` where there is a title), `kitty` three OSC 99 (the title, `Claude Code` by default; the body; focus), `ghostty` OSC 777 `notify;TITLE;BODY`, each ended by BEL (by ST where claude detects kitty); `terminal_bell` a BEL, not wrapped, and `iterm2_with_bell` OSC 9 and the BEL. The `Notification` hooks run before claude sends, whatever the channel |
 | what reaches the terminal from a pane that notifies as claude does on each channel: OSC 9, 99 and 777 in tmux passthrough, then a BEL (tmux 3.7c; the pane on a server started with `-f /dev/null` and `allow-passthrough` on, and off; two terminals attached to its session - each a client in a pane of another server, which piped the pane's output to a file - then none) | with `allow-passthrough on`, each terminal got the three sequences with the passthrough taken off, and the BEL, under tmux's default `bell-action` and `visual-bell`; with it off, the BEL alone. Sent with no terminal attached, neither reached the terminal that attached next. The pane had `TERM_PROGRAM=tmux`, `TERM_PROGRAM_VERSION=3.7c` and `TERM=tmux-256color`, where the client that started the server had `TERM_PROGRAM=iTerm.app`; its `LC_TERMINAL=iTerm2` came through as it was |
+| claude's links under tmux, and what tmux passes on (the bundles of claude 2.1.283 and 2.1.284, read, not run; tmux 3.7c's `tty-features.c`, `tty-term.c`, `tty.c` and `hyperlinks.c` read, and run in the image `tests/Dockerfile` builds, a client attached from a pty of `script`, which answers no query, XTVERSION included, with ncurses 6.6's terminfo) | claude marks file paths and URLs as OSC 8 links, `ESC ] 8 ; ; URI BEL TEXT ESC ] 8 ; ; BEL`, where `TERM_PROGRAM` is `tmux` and `TERM_PROGRAM_VERSION` 3.4 or newer. tmux keeps a link with the pane's cells, and writes it to a terminal only where that has the `hyperlinks` feature - the capability `Hls`, which no terminfo entry of ncurses 6.6 has, nor those WezTerm and Alacritty ship - as `ESC ] 8 ; id=tmuxN ; URI ESC \`, the text and `ESC ] 8 ; ; ESC \`. Its table of terminals known by XTVERSION gives the feature to iTerm2, foot and tmux; WezTerm, XTerm, mintty and rxvt-unicode are in it without. An OSC 8 printed in a pane reached a client with `TERM=xterm-256color`, under cld's `terminal-features` entry `xterm*:extkeys`, as its text alone (features `bpaste,ccolour,clipboard,cstyle,extkeys,focus,title`), and whole under `xterm*:extkeys:hyperlinks`; with `TERM=wezterm` or `TERM=alacritty` only under an entry for that `TERM`, `wezterm:hyperlinks` or `alacritty:hyperlinks`. An entry's features are separated by `:`: `xterm*:extkeys,hyperlinks` added neither, as tmux stops at a feature it does not know. Entries set twice at their indexes, as two `cld new` at once set them, stayed one each |
+| which terminals take OSC 8 links, and under which `TERM` (OSC 8's spec, [egmontkob's gist](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda), and the list [OSC8-Adoption](https://github.com/Alhadis/OSC8-Adoption), read 2026-09-29; WezTerm's docs `term.md` and `hyperlinks.md`; Alacritty's changelog and `alacritty_terminal/src/tty/mod.rs`; the classes of jediterm-core 3.76; xterm 411's `misc.c`) | kitty (`xterm-kitty`), Ghostty (`xterm-ghostty`), WezTerm (`xterm-256color`, or `wezterm` where its `term` says so), Alacritty since 0.11 (`alacritty` where that terminfo entry is installed, otherwise `xterm-256color`), VTE's terminals, Konsole (off by default), Windows Terminal, VS Code, mintty, foot, iTerm2 and JediTerm, whose emulator handles OSC 8 (`setLinkUriStarted`), take links. A terminal that parses OSC as ECMA-48 and takes no links shows the text alone - xterm 411 has no OSC 8, and ignores it as it ignores any code it does not know; the spec names VTE up to 0.48.1, Windows Terminal up to 0.9, Emacs's terminal and screen (for URIs of 700 characters or more) as garbling them |
 
 ## Distribution
 
@@ -204,10 +206,10 @@ a sandbox, `HOME` points at a temporary directory, `TMUX` is unset, and the prob
 | # | Check | Evidence |
 |---|---|---|
 | C1 | tab title is `✳ cld-NAME`, with `◐` and `◑` in turn in place of `✳` while claude is busy and ` [w]` after it while claude is in a linked git worktree, and survives claude's own title changes | terminal, probe |
-| C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, ...) | tmux |
+| C2 | tmux's view of the client: `#{client_termtype}`, `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, `hyperlinks`, ...) | tmux |
 | C3 | tmux asks the terminal for modified keys and takes the request back on detach; Shift+Enter reaches claude distinct from Enter; the Ctrl keys claude binds (`C-b`, `C-_`) pass through; `C-q d` detaches; `C-q C-q` sends `C-q` | probe input log, terminal output |
 | C4 | mouse wheel and focus in/out reach claude; over a main-screen program without mouse reporting the wheel scrolls the pane's history | probe input log, tmux |
-| C5 | OSC 52 and notifications - claude's OSC 9, 99 and 777 - wrapped in tmux passthrough, the bell, and copies through `tmux load-buffer -w`, reach the outer terminal | terminal |
+| C5 | OSC 52 and notifications - claude's OSC 9, 99 and 777 - wrapped in tmux passthrough, the bell, copies through `tmux load-buffer -w`, and claude's OSC 8 links reach the outer terminal | terminal, terminal output |
 | C6 | claude never sees `TERMINAL_EMULATOR`, including in a session created in the JetBrains terminal, nor does what claude starts through tmux on its server | probe env dump, tmux |
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
@@ -624,7 +626,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     `cld new` that refuses it (but see cost 6 for a server that is another session's). `new`,
     `resume` and `join` refuse a terminal that is a live pane of any of cld's servers (see 2),
     found through the socket `TMUX` names, and say whose session's server it is; the terminal of any other tmux nests without a check. The
-    options stay as they were, the fixed `terminal-features[100]` index too: `new` sets them on a
+    options stay as they were, the fixed `terminal-features` indexes too: `new` sets them on a
     fresh server, but two `cld new -n NAME` at once can both set them on one.
 14. The session list (#23): on a terminal, `cld list` shows the sessions to pick one and join it, as
     Claude Code's agent view (`claude agents`, a research preview whose keys may change) lists its
@@ -1687,6 +1689,34 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 
     Out of scope: a notification while no terminal is attached, which tmux drops (see Findings).
 
+30. Links (#60): claude's links - the file paths and URLs it marks with OSC 8 under tmux 3.4 or
+    newer - reach the terminal as links, for the terminal to open with its own click. tmux
+    writes a link only to a terminal with the `hyperlinks` feature, and gives that by XTVERSION
+    to iTerm2, foot and tmux alone (see Findings): in kitty, Ghostty, WezTerm, Alacritty, VTE's
+    terminals, Konsole, Windows Terminal, VS Code and JetBrains' terminal they were text.
+    Settled with it:
+    1. cld gives the feature by `TERM`, in `terminal-features` entries at fixed indexes past
+       tmux's defaults, as it gives `extkeys` (13): `xterm*:extkeys:hyperlinks` at 100, the entry
+       that had `extkeys` alone, `wezterm:hyperlinks` at 101 and `alacritty:hyperlinks` at 102.
+       `xterm*` covers kitty's `xterm-kitty`, Ghostty's `xterm-ghostty` and the `xterm-256color`
+       of the others; `wezterm` is WezTerm's `TERM` where its `term` says so, and `alacritty`
+       Alacritty's where that terminfo entry is installed. foot, whose `TERM` is `foot`, tmux
+       knows by XTVERSION. An entry's features are separated by `:`: with `,` tmux takes neither;
+    2. a terminal that takes no links shows their text, as before: one that parses OSC as
+       ECMA-48 ignores a code it does not know, as xterm does. Those that garble links - VTE up
+       to 0.48.1, Windows Terminal up to 0.9, Emacs's terminal, screen with long URIs - are old
+       releases, or have no `xterm*` `TERM`;
+    3. the click that opens a link is the terminal's, not claude's, so it does not wait on
+       Ctrl+click reaching claude (#73); with `mouse on` the terminal reports clicks to tmux, and
+       where it opens a link only with the modifier that keeps a click from the program, that
+       modifier it takes. Which click opens a link in each terminal was not checked (see
+       Status). A session that an older cld started keeps its links text;
+    4. the tests: C2 expects `hyperlinks` on both terminals, and C5 a link the probe writes, as
+       claude does, in the terminal's output. The baseline terminal, an outer tmux, has the
+       feature from XTVERSION whatever cld sets; JediTerm has it from cld's `xterm*` entry, and
+       failed both without it. `TestServerOptions` checks the three entries, one each after a
+       second `cld new` set them again.
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -1986,6 +2016,8 @@ JediTerm 3.76 (read from its source, confirmed by the contract):
   (DECSET 1004 is a stub) and does not handle OSC 52. Since cld adds the `extkeys` feature for
   `xterm*` (as Claude Code's tmux docs recommend), tmux also asks it for modifyOtherKeys, which it
   ignores;
+- it takes OSC 8 links (`JediEmulator` handles them), which tmux writes to it only with the
+  `hyperlinks` feature cld adds for `xterm*` (30), as C5 sees;
 - it ignores modifyOtherKeys (`CSI > 4 ; n m`). Shift+Enter becomes ESC CR only with its
   `shiftEnterSendsEscCR` setting, which tmux passes on as Meta+Enter; without it Shift+Enter is CR;
 - its wheel constants are named the other way round (`SCROLLDOWN` is xterm's button 64, wheel up),
@@ -2015,6 +2047,9 @@ by hand in a nested tmux).
 - Baseline and JediTerm contracts run on tmux 3.7c (Linux, Docker, built from source), and the
   baseline on Homebrew's tmux on macOS. Until the minimum rose to 3.7 (see 6), they also ran on
   3.3a, 3.4 and 3.5a.
+- Links (30) are tested as tmux writes them to the baseline terminal and to JediTerm's emulator,
+  and were probed with `TERM` `wezterm` and `alacritty` on a pty that answers nothing (see
+  Findings). No real terminal was seen showing them, nor which click opens one.
 - `setup telemetry` is tested against a fake docker on Linux, and on macOS only for its refusal;
   it was checked by hand against the real collector image (see Findings), with collectors of the
   debug exporter in the plugin's place: the plugin itself, and claude sending through the

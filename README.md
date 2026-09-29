@@ -5,8 +5,8 @@
 Run [Claude Code](https://code.claude.com) in named sessions, each on a private tmux server of its
 own: detach, close the terminal, and reattach later - from the same terminal or another one -
 without losing the conversation. The server ignores your `~/.tmux.conf` and is set up for claude:
-Shift+Enter, the mouse wheel, focus events and clipboard copies work, and the prefix is `C-q`,
-which claude leaves free. claude's notifications reach the terminal too, once its setting
+Shift+Enter, the mouse wheel, focus events, links and clipboard copies work, and the prefix is
+`C-q`, which claude leaves free. claude's notifications reach the terminal too, once its setting
 `preferredNotifChannel` names a channel your terminal takes: see [Notifications](#notifications).
 
 ## Install
@@ -218,8 +218,8 @@ The `claude --tmux` column follows the option's row in Claude Code's
 ## Terminals
 
 The tests check one contract - title, Shift+Enter, Ctrl keys, detach, mouse wheel, focus,
-clipboard, notifications, paste, claude exiting, and the keys of the session list - against each
-terminal:
+clipboard, notifications, links, paste, claude exiting, and the keys of the session list - against
+each terminal:
 
 | Terminal | How it is tested | Differences |
 |---|---|---|

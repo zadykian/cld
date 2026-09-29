@@ -25,18 +25,18 @@ type expectation struct {
 }
 
 var expectations = map[string]expectation{
-	// The outer tmux announces itself through XTVERSION, and the inner tmux knows its features;
-	// extkeys comes from cld's terminal-features entry for xterm*.
+	// The outer tmux announces itself through XTVERSION, and the inner tmux knows its features,
+	// hyperlinks among them; extkeys comes from cld's terminal-features entry for xterm*.
 	"tmux": {
-		features:   []string{"clipboard", "extkeys", "focus", "mouse", "title"},
+		features:   []string{"clipboard", "extkeys", "focus", "hyperlinks", "mouse", "title"},
 		shiftEnter: []string{"\x1b[13;2u", "\x1b[27;2;13~"},
 	},
 	// JediTerm answers no XTVERSION, so tmux falls back to its defaults for xterm*: they claim
 	// clipboard and focus, which the emulator ignores (see the skipped tests), and cld adds
-	// extkeys. The emulator ignores the modifyOtherKeys request that follows; Shift+Enter becomes
-	// ESC CR through its own setting, which tmux passes on as Meta+Enter.
+	// extkeys and hyperlinks. The emulator ignores the modifyOtherKeys request that follows;
+	// Shift+Enter becomes ESC CR through its own setting, which tmux passes on as Meta+Enter.
 	"jediterm": {
-		features:   []string{"bpaste", "clipboard", "extkeys", "focus", "title"},
+		features:   []string{"bpaste", "clipboard", "extkeys", "focus", "hyperlinks", "title"},
 		shiftEnter: []string{"\x1b\r"},
 	},
 }
@@ -278,6 +278,21 @@ func TestContractNotifications(t *testing.T) {
 		probe.Send("notify terminal_bell")
 		sandbox.WaitFor(t, 10*time.Second, "the bell in the terminal", func() bool {
 			return bells(term.Output()) > rung
+		})
+	})
+}
+
+// C5: a link claude writes - OSC 8, as claude marks file paths and URLs under tmux - reaches the
+// terminal as a link, not only as its text: tmux writes it only to a terminal with the hyperlinks
+// feature, which the outer tmux has from its XTVERSION and JediTerm from cld's terminal-features
+// entry for xterm*.
+func TestContractLink(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) {
+		_, term, probe := startContract(t, name)
+		probe.Send("link https://example.com/cld the link")
+		link := regexp.MustCompile(`\x1b\]8;[^;\x07\x1b]*;https://example\.com/cld(?:\x07|\x1b\\)the link`)
+		sandbox.WaitFor(t, 10*time.Second, "the link in the terminal's output", func() bool {
+			return link.Match(term.Output())
 		})
 	})
 }

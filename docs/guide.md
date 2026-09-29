@@ -81,6 +81,14 @@ install it as `cld`, executable, in a directory on your `PATH`.
   when claude leaves. It follows claude's working directory, not where a shell command `cd`s
   to. Without git on your `PATH` when the session starts, or with hooks turned off, there is no
   `[w]`.
+- claude's links - the file paths and URLs it marks - reach the terminal as links, which it opens
+  with its own click; as tmux has the terminal report clicks, some terminals want the key that
+  keeps a click from the program with it. tmux passes links on where it knows the terminal takes
+  them: cld tells it so for a `TERM` that starts with `xterm`, as most terminals set, and for
+  `wezterm` and `alacritty`; iTerm2, foot and tmux it recognises. Inside another tmux, links go on
+  to that tmux, which - from 3.4 - passes them to its own terminal only where it knows that
+  terminal takes them. Other terminals under another `TERM`, and a session an older cld started,
+  show them as plain text.
 
 ## The session list
 

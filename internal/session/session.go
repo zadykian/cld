@@ -40,6 +40,11 @@
 //     Claude Code's docs recommend this for tmux. It goes to a fixed index past tmux's defaults:
 //     set -a would add another copy every time cld sets it on a server that has it, as two
 //     cld new for one NAME at once do
+//   - the hyperlinks terminal feature for xterm*, wezterm and alacritty, at fixed indexes too:
+//     claude marks file paths and URLs as OSC 8 links under tmux, and tmux writes them to a
+//     terminal only with this feature, which it gives by XTVERSION to iTerm2, foot and tmux
+//     alone. wezterm is WezTerm's TERM where set, alacritty Alacritty's where its terminfo is
+//     installed, and both take links; a terminal that takes none ignores them
 //   - mouse on, focus-events on: claude probes both and hints when they are off. With the mouse
 //     on, the wheel over a program that draws in the main screen without the mouse - claude
 //     outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
@@ -558,7 +563,9 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation stri
 	// titles). The targets end in ":" because set takes a pane, which "=NAME" does not find.
 	window := "=" + name + ":"
 	argv := []string{"tmux", "-L", name, "-f", "/dev/null",
-		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
+		"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys:hyperlinks", ";",
+		"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
+		"set", "-s", "terminal-features[102]", "alacritty:hyperlinks", ";",
 		"set", "-s", "focus-events", "on", ";",
 		"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 		"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",

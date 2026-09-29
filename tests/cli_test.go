@@ -1541,7 +1541,9 @@ func TestNewTmuxCommand(t *testing.T) {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
 			want := []string{"-L", "cld-x", "-f", "/dev/null",
-				"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys", ";",
+				"set", "-s", "extended-keys", "on", ";", "set", "-s", "terminal-features[100]", "xterm*:extkeys:hyperlinks", ";",
+				"set", "-s", "terminal-features[101]", "wezterm:hyperlinks", ";",
+				"set", "-s", "terminal-features[102]", "alacritty:hyperlinks", ";",
 				"set", "-s", "focus-events", "on", ";",
 				"set", "-g", "mouse", "on", ";", "set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 				"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",

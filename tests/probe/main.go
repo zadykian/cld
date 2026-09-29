@@ -15,6 +15,8 @@
 //	                              setting preferredNotifChannel names: iterm2 (OSC 9), kitty
 //	                              (OSC 99) or ghostty (OSC 777), in tmux passthrough, or
 //	                              terminal_bell (BEL)
+//	            link URI TEXT     write TEXT as a link to URI (OSC 8), as claude marks a file path
+//	                              or a URL under tmux, and a line break
 //	            rekey             leave and re-enter the alternate screen, push the keyboard
 //	                              modes again and repaint, as claude does after an external
 //	                              editor; the repaint ends in a line "repainted"
@@ -516,6 +518,9 @@ func obey(control *os.File, write func(string), base string) {
 			if err := load.Run(); err != nil {
 				fmt.Fprintln(os.Stderr, "probe: tmux load-buffer:", err)
 			}
+		case "link":
+			uri, text, _ := strings.Cut(argument, " ")
+			write("\x1b]8;;" + uri + "\x07" + text + "\x1b]8;;\x07\r\n")
 		case "rekey":
 			// A screen model that took CSI > 4 ; 2 m for SGR 4;2 would draw the repaint underlined
 			// and faint, and replay it that way on every reattach.

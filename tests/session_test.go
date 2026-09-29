@@ -1648,9 +1648,9 @@ func TestServerOptions(t *testing.T) {
 	}
 	// Two cld new at once can both take NAME 0 and set the options on one server: the lookup of
 	// each finds no server, and the tmux command of the second reaches the server the first one
-	// started, setting them again before its new-session fails. The extkeys feature goes to a
-	// fixed index, so it is there once however often it is set. The fake tmux says no server is
-	// running, and runs the real one for the rest.
+	// started, setting them again before its new-session fails. The terminal features go to
+	// fixed indexes, so each entry is there once however often it is set. The fake tmux says no
+	// server is running, and runs the real one for the rest.
 	realTmux, err := exec.LookPath("tmux")
 	if err != nil {
 		t.Fatal(err)
@@ -1663,8 +1663,10 @@ func TestServerOptions(t *testing.T) {
 		t.Errorf("a second cld new: exit %d, stderr %q, want exit 1, stderr %q", second.Code, second.Stderr, want)
 	}
 	features := strings.Split(s.MustTmux("cld-0", "show", "-sv", "terminal-features"), "\n")
-	if count := len(slices.DeleteFunc(features, func(f string) bool { return f != "xterm*:extkeys" })); count != 1 {
-		t.Errorf("%d xterm*:extkeys entries in terminal-features, want 1", count)
+	for _, entry := range []string{"xterm*:extkeys:hyperlinks", "wezterm:hyperlinks", "alacritty:hyperlinks"} {
+		if count := len(slices.DeleteFunc(slices.Clone(features), func(f string) bool { return f != entry })); count != 1 {
+			t.Errorf("%d %s entries in terminal-features, want 1", count, entry)
+		}
 	}
 	if probes := s.Probes(); len(probes) != 1 {
 		t.Errorf("%d claude processes, want the first one", len(probes))
