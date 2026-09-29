@@ -148,10 +148,10 @@ func shellArgument(args []string) error {
 // Completion is cobra's: completion SHELL prints the script, which asks __complete what to offer
 // on every TAB - bash's with lines of cld's for ble.sh (see bashScript) - and setup completion
 // SHELL writes it where the shell reads it (see setupCompletion). join -n offers the NAME of
-// NAME-SUFFIX for the sessions list shows (see sessionNames), join -s their SUFFIX (see
-// sessionSuffixes), help the commands (see commandNames), setup project --mcp the MCP servers (see
-// serverNames) and --permissions its sets (see permissionSets), and nothing offers file names, as
-// no argument of cld's is a file.
+// NAME-SUFFIX for the sessions list shows that run (see sessionNames), join -s their SUFFIX (see
+// sessionSuffixes), resume -n and -s the same of those that have ended, help the commands (see
+// commandNames), setup project --mcp the MCP servers (see serverNames) and --permissions its sets
+// (see permissionSets), and nothing offers file names, as no argument of cld's is a file.
 //
 // new, resume, join and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX (see
 // naming): NAME defaults to the repository's or directory's name, and SUFFIX, for new and for
@@ -184,10 +184,10 @@ stays, showing why, until cld kill ends it.`,
 		Long: `create session NAME-SUFFIX in the current directory and attach to it. NAME is
 by default the name of the git repository the directory is in, or else of the
 directory itself; SUFFIX is by default INDEX, 0 or, where sessions NAME-INDEX
-run, one above the highest of their INDEX. Where the directory's name leaves
-nothing, as in /, the session is SUFFIX alone. NAME and SUFFIX consist of
-letters, digits, "_" and "-", each starting with a letter or digit, and make
-64 characters at most.`,
+run or have ended within 30 days, one above the highest of their INDEX. Where
+the directory's name leaves nothing, as in /, the session is SUFFIX alone. NAME
+and SUFFIX consist of letters, digits, "_" and "-", each starting with a letter
+or digit, and make 64 characters at most.`,
 	}
 	newNaming := addNaming(newCommand, "the session's `SUFFIX`, after NAME-: by default the index\n"+
 		"above the highest of the sessions NAME-INDEX, or 0")
@@ -213,6 +213,10 @@ letters, digits, "_" and "-", each starting with a letter or digit, and make
 		if err != nil {
 			return err
 		}
+		// From the name to tmux, new holds the lock of cld's record, where it writes the session's
+		// entry (see session.Lock).
+		unlock := session.Lock()
+		defer unlock()
 		suffix, _, err := newNaming.resolve(tmux)
 		if err != nil {
 			return err
@@ -225,11 +229,14 @@ letters, digits, "_" and "-", each starting with a letter or digit, and make
 	resume := &cobra.Command{
 		Use:   "resume [-n NAME] [-s SUFFIX] [flags] [SESSION]",
 		Short: "create session NAME-SUFFIX with claude resuming its conversation",
-		Long: `create session NAME-SUFFIX in the current directory and attach to it, as new
-does, with claude resuming the conversation named cld-NAME-SUFFIX, or SESSION:
-whatever claude --resume takes, such as a session ID, a name, or a search term
-for claude's picker. SESSION comes after the options and does not start with
-"-". Without SESSION, -s is needed.`,
+		Long: `create session NAME-SUFFIX and attach to it, as new does, with claude resuming
+a conversation: without SESSION, the one the session had last, by the ID cld
+keeps of it, or else by the name cld-NAME-SUFFIX, in the directory the session
+ran in - or, where cld keeps no record of the session, by that name in the
+current directory; with SESSION, whatever claude --resume takes, such as a
+session ID, a name, or a search term for claude's picker, in the current
+directory. SESSION comes after the options and does not start with "-".
+Without SESSION, -s is needed.`,
 		Args:                  conversationArgument(typed),
 		DisableFlagsInUseLine: true,
 	}
@@ -247,20 +254,41 @@ for claude's picker. SESSION comes after the options and does not start with
 		if err != nil {
 			return err
 		}
+		// Without SESSION, -s names the session, whose entry in cld's record names the directory it
+		// ran in: resume starts claude there, and checks it there first. No tmux runs by then, but
+		// where that directory cannot be entered: the session is looked up, so that one that runs
+		// is refused as such (see EnterRecorded).
+		conversation, suffix := "", "" // the entry's conversation, or else the one named cld-NAME
+		if len(args) > 0 {
+			conversation = args[0]
+		} else {
+			if suffix, _, err = resumeNaming.resolve(tmux); err != nil {
+				return err
+			}
+			if err := tmux.EnterRecorded(suffix); err != nil {
+				return err
+			}
+		}
 		// resume starts claude as new does, so it checks claude's version where new does.
 		claude, err := session.CheckClaude()
 		if err != nil {
 			return err
 		}
-		suffix, _, err := resumeNaming.resolve(tmux)
-		if err != nil {
-			return err
-		}
-		conversation := "" // the conversation named cld-NAME
-		if len(args) > 0 {
-			conversation = args[0]
+		// From the name to tmux, resume holds the lock of cld's record, as new does.
+		unlock := session.Lock()
+		defer unlock()
+		if suffix == "" {
+			if suffix, _, err = resumeNaming.resolve(tmux); err != nil {
+				return err
+			}
 		}
 		return tmux.Resume(claude, suffix, conversation)
+	}
+	if err := resume.RegisterFlagCompletionFunc("name", sessionNames(true)); err != nil {
+		panic(err)
+	}
+	if err := resume.RegisterFlagCompletionFunc("suffix", sessionSuffixes(true)); err != nil {
+		panic(err)
 	}
 
 	// join attaches beside the terminals on the session, which --detach-others detaches.
@@ -288,10 +316,10 @@ another repository or directory of the same name is refused.`,
 		}
 		return tmux.Join(suffix, home, *detachOthers)
 	}
-	if err := join.RegisterFlagCompletionFunc("name", sessionNames); err != nil {
+	if err := join.RegisterFlagCompletionFunc("name", sessionNames(false)); err != nil {
 		panic(err)
 	}
-	if err := join.RegisterFlagCompletionFunc("suffix", sessionSuffixes); err != nil {
+	if err := join.RegisterFlagCompletionFunc("suffix", sessionSuffixes(false)); err != nil {
 		panic(err)
 	}
 
@@ -302,7 +330,9 @@ another repository or directory of the same name is refused.`,
 closes, and what claude started through tmux ends too, also where it keeps the
 server running after claude has exited. claude runs its SessionEnd hooks with
 the reason "other", and may still run them when cld kill returns. Without -n,
-a session made in another repository or directory of the same name is refused.`,
+a session made in another repository or directory of the same name is refused.
+After a kill, cld list shows the session as ended, and cld resume brings its
+conversation back.`,
 	}
 	killNaming := addNaming(kill, "the session's `SUFFIX`, after NAME-")
 	kill.RunE = func(*cobra.Command, []string) error {
@@ -322,17 +352,22 @@ a session made in another repository or directory of the same name is refused.`,
 
 	// list is interactive on a terminal it can draw on, other than a pane of one of cld's servers,
 	// where join would refuse the session picked; with no sessions there is nothing to pick.
-	// Leaving it prints the table, from the sessions it last read.
+	// Leaving it prints the table, from the sessions it last read. A session picked that has ended
+	// is resumed as resume without SESSION resumes it: its claude is checked once the list has
+	// handed the terminal over (see resumeEnded).
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "list the sessions cld started; on a terminal, join or kill one",
+		Short: "list cld's sessions; on a terminal, join, kill or resume one",
 		Long: `list the sessions cld started: name, whether a terminal is attached (or claude
-exited), and the directory claude is in.
+exited, or the session ended), and the directory claude is in or ran in. cld
+keeps a session that has ended - by cld kill, claude's /exit, a reboot - for 30
+days.
 
 On a terminal, pick one to join or kill: Up and Down select a session, Enter
 joins it as cld join does, C-x twice within two seconds kills it as cld kill
 does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
-list. cld list | cat prints the list only.`,
+list. On a session that has ended, Enter resumes it as cld resume does, and C-x
+twice forgets it. cld list | cat prints the list only.`,
 		RunE: func(*cobra.Command, []string) error {
 			tmux, err := session.Check()
 			if err != nil {
@@ -348,8 +383,11 @@ list. cld list | cat prints the list only.`,
 					if err != nil {
 						return err
 					}
-					if picked != "" {
-						return tmux.Attach(picked, false)
+					if picked.Name != "" && picked.State == session.Ended {
+						return resumeEnded(tmux, picked.Name)
+					}
+					if picked.Name != "" {
+						return tmux.Attach(picked.Name, false)
 					}
 					sessions = last
 				}
@@ -511,9 +549,10 @@ func completionCommand(root *cobra.Command) {
 	}
 	completion.Short = "print the completion script for a shell"
 	completion.Long = `print the completion script for a shell, one of the commands below. With it,
-cld join -n and -s complete the sessions cld list shows. cld setup completion
-SHELL writes it where bash, zsh or fish reads it; the help of each command
-below says where the script goes by hand, and what it needs.`
+cld join -n and -s complete the sessions cld list shows that run, and cld
+resume -n and -s those that have ended. cld setup completion SHELL writes it
+where bash, zsh or fish reads it; the help of each command below says where the
+script goes by hand, and what it needs.`
 	for _, shell := range completion.Commands() {
 		shell.Short = "print the completion script for " + shell.Name()
 		if shell.Name() == "bash" {
@@ -775,66 +814,78 @@ starts: sessions running then keep theirs. Needs Docker; Linux only.`,
 	return command
 }
 
-// sessionNames completes the NAME of join -n: for the sessions list shows, what comes before the
-// last "-" of their names, where that and what follows it are both NAMEs - the split cld's own
-// messages name a session by (see session.Options) - once each, in list's order, and each
-// described by the number of its sessions. With -s then, join takes each of those sessions.
-func sessionNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	var names []string
-	counts := map[string]int{}
-	for _, s := range listed() {
-		i := strings.LastIndexByte(s.Name, '-')
-		if i <= 0 || !session.ValidName(s.Name[:i]) || !session.ValidName(s.Name[i+1:]) || !strings.HasPrefix(s.Name[:i], typed) {
-			continue
+// sessionNames completes the NAME of -n, join's with ended false and resume's with ended true:
+// for the sessions list shows that run, or that have ended, what comes before the last "-" of
+// their names, where that and what follows it are both NAMEs - the split cld's own messages name
+// a session by (see session.Options) - once each, in list's order, and each described by the
+// number of its sessions. With -s then, join or resume takes each of those sessions.
+func sessionNames(ended bool) cobra.CompletionFunc {
+	return func(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		var names []string
+		counts := map[string]int{}
+		for _, s := range listed(ended) {
+			i := strings.LastIndexByte(s.Name, '-')
+			if i <= 0 || !session.ValidName(s.Name[:i]) || !session.ValidName(s.Name[i+1:]) || !strings.HasPrefix(s.Name[:i], typed) {
+				continue
+			}
+			if counts[s.Name[:i]]++; counts[s.Name[:i]] == 1 {
+				names = append(names, s.Name[:i])
+			}
 		}
-		if counts[s.Name[:i]]++; counts[s.Name[:i]] == 1 {
-			names = append(names, s.Name[:i])
+		completions := make([]cobra.Completion, 0, len(names))
+		for _, name := range names {
+			description := "1 session"
+			if counts[name] > 1 {
+				description = strconv.Itoa(counts[name]) + " sessions"
+			}
+			completions = append(completions, cobra.CompletionWithDesc(name, description))
 		}
+		return completions, cobra.ShellCompDirectiveNoFileComp
 	}
-	completions := make([]cobra.Completion, 0, len(names))
-	for _, name := range names {
-		description := "1 session"
-		if counts[name] > 1 {
-			description = strconv.Itoa(counts[name]) + " sessions"
-		}
-		completions = append(completions, cobra.CompletionWithDesc(name, description))
-	}
-	return completions, cobra.ShellCompDirectiveNoFileComp
 }
 
-// sessionSuffixes completes the SUFFIX of join -s: for the sessions list shows whose names are
-// NAME-SUFFIX with the NAME join takes - -n's, or else the repository's or directory's (see
-// defaultName) - their SUFFIX, where it starts with what was typed and join takes it, in list's
-// order, each described by its state. Without -n, join takes none made in another repository or
-// directory of the same name (see session.Home.Takes), so none is offered. Where NAME is "", every
-// name is a SUFFIX.
-func sessionSuffixes(c *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	var name string
-	var home session.Home
-	if c.Flags().Changed("name") {
-		name, _ = c.Flags().GetString("name")
-	} else {
-		name, home = defaultName()
-	}
-	if name != "" {
-		name += "-"
-	}
-	var suffixes []cobra.Completion
-	for _, s := range listed() {
-		if !home.Takes(s.Home) {
-			continue
+// sessionSuffixes completes the SUFFIX of -s, join's with ended false and resume's with ended
+// true: for the sessions list shows that run, or that have ended, whose names are NAME-SUFFIX
+// with the NAME the command takes - -n's, or else the repository's or directory's (see
+// defaultName) - their SUFFIX, where it starts with what was typed and the command takes it, in
+// list's order, each described by its state or, for a session that has ended, the directory it
+// ran in. Without -n, join takes none made in another repository or directory of the same name
+// (see session.Home.Takes), so none is offered; a session that has ended has no home (see
+// session.Session), and each is offered. Where NAME is "", every name is a SUFFIX.
+func sessionSuffixes(ended bool) cobra.CompletionFunc {
+	return func(c *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		var name string
+		var home session.Home
+		if c.Flags().Changed("name") {
+			name, _ = c.Flags().GetString("name")
+		} else {
+			name, home = defaultName()
 		}
-		if suffix, found := strings.CutPrefix(s.Name, name); found && strings.HasPrefix(suffix, typed) && session.ValidName(suffix) {
-			suffixes = append(suffixes, cobra.CompletionWithDesc(suffix, s.State))
+		if name != "" {
+			name += "-"
 		}
+		var suffixes []cobra.Completion
+		for _, s := range listed(ended) {
+			if !home.Takes(s.Home) {
+				continue
+			}
+			if suffix, found := strings.CutPrefix(s.Name, name); found && strings.HasPrefix(suffix, typed) && session.ValidName(suffix) {
+				description := s.State
+				if ended {
+					description = s.Directory
+				}
+				suffixes = append(suffixes, cobra.CompletionWithDesc(suffix, description))
+			}
+		}
+		return suffixes, cobra.ShellCompDirectiveNoFileComp
 	}
-	return suffixes, cobra.ShellCompDirectiveNoFileComp
 }
 
-// listed is the sessions list shows, for completion. It never fails: with no server there is
-// nothing to offer, and with no tmux, one that fails, or a socket directory it cannot read
-// neither, and cobra.CompErrorln says why on stderr, which the completion scripts discard.
-func listed() []session.Session {
+// listed is the sessions list shows that run, or with ended those that have ended, for
+// completion. It never fails: with no server and no record there is nothing to offer, and with
+// no tmux, one that fails, or a socket directory it cannot read neither, and cobra.CompErrorln
+// says why on stderr, which the completion scripts discard.
+func listed(ended bool) []session.Session {
 	var sessions []session.Session
 	tmux, err := session.Find()
 	if err == nil {
@@ -843,7 +894,7 @@ func listed() []session.Session {
 	if err != nil {
 		cobra.CompErrorln(err.Error())
 	}
-	return sessions
+	return slices.DeleteFunc(sessions, func(s session.Session) bool { return (s.State == session.Ended) != ended })
 }
 
 // serverNames completes the SERVER of setup project --mcp: the servers it takes that start with
@@ -1004,9 +1055,9 @@ func sessionName(name string) (string, error) {
 }
 
 // listSource is what the interactive list reads and acts through: the sessions to list, join's
-// checks, which Enter makes while the list is open - the name, then the lookup - and kill's steps,
-// which the second Ctrl+X takes. The list names a session whole, as -n does, and takes it from
-// anywhere.
+// checks, or resume's for a session that has ended, which Enter makes while the list is open -
+// the name, then the lookup - and kill's steps, or the forget, which the second Ctrl+X takes. The
+// list names a session whole, as -n does, and takes it from anywhere.
 type listSource struct{ tmux *session.Tmux }
 
 func (l listSource) Sessions(ctx context.Context) ([]session.Session, error) {
@@ -1018,6 +1069,36 @@ func (l listSource) Joinable(ctx context.Context, name string) error {
 		return err
 	}
 	return l.tmux.Joinable(ctx, name, session.Home{})
+}
+
+func (l listSource) Resumable(ctx context.Context, name string) error {
+	if _, err := sessionName(name); err != nil {
+		return err
+	}
+	return l.tmux.Resumable(ctx, name)
+}
+
+func (l listSource) Forget(ctx context.Context, name string) error {
+	if _, err := sessionName(name); err != nil {
+		return err
+	}
+	return l.tmux.Forget(ctx, name)
+}
+
+// resumeEnded is the rest of resume without SESSION, for the session the interactive list picked
+// that has ended, once the list has handed the terminal over: the entry's directory, claude's
+// check there, then the session, under the record's lock.
+func resumeEnded(tmux *session.Tmux, name string) error {
+	if err := tmux.EnterRecorded(name); err != nil {
+		return err
+	}
+	claude, err := session.CheckClaude()
+	if err != nil {
+		return err
+	}
+	unlock := session.Lock()
+	defer unlock()
+	return tmux.Resume(claude, name, "")
 }
 
 // Kill is kill's steps - the name, then End - with End's check that the session is still the one

@@ -30,37 +30,64 @@ import (
 // How cld uses its tmux server, independent of the outer terminal: cld runs in the baseline
 // terminal (a pane of an outer tmux server).
 
-// remoteControl is the --settings the claude of session name gets in s from a cld that finds the
-// sandbox's tmux and git (see settings).
-func remoteControl(s *sandbox.Sandbox, name string) string {
-	return settings(s, sandbox.RealTmux, sandbox.RealGit, name, false)
+// remoteControl is the --settings the claude of session name, started in dir, gets in s from a cld
+// that finds the sandbox's tmux and git (see settings).
+func remoteControl(s *sandbox.Sandbox, name, dir string) string {
+	return settings(s, sandbox.RealTmux, sandbox.RealGit, name, dir, false)
 }
 
-// settings is the --settings the claude of session name, cld-NAME, gets in s from a cld that found
-// tmux and git at those paths: Remote Control on from the start and, with fromHead, new -w's
-// worktree branched from HEAD, then the hooks that keep claude's status and whether it is in a
-// linked worktree on its session, for the tab's title (see TestStatusHooks, TestWorktreeHooks and
-// TestHooksOutsideThePane). Each runs that tmux on the session's server, by the socket in the
-// sandbox's directory, and names the session; that of CwdChanged in the background, and the
-// others with a timeout of 5 s.
-func settings(s *sandbox.Sandbox, tmux, git, name string, fromHead bool) string {
+// settings is the --settings the claude of session name, cld-NAME, started in dir, gets in s from
+// a cld that found tmux and git at those paths: Remote Control on from the start and, with
+// fromHead, new -w's worktree branched from HEAD, then the hooks that keep claude's status and
+// whether it is in a linked worktree on its session, for the tab's title (see TestStatusHooks,
+// TestWorktreeHooks and TestHooksOutsideThePane), and the session's entry in cld's record (see
+// TestRecordHooks). Each of the first runs that tmux on the session's server, by the socket in
+// the sandbox's directory, and names the session; the others write or touch the entry, in the
+// sandbox's home directory, with the session's name and dir. That of CwdChanged runs in the
+// background, the record's SessionEnd one within claude's own bound, and the others with a
+// timeout of 5 s.
+func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) string {
 	socket := filepath.Join(s.SocketDir(), name)
 	set := func(option, value string) string {
 		return `'` + tmux + `' -S '` + socket + `' if -F -t '=` + name + `:' \"#{!=:#{` + option + `},` + value + `}\" \"set -t =` + name + `: ` + option + ` ` + value + `\"`
 	}
 	status := func(value string) string { return set("@cld-status", value) }
-	dir := func(which string) string {
+	gitDir := func(which string) string {
 		return `\"$('` + git + `' rev-parse --path-format=absolute ` + which + ` 2>/dev/null)\"`
 	}
-	worktree := `w=0; [ ` + dir("--git-dir") + ` = ` + dir("--git-common-dir") + ` ] || w=1; ` + set("@cld-worktree", "$w")
-	hook := func(event, matcher, command, how string) string {
+	worktree := `w=0; [ ` + gitDir("--git-dir") + ` = ` + gitDir("--git-common-dir") + ` ] || w=1; ` + set("@cld-worktree", "$w")
+	// group is a group of an event's hooks: command, where the event matches matcher, run as how
+	// says - with claude's default timeout where how is "" - and hook the event's groups.
+	group := func(matcher, command, how string) string {
 		if matcher != "" {
 			matcher = `"matcher":"` + matcher + `",`
 		}
-		return `"` + event + `":[{` + matcher + `"hooks":[{"type":"command","command":"` + command + `",` + how + `}]}]`
+		if how != "" {
+			how = `,` + how
+		}
+		return `{` + matcher + `"hooks":[{"type":"command","command":"` + command + `"` + how + `}]}`
 	}
-	on := func(event, matcher, command string) string { return hook(event, matcher, command, `"timeout":5`) }
-	background := func(event, command string) string { return hook(event, "", command, `"async":true`) }
+	hook := func(event string, groups ...string) string {
+		return `"` + event + `":[` + strings.Join(groups, ",") + `]`
+	}
+	// on runs each of commands, in a group of its own, and claude waits for it 5 s at most;
+	// background runs command, and claude goes on.
+	on := func(event, matcher string, commands ...string) string {
+		var groups []string
+		for _, command := range commands {
+			groups = append(groups, group(matcher, command, `"timeout":5`))
+		}
+		return hook(event, groups...)
+	}
+	background := func(event, command string) string { return hook(event, group("", command, `"async":true`)) }
+	file := entryFile(s, strings.TrimPrefix(name, "cld-"))
+	head := `{"name":` + jsonText(strings.TrimPrefix(name, "cld-")) + `,"directory":` + jsonText(dir) + `,"conversation":"`
+	temp := `'` + file + `'.$$`
+	// The hooks' commands, as the settings' JSON has them.
+	escaped := func(command string) string { text := jsonText(command); return text[1 : len(text)-1] }
+	record := escaped(`id=$(sed -n 's/.*"session_id" *: *"\([0-9A-Za-z-]*\)".*/\1/p' | head -n 1); ` +
+		`if [ -n "$id" ]; then printf '%s%s"}\n' '` + head + `' "$id" >` + temp + ` && mv -f ` + temp + ` '` + file + `'; fi`)
+	touch := escaped(`touch -c '` + file + `'`)
 	base := ""
 	if fromHead {
 		base = `"worktree":{"baseRef":"head"},`
@@ -73,11 +100,57 @@ func settings(s *sandbox.Sandbox, tmux, git, name string, fromHead bool) string 
 		on("PermissionRequest", "", status("waiting")),
 		on("PostToolUse", "", status("busy")),
 		on("PostToolUseFailure", "", `if grep -Eq '\"is_interrupt\": *true'; then `+status("idle")+`; else `+status("busy")+`; fi`),
-		on("SessionStart", "", worktree),
-		on("Stop", "", status("idle")),
+		hook("SessionEnd", group("", touch, "")),
+		on("SessionStart", "", worktree, record),
+		on("Stop", "", status("idle"), touch),
 		on("StopFailure", "", status("idle")),
 		on("UserPromptSubmit", "", status("busy")),
 	}, ",") + `}}`
+}
+
+// jsonText is text as a JSON string, quotes included, without HTML's escapes, as cld writes the
+// settings and the entries of its record.
+func jsonText(text string) string {
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(text); err != nil {
+		panic(err)
+	}
+	return strings.TrimSuffix(encoded.String(), "\n")
+}
+
+// entryFile is the file of session name's entry in cld's record, in s's home directory.
+func entryFile(s *sandbox.Sandbox, name string) string {
+	return filepath.Join(s.Home, ".local", "state", "cld", "sessions", name+".json")
+}
+
+// forget removes the entries of the sessions names from cld's record in s, as the list's forget
+// does: once their sessions end, they are gone rather than ended.
+func forget(t *testing.T, s *sandbox.Sandbox, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		if err := os.Remove(entryFile(s, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// entry is session name's entry as cld writes it, and its SessionStart hook: the session started
+// in dir, with the conversation of that ID, "" for none yet.
+func entry(name, dir, conversation string) string {
+	return `{"name":` + jsonText(name) + `,"directory":` + jsonText(dir) + `,"conversation":"` + conversation + "\"}\n"
+}
+
+// writeEntry writes session name's entry in cld's record in s, as new would have written it for a
+// session in dir, with the conversation of that ID, "" for none yet.
+func writeEntry(t *testing.T, s *sandbox.Sandbox, name, dir, conversation string) {
+	t.Helper()
+	file := entryFile(s, name)
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s.WriteFile(file, entry(name, dir, conversation))
 }
 
 // Session NAME-SUFFIX is the tmux session cld-NAME-SUFFIX, and claude's --name: NAME is -n's, or
@@ -116,7 +189,7 @@ func TestSessionNames(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{test.session}) {
 				t.Errorf("sessions %q, want [%s]", sessions, test.session)
 			}
-			if want := []string{"--name", test.session, "--settings", remoteControl(s, test.session)}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", test.session, "--settings", remoteControl(s, test.session, dir)}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != dir {
@@ -157,7 +230,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 			s.WriteProgram(filepath.Join(dir, "claude"), test.script, 0o755)
 			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "new")
 			probe := s.WaitProbes(1)[0]
-			if want := []string{"--name", "cld-0", "--settings", remoteControl(s, "cld-0")}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", "cld-0", "--settings", remoteControl(s, "cld-0", s.Work)}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if args, err := os.ReadFile(filepath.Join(s.ProbeDir, "relative claude ran")); err == nil {
@@ -193,7 +266,7 @@ func TestNewWorktree(t *testing.T) {
 			}
 			startCldIn(t, s, "tmux", sub, nil, test.args...)
 			probe := s.WaitProbes(1)[0]
-			fromHead := settings(s, sandbox.RealTmux, sandbox.RealGit, test.session, true)
+			fromHead := settings(s, sandbox.RealTmux, sandbox.RealGit, test.session, sub, true)
 			if want := []string{"--name", test.session, "--settings", fromHead, "--worktree", test.session}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
@@ -237,7 +310,7 @@ func TestResume(t *testing.T) {
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-" + test.name}) {
 				t.Errorf("sessions %q, want [cld-%s]", sessions, test.name)
 			}
-			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl(s, "cld-"+test.name), "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
+			if want := []string{"--name", "cld-" + test.name, "--settings", remoteControl(s, "cld-"+test.name, s.Work), "--resume", test.resume}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
 			if probe.Cwd != s.Work {
@@ -272,11 +345,11 @@ func TestDirectoryTmuxWouldChange(t *testing.T) {
 			t.Run(strings.Join(args, " ")+" in "+name, func(t *testing.T) {
 				t.Parallel()
 				s := sandbox.New(t)
-				argv := append([]string{"--name", "cld-a-x", "--settings", remoteControl(s, "cld-a-x")}, after...)
 				dir := filepath.Join(s.Work, name)
 				if err := os.Mkdir(dir, 0o755); err != nil {
 					t.Fatal(err)
 				}
+				argv := append([]string{"--name", "cld-a-x", "--settings", remoteControl(s, "cld-a-x", dir)}, after...)
 				startCldIn(t, s, "tmux", dir, nil, args...)
 				probe := s.WaitProbes(1)[0]
 				if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a-x"}) {
@@ -586,8 +659,9 @@ func TestJoinRequiresSession(t *testing.T) {
 
 // list shows cld's sessions: the name, whether a terminal is attached, and the directory claude
 // is in now, also under a locale that is not UTF-8. It asks each server for the session named
-// like it, and shows no other: none that claude made on its server, none renamed by hand. Without
-// a server, or with none of cld's sessions on the servers, there is nothing to show, and it shows
+// like it, and shows no other: none that claude made on its server, none renamed by hand - which
+// it shows as the session that has ended (see record_test.go). Without a server, or with none of
+// cld's sessions on the servers, and no record of any, there is nothing to show, and it shows
 // nothing, not even the header.
 func TestList(t *testing.T) {
 	t.Parallel()
@@ -641,9 +715,10 @@ func TestList(t *testing.T) {
 		t.Errorf("LANG=C: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
 	// A session renamed by hand is no longer the one its server is named after, nor on the server
-	// its new name would have.
+	// its new name would have: it has ended, as cld's record has it, in the directory it started
+	// in.
 	s.MustTmux("cld-long_name-1", "rename-session", "-t", "=cld-long_name-1", "cld-renamed")
-	want = "NAME  STATE     DIRECTORY\n" + "b     attached  " + moved + "\n"
+	want = "NAME         STATE     DIRECTORY\n" + "b            attached  " + moved + "\n" + "long_name-1  ended     " + elsewhere + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("renamed: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
@@ -902,7 +977,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 		t.Errorf("new -n inside started claude with %q", probe.Argv)
 	}
 	startCld(t, s, "tmux", nil, "resume", "-s", "a-x")
-	resumed := []string{"--name", "cld-a-x", "--settings", remoteControl(s, "cld-a-x"), "--resume", "cld-a-x"}
+	resumed := []string{"--name", "cld-a-x", "--settings", remoteControl(s, "cld-a-x", s.Work), "--resume", "cld-a-x"}
 	if probes := s.WaitProbes(3); !slices.ContainsFunc(probes, func(p *sandbox.Probe) bool { return slices.Equal(p.Argv, resumed) }) {
 		t.Errorf("resume -n a-x started no claude with %q", resumed)
 	}
@@ -920,13 +995,14 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 }
 
 // A server outlives its session when claude exits while the tmux sessions it made keep the
-// server running. list shows nothing for it, and new, resume and join refuse the name, pointing
-// at kill: new and resume would start claude there with the environment of the cld that started
-// the server, and join finds no session to attach to. kill ends the server, and what claude made
-// with it, as it prints nothing, and new then starts a fresh one. A server that runs without any
-// session - one a cld new is starting, or one exiting - kill leaves as it is, and refuses the name;
-// so it does a server where session cld-NAME has been made since its lookup, and where it has
-// been made since kill read the server, the kill's own tmux command ends nothing.
+// server running. list shows the session as one that has ended, from cld's record, and new,
+// resume and join refuse the name, pointing at kill: new and resume would start claude there with
+// the environment of the cld that started the server, and join finds no session to attach to.
+// kill ends the server, and what claude made with it, as it prints nothing, and new then starts a
+// fresh one. A server that runs without any session - one a cld new is starting, or one exiting -
+// kill leaves as it is, and refuses the name; so it does a server where session cld-NAME has been
+// made since its lookup, and where it has been made since kill read the server, the kill's own
+// tmux command ends nothing.
 func TestLingeringServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -946,20 +1022,20 @@ func TestLingeringServer(t *testing.T) {
 
 	const refused = "cld: session 'a' has ended, but its tmux server still runs (see tmux -L cld-a ls); end it with cld kill -s a\n"
 	for _, test := range []struct {
-		args []string
-		code int
-		want string
+		args         []string
+		code         int
+		stdout, want string
 	}{
-		{[]string{"list"}, 0, ""},
-		{[]string{"join", "-s", "a"}, 1, refused},
-		{[]string{"new", "-s", "a"}, 1, refused},
-		{[]string{"resume", "-s", "a"}, 1, refused},
-		{[]string{"resume", "-s", "a", "SESSION"}, 1, refused},
-		{[]string{"kill", "-s", "a"}, 0, ""},
+		{[]string{"list"}, 0, "NAME  STATE     DIRECTORY\na     ended     " + s.Work + "\n", ""},
+		{[]string{"join", "-s", "a"}, 1, "", refused},
+		{[]string{"new", "-s", "a"}, 1, "", refused},
+		{[]string{"resume", "-s", "a"}, 1, "", refused},
+		{[]string{"resume", "-s", "a", "SESSION"}, 1, "", refused},
+		{[]string{"kill", "-s", "a"}, 0, "", ""},
 	} {
-		if result := s.RunCld(nil, test.args...); result.Code != test.code || result.Stdout != "" || result.Stderr != test.want {
-			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit %d, stderr %q",
-				strings.Join(test.args, " "), result.Code, result.Stdout, result.Stderr, test.code, test.want)
+		if result := s.RunCld(nil, test.args...); result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.want {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit %d, stdout %q, stderr %q",
+				strings.Join(test.args, " "), result.Code, result.Stdout, result.Stderr, test.code, test.stdout, test.want)
 		}
 	}
 	if sessions := s.Sessions(); len(sessions) != 0 || len(s.Probes()) != 1 {
@@ -1065,8 +1141,9 @@ func TestNamesDifferingInCase(t *testing.T) {
 }
 
 // A server that dies - SIGKILL - leaves its socket behind, as tmux leaves every socket: list
-// passes over it and lists the other sessions, join and kill find no session, and new starts a
-// fresh server on it.
+// passes over it, showing its session as one that has ended, from cld's record, beside the other
+// sessions; join and kill find no session, and point at resume; and new starts a fresh server on
+// it.
 func TestStaleSocket(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1087,13 +1164,13 @@ func TestStaleSocket(t *testing.T) {
 		t.Fatalf("the dead server's socket: %v", err)
 	}
 
-	want := "NAME  STATE     DIRECTORY\n" + "b     attached  " + s.Work + "\n"
+	want := "NAME  STATE     DIRECTORY\n" + "a     ended     " + s.Work + "\n" + "b     attached  " + s.Work + "\n"
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
 	for _, test := range []struct{ command, want string }{
-		{"join", "cld: no session 'a'; create it with cld new -s a\n"},
-		{"kill", "cld: no session 'a' (see cld list)\n"},
+		{"join", "cld: session 'a' has ended; resume it with cld resume -s a\n"},
+		{"kill", "cld: session 'a' has ended; resume it with cld resume -s a\n"},
 	} {
 		if result := s.RunCld(nil, test.command, "-s", "a"); result.Code != 1 || result.Stderr != test.want {
 			t.Errorf("%s -n a: exit %d, stderr %q, want exit 1, stderr %q", test.command, result.Code, result.Stderr, test.want)
@@ -1317,9 +1394,11 @@ func TestLeavesAForeignServerAlone(t *testing.T) {
 // one that claude makes, on its own session's server under another name, one made there by hand,
 // one on a server named like cld's that cld did not start, and one on the server that cld 0.3.0
 // and earlier shared - a session renamed by hand, whose server then runs without it, and a stale
-// socket, whose server has died. join -n offers what comes before a "-" of a name, and none has
-// one here (see TestCompleteSuffixes). new -n, resume -n, their -s and resume's SESSION offer
-// nothing, and neither do the other arguments, file names included.
+// socket, whose server has died: those two list shows as sessions that have ended, from cld's
+// record, which resume -s offers, with the directories they ran in, and join -s does not. join -n
+// and resume -n offer what comes before a "-" of a name, and none has one here (see
+// TestCompleteSuffixes). new -n, its -s and resume's SESSION offer nothing, and neither do the
+// other arguments, file names included.
 func TestCompleteNames(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1376,7 +1455,7 @@ func TestCompleteNames(t *testing.T) {
 	}
 	probes := len(s.Probes())
 
-	listed := []string{"bad", "rev", "review"}
+	listed := []string{"bad", "cafe", "gone", "rev", "review"}
 	names := []string{"bad\texited", "rev\tattached", "review\tdetached"}
 	result := s.RunCld(nil, "list")
 	var shown []string
@@ -1424,7 +1503,11 @@ func TestCompleteNames(t *testing.T) {
 		{[]string{"__complete", "join", "-n", ""}, nil, offered()},
 		{[]string{"__complete", "new", "-n", ""}, nil, offered()},
 		{[]string{"__complete", "new", "-s", ""}, nil, offered()},
-		{[]string{"__complete", "resume", "-s", ""}, nil, offered()},
+		{[]string{"__complete", "resume", "-s", ""}, nil, offered("cafe\t"+s.Work, "gone\t"+s.Work)},
+		{[]string{"__complete", "resume", "-s", "g"}, nil, offered("gone\t" + s.Work)},
+		{[]string{"__complete", "resume", "-s", "re"}, nil, offered()},
+		{[]string{"__completeNoDesc", "resume", "-s", ""}, nil, offered("cafe", "gone")},
+		{[]string{"__complete", "resume", "-n", ""}, nil, offered()},
 		{[]string{"__complete", "resume", ""}, nil, offered()},
 		{[]string{"__complete", "resume", "-s", "rev", ""}, nil, offered()},
 		{[]string{"__complete", "kill", "-s", ""}, nil, offered()},
@@ -1444,12 +1527,14 @@ func TestCompleteNames(t *testing.T) {
 	}
 }
 
-// join -n offers the NAME of NAME-SUFFIX for the sessions cld list shows: what comes before the
-// last "-" of their names, where that and what follows are both NAMEs, once each, described by
-// the number of its sessions. join -s offers the SUFFIX of the sessions named after NAME - -n's,
-// or else the git repository's, work here, from a subdirectory too - where join takes it, and not
-// the sessions of another NAME, or of none. Outside a repository NAME is the directory's name -
-// in the root directory, whose name leaves nothing, every name is a SUFFIX.
+// join -n offers the NAME of NAME-SUFFIX for the sessions cld list shows that run: what comes
+// before the last "-" of their names, where that and what follows are both NAMEs, once each,
+// described by the number of its sessions. join -s offers the SUFFIX of the sessions named after
+// NAME - -n's, or else the git repository's, work here, from a subdirectory too - where join takes
+// it, and not the sessions of another NAME, or of none. Outside a repository NAME is the
+// directory's name - in the root directory, whose name leaves nothing, every name is a SUFFIX.
+// resume -n and -s offer the same of the sessions that have ended, entries of cld's record without
+// their sessions, each SUFFIX described by the directory its session ran in.
 func TestCompleteSuffixes(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1464,6 +1549,9 @@ func TestCompleteSuffixes(t *testing.T) {
 	// Each on a server marked as cld marks its own (see TestLeavesAForeignServerAlone).
 	for _, name := range []string{"cld-work-0", "cld-work-fix", "cld-work--x", "cld-work", "cld-other-1", "cld-3", "cld-a-b-c"} {
 		s.MustTmux(name, "-f", "/dev/null", "set", "-s", "@cld", "1", ";", "new-session", "-d", "-s", name, "sleep", "600")
+	}
+	for _, name := range []string{"work-0", "work-7", "other-2", "4"} {
+		writeEntry(t, s, name, other, "")
 	}
 	for _, test := range []struct {
 		dir  string
@@ -1487,6 +1575,21 @@ func TestCompleteSuffixes(t *testing.T) {
 		args := append([]string{"__complete", "join"}, test.args...)
 		if result := s.RunCldIn(test.dir, nil, args...); result.Code != 0 || result.Stdout != test.want {
 			t.Errorf("join %q in %s: exit %d, stdout\n%s\nwant\n%s", test.args, test.dir, result.Code, result.Stdout, test.want)
+		}
+	}
+	for _, test := range []struct {
+		dir  string
+		args []string
+		want string
+	}{
+		{work, []string{"-s", ""}, "7\t" + other + "\n:4\n"},
+		{work, []string{"-n", "other", "-s", ""}, "2\t" + other + "\n:4\n"},
+		{"/", []string{"-s", ""}, "4\t" + other + "\nother-2\t" + other + "\nwork-7\t" + other + "\n:4\n"},
+		{work, []string{"-n", ""}, "other\t1 session\nwork\t1 session\n:4\n"},
+	} {
+		args := append([]string{"__complete", "resume"}, test.args...)
+		if result := s.RunCldIn(test.dir, nil, args...); result.Code != 0 || result.Stdout != test.want {
+			t.Errorf("resume %q in %s: exit %d, stdout\n%s\nwant\n%s", test.args, test.dir, result.Code, result.Stdout, test.want)
 		}
 	}
 }
@@ -1880,7 +1983,8 @@ func TestWorktreeHooks(t *testing.T) {
 	}
 }
 
-// Where cld finds no git, claude gets no hooks that run it, and the title never says [w].
+// Where cld finds no git, claude gets no hooks that run it, and the title never says [w]; the
+// hooks that keep the session's entry in cld's record run no git.
 func TestWorktreeHooksWithoutGit(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1901,8 +2005,11 @@ func TestWorktreeHooksWithoutGit(t *testing.T) {
 	}
 	events := slices.Sorted(maps.Keys(given.Hooks))
 	if want := []string{"Elicitation", "ElicitationResult", "Notification", "PermissionRequest", "PostToolUse",
-		"PostToolUseFailure", "Stop", "StopFailure", "UserPromptSubmit"}; !slices.Equal(events, want) {
+		"PostToolUseFailure", "SessionEnd", "SessionStart", "Stop", "StopFailure", "UserPromptSubmit"}; !slices.Equal(events, want) {
 		t.Errorf("hooks for %q, want %q", events, want)
+	}
+	if start, _ := json.Marshal(given.Hooks["SessionStart"]); strings.Contains(string(start), "rev-parse") {
+		t.Errorf("SessionStart hooks run git: %s", start)
 	}
 }
 
@@ -1958,7 +2065,7 @@ func TestHooksUnderRelativeTmuxTmpdir(t *testing.T) {
 		t.Fatalf("no --settings in tmux's arguments %q", argv)
 	}
 	// The work directory's parent is the sandbox's TMUX_TMPDIR.
-	if want := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", false); argv[i+1] != want {
+	if want := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", s.Work, false); argv[i+1] != want {
 		t.Errorf("settings\n%s\nwant\n%s", argv[i+1], want)
 	}
 }
@@ -2021,11 +2128,11 @@ func TestServerOptions(t *testing.T) {
 	if hooks := strings.Split(s.MustTmux("cld-0", "show-hooks", "-p", "-t", "=cld-0:", "pane-died"), "\n"); len(hooks) != 1 || !strings.Contains(hooks[0], "window_active_clients") {
 		t.Errorf("pane-died hooks of claude's pane, want one:\n%s", strings.Join(hooks, "\n"))
 	}
-	// Two cld new at once can both take NAME 0 and set the options on one server: the lookup of
-	// each finds no server, and the tmux command of the second reaches the server the first one
-	// started, setting them again before its new-session fails. The terminal features go to
-	// fixed indexes, so each entry is there once however often it is set. The fake tmux says no
-	// server is running, and runs the real one for the rest.
+	// Two cld new -s 0 at once can both set the options on one server: the lookup of each finds no
+	// server, and the tmux command of the second reaches the server the first one started, setting
+	// them again before its new-session fails. The terminal features go to fixed indexes, so each
+	// entry is there once however often it is set. The fake tmux says no server is running, and
+	// runs the real one for the rest. Without -s, the second would take NAME 1, from cld's record.
 	realTmux, err := exec.LookPath("tmux")
 	if err != nil {
 		t.Fatal(err)
@@ -2033,7 +2140,7 @@ func TestServerOptions(t *testing.T) {
 	second := s.RunCldOnTerminal(map[string]string{
 		"PATH":               filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_REAL": realTmux,
-	}, "new")
+	}, "new", "-s", "0")
 	if want := "duplicate session: cld-0\n"; second.Code != 1 || second.Stderr != want {
 		t.Errorf("a second cld new: exit %d, stderr %q, want exit 1, stderr %q", second.Code, second.Stderr, want)
 	}
@@ -2296,11 +2403,13 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 }
 
 // The footer of the interactive list, and once Ctrl+X has armed the kill, on a detached row and on
-// an attached one.
+// an attached one; and on a row that has ended, where Ctrl+X arms the forget.
 const (
 	listHints         = "↑/↓ to navigate · enter to join · ctrl+x to kill · esc to quit"
 	killArmed         = "ctrl+x again to kill · esc to keep"
 	killArmedAttached = "ctrl+x again to kill and detach its terminal · esc to keep"
+	endedHints        = "↑/↓ to navigate · enter to resume · ctrl+x to forget · esc to quit"
+	forgetArmed       = "ctrl+x again to forget · esc to keep"
 )
 
 // On a terminal, cld list shows cld's sessions on the alternate screen, the first one selected:
@@ -2875,9 +2984,10 @@ func TestListJoin(t *testing.T) {
 		}
 	})
 
-	// A session gone when Enter is pressed stays unjoined: the footer says so, and the list,
-	// still in raw mode, reads the sessions again and selects the row that took its place.
-	t.Run("gone", func(t *testing.T) {
+	// A session ended when Enter is pressed - killed elsewhere - stays unjoined: the footer says
+	// so, and the list, still in raw mode, reads the sessions again and keeps the row selected, now
+	// as a session that has ended.
+	t.Run("ended", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a", "b", "c")
@@ -2891,9 +3001,10 @@ func TestListJoin(t *testing.T) {
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			"  a     detached  "+s.Work,
-			"> c     detached  "+s.Work,
+			"> b     ended     "+s.Work,
+			"  c     detached  "+s.Work,
 			"",
-			"no session 'b'")
+			"session 'b' has ended")
 		if clients := s.Clients(); len(clients) != 0 {
 			t.Errorf("clients attached to %q, want none", clients)
 		}
@@ -2902,9 +3013,36 @@ func TestListJoin(t *testing.T) {
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			"> a     detached  "+s.Work,
+			"  b     ended     "+s.Work,
 			"  c     detached  "+s.Work,
 			"",
 			listHints)
+		if list.exited() {
+			t.Error("the list closed")
+		}
+	})
+
+	// A session gone when Enter is pressed - killed elsewhere, and forgotten - stays unjoined too,
+	// and the list selects the row that took its place.
+	t.Run("gone", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		detachedSessions(t, s, "a", "b", "c")
+		term := terminal.New(t, "tmux", s)
+		list := startList(t, s, term, listScript, nil)
+		waitScreen(t, term, listHints)
+		if result := s.RunCld(nil, "kill", "-s", "b"); result.Code != 0 {
+			t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
+		}
+		forget(t, s, "b")
+		term.Keys("Down", "Enter")
+		waitLines(t, term,
+			"  NAME  STATE     DIRECTORY",
+			"  a     detached  "+s.Work,
+			"> c     detached  "+s.Work,
+			"",
+			"no session 'b'")
+		list.checkRaw(t)
 		if list.exited() {
 			t.Error("the list closed")
 		}
@@ -2922,6 +3060,7 @@ func TestListJoin(t *testing.T) {
 			if result := s.RunCld(nil, "kill", "-s", name); result.Code != 0 {
 				t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 			}
+			forget(t, s, name)
 		}
 		term.Keys("Down", "Enter")
 		waitLines(t, term,
@@ -2943,6 +3082,7 @@ func TestListJoin(t *testing.T) {
 		if result := s.RunCld(nil, "kill", "-s", "c"); result.Code != 0 {
 			t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 		}
+		forget(t, s, "c")
 		detachedSessions(t, s, "z")
 		term.Keys("Down", "Down", "Enter")
 		waitLines(t, term,
@@ -2955,7 +3095,7 @@ func TestListJoin(t *testing.T) {
 	})
 
 	// A session whose server runs on without it - claude exited, and a tmux session it made keeps
-	// the server running - stays unjoined too, as cld join refuses it, and leaves the list.
+	// the server running - stays unjoined too, as cld join refuses it, and shows as ended.
 	t.Run("lingering server", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -2974,7 +3114,8 @@ func TestListJoin(t *testing.T) {
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			"  a     detached  "+s.Work,
-			"> c     detached  "+s.Work,
+			"> b     ended     "+s.Work,
+			"  c     detached  "+s.Work,
 			"",
 			"session 'b' has ended, but its tmux server still runs")
 		if clients := s.Clients(); len(clients) != 0 {
@@ -3005,7 +3146,7 @@ func TestListJoin(t *testing.T) {
 			"> b     detached  "+s.Work,
 			"  c     detached  "+s.Work,
 			"",
-			"no session 'b' · lost the server")
+			"session 'b' has ended · lost the server")
 	})
 
 	// With its last row gone, the list shows that there are no sessions, under its header, and
@@ -3020,6 +3161,7 @@ func TestListJoin(t *testing.T) {
 		if result := s.RunCld(nil, "kill", "-s", "a"); result.Code != 0 {
 			t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 		}
+		forget(t, s, "a")
 		// cld kill ends the server, which takes a moment to exit: waiting for it keeps Enter's lookup
 		// from reaching it as it goes (see Findings in docs/design.md).
 		sandbox.WaitFor(t, 10*time.Second, "a's server to exit", func() bool {
@@ -3295,7 +3437,8 @@ func TestListJoin(t *testing.T) {
 func TestListKill(t *testing.T) {
 	t.Parallel()
 	// A terminal attached to the session is detached and left clean, as by cld kill, and the
-	// armed kill's footer says so first; the other sessions carry on.
+	// armed kill's footer says so first; the other sessions carry on. The killed session stays in
+	// its place, selected, as one that has ended.
 	t.Run("kill", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3331,9 +3474,10 @@ func TestListKill(t *testing.T) {
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			"  a     detached  "+s.Work,
-			"> c     detached  "+s.Work,
+			"> b     ended     "+s.Work,
+			"  c     detached  "+s.Work,
 			"",
-			listHints)
+			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude b to exit", func() bool { return !probes["b"].Alive() })
 		sandbox.WaitFor(t, 10*time.Second, "b's terminal to be detached", func() bool { return !other.Running() })
 		if modes := other.Modes(); modes.AltScreen || modes.Mouse {
@@ -3352,7 +3496,7 @@ func TestListKill(t *testing.T) {
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
 		}
-		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n"+"c     detached  "+s.Work+"\n")
+		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     detached  "+s.Work+"\n"+"b     ended     "+s.Work+"\n"+"c     detached  "+s.Work+"\n")
 		list.checkRestored(t, term)
 	})
 
@@ -3483,12 +3627,12 @@ func TestListKill(t *testing.T) {
 		for !readLate("C-x") {
 		}
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "> b     detached  "+s.Work, "", listHints)
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", "> a     ended     "+s.Work, "  b     detached  "+s.Work, "", endedHints)
 		term.Keys("Escape")
 		if code := list.code(t); code != "0" {
 			t.Errorf("exit %s, want 0", code)
 		}
-		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"b     detached  "+s.Work+"\n")
+		afterList(t, term, "NAME  STATE     DIRECTORY\n"+"a     ended     "+s.Work+"\n"+"b     detached  "+s.Work+"\n")
 		if !probes["b"].Alive() {
 			t.Error("claude b exited")
 		}
@@ -3569,8 +3713,8 @@ func TestListKill(t *testing.T) {
 
 	// A key held down repeats: the terminal types it again after a delay, and then many times a
 	// second. After the Ctrl+X that killed, Ctrl+X does nothing until none has come for a second,
-	// so that the repeats of that Ctrl+X, held a little too long, do not arm and kill the session
-	// that took the killed one's place, and the next; another key ends the wait at once.
+	// so that the repeats of that Ctrl+X, held a little too long, do not arm and forget the session
+	// it killed, which stays on its row as one that has ended; another key ends the wait at once.
 	t.Run("held down", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3578,6 +3722,7 @@ func TestListKill(t *testing.T) {
 		term := startCld(t, s, "tmux", nil, "list")
 		header := "  NAME  STATE     DIRECTORY"
 		row := func(marker, name string) string { return marker + " " + name + "     detached  " + s.Work }
+		ended := func(marker, name string) string { return marker + " " + name + "     ended     " + s.Work }
 		waitScreen(t, term, listHints)
 		term.Keys("C-x")
 		waitScreen(t, term, killArmed)
@@ -3591,11 +3736,13 @@ func TestListKill(t *testing.T) {
 		if over := time.Since(holding) - 500*time.Millisecond - 20*50*time.Millisecond; over >= 400*time.Millisecond {
 			t.Skipf("typing Ctrl+X held down took %v beyond its waits: two may have reached cld a second apart", over.Round(time.Millisecond))
 		}
-		// Down, after the repeats, moves the selection from b, which took a's place, to c, and ends
-		// the wait: a Ctrl+X right after it arms the kill, and a second one kills c.
+		// The repeats have neither armed nor forgotten a, which has ended, once the kill has. Down,
+		// after them, moves the selection from a to b, and ends the wait: a Ctrl+X right after it
+		// arms the kill, and a second one kills b.
+		waitLines(t, term, header, ended(">", "a"), row(" ", "b"), row(" ", "c"), "", endedHints)
 		term.Keys("Down")
 		armThen(t, term, func() {
-			waitLines(t, term, header, row(" ", "b"), row(">", "c"), "", killArmed)
+			waitLines(t, term, header, ended(" ", "a"), row(">", "b"), row(" ", "c"), "", killArmed)
 			sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b", "cld-c"}) {
 				t.Errorf("sessions %q, want [cld-b cld-c]", sessions)
@@ -3606,18 +3753,19 @@ func TestListKill(t *testing.T) {
 				}
 			}
 		}, "C-x")
-		waitLines(t, term, header, row(">", "b"), "", listHints)
+		waitLines(t, term, header, ended(" ", "a"), ended(">", "b"), row(" ", "c"), "", endedHints)
 		// A second without Ctrl+X ends the wait too; the test leaves it half a second more.
 		time.Sleep(1500 * time.Millisecond)
 		term.Keys("C-x")
-		waitLines(t, term, header, row(">", "b"), "", killArmed)
-		if !probes["b"].Alive() {
-			t.Error("claude b exited")
+		waitLines(t, term, header, ended(" ", "a"), ended(">", "b"), row(" ", "c"), "", forgetArmed)
+		if !probes["c"].Alive() {
+			t.Error("claude c exited")
 		}
 	})
 
-	// Killing the last session leaves the list with no sessions, as when its last row has gone
-	// elsewhere: the header over "no sessions", and leaving prints nothing.
+	// Killing the last session leaves it on its row, as one that has ended; forgetting it then
+	// leaves the list with no sessions, as when its last row has gone elsewhere: the header over
+	// "no sessions", and leaving prints nothing.
 	t.Run("last row", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3626,10 +3774,12 @@ func TestListKill(t *testing.T) {
 		list := startList(t, s, term, listScript, nil)
 		waitScreen(t, term, listHints)
 		term.Keys("C-x", "C-x")
-		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", "> a     ended     "+s.Work, "", endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
-		// Ctrl+X has nothing to arm, or to kill; a letter first ends the wait after a kill (see
-		// held down).
+		// A letter first ends the wait after a kill (see held down).
+		term.Keys("k", "C-x", "C-x")
+		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
+		// Ctrl+X has nothing to arm, or to forget.
 		term.Keys("k", "C-x", "C-x")
 		waitLines(t, term, "  NAME  STATE     DIRECTORY", "no sessions", "", "esc to quit")
 		if list.exited() {
@@ -3669,18 +3819,19 @@ func TestListKill(t *testing.T) {
 		armThen(t, term, func() { waitLines(t, term, append(rows, killArmedAttached)...) }, "C-x")
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
-			"> a     detached  "+s.Work,
+			"  a     detached  "+s.Work,
+			"> b     ended     "+s.Work,
 			"",
-			listHints)
+			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "b's terminal to be detached", func() bool { return !failed.Running() })
 		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
 			t.Errorf("sessions %q, want [cld-a]", sessions)
 		}
 	})
 
-	// A session gone by the second Ctrl+X - killed elsewhere here - is reported, and the list reads
-	// the sessions again and stays open. The steps outside come before the first Ctrl+X, so that
-	// they need not fit in the two seconds.
+	// A session ended by the second Ctrl+X - killed elsewhere here - is reported, and the list
+	// reads the sessions again, where it has ended, and stays open. The steps outside come before
+	// the first Ctrl+X, so that they need not fit in the two seconds.
 	t.Run("gone", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3697,9 +3848,10 @@ func TestListKill(t *testing.T) {
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			"  a     detached  "+s.Work,
-			"> c     detached  "+s.Work,
+			"> b     ended     "+s.Work,
+			"  c     detached  "+s.Work,
 			"",
-			"no session 'b'")
+			"session 'b' has ended")
 		list.checkRaw(t)
 		if list.exited() {
 			t.Error("the list closed")
@@ -3757,7 +3909,7 @@ func TestListKill(t *testing.T) {
 
 	// A session whose server runs on without it - claude exited, and the tmux session it made keeps
 	// the server running - is ended with the server, as cld kill ends it, although no pane is left
-	// to check against the pids the list read.
+	// to check against the pids the list read. Its row stays, selected, as one that has ended.
 	t.Run("lingering server", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3778,9 +3930,10 @@ func TestListKill(t *testing.T) {
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
 			"  a     detached  "+s.Work,
-			"> c     detached  "+s.Work,
+			"> b     ended     "+s.Work,
+			"  c     detached  "+s.Work,
 			"",
-			listHints)
+			endedHints)
 		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-c"}) {
 			t.Errorf("sessions %q, want [cld-a cld-c]", sessions)
 		}
@@ -3861,9 +4014,10 @@ func TestListKill(t *testing.T) {
 		term.Keys("C-x", "C-x")
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
-			"> b     detached  "+s.Work,
+			"> a     ended     "+s.Work,
+			"  b     detached  "+s.Work,
 			"",
-			listHints)
+			endedHints)
 		if _, err := os.Stat(exiting); err == nil {
 			t.Error("the list did not read the killed session's server after the kill")
 		}
@@ -3900,9 +4054,10 @@ func TestListKill(t *testing.T) {
 		lookup.release(t)
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
-			"> b     detached  "+s.Work,
+			"> a     ended     "+s.Work,
+			"  b     detached  "+s.Work,
 			"",
-			listHints)
+			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
 		if !probes["b"].Alive() {
 			t.Error("claude b exited")
@@ -3969,9 +4124,10 @@ func TestListKill(t *testing.T) {
 		term.Keys("C-x", "C-x")
 		waitLines(t, term,
 			"  NAME  STATE     DIRECTORY",
-			"> b     detached  "+s.Work,
+			"> a     ended     "+s.Work,
+			"  b     detached  "+s.Work,
 			"",
-			listHints)
+			endedHints)
 		sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
 		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b"}) {
 			t.Errorf("sessions %q, want [cld-b]", sessions)
@@ -4012,8 +4168,9 @@ func TestListKill(t *testing.T) {
 }
 
 // A session cld resume made is a session like any other in the interactive list: Enter joins it,
-// and Ctrl+X twice kills it with its server. After such a kill - by mistake, say - cld resume -n
-// NAME -s SUFFIX brings its conversation back in a new session.
+// and Ctrl+X twice kills it with its server, which leaves it as one that has ended. After such a
+// kill - by mistake, say - cld resume -n NAME -s SUFFIX brings its conversation back in a new
+// session.
 func TestListResumedSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -4024,7 +4181,7 @@ func TestListResumedSession(t *testing.T) {
 	})
 	resumed.Keys("C-q", "d")
 	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !resumed.Running() })
-	argv := []string{"--name", "cld-b", "--settings", remoteControl(s, "cld-b"), "--resume", "cld-b"}
+	argv := []string{"--name", "cld-b", "--settings", remoteControl(s, "cld-b", s.Work), "--resume", "cld-b"}
 	claude := func(other *sandbox.Probe) *sandbox.Probe {
 		for _, probe := range s.Probes() {
 			if slices.Equal(probe.Argv, argv) && (other == nil || probe.PID != other.PID) {
@@ -4069,7 +4226,7 @@ func TestListResumedSession(t *testing.T) {
 	term.Keys("Down")
 	waitLines(t, term, append(rows("b"), listHints)...)
 	armThen(t, term, func() { waitLines(t, term, append(rows("b"), killArmed)...) }, "C-x")
-	waitLines(t, term, "  NAME  STATE     DIRECTORY", "> a     detached  "+s.Work, "", listHints)
+	waitLines(t, term, "  NAME  STATE     DIRECTORY", "  a     detached  "+s.Work, "> b     ended     "+s.Work, "", endedHints)
 	sandbox.WaitFor(t, 10*time.Second, "claude b to exit", func() bool { return !b.Alive() })
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
 		t.Errorf("sessions %q after the kill, want [cld-a]", sessions)
@@ -4345,9 +4502,9 @@ type heldTmux struct {
 	env        map[string]string
 }
 
-// holdLookup holds the lookup of session cld-NAME that Enter and the kill make, from the start. It
-// tells the lookup from the read of the sessions, which asks server cld-NAME with the same filter,
-// by the one format that follows.
+// holdLookup holds the lookup of session cld-NAME that Enter, the kill and new make, from the
+// start. It tells the lookup from the read of the sessions, which asks server cld-NAME with the
+// same filter, by the one format that follows.
 func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldTmux {
 	t.Helper()
 	lookup := holdTmux(t, s, "the lookup of cld-"+name, "*'#{==:#{session_name},cld-"+name+"},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}\t#{@cld-home}'")

@@ -17,7 +17,7 @@ Available Commands:
   resume      create session NAME-SUFFIX with claude resuming its conversation
   join        attach to session NAME-SUFFIX
   kill        end session NAME-SUFFIX and its tmux server
-  list        list the sessions cld started; on a terminal, join or kill one
+  list        list cld's sessions; on a terminal, join, kill or resume one
   setup       set up claude in a project, its telemetry, or shell completion
   update      update cld to the latest release
   completion  print the completion script for a shell

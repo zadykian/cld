@@ -1,6 +1,7 @@
 // Package picker is cld list on a terminal: the sessions on the alternate screen, one of them
 // selected, to join with Enter as cld join does, or to kill with Ctrl+X pressed twice as cld kill
-// does.
+// does - or, for a session that has ended, to resume with Enter as cld resume does, or to forget
+// with Ctrl+X pressed twice.
 //
 // The list opens with the first row selected; ↑ and ↓ move the selection, stopping at the first and
 // the last row, Enter joins the selected session, and Esc or Ctrl+C leave, joining nothing. Ctrl+X
@@ -10,28 +11,33 @@
 // has come, so that the repeats of a Ctrl+X held down arm and kill nothing more (see repeatWait).
 // Other keys do nothing, keys with Alt among them: terminals send those as Esc and the key, so
 // that Esc and a key typed within the wait for a lone Esc count as that key with Alt. The footer
-// under the rows says what the keys do, but for the arrows where the terminal is too narrow for
-// them all. Enter joins beside a terminal attached to the session, as cld join does; once the
-// kill is armed, the footer asks for the second Ctrl+X instead, and warns when the kill would
-// detach such a terminal, one whose claude has exited included. A message, such as why Enter
-// could not join, takes the place of its hints until the next key.
+// under the rows says what the keys do on the selected row, but for the arrows where the terminal
+// is too narrow for them all. Enter joins beside a terminal attached to the session, as cld join
+// does; once the kill is armed, the footer asks for the second Ctrl+X instead, and warns when the
+// kill would detach such a terminal, one whose claude has exited included. On a row that has
+// ended, the kill is a forget, which removes the session's entry from cld's record - the row goes,
+// and the conversation stays with claude. A message, such as why Enter could not join, takes the
+// place of its hints until the next key.
 //
-// Enter looks the session up while the list still owns the terminal, in raw mode. When the
-// lookup fails, the list shows why, reads the sessions again and stays open; the selection stays
-// on the same session or, once it is gone, moves to the next row the list showed that is still
-// there, or else to the one above. With no rows left, the header stays over "no sessions". The
-// second Ctrl+X runs cld kill's steps, with a check that the session is still the one on the row,
-// with the same claude (see Source): the list then reads the sessions again, the selection moving
-// by the same rule, and shows why the kill ended nothing, if it did - the session gone, made
+// Enter looks the session up while the list still owns the terminal, in raw mode - for a session
+// that has ended, it makes resume's checks but for claude's, which come once the list has handed
+// the terminal over. When the lookup fails, the list shows why, reads the sessions again and stays
+// open; the selection stays on the same session or, once it is gone, moves to the next row the
+// list showed that is still there, or else to the one above. With no rows left, the header stays
+// over "no sessions". The second Ctrl+X runs cld kill's steps, with a check that the session is
+// still the one on the row, with the same claude (see Source), or the forget: the list then reads
+// the sessions again, the selection moving by the same rule - a killed session stays, as one that
+// has ended - and shows why the kill ended nothing, if it did - the session gone or ended, made
 // again under its name, or a server running on without it that cld kill refuses too (see
-// session.Tmux.End); a session that has ended with its server running on - what its claude
+// session.Tmux.End); a session whose claude exited with its server running on - what its claude
 // started through tmux keeps it running - is ended with the server, as cld kill ends it. The list
-// reads the sessions only when it opens and after its own actions, never on a timer, so a row
-// does not change under a key. While Enter looks the session
-// up, or the kill runs, and the list reads the sessions again, Esc, Ctrl+C and the signals below
-// still leave - its tmux is killed - and other keys do nothing: a lookup that hangs, on a server
-// that does, does not hold the list. A session the kill has ended by then is not in the sessions
-// the list leaves with.
+// reads the sessions only when it opens and after its own actions, never on a timer, so a row does
+// not change under a key. While Enter looks the session up, or the kill or forget runs, and the
+// list reads the sessions again, Esc, Ctrl+C and the signals below still leave - its tmux is
+// killed - and other keys do nothing: a lookup that hangs, on a server that does, does not hold
+// the list. A session the kill has ended by then is in the sessions the list leaves with as one
+// that has ended where the list has read them again, and otherwise not at all; one the forget has
+// forgotten is not.
 //
 // The list redraws the whole screen after each key and each resize - once for the bytes of a key,
 // and once for keys that come together, pasted say - and cuts every line at the terminal's
@@ -75,17 +81,22 @@ import (
 	"github.com/zadykian/cld/internal/session"
 )
 
-// Source is where the list reads its rows, looks a session up before joining it, and kills one.
-// Each gives up once ctx is done.
+// Source is where the list reads its rows, looks a session up before joining or resuming it, and
+// kills or forgets one. Each gives up once ctx is done.
 type Source interface {
 	// Sessions reads the sessions to list.
 	Sessions(ctx context.Context) ([]session.Session, error)
 	// Joinable is nil when join can attach to session NAME, and otherwise why it cannot.
 	Joinable(ctx context.Context, name string) error
+	// Resumable is nil when resume can bring session NAME, which has ended, back, as far as the
+	// list can tell without running claude, and otherwise why it cannot.
+	Resumable(ctx context.Context, name string) error
 	// Kill ends session NAME, as cld kill -n NAME does, if it is still the session the list read,
 	// one of whose panes' pids is among pids (see session.Session), or a server that has outlived
 	// it (see session.Tmux.End), and otherwise says why it ended nothing.
 	Kill(ctx context.Context, name string, pids []string) error
+	// Forget forgets session NAME, which has ended, and otherwise says why it forgot nothing.
+	Forget(ctx context.Context, name string) error
 }
 
 // Available reports whether cld's stdin and stdout are a terminal the list can run on: both
@@ -144,11 +155,12 @@ const (
 // attributes matches the end of the terminal's answer to askAttributes.
 var attributes = regexp.MustCompile(`\x1b\[\?[0-9;]*c$`)
 
-// Run shows sessions until the user leaves or picks one to join. It returns the name of the
-// session picked, "" when the user left, and the sessions the list last read, less one its kill
-// ended since (see abandon). The terminal is back as it was when Run returns; after a pick, it
-// also has the session's title (see handOver).
-func Run(source Source, sessions []session.Session) (picked string, last []session.Session, err error) {
+// Run shows sessions until the user leaves or picks one to join or, where it has ended, to
+// resume. It returns the session picked, with no name when the user left, and the sessions the
+// list last read, less one its kill ended or its forget forgot since (see abandon). The terminal
+// is back as it was when Run returns; after a pick, it also has the session's title (see
+// handOver).
+func Run(source Source, sessions []session.Session) (picked session.Session, last []session.Session, err error) {
 	// Signals are caught before the terminal changes, and let go after it is back.
 	in := &input{
 		resized:   make(chan os.Signal, 1),
@@ -175,7 +187,7 @@ func Run(source Source, sessions []session.Session) (picked string, last []sessi
 	in.fd = int(os.Stdin.Fd())
 	tty := &terminal{fd: in.fd}
 	if err := tty.makeRaw(); err != nil {
-		return "", sessions, err
+		return session.Session{}, sessions, err
 	}
 	l := &list{source: source, rows: sessions}
 	// A lookup or a kill still running when the list ends is abandoned and waited for, once the
@@ -193,29 +205,29 @@ func Run(source Source, sessions []session.Session) (picked string, last []sessi
 	defer close(next)
 
 	if err := tty.open(); err != nil {
-		return "", l.rows, err
+		return session.Session{}, l.rows, err
 	}
 	l.measure()
 	if err := output.Print(l.frame()); err != nil {
-		return "", l.rows, err
+		return session.Session{}, l.rows, err
 	}
-	name, err := l.keys(in, tty)
-	if err != nil || name == "" {
-		return "", l.rows, err
+	row, err := l.keys(in, tty)
+	if err != nil || row.Name == "" {
+		return session.Session{}, l.rows, err
 	}
 	// A signal that came while Enter looked the session up ends cld, as it would have after.
 	if err := in.signalled(); err != nil {
-		return "", l.rows, err
+		return session.Session{}, l.rows, err
 	}
-	if err := handOver(in, tty, name); err != nil {
-		return "", l.rows, err
+	if err := handOver(in, tty, row.Name); err != nil {
+		return session.Session{}, l.rows, err
 	}
 	tty.restore()
 	// From here on these signals end cld as they would without the list. os/signal passes on
 	// those it took before Stop by the time Stop returns: they end cld too, joining nothing.
 	signal.Stop(in.stops)
 	if err := in.signalled(); err != nil {
-		return "", l.rows, err
+		return session.Session{}, l.rows, err
 	}
 	// A SIGTSTP that came during the handover stops cld now, with the terminal back: tmux takes
 	// it once cld goes on. Until cld becomes tmux, SIGTSTP then does nothing (see pause).
@@ -223,21 +235,21 @@ func Run(source Source, sessions []session.Session) (picked string, last []sessi
 	select {
 	case <-in.paused:
 		if err := in.pause(); err != nil {
-			return "", l.rows, err
+			return session.Session{}, l.rows, err
 		}
 	default:
 	}
-	return name, l.rows, nil
+	return row, l.rows, nil
 }
 
-// keys takes keys until the list is done: it returns the session Enter picked, or "" when the
-// user left. It draws the list again once it has taken all that has come.
-func (l *list) keys(in *input, tty *terminal) (string, error) {
+// keys takes keys until the list is done: it returns the session Enter picked, or one with no
+// name when the user left. It draws the list again once it has taken all that has come.
+func (l *list) keys(in *input, tty *terminal) (session.Session, error) {
 	var pending []byte
 	var escape <-chan time.Time
 	for {
-		// The outcome of Enter's lookup or of the kill, and the end of the wait for the second
-		// Ctrl+X, wait for a key that has begun, which may be Esc.
+		// The outcome of Enter's lookup or of the kill or forget, and the end of the wait for the
+		// second Ctrl+X, wait for a key that has begun, which may be Esc.
 		acting, expiry := l.acting, l.expiry
 		if len(pending) > 0 {
 			acting, expiry = nil, nil
@@ -246,7 +258,7 @@ func (l *list) keys(in *input, tty *terminal) (string, error) {
 		case ready := <-in.waiting:
 			b, err := in.take(ready)
 			if err != nil {
-				return "", err
+				return session.Session{}, err
 			}
 			pending = append(pending, b)
 			for len(pending) > 0 {
@@ -257,8 +269,8 @@ func (l *list) keys(in *input, tty *terminal) (string, error) {
 					break
 				}
 				pending, escape = pending[n:], nil
-				if done, name := l.press(k); done {
-					return name, nil
+				if done, row := l.press(k); done {
+					return row, nil
 				}
 			}
 		case <-escape:
@@ -268,12 +280,12 @@ func (l *list) keys(in *input, tty *terminal) (string, error) {
 				k = esc
 			}
 			pending, escape = nil, nil
-			if done, name := l.press(k); done {
-				return name, nil
+			if done, row := l.press(k); done {
+				return row, nil
 			}
 		case result := <-acting:
-			if name := l.settle(result); name != "" {
-				return name, nil
+			if row := l.settle(result); row.Name != "" {
+				return row, nil
 			}
 		case <-expiry:
 			// A byte waiting to be read may have come within the wait, while cld was held up: the
@@ -294,27 +306,27 @@ func (l *list) keys(in *input, tty *terminal) (string, error) {
 		case <-in.resized:
 			l.measure()
 		case sig := <-in.stops:
-			return "", stopped(sig)
+			return session.Session{}, stopped(sig)
 		case <-in.paused:
 			// SIGTSTP: the terminal is as it was while cld is stopped.
 			tty.restore()
 			if err := in.pause(); err != nil {
-				return "", err
+				return session.Session{}, err
 			}
 			if err := l.takeBack(tty); err != nil {
-				return "", err
+				return session.Session{}, err
 			}
 		case <-in.continued:
 			// Back from a stop the list did not see coming (SIGSTOP): the shell may have put its
 			// own mode back, as bash does, and written over the list.
 			if err := l.takeBack(tty); err != nil {
-				return "", err
+				return session.Session{}, err
 			}
 		}
 		// Nothing is drawn halfway through a key, nor before the keys that came with it.
 		if len(pending) == 0 && !in.more() {
 			if err := output.Print(l.frame()); err != nil {
-				return "", err
+				return session.Session{}, err
 			}
 		}
 	}
@@ -628,18 +640,19 @@ type list struct {
 	// then, or another key, Ctrl+X does nothing (see repeatWait). It is nil otherwise.
 	hold            <-chan time.Time
 	columns, height int
-	// acting gets the outcome of Enter's lookup, or of the kill, while it runs, and is nil
-	// otherwise; cancel abandons it, and running counts it until it has ended.
+	// acting gets the outcome of Enter's lookup, or of the kill or forget, while it runs, and is
+	// nil otherwise; cancel abandons it, and running counts it until it has ended.
 	acting  <-chan outcome
 	cancel  context.CancelFunc
 	running sync.WaitGroup
 }
 
-// outcome is the outcome of Enter's lookup of session name, or of its kill: refused is why join
-// cannot attach to it, or why the kill ended nothing, and nil when join can or the kill ended it;
-// then rows are the sessions read again, or unread why they could not be.
+// outcome is the outcome of Enter's lookup of the session on row, or of its kill or forget:
+// refused is why join cannot attach to it or resume bring it back, or why the kill ended nothing
+// or the forget forgot nothing, and nil when join or resume can or the kill or forget did; then
+// rows are the sessions read again, or unread why they could not be.
 type outcome struct {
-	name    string
+	row     session.Session
 	kill    bool
 	refused error
 	rows    []session.Session
@@ -647,18 +660,18 @@ type outcome struct {
 }
 
 // press does what k does. It reports whether the list is done, and with which session picked.
-// Ctrl+X arms the kill, or once armed kills. Any other key disarms it, and then does what it does
-// - but for Esc, which only disarms it. After a kill, Ctrl+X does nothing until it has not come
-// for repeatWait, or another key has come. While Enter's lookup or the kill runs, only leaving
-// does anything.
-func (l *list) press(k key) (done bool, picked string) {
+// Ctrl+X arms the kill - on a row that has ended, the forget - or once armed kills or forgets. Any
+// other key disarms it, and then does what it does - but for Esc, which only disarms it. After a
+// kill or forget, Ctrl+X does nothing until it has not come for repeatWait, or another key has
+// come. While Enter's lookup, the kill or the forget runs, only leaving does anything.
+func (l *list) press(k key) (done bool, picked session.Session) {
 	if k == kill && l.hold != nil {
 		l.hold = time.After(repeatWait)
-		return false, ""
+		return false, session.Session{}
 	}
 	l.hold = nil
 	if l.acting != nil && k != esc && k != interrupt {
-		return false, ""
+		return false, session.Session{}
 	}
 	armed := l.armed
 	l.disarm()
@@ -669,12 +682,12 @@ func (l *list) press(k key) (done bool, picked string) {
 	case down:
 		l.selected = max(min(l.selected+1, len(l.rows)-1), 0)
 	case esc:
-		return !armed, ""
+		return !armed, session.Session{}
 	case interrupt:
-		return true, ""
+		return true, session.Session{}
 	case enter:
 		if len(l.rows) > 0 {
-			l.lookUp(l.rows[l.selected].Name)
+			l.lookUp(l.rows[l.selected])
 		}
 	case kill:
 		switch {
@@ -686,7 +699,7 @@ func (l *list) press(k key) (done bool, picked string) {
 			l.armed, l.expiry = true, time.After(armWait)
 		}
 	}
-	return false, ""
+	return false, session.Session{}
 }
 
 // disarm disarms the kill.
@@ -706,11 +719,16 @@ func (l *list) start(task func(ctx context.Context) outcome) {
 	}()
 }
 
-// lookUp starts Enter's lookup of session name, and the read of the sessions again when join
-// would refuse it.
-func (l *list) lookUp(name string) {
+// lookUp starts Enter's lookup of the session on row - join's, or resume's for a session that has
+// ended - and the read of the sessions again when join or resume would refuse it.
+func (l *list) lookUp(row session.Session) {
 	l.start(func(ctx context.Context) outcome {
-		result := outcome{name: name, refused: l.source.Joinable(ctx, name)}
+		result := outcome{row: row}
+		if row.State == session.Ended {
+			result.refused = l.source.Resumable(ctx, row.Name)
+		} else {
+			result.refused = l.source.Joinable(ctx, row.Name)
+		}
 		if result.refused != nil {
 			result.rows, result.unread = l.read(ctx)
 		}
@@ -718,19 +736,25 @@ func (l *list) lookUp(name string) {
 	})
 }
 
-// kill starts the kill of the session on row, and the read of the sessions again after it. The
-// killed session's server exits after it, and the read passes over a server that exits as it is
-// asked (see session.Tmux.Sessions).
+// kill starts the kill of the session on row - or the forget, where it has ended - and the read
+// of the sessions again after it. The killed session's server exits after it, and the read passes
+// over a server that exits as it is asked (see session.Tmux.Sessions); the session is then one
+// that has ended.
 func (l *list) kill(row session.Session) {
 	l.start(func(ctx context.Context) outcome {
-		result := outcome{name: row.Name, kill: true, refused: l.source.Kill(ctx, row.Name, row.PIDs)}
+		result := outcome{row: row, kill: true}
+		if row.State == session.Ended {
+			result.refused = l.source.Forget(ctx, row.Name)
+		} else {
+			result.refused = l.source.Kill(ctx, row.Name, row.PIDs)
+		}
 		result.rows, result.unread = l.read(ctx)
 		return result
 	})
 }
 
-// read reads the sessions again for Enter's lookup or the kill, unless the list has abandoned it:
-// then they are unread, as ctx says.
+// read reads the sessions again for Enter's lookup or the kill or forget, unless the list has
+// abandoned it: then they are unread, as ctx says.
 func (l *list) read(ctx context.Context) ([]session.Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -738,16 +762,17 @@ func (l *list) read(ctx context.Context) ([]session.Session, error) {
 	return l.source.Sessions(ctx)
 }
 
-// settle takes the outcome of Enter's lookup or of the kill: the session to join, or "" when
-// there is none - join would refuse it, or the list killed or tried to kill it. Then the list says
-// why join or the kill was refused, if it was, and shows the sessions read again, keeping the
-// selection on the same session where it can (see follow); when they could not be read, it says
-// that too and keeps its rows, but for the session its kill ended.
-func (l *list) settle(result outcome) string {
+// settle takes the outcome of Enter's lookup or of the kill or forget: the session to join or
+// resume, or one with no name when there is none - join or resume would refuse it, or the list
+// killed or forgot it or tried to. Then the list says why join, resume, the kill or the forget
+// was refused, if it was, and shows the sessions read again, keeping the selection on the same
+// session where it can (see follow); when they could not be read, it says that too and keeps its
+// rows, but for the session its kill ended or its forget forgot.
+func (l *list) settle(result outcome) session.Session {
 	l.cancel()
 	l.acting, l.cancel = nil, nil
 	if !result.kill && result.refused == nil {
-		return result.name
+		return result.row
 	}
 	if result.refused != nil {
 		l.message = describe(result.refused)
@@ -759,19 +784,20 @@ func (l *list) settle(result outcome) string {
 		}
 		rows = l.rows
 		if result.kill && result.refused == nil {
-			rows = slices.DeleteFunc(slices.Clone(rows), func(row session.Session) bool { return row.Name == result.name })
+			rows = slices.DeleteFunc(slices.Clone(rows), func(row session.Session) bool { return row.Name == result.row.Name })
 		}
 	}
 	l.selected = follow(l.rows, l.selected, rows)
 	l.rows = rows
-	return ""
+	return session.Session{}
 }
 
-// abandon ends Enter's lookup or the kill if it is still running, killing its tmux, and waits for
-// it. Its outcome then counts for the rows, as settle takes it, but for joining: a kill that ended
-// the session - its tmux command, kill-session and kill-server, or kill-server alone, returned -
-// takes the row away, and a read of the sessions that ended gives the rows. A kill cut short may
-// or may not have ended the session, whose row stays.
+// abandon ends Enter's lookup or the kill or forget if it is still running, killing its tmux, and
+// waits for it. Its outcome then counts for the rows, as settle takes it, but for joining or
+// resuming: a kill that ended the session - its tmux command, kill-session and kill-server, or
+// kill-server alone, returned - or a forget that forgot it takes the row away, and a read of the
+// sessions that ended gives the rows. A kill cut short may or may not have ended the session,
+// whose row stays.
 func (l *list) abandon() {
 	if l.acting == nil {
 		return
@@ -885,23 +911,29 @@ func (l *list) lines() []string {
 }
 
 // footer is the line under the rows: the message, the kill's question once it is armed, or the
-// hints for the keys, cut at the terminal's width.
+// hints for the keys, cut at the terminal's width. On a row that has ended, Enter resumes and the
+// kill is a forget.
 func (l *list) footer() string {
 	if l.message != "" {
 		return cut(strings.Join(strings.Fields(l.message), " "), l.columns)
 	}
-	detach := ""
-	if len(l.rows) > 0 && l.rows[l.selected].Attached {
-		detach = " and detach its terminal"
+	enter, kill, detach := "join", "kill", ""
+	if len(l.rows) > 0 {
+		switch row := l.rows[l.selected]; {
+		case row.State == session.Ended:
+			enter, kill = "resume", "forget"
+		case row.Attached:
+			detach = " and detach its terminal"
+		}
 	}
 	hints := "esc to quit"
 	switch {
 	case l.armed:
-		hints = "ctrl+x again to kill" + detach + " · esc to keep"
+		hints = "ctrl+x again to " + kill + detach + " · esc to keep"
 	case len(l.rows) > 0:
 		// The arrows' hint goes first where the terminal is short of cells for them all, 61
-		// columns or fewer: from 44 the others then fit whole.
-		hints = "enter to join · ctrl+x to kill · " + hints
+		// columns or fewer on a row to join: from 44 the others then fit whole.
+		hints = "enter to " + enter + " · ctrl+x to " + kill + " · " + hints
 		if all := "↑/↓ to navigate · " + hints; cells(all) <= l.columns {
 			hints = all
 		}

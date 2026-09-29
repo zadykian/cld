@@ -39,13 +39,13 @@ install it as `cld`, executable, in a directory on your `PATH`.
   becomes `-`, and `-` and `_` go from either end: `my.site` gives `my-site-0`, `.dotfiles`
   `dotfiles-0`. Where nothing is left - in the root directory, or for a name in another script -
   `S` is `SUFFIX` alone.
-- Without `-s`, `cld new` gives the index above the highest of the sessions `NAME-INDEX` that run,
-  those `cld list` shows, and of servers that outlive their session or are your own (see
-  [Troubleshooting](#troubleshooting)); a gap stays a gap. A session that has ended counts no
-  more, so the next `cld new` can give its name again, and claude's history then holds two
-  conversations of that name (see [Resuming a conversation](#resuming-a-conversation)). Two
-  `cld new` started at the same moment can pick the same name: the second ends with tmux's
-  `duplicate session: cld-S`, and run again it takes the next.
+- Without `-s`, `cld new` gives the index above the highest of the sessions `NAME-INDEX` that
+  `cld list` shows - those that run, and those that have ended within 30 days (see
+  [Resuming a conversation](#resuming-a-conversation)) - of servers that outlive their session or
+  are your own (see [Troubleshooting](#troubleshooting)), and of the indexes it gave `NAME` within
+  30 days, a forgotten session's too; a gap stays a gap. So a name comes back only once claude has
+  removed the conversation of that name, 30 days after it was last written by default. Two
+  `cld new` started at the same moment take two names: the second waits for the first.
 - `cld join` and `cld kill` need `-s`: in the session's repository or directory `-s SUFFIX` alone,
   elsewhere `-n NAME -s SUFFIX` too. cld's own messages name a session that way, splitting `S` at
   its last `-`. A name without one, made where `NAME` leaves nothing, takes `-s S` in such a
@@ -64,7 +64,9 @@ install it as `cld`, executable, in a directory on your `PATH`.
   With `-n`, and with `-s S` where `NAME` leaves nothing, they take the session from anywhere, as
   `cld list` does; they take a session that cld 0.8.2 or earlier made, which records nothing,
   from anywhere too. `cld new` and `cld resume` name the directory of a session whose name they
-  refuse, and `cld join -s` completes only the sessions `cld join` takes.
+  refuse, and `cld join -s` completes only the sessions `cld join` takes. cld's record of a
+  session that has ended keeps no such home: from a repository of the same name,
+  `cld resume -s SUFFIX` resumes it in the directory it ran in, which `cld list` shows.
 - Each claude gets the environment of the shell that ran `cld new` or `cld resume` -
   `CLAUDE_CONFIG_DIR`, a virtualenv, `AWS_PROFILE` and the like - but for the variables that
   would have claude take itself to be in that shell's terminal, whichever terminal joins, and
@@ -183,14 +185,19 @@ held down does not go on to kill the next session.
   shows when you run `cld list` again. If the selected session has ended when you press `Enter` or
   the second `Ctrl+X`, the list says so and reads them again; where what claude started keeps its
   server running, `Ctrl+X` ends that server, as `cld kill` does.
+- A session that has ended shows as `ended`, with the directory it ran in (see
+  [Resuming a conversation](#resuming-a-conversation)); a session you kill stays on its row as one.
+  On such a row, `Enter` resumes it as `cld resume -n NAME -s SUFFIX` does, and `Ctrl+X` twice
+  forgets it: cld's record of it goes, and its conversation stays in claude's history. cld
+  checks claude for the resume once the list has closed.
 - The state `attached` counts terminals only: someone on the session through Remote Control does
   not show, and a kill ends the session for them too.
 - A kill leaves a `cld new -w` worktree where it is, and the conversation stays: after a kill by
-  mistake, `cld resume -n NAME -s SUFFIX` brings it back.
+  mistake, `Enter` on its row, or `cld resume -n NAME -s SUFFIX`, brings it back.
 - `cld list` prints the table and exits where its input or output is not a terminal
   (`cld list | cat`), `TERM` is unset or `dumb`, it runs in the background, or it runs in a pane of
-  one of cld's servers; with no sessions it prints nothing. A script that leaves it the terminal
-  gets the list and waits for a key: pipe it for the table.
+  one of cld's servers; with no sessions, running or ended, it prints nothing. A script that
+  leaves it the terminal gets the list and waits for a key: pipe it for the table.
 - Whether a JetBrains IDE passes `Esc` and `Ctrl+X` on to its terminal depends on its keymap;
   `Ctrl+C` also leaves the list.
 
@@ -228,24 +235,42 @@ its panes, whatever terminal is attached. Set your terminal's channel in claude'
 
 ## Resuming a conversation
 
-A conversation stays in Claude Code's history until Claude Code removes it, after 30 days by
-default. `cld resume -n NAME -s SUFFIX` runs `claude --resume cld-S` in session `S`, made as
-`cld new` makes it:
+A conversation stays in Claude Code's history until Claude Code removes it, 30 days after it was
+last written by default. cld keeps a record of its sessions as long, in
+`$XDG_STATE_HOME/cld`, by default `~/.local/state/cld`: for each, the directory claude started in
+and the ID of its conversation, which a hook cld gives claude writes as claude starts the
+conversation, and again after `/clear` or `/resume`. `cld resume -n NAME -s SUFFIX` makes session
+`S` as `cld new` makes it, with claude resuming that conversation, `claude --resume ID`, in that
+directory, from wherever you run `cld resume`. The ID finds the conversation whatever its name
+has become - after `/rename`, also from claude.ai or the app - and whichever others share it.
 
-- claude looks the name up in the current directory or, in a git repository, in any checkout of
-  it; a session ID it finds from any directory. cld keeps no record of where a session ran, and a
-  killed one no longer shows in `cld list`. claude looks in the history of the shell's
-  `CLAUDE_CONFIG_DIR`, if you set one.
-- When exactly one conversation has the name, claude resumes it. Several can have it: `/clear`
-  keeps the name for the conversation it starts, and a later `cld new` of the same `S` presumably
-  gives it to a new one as well (not checked yet) - as does `cld new` without `-s`, which gives an
-  index again once its session has ended. claude then opens its picker with the name as the search
-  term, which may not be an exact filter: for `cld-rev` it may list `cld-review` too (not checked
-  yet).
-- With `SESSION`, claude still gets `--name cld-S`, meant to give the conversation the session's
-  name for the next `cld resume -n NAME -s SUFFIX`; how claude applies it to a resumed
-  conversation has not been checked yet. Without `-s`, the session gets the index `cld new` would
-  give it.
+- A reboot, or a server that crashes, ends the sessions and their claudes, but not the
+  conversations, cld's record or a `cld new -w` worktree: `cld list` then shows the sessions as
+  `ended`, with the directories they ran in, and `Enter` there, or `cld resume -n NAME -s SUFFIX`,
+  brings each back. So does `cld kill`, and claude's own `/exit`.
+- cld forgets a session 30 days after claude last started, answered in or ended its conversation
+  there - claude's default `cleanupPeriodDays`: a `cleanupPeriodDays` of your own is not read -
+  but not while its server runs, and when you forget it in `cld list`. `cld kill` does not forget
+  it.
+- Where the directory the session ran in no longer exists, `cld resume` refuses it, naming the
+  command that resumes the conversation by its ID (without one, by its name) from the current
+  directory.
+- Without a record of the session - one an older cld started, or one forgotten - `cld resume` runs
+  `claude --resume cld-S` in the current directory. Where the record has no ID - the session's
+  claude failed before it started its conversation, or tmux failed to make the session, which
+  `cld list` shows as `ended` all the same - it runs that in the directory the session ran in.
+  claude looks the name up there or, in a git repository, in any checkout of it; a session ID it
+  finds from any directory. claude looks in the history of the shell's `CLAUDE_CONFIG_DIR`, if you
+  set one.
+- By name, claude resumes the conversation when exactly one has the name. Several can have it:
+  `/clear` keeps the name for the conversation it starts, and a later `cld new -s SUFFIX` of the
+  same `S` gives it to a new one as well - whose ID cld's record then holds in place of the old
+  one's. claude then opens its picker with the name as the search term, which may not be an exact
+  filter: for `cld-rev` it may list `cld-review` too (not checked yet).
+- With `SESSION`, claude resumes in the current directory, and still gets `--name cld-S`, meant
+  to give the conversation the session's name, as cld's record gets its ID; how claude applies it
+  to a resumed conversation has not been checked yet. Without `-s`, the session gets the index
+  `cld new` would give it.
 - For a session ID that matches no conversation, claude prints
   `No conversation found with session ID: ...` and exits with an error; the session stays with the
   message.
@@ -292,12 +317,12 @@ branches from your current `HEAD`, not from the remote's default branch, whateve
   repository `api`, `cld new -w` makes `.claude/worktrees/cld-api-0`.
 - `cld new -s SUFFIX -w` again reopens the worktree with a new conversation; `cld resume -s SUFFIX`,
   run in the repository, resumes the conversation, and claude takes it back to its worktree - or,
-  if the worktree is gone, resumes where `cld resume` runs and says so. `cld resume` has no `-w`,
+  if the worktree is gone, resumes where `cld new -w` ran and says so. `cld resume` has no `-w`,
   and a worktree claude makes during a resumed session - for a subagent, say - branches as your
   settings say.
-- A worktree outlives its session, and `cld new -w` counts sessions, not worktrees: once session
-  `api-0` has ended, the next `cld new -w` is `api-0` again, and reopens its worktree. Give `-s`
-  for a new one.
+- A worktree outlives its session, and `cld new -w` counts sessions, not worktrees: 30 days after
+  session `api-0` last ran, the next `cld new -w` can be `api-0` again, and reopen its worktree.
+  Give `-s` for a new one.
 - claude makes a worktree only in a directory whose workspace trust you have accepted: run `claude`
   (or `cld new`) there once first; otherwise claude says so and exits, and the session stays with
   the message.
@@ -498,6 +523,11 @@ to bring the conversation back into cld.
   `C-q` counts as cld's, as the servers of cld 0.8.2 and earlier do.
 - **Names that differ only in case.** Where tmux's socket directory ignores case, as on macOS's
   default file system, `A` and `a` share one socket: while one of them runs, cld refuses the other.
+  They share one file of cld's record too, which holds the one that started last.
+- **`cannot record session`.** Where cld cannot write its record - `~/.local/state` read-only,
+  say - `cld new` and `cld resume` warn and make the session all the same, without a record:
+  `cld list` will not show it once it has ended. Set `XDG_STATE_HOME` to a directory you can
+  write.
 - **`File name too long`.** The server's socket, `$TMUX_TMPDIR/tmux-UID/cld-S` with its symlinks
   resolved (on macOS `/tmp` is `/private/tmp`), must stay within 103 bytes on macOS and 107 on
   Linux: under a long `TMUX_TMPDIR`, use a shorter name.
@@ -561,6 +591,9 @@ to bring the conversation back into cld.
   then remove the two lines, the four keys and the entries you do not want to share.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
+- **Ended sessions.** cld 0.9.0 and earlier kept no record of the sessions: a session they started
+  leaves `cld list` as it ends, and `cld resume -n NAME -s SUFFIX` resumes it by name, in the
+  current directory, as before. The sessions started since stay as `ended`.
 - **To cld 0.4.0 or later.** cld 0.3.0 and earlier were a bash script, downloaded from
   `releases/latest/download/cld`, which now fails; an installed script keeps working until you
   install cld [as the README says](../README.md#install). Those versions ran every session on one

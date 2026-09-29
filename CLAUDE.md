@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `cld` runs Claude Code in named sessions, each on a private tmux server of its own
 (`tmux -L cld-NAME -f /dev/null`), so a conversation can be detached and rejoined from any
 terminal. The product is a Go program on cobra: `cmd/cld` is the command line (commands, their
-help texts, argument errors), `internal/session` the tmux side, `internal/picker` the interactive
+help texts, argument errors), `internal/session` the tmux side and cld's record of its sessions,
+`internal/picker` the interactive
 `cld list` on a terminal, `internal/project` `cld setup project` (a project's
 `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json` and `.gitignore`),
 `internal/telemetry` `cld setup telemetry` (a local OpenTelemetry Collector in Docker, and
@@ -65,8 +66,9 @@ not push such a change. Rebase onto `main` before either.
   Raising the minimum is one change: `linux-oldest`'s pin, the check, the docs.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
-  run the real claude): they run `claude --version` before starting that claude; `join`, `kill`,
-  `list`, `setup project`, `setup telemetry`, `setup completion`, `update` and completion do not. Re-derive the
+  run the real claude): they run `claude --version` before starting that claude, and so does the
+  list's Enter on a session that has ended, which resumes it; `join`, `kill`, `list` otherwise,
+  `setup project`, `setup telemetry`, `setup completion`, `update` and completion do not. Re-derive the
   minimum when cld starts to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `install.sh` and
@@ -100,7 +102,8 @@ not push such a change. Rebase onto `main` before either.
 - Shell completion is cobra's (`cld completion SHELL`, `__complete`), bash's script with lines of
   cld's at the end of `__start_cld` that turn off file names, and ble.sh's own completions, where
   cld offers none under ble.sh (`bashScript`, decision 27): `join -n` offers the NAME, and
-  `join -s` the SUFFIX, of the names `list` shows, read as `list` reads them, `help` the
+  `join -s` the SUFFIX, of the names `list` shows that run, read as `list` reads them, and
+  `resume -n` and `-s` those that have ended, `help` the
   commands it takes, `setup project` and `setup telemetry` among them, `setup project --mcp` its
   MCP servers and `--permissions` its sets, nothing offers file names (`--collector-config`'s
   `FILE` neither), and completion
@@ -134,6 +137,22 @@ not push such a change. Rebase onto `main` before either.
   `@cld-home` on claude's session; `join` and `kill` without `-n`, where NAME's default is not
   empty, refuse a session whose `@cld-home` is another directory (compared as files), and
   `join -s` offers only the sessions they take (`session.Home`; decision 37).
+- cld keeps a **record of its sessions** in `$XDG_STATE_HOME/cld`, by default
+  `~/.local/state/cld` (`internal/session/record.go`; decision 40): `sessions/NAME.json`, a line
+  of JSON per session - its name, the directory claude started in and its conversation's ID -
+  whose file time is the entry's; `indexes.json`, the highest index given each `NAME-`; and
+  `lock`, which `new` and `resume` hold (`flock`) from the name to tmux. They write the entry
+  before tmux, and give claude a `SessionStart` hook that writes it again with `session_id` from
+  its input, and `Stop` and `SessionEnd` hooks that touch it - with decision 39's timeout, but
+  for `SessionEnd`'s, which claude ends at 1.5 s itself; cld reads none of claude's transcripts.
+  `list` shows an entry without its session as `ended`; `resume` without SESSION passes
+  `--resume ID` from the entry (or else the name), in the entry's directory; `join` and `kill`
+  refuse an `ended` session, pointing at `resume`; `new`'s index counts the entries and the
+  indexes given. An entry or index older than 30 days (claude's default `cleanupPeriodDays`)
+  counts no more and goes, but for the entry of a session whose server runs; the list's Ctrl+X
+  twice on an `ended` row forgets its entry, and `kill` does not. Where cld cannot write the
+  record it warns and makes the session all the same. The tests' record is in the sandbox's
+  `HOME`.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
   the `PATH`; a word of cld's ending in `;` (resume's SESSION, the directory given with `-c` or
@@ -181,7 +200,8 @@ not push such a change. Rebase onto `main` before either.
   hooks keep `@cld-worktree`, 1 while claude's directory is in a linked git worktree; they run git
   by the path cld found, and are left out where it finds none (decision 26). claude waits 5 s at
   most (`timeout`) for each hook but `CwdChanged`'s, which it runs in the background (`async`;
-  decision 39). The hook events, `async` and `timeout` must exist in the minimum claude.
+  decision 39), and the record's `SessionEnd` one (below). The hook events, `async` and `timeout`
+  must exist in the minimum claude.
 - The variables that name the terminal to claude, which it trusts over `TERM_PROGRAM=tmux` -
   `TERMINAL_EMULATOR`, `__CFBundleIdentifier`, `CURSOR_TRACE_ID`, `VisualStudioVersion` and
   `VSCODE_GIT_ASKPASS_MAIN` - are removed from the environment `new` and `resume` exec tmux with,
@@ -274,6 +294,10 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
 - `session_test.go` — session lifecycle and server behaviour, the names `new` gives from the
   repository and the index, the sessions of another repository of the same name, the hooks that
   keep claude's status and its worktree for the title, and the names completion offers;
+  `record_test.go` — cld's record of its sessions: the entry, the hooks that give it the
+  conversation's ID, `ended` sessions in `list`, `join`, `kill` and the interactive list,
+  `resume` by the ID (or the name) in the entry's directory, the indexes, expiry, the lock of two
+  `new` at once, `XDG_STATE_HOME` and a record cld cannot write;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
   byte with `testdata/help`, and the completion scripts; `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures

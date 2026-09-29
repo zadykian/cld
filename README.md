@@ -61,21 +61,22 @@ it from claude.ai or the Claude app.
 
 `-n NAME` gives `NAME`, by default the name of the git repository you are in or, outside one, of
 the current directory; `-s SUFFIX` gives `SUFFIX`, which `cld new` otherwise makes an index: `0`, or
-where sessions `NAME-INDEX` run, the index above the highest of them. In a repository `api`,
-`cld new` twice, `cld new -s fix` and `cld new -n web` make the sessions `cld-api-0`, `cld-api-1`,
-`cld-api-fix` and `cld-web-0`, which `cld join -s 1` and `cld kill -n web -s 0` then reach; in
-`/root`, outside any repository, `cld new` makes `cld-root-0`. `cld join` and `cld kill` need `-s`,
-and `cld resume` `-s` or `SESSION`, with which it names its session as `cld new` does. Repositories
-of one name share `NAME`: without `-n`, `cld join` and `cld kill` refuse a session that another
-repository or directory of the same name made.
+where sessions `NAME-INDEX` run or have ended within 30 days, the index above the highest of them.
+In a repository `api`, `cld new` twice, `cld new -s fix` and `cld new -n web` make the sessions
+`cld-api-0`, `cld-api-1`, `cld-api-fix` and `cld-web-0`, which `cld join -s 1` and
+`cld kill -n web -s 0` then reach; in `/root`, outside any repository, `cld new` makes
+`cld-root-0`. `cld join` and `cld kill` need `-s`, and `cld resume` `-s` or `SESSION`, with which
+it names its session as `cld new` does. Repositories of one name share `NAME`: without `-n`,
+`cld join` and `cld kill` refuse a session that another repository or directory of the same name
+made.
 
 | Command | Action |
 |---|---|
 | `cld new [-n NAME] [-s SUFFIX] [-w]` | create the session in the current directory and attach to it; with `-w`, claude works in the git worktree `cld-NAME-SUFFIX` |
-| `cld resume [-n NAME] [-s SUFFIX] [SESSION]` | create the session with claude resuming the conversation `cld-NAME-SUFFIX`, or `SESSION` |
+| `cld resume [-n NAME] [-s SUFFIX] [SESSION]` | create the session with claude resuming its conversation, where the session ran, or `SESSION` |
 | `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
-| `cld list` | list the sessions: name, state (`attached`, `detached` or `exited`) and claude's directory; on a terminal, join or kill one |
+| `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`) and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
 | `cld setup project [--mcp SERVER] [--permissions SET]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
 | `cld setup completion SHELL` | set up completion in `bash`, `zsh` or `fish` |
@@ -92,12 +93,13 @@ repository or directory of the same name made.
 | Keys in `cld list` | Action |
 |---|---|
 | `↑` / `↓` | select a session |
-| `Enter` | join it |
-| `Ctrl+X` twice within two seconds | kill it; `Esc` after the first keeps it |
+| `Enter` | join it, or resume one that has ended |
+| `Ctrl+X` twice within two seconds | kill it, or forget one that has ended; `Esc` after the first keeps it |
 | `Esc`, `Ctrl+C` | leave, printing the table |
 
-Leaving claude (`/exit`, `Ctrl+C` twice) ends its session. If claude exits with an error, the
-session stays with its message on screen, as `exited` in `cld list`, until `cld kill` ends it.
+Leaving claude (`/exit`, `Ctrl+C` twice) ends its session, which `cld list` then shows as
+`ended`. If claude exits with an error, the session stays with its message on screen, as `exited`
+in `cld list`, until `cld kill` ends it.
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
 `/background` (`/bg`), and "Move to background and exit" where `/exit` offers it, end the session
@@ -140,10 +142,15 @@ cld's server passes them on to every terminal on the session. See the
 ### Resuming a conversation
 
 A session's conversation outlives it: after `cld kill`, a reboot or a crash it stays in Claude
-Code's history as `cld-NAME-SUFFIX`, and `cld resume -n NAME -s SUFFIX` resumes it in a new
-session - `-s SUFFIX` alone where `NAME` is the repository's. Run it in the conversation's
-directory, or anywhere in its git repository. `cld resume SESSION` resumes another conversation: a
-session ID, a name, or a search term for claude's picker. Do not resume a
+Code's history, and cld keeps a record of the session for 30 days, in `~/.local/state/cld`: the
+directory it ran in, and the ID of its conversation, which claude gives cld through a hook.
+`cld list` shows such a session as `ended`, and `cld resume -n NAME -s SUFFIX` - `-s SUFFIX` alone
+where `NAME` is the repository's - resumes its conversation by that ID in a new session, in the
+directory it ran in, from wherever you run it, whatever the conversation is named by then; `Enter`
+in `cld list` does the same. After a reboot, `cld list` shows every session that ran as `ended`,
+ready to resume. Without a record, `cld resume` goes by the conversation's name,
+`cld-NAME-SUFFIX`, where you run it. `cld resume SESSION` resumes another conversation: a session
+ID, a name, or a search term for claude's picker. Do not resume a
 conversation that is open elsewhere: two claudes would write to one transcript, their messages
 interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions) say. claude
 refuses one that runs in its background sessions, naming `claude attach ID`, which opens it

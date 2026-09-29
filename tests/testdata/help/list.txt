@@ -1,10 +1,13 @@
 list the sessions cld started: name, whether a terminal is attached (or claude
-exited), and the directory claude is in.
+exited, or the session ended), and the directory claude is in or ran in. cld
+keeps a session that has ended - by cld kill, claude's /exit, a reboot - for 30
+days.
 
 On a terminal, pick one to join or kill: Up and Down select a session, Enter
 joins it as cld join does, C-x twice within two seconds kills it as cld kill
 does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
-list. cld list | cat prints the list only.
+list. On a session that has ended, Enter resumes it as cld resume does, and C-x
+twice forgets it. cld list | cat prints the list only.
 
 Usage:
   cld list [flags]

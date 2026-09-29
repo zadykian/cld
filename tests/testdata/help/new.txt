@@ -1,10 +1,10 @@
 create session NAME-SUFFIX in the current directory and attach to it. NAME is
 by default the name of the git repository the directory is in, or else of the
 directory itself; SUFFIX is by default INDEX, 0 or, where sessions NAME-INDEX
-run, one above the highest of their INDEX. Where the directory's name leaves
-nothing, as in /, the session is SUFFIX alone. NAME and SUFFIX consist of
-letters, digits, "_" and "-", each starting with a letter or digit, and make
-64 characters at most.
+run or have ended within 30 days, one above the highest of their INDEX. Where
+the directory's name leaves nothing, as in /, the session is SUFFIX alone. NAME
+and SUFFIX consist of letters, digits, "_" and "-", each starting with a letter
+or digit, and make 64 characters at most.
 
 Usage:
   cld new [-n NAME] [-s SUFFIX] [-w] [flags]

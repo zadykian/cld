@@ -1,8 +1,11 @@
-create session NAME-SUFFIX in the current directory and attach to it, as new
-does, with claude resuming the conversation named cld-NAME-SUFFIX, or SESSION:
-whatever claude --resume takes, such as a session ID, a name, or a search term
-for claude's picker. SESSION comes after the options and does not start with
-"-". Without SESSION, -s is needed.
+create session NAME-SUFFIX and attach to it, as new does, with claude resuming
+a conversation: without SESSION, the one the session had last, by the ID cld
+keeps of it, or else by the name cld-NAME-SUFFIX, in the directory the session
+ran in - or, where cld keeps no record of the session, by that name in the
+current directory; with SESSION, whatever claude --resume takes, such as a
+session ID, a name, or a search term for claude's picker, in the current
+directory. SESSION comes after the options and does not start with "-".
+Without SESSION, -s is needed.
 
 Usage:
   cld resume [-n NAME] [-s SUFFIX] [flags] [SESSION]

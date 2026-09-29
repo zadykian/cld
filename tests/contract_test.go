@@ -351,7 +351,8 @@ func TestContractClaudeExit(t *testing.T) {
 
 // C10: the session list reads the terminal's own keys, not tmux's: Down and Enter join the second
 // session, with the terminal handed to tmux as it was before the list, which a detach shows;
-// Ctrl+X twice kills the selected session; Esc leaves the terminal as it was. (Whether a JetBrains
+// Ctrl+X twice kills the selected session, which then shows as ended; Esc leaves the terminal as
+// it was. (Whether a JetBrains
 // IDE passes Esc and Ctrl+X on to its terminal depends on its keymap, which the driver cannot see;
 // Ctrl+C also leaves.)
 func TestContractList(t *testing.T) {
@@ -393,8 +394,8 @@ func TestContractList(t *testing.T) {
 				}
 			}, "C-x")
 			sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool { return !probes["a"].Alive() })
-			sandbox.WaitFor(t, 10*time.Second, "the list to show b alone, selected", func() bool {
-				return selectedRow(term) == "b" && !strings.Contains(term.Screen(), "a     detached")
+			sandbox.WaitFor(t, 10*time.Second, "the list to show a as ended, selected", func() bool {
+				return selectedRow(term) == "a" && strings.Contains(term.Screen(), "> a     ended")
 			})
 			if !probes["b"].Alive() {
 				t.Error("claude b exited")

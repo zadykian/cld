@@ -312,7 +312,7 @@ func TestCompleteCommands(t *testing.T) {
 		"resume\tcreate session NAME-SUFFIX with claude resuming its conversation\n" +
 		"join\tattach to session NAME-SUFFIX\n" +
 		"kill\tend session NAME-SUFFIX and its tmux server\n" +
-		"list\tlist the sessions cld started; on a terminal, join or kill one\n" +
+		"list\tlist cld's sessions; on a terminal, join, kill or resume one\n" +
 		"setup\tset up claude in a project, its telemetry, or shell completion\n" +
 		"update\tupdate cld to the latest release\n" +
 		"version\tshow the version\n" +
@@ -1602,7 +1602,7 @@ func TestNewTmuxCommand(t *testing.T) {
 				"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
 				"new-session", "-s", "cld-x", "-n", "x", "-c", filepath.Join(s.Work, c)}
 			// cld finds the fake tmux, which the hooks then name.
-			claude := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", slices.Contains(args, "-w"))
+			claude := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", filepath.Join(s.Work, dir), slices.Contains(args, "-w"))
 			want = append(append(want, probe, "--name", "cld-x", "--settings", claude), after...)
 			want = append(want, ";",
 				"set", "-p", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
