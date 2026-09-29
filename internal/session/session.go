@@ -63,9 +63,9 @@
 //     cld new for one NAME at once do
 //   - the hyperlinks terminal feature for xterm*, wezterm and alacritty, at fixed indexes too:
 //     claude marks file paths and URLs as OSC 8 links under tmux, and tmux writes them to a
-//     terminal only with this feature, which it gives by XTVERSION to iTerm2, foot and tmux
-//     alone. wezterm is WezTerm's TERM where set, alacritty Alacritty's where its terminfo is
-//     installed, and both take links; a terminal that takes none ignores them
+//     terminal only with this feature, which it gives by XTVERSION to iTerm2 and tmux alone,
+//     and from 3.7 to foot. wezterm is WezTerm's TERM where set, alacritty Alacritty's where its
+//     terminfo is installed, and both take links; a terminal that takes none ignores them
 //   - mouse on, focus-events on: claude probes both and hints when they are off. With the mouse
 //     on, the wheel over a program that draws in the main screen without the mouse - claude
 //     outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
@@ -145,6 +145,13 @@
 // the shell that ran new or resume had it for claude's life: join gives tmux the
 // update-environment variables of its terminal, SSH_AUTH_SOCK and DISPLAY among them, for what
 // starts on the session later, not claude.
+//
+// cld nests in any tmux but its own (see OwnPane): its client runs in a pane of the user's tmux,
+// which reads the terminal's keys first and keeps some from claude - its prefix, C-b by default,
+// and Shift+Enter where its extended-keys is off (where cld's tmux is older than 3.7, anything
+// but always) or it does not take its terminal for one that sends modified keys. Where cld's
+// tmux is 3.6 or newer, new, resume, join and the list's Enter name them on the message line
+// once attached, until a key is pressed (see keptKeys and showKept).
 package session
 
 import (
@@ -198,6 +205,9 @@ func ValidName(name string) bool { return len(name) <= MaxName && validName.Matc
 // sessions, and checked by Check, as every command needs before it runs tmux.
 type Tmux struct {
 	path string
+	// version is the release tmux -V reported, as Check read it: nil for a tmux that Find found,
+	// or that reported none ("master"), which older takes for the newest.
+	version version
 }
 
 // The oldest tmux and claude cld runs. tmux's is the oldest release the tests run on, 3.5a, its
@@ -295,11 +305,18 @@ func Check(tools ...string) (*Tmux, error) {
 	}
 	found := strings.TrimRight(string(out), "\n")
 	reported := strings.TrimPrefix(found[strings.LastIndex(found, " ")+1:], "next-")
-	if v, ok := parseVersion(tmuxVersion, reported); ok && v.before(minTmux) {
-		return nil, fail.Runtime(fmt.Sprintf("tmux %s or newer is required, found '%s'", tmuxRelease(minTmux), found))
+	if v, ok := parseVersion(tmuxVersion, reported); ok {
+		if v.before(minTmux) {
+			return nil, fail.Runtime(fmt.Sprintf("tmux %s or newer is required, found '%s'", tmuxRelease(minTmux), found))
+		}
+		t.version = v
 	}
 	return t, nil
 }
+
+// older reports whether t is a tmux older than release, as Check read its version; a tmux of no
+// version known is not.
+func (t *Tmux) older(release version) bool { return t.version != nil && t.version.before(release) }
 
 // Claude is the claude new and resume start: the one CheckClaude found and checked.
 type Claude struct {
@@ -644,7 +661,8 @@ func (t *Tmux) Resume(c *Claude, suffix, conversation string, args []string) err
 // command longer than tmux takes (see commandLimit). It writes the session's entry as it goes
 // (see remember), under the record's lock, which the caller holds (see Lock).
 func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id string, args []string) error {
-	if err := t.readyClient(); err != nil {
+	kept, err := t.readyClient()
+	if err != nil {
 		return err
 	}
 	name := "cld-" + suffix
@@ -725,7 +743,10 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 		// reason (see titles), and so does its home, which join and kill check (see foreign). The
 		// targets end in ":" because set takes a pane, which "=NAME" does not find: "=NAME:" is
 		// the active pane of the session's window, claude's, its only one yet. -u takes the
-		// terminal for UTF-8 whatever the locale (see the package comment).
+		// terminal for UTF-8 whatever the locale (see the package comment). What the tmux cld
+		// runs in keeps from claude goes last, to the terminal new-session attached (see
+		// showKept); the pane-died hook's hint, for a claude that exits however soon, comes after
+		// it.
 		target := "=" + name + ":"
 		argv = []string{"tmux", "-u", "-L", name, "-f", "/dev/null"}
 		options := len(argv)
@@ -752,6 +773,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 			"set", "-t", target, "@cld-busy", busyMarker, ";",
 			"set", "-t", target, "set-titles-string", titles(suffix), ";",
 			"set", "-t", target, "set-titles", "on")
+		argv = append(argv, showKept(kept)...)
 		return argv, commandSize(argv[options:]), nil
 	}
 	// The entry goes once nothing is left to refuse the session, with the ID resume resumes, and
@@ -856,9 +878,10 @@ func withoutTerminal(environ []string) []string {
 // IMSG_HEADER_SIZE in tmux's compat/imsg.h), and fails otherwise with "command too long" or
 // "failed to send command". Of new's command, cld's own words take some 6 to 7 KB, most of it
 // claude's settings, whose hooks name tmux and the server's socket by their paths, and the file
-// of the session's entry in cld's record, and some 1 KB the pane-died hook, which names the
-// session in each text it fits to the pane's width (see died); the rest is for the words given to
-// claude, resume's SESSION among them.
+// of the session's entry in cld's record, some 1 KB the pane-died hook, which names the session
+// in each text it fits to the pane's width (see died), and inside a tmux that keeps keys from
+// claude some 180 bytes the line that names them (see showKept); the rest is for the words given
+// to claude, resume's SESSION among them.
 const commandLimit = 16384 - 16 - 4
 
 // commandSize is the size of command as a tmux client hands it to its server, without the count:
@@ -940,13 +963,14 @@ func ended(suffix string) error {
 // returns only when it does not get as far. Joinable and Attach are its steps after the check for
 // cld's own pane, for a caller that has to look the session up before it hands the terminal over.
 func (t *Tmux) Join(suffix string, home Home, detachOthers bool) error {
-	if err := t.readyClient(); err != nil {
+	kept, err := t.readyClient()
+	if err != nil {
 		return err
 	}
 	if err := t.Joinable(context.Background(), suffix, home); err != nil {
 		return err
 	}
-	return t.Attach(suffix, detachOthers)
+	return t.attach(suffix, detachOthers, kept)
 }
 
 // Joinable is join's lookup: nil when session cld-SUFFIX is on its server - with a home, made
@@ -972,13 +996,23 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string, home Home) error {
 }
 
 // Attach is the rest of join, for a session Joinable found, from a terminal that is not a live
-// pane of one of cld's servers (see OwnPane): it refuses a terminal tmux could not attach from
-// (see checkTerminal), and becomes a tmux client attached to session cld-SUFFIX, beside any other
-// or, with detachOthers, detaching them. It returns only when it does not get as far.
+// pane of one of cld's servers (see OwnPane): it reads the keys that any other tmux the terminal is
+// a pane of keeps from claude (see keptKeys), refuses a terminal tmux could not attach from (see
+// checkTerminal), and becomes a tmux client attached to session cld-SUFFIX, beside any other or,
+// with detachOthers, detaching them, which shows those keys (see showKept). It returns only when
+// it does not get as far.
 func (t *Tmux) Attach(suffix string, detachOthers bool) error {
+	kept := t.keptKeys()
 	if err := emptyTMUX(); err != nil {
 		return err
 	}
+	return t.attach(suffix, detachOthers, kept)
+}
+
+// attach is Join's and Attach's last step, once TMUX is empty: it refuses a terminal tmux could
+// not attach from (see checkTerminal), becomes a tmux client attached to session cld-SUFFIX, and
+// shows the keys kept, which the tmux cld runs in keeps from claude (see showKept).
+func (t *Tmux) attach(suffix string, detachOthers bool, kept []string) error {
 	if err := checkTerminal("join"); err != nil {
 		return err
 	}
@@ -991,8 +1025,10 @@ func (t *Tmux) Attach(suffix string, detachOthers bool) error {
 	if detachOthers {
 		attach = append(attach, "-d")
 	}
-	// After attach-session in one command list, the hint goes to this terminal, attached by then.
-	return t.become(append(attach, "-t", "="+name, ";", "if", "-F", "#{pane_dead}", hint(suffix)), os.Environ())
+	// After attach-session in one command list, the keys kept and the hint go to this terminal,
+	// attached by then: the hint, for a claude that exited, in place of the keys.
+	attach = append(append(attach, "-t", "="+name), showKept(kept)...)
+	return t.become(append(attach, ";", "if", "-F", "#{pane_dead}", hint(suffix)), os.Environ())
 }
 
 // Kill ends session cld-SUFFIX with its server, for cld kill: End, whatever its panes' pids, with
@@ -1456,13 +1492,14 @@ func noServer(message string) bool {
 // check skips; set, even empty, TMUX still tells the client that the terminal takes UTF-8.
 
 // readyClient readies cld to become a tmux client: it refuses a terminal that is a live pane of
-// one of cld's servers, and empties a TMUX that is set, for the client and every tmux command
-// before it.
-func (t *Tmux) readyClient() error {
+// one of cld's servers, reads the keys that any other tmux it is a pane of keeps from claude (see
+// keptKeys), and empties a TMUX that is set, for the client and every tmux command before it.
+func (t *Tmux) readyClient() ([]string, error) {
 	if suffix, found := t.OwnPane(); found {
-		return fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d first", suffix))
+		return nil, fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d first", suffix))
 	}
-	return emptyTMUX()
+	kept := t.keptKeys()
+	return kept, emptyTMUX()
 }
 
 // emptyTMUX empties TMUX where it is set (see above).
@@ -1502,6 +1539,101 @@ func (t *Tmux) OwnPane() (string, bool) {
 		return "", false
 	}
 	return suffix, slices.Contains(strings.Split(strings.TrimRight(string(live), "\n"), "\n"), strings.TrimRight(string(terminal), "\n"))
+}
+
+// keptKeys names the keys that the tmux this terminal is a pane of keeps from claude, where TMUX
+// names a tmux that is not one of cld's - the user's own, which cld nests in, a server named
+// cld-NAME that cld did not start included (see mark; OwnPane for cld's own) - and cld's tmux can
+// show them, from 3.6 (see showKept): before, it names none. That tmux reads the terminal's keys
+// before cld's client does: its prefix, and prefix2 where it has one, never reach claude - a
+// default tmux takes C-b, claude's key to background a task, and passes it on only as C-b C-b.
+// Shift+Enter reaches claude as Enter, which submits, unless that tmux asks its terminal for
+// modified keys and passes them on to cld's client. It asks with extended-keys on or always, and
+// only where it takes the terminal for one that sends them, the feature extkeys - which it gives
+// the terminals it recognises by their answers (iTerm2, mintty and XTerm, foot from tmux 3.6,
+// WezTerm and tmux from 3.7) and others only through its terminal-features. It passes them on
+// with always, and with on only where cld's client asks for them, which the client does where
+// cld's tmux takes that tmux for a terminal that sends them: from tmux 3.7, which recognises a
+// tmux as one; before, under the TERM a tmux gives its panes, it asks for none, and only always
+// passes them on (see docs/design.md, Findings). keptKeys asks that tmux, through the socket TMUX
+// names, for the options of the pane whose tty is this terminal - tmux finds the pane by the tty
+// of the client asking, as for its own nested check - and of that pane's session, and for the
+// features of the client it formats for that session, the one most recently active: none where no
+// client is attached, or where that tmux predates the format, and then Shift+Enter counts as
+// kept. A tmux that does not answer, or finds another pane, keeps nothing that cld knows of. What
+// else it keeps - clipboard copies, focus events, links, claude's notifications but the bell -
+// takes no key, and no warning: the user guide says, as it says what restores what.
+func (t *Tmux) keptKeys() []string {
+	socket, _, _ := strings.Cut(os.Getenv("TMUX"), ",")
+	if socket == "" || t.older(version{3, 6, 0}) {
+		return nil
+	}
+	tty, err := tool.Command("tty")
+	if err != nil {
+		return nil
+	}
+	terminal, err := tty.Output()
+	if err != nil {
+		return nil
+	}
+	options := t.command("-S", socket, "display", "-p",
+		"#{pane_tty}\t#{extended-keys}\t#{prefix}\t#{prefix2}\t#{client_termfeatures}\t"+mark)
+	options.Stderr = nil
+	out, err := options.Output()
+	if err != nil {
+		return nil
+	}
+	field := strings.Split(strings.TrimRight(string(out), "\n"), "\t")
+	if len(field) != 6 || field[0] != strings.TrimRight(string(terminal), "\n") {
+		return nil
+	}
+	if suffix, found := strings.CutPrefix(filepath.Base(socket), "cld-"); found && ValidName(suffix) && field[5] == "1" {
+		return nil
+	}
+	var kept []string
+	for _, prefix := range field[2:4] {
+		if prefix != "" && prefix != "None" && !slices.Contains(kept, prefix) {
+			kept = append(kept, prefix)
+		}
+	}
+	passed := field[1] == "always" || field[1] == "on" && !t.older(version{3, 7, 0})
+	if !passed || !slices.Contains(strings.Split(field[4], ","), "extkeys") {
+		kept = append(kept, "Shift+Enter")
+	}
+	return kept
+}
+
+// showKept is the tmux commands that show the keys kept, which the tmux cld runs in keeps from
+// claude (see keptKeys), to the terminal just attached, after a ";" that ends the command before
+// them; none where no key is kept. The line names the section of the user guide that says what to
+// do, within 80 columns: where the keys leave no room for the section's name, as three do, it
+// names the guide alone. It stays on the message line until a key, which then reaches claude, or
+// another message: -C keeps the pane drawn meanwhile, where tmux would draw nothing more of it
+// until then but what a full redraw draws, and -l shows the line as it is, not as a format. -C is
+// new in tmux 3.6, and tmux 3.5 refuses the whole command with it: keptKeys names no key there,
+// since the message would keep claude's screen from being drawn until the key. With status off
+// the message line is the pane's last line, which tmux draws the pane over: claude entering the
+// alternate screen as it starts - its fullscreen renderer, and the tests' claude - draws over the
+// message at once, and so can claude writing on that line. tmux draws the message again whenever
+// it redraws the whole terminal, so the terminal is redrawn one second and three seconds after it
+// attached, once claude has started: a key before then has taken the message away for good, and
+// the redraws show nothing new. What claude draws over the message later hides it until a key,
+// and tmux's log of messages (C-q ~, show-messages) keeps it.
+func showKept(kept []string) []string {
+	if len(kept) == 0 {
+		return nil
+	}
+	keys := kept[len(kept)-1]
+	if len(kept) > 1 {
+		keys = strings.Join(kept[:len(kept)-1], ", ") + " and " + keys
+	}
+	line := "your tmux keeps " + keys + `: see "Inside your own tmux" in cld's guide`
+	if len(line) > 80 {
+		line = "your tmux keeps " + keys + ": see cld's guide"
+	}
+	return []string{";", "display", "-l", "-C", "-d", "0", line,
+		";", "run-shell", "-b", "-C", "-d", "1", "refresh-client",
+		";", "run-shell", "-b", "-C", "-d", "3", "refresh-client"}
 }
 
 // Home is where the sessions made in the current directory belong, and where the NAME they take

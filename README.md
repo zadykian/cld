@@ -8,6 +8,8 @@ without losing the conversation. The server ignores your `~/.tmux.conf` and is s
 Shift+Enter, the mouse wheel, focus events, links and clipboard copies work, and the prefix is
 `C-q`, which claude leaves free. claude's notifications reach the terminal too, once its setting
 `preferredNotifChannel` names a channel your terminal takes: see [Notifications](#notifications).
+Inside your own tmux, only what that tmux lets through works: see the
+[guide](docs/guide.md#inside-your-own-tmux).
 
 ## Install
 

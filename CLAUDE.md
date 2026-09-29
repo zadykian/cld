@@ -61,9 +61,10 @@ not push such a change. Rebase onto `main` before either.
 
 - Requires **tmux 3.5a or newer**, the oldest release the tests run on (in CI's `linux-oldest`),
   beside the newest (3.7c, pinned in `tests/Dockerfile` and the `Makefile`); there is no
-  behaviour per tmux version, but for the tests' `paste-buffer -S` (3.7 and newer). The check
-  reads `tmux -V` at startup, and compares the letter of a bug-fix release: 3.5 is refused.
-  Raising the minimum is one change: `linux-oldest`'s pin, the check, the docs.
+  behaviour per tmux version, but for the tests' `paste-buffer -S` (3.7 and newer) and the keys
+  a tmux cld runs inside keeps (below). The check reads `tmux -V` at startup, and compares the
+  letter of a bug-fix release: 3.5 is refused. Raising the minimum is one change:
+  `linux-oldest`'s pin, the check, the docs.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
   run the real claude): they run `claude --version` before starting that claude, and so does the
@@ -188,10 +189,10 @@ not push such a change. Rebase onto `main` before either.
   case, as on macOS), all four name that session instead.
 - cld marks the servers it starts, not their sessions (`set -s @cld 1`), and reads the mark,
   `#{||:#{@cld},#{==:#{prefix},C-q}}` - the prefix for the servers of cld 0.8.2 and earlier - in
-  the formats it runs anyway: the filter for session `cld-NAME`, `lingering`'s, `kill`'s `if -F`
-  and `OwnPane`'s. A server `cld-NAME` without it, the user's own, is none of cld's: `list` and
-  completion pass over it, `new`, `resume` and `join` nest in its panes, and they and `kill`
-  refuse its name, pointing at another name, never at `kill` (decision 34).
+  the formats it runs anyway: the filter for session `cld-NAME`, `lingering`'s, `kill`'s `if -F`,
+  `OwnPane`'s and `keptKeys`'. A server `cld-NAME` without it, the user's own, is none of cld's:
+  `list` and completion pass over it, `new`, `resume` and `join` nest in its panes, and they and
+  `kill` refuse its name, pointing at another name, never at `kill` (decision 34).
 - Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
   pane (`set -p`, `set-hook -p`), and the tab's title (`set-titles`, `set-titles-string`,
   `@cld-busy`, `@cld-tmux`) on claude's session, not the window or the server, so the other panes
@@ -228,6 +229,16 @@ not push such a change. Rebase onto `main` before either.
 - `new`, `resume` and `join` need a terminal - their stdin one, `TERM` set and not `dumb` -
   checked last, just before the title: tmux would fail without it, and `new-session` leave its
   socket behind (decision 31). The title goes to stdout only where stdout is a terminal.
+- Inside a tmux that is not one of cld's (`TMUX` names another socket, or an unmarked
+  `cld-NAME`), `new`, `resume`, `join` and the list's Enter read its `extended-keys`, `prefix`
+  and `prefix2` for the pane whose tty is cld's, and its client's `client_termfeatures`
+  (`display -p` through that socket): the prefixes are kept, and Shift+Enter unless
+  `extended-keys` is `always`, or `on` where cld's tmux is 3.7 or newer, and the features name
+  `extkeys`. Where a key is kept, they name the keys on cld's message line once attached
+  (`display -l -C -d 0`), with the terminal redrawn a second and three seconds later, since
+  claude's startup draws over the line; never with `output.Warn`, which would show only after
+  detach. cld's tmux 3.5 refuses `-C`, new in 3.6, and without it would hold back what claude
+  draws until the key: there cld reads and names nothing (`Tmux.older`, decision 43).
 - `setup telemetry` needs Docker, and Linux (`--network host`): it replaces the container
   `cld-telemetry`, one per Docker daemon, and rewrites the `env` of claude's user settings,
   `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude/settings.json`), keeping every other key.
@@ -306,7 +317,8 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, the names `new` gives from the
   repository and the index, the sessions of another repository of the same name, the hooks that
-  keep claude's status and its worktree for the title, and the names completion offers;
+  keep claude's status and its worktree for the title, the names completion offers, and the keys
+  a tmux cld runs inside keeps from claude;
   `record_test.go` — cld's record of its sessions: the entry, the hooks that give it the
   conversation's ID, `ended` sessions in `list`, `join`, `kill` and the interactive list,
   `resume` by the ID (or the name) in the entry's directory, the indexes, expiry, the lock of two

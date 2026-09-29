@@ -2410,6 +2410,211 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 	})
 }
 
+// yourTmuxLines are the lines the user guide gives for ~/.tmux.conf, for the user's own tmux that
+// cld runs in: with extended-keys always where cld's tmux is older than 3.7 - before37 - which
+// then asks no tmux for modified keys, and with on the other tmux passes them only to a program
+// that asks.
+func yourTmuxLines(before37 bool) string {
+	extendedKeys := "on"
+	if before37 {
+		extendedKeys = "always"
+	}
+	return "set -s extended-keys " + extendedKeys + "\n" +
+		"set -as terminal-features 'xterm*:extkeys:hyperlinks'\n" +
+		"set -s set-clipboard on\n" +
+		"set -s focus-events on\n"
+}
+
+// tmuxOlder reports whether the tmux the tests run - cld's, and the tmux cld runs in - is older
+// than major.minor, from its tmux -V: "tmux 3.5a" is 3.5, and a development build's
+// "tmux next-3.8" 3.8. One without a version, "tmux master", is not older.
+func tmuxOlder(t *testing.T, major, minor int) bool {
+	t.Helper()
+	out, err := exec.Command(sandbox.RealTmux, "-V").Output()
+	if err != nil {
+		t.Fatalf("tmux -V: %v", err)
+	}
+	match := regexp.MustCompile(`([0-9]+)\.([0-9]+)`).FindStringSubmatch(string(out))
+	if match == nil {
+		return false
+	}
+	var version []int
+	for _, digits := range match[1:] {
+		n, _ := strconv.Atoi(digits)
+		version = append(version, n)
+	}
+	return slices.Compare(version, []int{major, minor}) < 0
+}
+
+// shownMessages is the messages that server's tmux has shown, from its log, however soon claude
+// drew over them.
+func shownMessages(s *sandbox.Sandbox, server string) []string {
+	var messages []string
+	for _, line := range strings.Split(s.MustTmux(server, "show-messages"), "\n") {
+		if _, message, found := strings.Cut(line, " message: "); found {
+			messages = append(messages, message)
+		}
+	}
+	return messages
+}
+
+// Inside the user's own tmux, which reads the terminal's keys before cld's client in its pane
+// does, new, resume, join and the list's Enter name the keys it keeps from claude on the message
+// line once attached, until a key, which reaches claude: its prefix and prefix2, and Shift+Enter
+// where its extended-keys is off - it then ignores the request for modified keys that cld's client
+// makes, and Shift+Enter reaches claude as Enter. The claude of new draws over the message as it
+// enters the alternate screen, and tmux draws it again a second later. A default tmux keeps C-b,
+// which C-b C-b sends through, and Shift+Enter; with the user guide's lines Shift+Enter and
+// clipboard copies come through, and with no prefix either nothing is said, which tmux's log of
+// messages would show however soon claude drew over it. The baseline terminal runs the user's
+// tmux, server yours, whose pane runs cld once yours has taken the terminal for a tmux, which it
+// recognises by its answers: from tmux 3.7 for one that sends modified keys (see
+// TestKeysYourTmuxKeepsWithoutItsTerminal), and before, not, so that under extended-keys always
+// alone cld names Shift+Enter all the same. Before 3.7 cld's tmux does not take yours for one
+// either, and its client asks yours for no modified keys: with extended-keys on, which passes
+// them only to a program that asks, Shift+Enter arrives as Enter, and the guide's lines have
+// always. tmux 3.5 shows no message but by holding back claude's screen until the key, and there
+// cld names nothing, the keys kept as elsewhere. resume makes its session as new does.
+func TestKeysYourTmuxKeeps(t *testing.T) {
+	t.Parallel()
+	const guide = `: see "Inside your own tmux" in cld's guide`
+	before36, before37 := tmuxOlder(t, 3, 6), tmuxOlder(t, 3, 7)
+	lines := yourTmuxLines(before37)
+	twoPrefixes := "your tmux keeps C-a and C-b" + guide
+	extendedKeysOn, shiftEnterOn := "your tmux keeps C-b"+guide, expectations["tmux"].shiftEnter
+	if before37 {
+		twoPrefixes = "your tmux keeps C-a, C-b and Shift+Enter: see cld's guide"
+		extendedKeysOn, shiftEnterOn = "your tmux keeps C-b and Shift+Enter"+guide, []string{"\r"}
+	}
+	for _, yours := range []struct {
+		name string
+		// conf is the configuration of yours, or none for tmux's defaults
+		conf string
+		// message is the message line from tmux 3.6, or none for no message
+		message    string
+		shiftEnter []string
+	}{
+		{"default", "", "your tmux keeps C-b and Shift+Enter" + guide, []string{"\r"}},
+		{"the guide's lines", lines, "your tmux keeps C-b" + guide, expectations["tmux"].shiftEnter},
+		{"extended-keys on", yourTmuxLines(false), extendedKeysOn, shiftEnterOn},
+		{"two prefixes", "set -g prefix C-a\nset -g prefix2 C-b\nset -s extended-keys always\n", twoPrefixes, expectations["tmux"].shiftEnter},
+		{"no prefix", lines + "set -g prefix None\n", "", expectations["tmux"].shiftEnter},
+	} {
+		t.Run(yours.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			conf := "/dev/null"
+			if yours.conf != "" {
+				conf = filepath.Join(s.Root, "yours.conf")
+				s.WriteFile(conf, yours.conf)
+			}
+			message := yours.message
+			if before36 {
+				message = ""
+			}
+			term := terminal.New(t, "tmux", s)
+			term.Start([]string{"tmux", "-L", "yours", "-f", conf, "new-session", "-s", "yours", "sleep", "3600"}, s.Env, s.Work)
+			// yours learns its terminal's features from the terminal's answers, which come as its
+			// first pane starts - overline among them, from its entry for a tmux, and extkeys from
+			// tmux 3.7: cld runs in the pane once they have come.
+			sandbox.WaitFor(t, 10*time.Second, "yours to take its terminal for a tmux", func() bool {
+				features, err := s.Tmux("yours", "display", "-p", "-t", "=yours:", "#{client_termfeatures}")
+				return err == nil && slices.Contains(strings.Split(features, ","), "overline")
+			})
+			s.MustTmux("yours", append([]string{"respawn-pane", "-k", "-t", "=yours:", "-c", s.Work}, s.CldArgv("new", "-s", "nested")...)...)
+			probe := s.WaitProbes(1)[0]
+			waitClients(t, s, 1)
+			waitScreen(t, term, "probe --name cld-nested")
+			if message != "" {
+				waitScreen(t, term, message)
+			}
+			shiftEnter := between(t, term, probe, "S-Enter")
+			if !slices.Contains(yours.shiftEnter, shiftEnter) {
+				t.Errorf("Shift+Enter arrives as %s, want one of %q", strconv.Quote(shiftEnter), yours.shiftEnter)
+			}
+			sandbox.WaitFor(t, 10*time.Second, "the message to go with the first key", func() bool {
+				return !strings.Contains(term.Screen(), "your tmux keeps")
+			})
+			switch yours.name {
+			case "default":
+				if got := between(t, term, probe, "C-b", "C-b"); got != "\x02" {
+					t.Errorf("C-b C-b arrives as %s, want \"\\x02\"", strconv.Quote(got))
+				}
+				// join and the list's Enter, each in a window of yours of its own, show it to their
+				// own terminals.
+				s.MustTmux("yours", append([]string{"new-window", "-c", s.Work}, s.CldArgv("join", "-s", "nested")...)...)
+				waitClients(t, s, 2)
+				if message != "" {
+					waitScreen(t, term, message)
+				}
+				s.MustTmux("yours", append([]string{"new-window", "-c", s.Work}, s.CldArgv("list")...)...)
+				waitScreen(t, term, "> nested")
+				term.Keys("Enter")
+				waitClients(t, s, 3)
+				if message != "" {
+					waitScreen(t, term, message)
+				}
+			case "the guide's lines":
+				probe.Send("osc52 copied inside your tmux")
+				if clipboard := term.Clipboard(); clipboard != "copied inside your tmux" {
+					t.Errorf("clipboard %q, want %q", clipboard, "copied inside your tmux")
+				}
+			}
+			if message == "" {
+				if messages := shownMessages(s, "cld-nested"); len(messages) != 0 {
+					t.Errorf("messages %q, want none", messages)
+				}
+			}
+		})
+	}
+}
+
+// With extended-keys on, the user's tmux still asks its terminal for modified keys only where it
+// takes the terminal for one that sends them - one it recognises, or one the guide's
+// terminal-features line names - and Shift+Enter comes as Enter from any other: cld names
+// Shift+Enter where the client that tmux formats for the pane's session lacks the feature extkeys,
+// as where no client is attached at all. The tests' terminal, a tmux, is one tmux 3.7 recognises,
+// so yours runs detached here, and tmux's log of messages tells what cld's client was shown, and
+// that tmux 3.5 was shown none. Three keys leave no room within 80 columns for the guide's
+// section, and the line names the guide alone. A server named like cld's that cld did not start,
+// the user's own tmux -L cld-yours, is the user's tmux as much as any other (see
+// TestLeavesAForeignServerAlone). Where TMUX names a tmux that cld's terminal is no pane of - a
+// TMUX, and a TMUX_PANE, that a program inherited - that tmux reports another pane, and cld says
+// nothing.
+func TestKeysYourTmuxKeepsWithoutItsTerminal(t *testing.T) {
+	t.Parallel()
+	want := []string{"your tmux keeps C-b, C-a and Shift+Enter: see cld's guide"}
+	if tmuxOlder(t, 3, 6) {
+		want = nil
+	}
+	for _, server := range []string{"yours", "cld-yours"} {
+		t.Run("a pane of "+server, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			conf := filepath.Join(s.Root, "yours.conf")
+			s.WriteFile(conf, "set -s extended-keys on\nset -g prefix2 C-a\n")
+			s.MustTmux(server, append([]string{"-f", conf, "new-session", "-d", "-s", "yours", "-c", s.Work}, s.CldArgv("new", "-s", "nested")...)...)
+			s.WaitProbes(1)
+			waitClients(t, s, 1)
+			if messages := shownMessages(s, "cld-nested"); !slices.Equal(messages, want) {
+				t.Errorf("messages %q, want %q", messages, want)
+			}
+		})
+	}
+	t.Run("no pane of yours", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		s.MustTmux("yours", "-f", "/dev/null", "new-session", "-d", "-s", "yours", "sleep", "3600")
+		socket, pane, _ := strings.Cut(s.MustTmux("yours", "list-panes", "-t", "=yours:", "-F", "#{socket_path} #{pane_id}"), " ")
+		startCld(t, s, "tmux", map[string]string{"TMUX": socket + ",1,0", "TMUX_PANE": pane}, "new", "-s", "elsewhere")
+		s.WaitProbes(1)
+		waitClients(t, s, 1)
+		if messages := shownMessages(s, "cld-elsewhere"); len(messages) != 0 {
+			t.Errorf("messages %q where cld's terminal is no pane of yours, want none", messages)
+		}
+	})
+}
+
 // A dead pane - one cld keeps for a failed claude, say - keeps the name of its closed pty, and the
 // system hands the name to the next terminal opened. tmux takes a client with $TMUX set on a pty
 // of that name for one inside its own pane, when the pane is on the server it attaches to; cld's

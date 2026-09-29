@@ -161,10 +161,10 @@ install it as `cld`, executable, in a directory on your `PATH`.
   with its own click; as tmux has the terminal report clicks, some terminals want the key that
   keeps a click from the program with it. tmux passes links on where it knows the terminal takes
   them: cld tells it so for a `TERM` that starts with `xterm`, as most terminals set, and for
-  `wezterm` and `alacritty`; iTerm2, foot and tmux it recognises. Inside another tmux, links go on
-  to that tmux, which - from 3.4 - passes them to its own terminal only where it knows that
-  terminal takes them. Other terminals under another `TERM`, and a session an older cld started,
-  show them as plain text.
+  `wezterm` and `alacritty`; iTerm2 and tmux it recognises, and foot from tmux 3.7. Inside another
+  tmux, links go on to that tmux, which - from 3.4 - passes them to its own terminal only where it
+  knows that terminal takes them. Other terminals under another `TERM`, and a session an older cld
+  started, show them as plain text.
 
 ## Scrollback
 
@@ -246,6 +246,54 @@ its panes, whatever terminal is attached. Set your terminal's channel in claude'
   [docs](https://code.claude.com/docs/en/terminal-config#get-a-terminal-bell-or-notification) say.
 - A `Notification` hook of your own - a sound, `notify-send` - runs whatever the setting, in any
   terminal.
+
+## Inside your own tmux
+
+cld runs inside your own tmux as in any terminal: the session is attached in a pane of your tmux,
+which gets the terminal's keys before the session does. Without the lines below, your tmux keeps
+from claude:
+
+- its prefix, `C-b` by default, which is claude's key to background a task: `C-b C-b` sends one
+  `C-b` on. Another prefix, and a second one (`prefix2`), is kept the same way;
+- Shift+Enter, which arrives as Enter and submits the prompt - Ctrl+Enter and other such keys lose
+  their modifier too: `Ctrl+J`, or `\` and then Enter, starts a new line;
+- clipboard copies, focus events, and claude's links, which show as plain text where your tmux
+  does not know that the terminal takes them;
+- claude's notifications but the bell: OSC 9, 99 and 777 (see [Notifications](#notifications)),
+  which your tmux drops whatever its settings. The bell, `"terminal_bell"`, gets through.
+
+Where your tmux keeps a key, `cld new`, `cld resume`, `cld join` and `Enter` in `cld list` name the
+keys on the session's last line once it is attached, until you press a key, which reaches claude:
+`your tmux keeps C-b and Shift+Enter: see "Inside your own tmux" in cld's guide`. Shift+Enter is
+named unless your tmux asks your terminal for modified keys and passes them on, which needs the
+first line below and, for most terminals, the second. As claude starts, it can draw over the line:
+tmux draws it again a second and three seconds after attaching, and a claude that draws over it
+later hides it until the key; `C-q ~` lists the messages tmux has shown, the line among them (`q`
+leaves the list). Your tmux has a prefix unless it is set to `None`, so the line comes back on
+every attach inside it. Where cld's own tmux is 3.5, which shows such a line only by holding back
+what claude draws until the key, cld shows none. Nor can it tell where `TMUX` does not name your
+tmux: run over ssh from a pane of it, cld says nothing, though the same keys are kept.
+
+These lines in `~/.tmux.conf` bring back all but the prefix and those notifications:
+
+```
+set -s extended-keys on
+set -as terminal-features 'xterm*:extkeys:hyperlinks'
+set -s set-clipboard on
+set -s focus-events on
+```
+
+Where cld's own tmux is 3.5 or 3.6, the first line has to be `set -s extended-keys always`: only
+from 3.7 does it take your tmux for a terminal that sends modified keys, and ask it for them, and
+with `on` your tmux passes them only to a program that asks. With `always` it passes them to every
+program in it, asked or not. The second line tells tmux that your terminal sends modified keys
+when asked, and takes links, as cld's own tmux assumes: tmux knows it only for the terminals it
+recognises - iTerm2, mintty and XTerm for the keys, foot too from tmux 3.6 and WezTerm from 3.7,
+and iTerm2 for links, foot too from 3.7 - and the line names every terminal whose `TERM` begins
+with `xterm`; where yours is another, put it in place of `xterm*`. With `set-clipboard on`, any
+program in your tmux can set the clipboard, not claude alone. A terminal attached before the lines
+keeps what it had: after `tmux source ~/.tmux.conf`, detach from your tmux and attach again, and
+there detach from the session (`C-q d`) and `cld join` it again.
 
 ## Resuming a conversation
 
@@ -598,7 +646,9 @@ to bring the conversation back into cld.
   sessions leave in `tmux-UID`, which neither tmux nor cld removes, cost no tmux. In a session,
   each hook of the tab's title runs tmux too, and claude waits for all of them but the one on a
   change of its directory: after every tool among others, through the snap a tenth of a second
-  and more each time (see [Sessions](#sessions)).
+  and more each time (see [Sessions](#sessions)). Inside your own tmux, where cld's own tmux is
+  3.6 or newer, `new`, `resume`, `join` and `Enter` in `cld list` run one tmux more, which asks
+  yours what it keeps from claude (see [Inside your own tmux](#inside-your-own-tmux)).
 
 ## Upgrading
 
