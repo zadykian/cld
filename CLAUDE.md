@@ -207,8 +207,11 @@ not push such a change. Rebase onto `main` before either.
   hooks keep `@cld-worktree`, 1 while claude's directory is in a linked git worktree; they run git
   by the path cld found, and are left out where it finds none (decision 26). claude waits 5 s at
   most (`timeout`) for each hook but `CwdChanged`'s, which it runs in the background (`async`;
-  decision 39), and the record's `SessionEnd` one (below). The hook events, `async` and `timeout`
+  decision 39), and the record's `SessionEnd` one (above). The hook events, `async` and `timeout`
   must exist in the minimum claude.
+- `--settings` carries those hooks and the record's and, with `-w`, `worktree.baseRef`, nothing
+  more: flag settings outrank the user's, so what is theirs to choose - Remote Control
+  (`remoteControlAtStartup`) among it - stays claude's own setting (decision 42).
 - The variables that name the terminal to claude, which it trusts over `TERM_PROGRAM=tmux` -
   `TERMINAL_EMULATOR`, `__CFBundleIdentifier`, `CURSOR_TRACE_ID`, `VisualStudioVersion` and
   `VSCODE_GIT_ASKPASS_MAIN` - are removed from the environment `new` and `resume` exec tmux with,

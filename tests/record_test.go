@@ -151,7 +151,7 @@ func TestResumeRecorded(t *testing.T) {
 
 	startCldIn(t, s, "tmux", elsewhere, nil, "resume", "-n", "api", "-s", "1", "--", "--model", "opus", "--add-dir", "../y")
 	resumed := s.WaitProbes(2)[1]
-	if want := []string{"--name", "cld-api-1", "--settings", remoteControl(s, "cld-api-1", dir), "--resume", firstID, "--model", "opus", "--add-dir", "../y"}; !slices.Equal(resumed.Argv, want) {
+	if want := []string{"--name", "cld-api-1", "--settings", sessionSettings(s, "cld-api-1", dir), "--resume", firstID, "--model", "opus", "--add-dir", "../y"}; !slices.Equal(resumed.Argv, want) {
 		t.Errorf("claude arguments %q, want %q", resumed.Argv, want)
 	}
 	if resumed.Cwd != dir || resumed.Env["PWD"] != dir {
@@ -429,7 +429,7 @@ func TestListEnded(t *testing.T) {
 		term.Keys("Enter")
 		waitScreen(t, term, "probe --name cld-b")
 		resumed := s.WaitProbes(3)[2]
-		if want := []string{"--name", "cld-b", "--settings", remoteControl(s, "cld-b", dir), "--resume", firstID}; !slices.Equal(resumed.Argv, want) {
+		if want := []string{"--name", "cld-b", "--settings", sessionSettings(s, "cld-b", dir), "--resume", firstID}; !slices.Equal(resumed.Argv, want) {
 			t.Errorf("claude arguments %q, want %q", resumed.Argv, want)
 		}
 		if resumed.Cwd != dir {

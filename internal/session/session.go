@@ -16,15 +16,15 @@
 // they take it, as they take a session of a cld that recorded none.
 //
 // `cld new` creates the tmux session "cld-NAME" on the server cld-NAME (tmux -L cld-NAME), running
-// `claude --name cld-NAME` in the current directory, with Remote Control on from the start, and
-// attaches to it; with -w claude also gets --worktree cld-NAME, makes git worktree cld-NAME from
-// HEAD or reopens it, and works there. `cld resume [SESSION]` creates the session the same way,
-// without -w, and claude resumes a conversation instead of starting one: without SESSION the one
-// the session had last - by the ID of its entry in cld's record (see below), or else by the name
-// cld-NAME - in the directory the session ran in, or the current one where cld keeps no record of
-// the session, and with SESSION that, in the current directory. It also gets --resume ID,
-// --resume cld-NAME or --resume SESSION (see Tmux.Resume). The words given to either after "--"
-// go to claude after these, as they are.
+// `claude --name cld-NAME` in the current directory, and attaches to it; with -w claude also gets
+// --worktree cld-NAME, makes git worktree cld-NAME from HEAD or reopens it, and works there.
+// Remote Control is left to claude's own setting (see Tmux.create). `cld resume [SESSION]` creates
+// the session the same way, without -w, and claude resumes a conversation instead of starting
+// one: without SESSION the one the session had last - by the ID of its entry in cld's record (see
+// below), or else by the name cld-NAME - in the directory the session ran in, or the current one
+// where cld keeps no record of the session, and with SESSION that, in the current directory. It
+// also gets --resume ID, --resume cld-NAME or --resume SESSION (see Tmux.Resume). The words given
+// to either after "--" go to claude after these, as they are.
 // `cld join` attaches to the session again, `cld kill` ends it with its server (see Tmux.Kill),
 // and `cld list` shows the sessions, asking each server for its own (see Tmux.Sessions) - on a
 // terminal as a list to pick one from with the arrow keys, to join with Enter, as join does, or to
@@ -456,9 +456,8 @@ func hint(suffix string) string {
 
 // settings are what new and resume pass claude with --settings, as JSON in this field order.
 type settings struct {
-	RemoteControlAtStartup bool              `json:"remoteControlAtStartup"`
-	Worktree               worktreeSettings  `json:"worktree,omitzero"`
-	Hooks                  map[string][]hook `json:"hooks"`
+	Worktree worktreeSettings  `json:"worktree,omitzero"`
+	Hooks    map[string][]hook `json:"hooks"`
 }
 
 type worktreeSettings struct {
@@ -634,13 +633,15 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, conversation, id 
 	// build is tmux's command, whose claude gets the hooks that keep the session's entry in file
 	// where file is not empty, and its size as tmux counts it (see commandLimit).
 	build := func(file string) (argv []string, size int, err error) {
-		// Settings given on claude's command line override the user's and the project's. Remote
-		// Control starts with the session, so it can be reached from claude.ai and the mobile
-		// app; claude still keeps it off where org policy or the project's own settings turn it
-		// off. A resumed conversation does not keep the settings it was started with: they go
-		// again.
+		// Settings given on claude's command line override the user's and the project's, so they
+		// carry only what cld needs: the title's hooks, the record's, and with -w the worktree's
+		// base. Remote Control is the user's to choose, with /config or remoteControlAtStartup in
+		// their settings, as for a claude started without cld: a true here would override their
+		// false, and claude stores the transcript of a session connected to claude.ai on
+		// Anthropic's servers (decision 42 in docs/design.md). A resumed conversation does not
+		// keep the settings it was started with: they go again.
 		git, _ := tool.LookPath("git")
-		given := settings{RemoteControlAtStartup: true, Hooks: statusHooks(t.path, git, socket, suffix)}
+		given := settings{Hooks: statusHooks(t.path, git, socket, suffix)}
 		if file != "" {
 			start, touch := recordHooks(file, suffix, dir)
 			given.Hooks["SessionStart"] = append(given.Hooks["SessionStart"], hook{Hooks: []hookCommand{{Type: "command", Command: start, Timeout: hookTimeout}}})

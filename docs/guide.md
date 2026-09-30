@@ -110,10 +110,17 @@ install it as `cld`, executable, in a directory on your `PATH`.
   terminal's own selection, drag with Shift held - Option in iTerm2, Fn in Terminal.app. A
   session that an older cld started keeps tmux's own Ctrl+click and Alt+right-click until it
   ends: there claude opens a link on an Alt+click alone.
-- Remote Control is turned on over the "Enable Remote Control for all sessions" setting in
-  `/config`. It stays off where your organisation's policy does, or where the project's
-  `.claude/settings.json` or `.claude/settings.local.json` sets `remoteControlAtStartup` to
-  `false`.
+- cld leaves [Remote Control](https://code.claude.com/docs/en/remote-control) to claude, as
+  without cld: a session connects as it starts where `/config`'s "Enable Remote Control for all
+  sessions" is `true` - `remoteControlAtStartup` in claude's user settings - or, left at
+  `default`, where your organisation's default or Claude Code's is on. A `false` for
+  `remoteControlAtStartup` in the project's `.claude/settings.json` or
+  `.claude/settings.local.json` keeps it off there. `/remote-control` connects a session later,
+  and claude's `--remote-control`, given after `--` as in `cld new -- --remote-control`, as it
+  starts (see [claude's options](#claudes-options)). While a session is connected, its
+  transcript - your messages, claude's responses, tool activity - is stored on Anthropic's
+  servers; see
+  [Connection and security](https://code.claude.com/docs/en/remote-control#connection-and-security).
 - The tab's title is `✳ cld-S`, with `◐` and `◑` in turn in place of the `✳` while claude
   works. Under tmux claude keeps its own marker at `✳`, so cld gives claude hooks with
   `--settings` that tell tmux when a turn starts, when claude asks for a permission and when the
@@ -283,9 +290,9 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
 - `cld resume` refuses a name that a session holds, one whose claude exited included: end it with
   `cld kill` first. It cannot tell whether the conversation is open elsewhere. When another
   claude has the conversation's Remote Control session, the resumed one leaves Remote Control off
-  (`Remote Control not started here`) until `/remote-control` moves it over; whether a cld
-  session, which turns Remote Control on as it starts, records that session in its conversation has
-  not been checked yet.
+  (`Remote Control not started here`) until `/remote-control` moves it over; whether a session
+  that Remote Control connected as it started records that session in its conversation has not
+  been checked yet.
 - Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) moves a conversation to
   its background sessions, where claude's supervisor process runs it on as a copy, with a new
   session ID and the same name, which Claude Code's docs say it numbers, as in `cld-S (2)`, where a
@@ -345,9 +352,9 @@ arguments: `--name cld-S` and `--settings`, then `--worktree cld-S` for `cld new
 - cld refuses, naming why, the options it gives claude itself, of which claude would keep the
   last: `-n` and `--name`, as `-n` and `-s` name the session and claude; `-w` and `--worktree` -
   `cld new -w` gives claude the worktree, and `cld resume` none, as claude takes a conversation
-  back to its worktree itself; and `--settings`, which would replace cld's - Remote Control, the
-  worktree's base, and the hooks of the tab's title and of cld's record: your own go in a settings
-  file, such as `.claude/settings.local.json`.
+  back to its worktree itself; and `--settings`, which would replace cld's - the worktree's base,
+  and the hooks of the tab's title and of cld's record: your own go in a settings file, such as
+  `.claude/settings.local.json`.
 - It refuses those that resume a conversation, `-r`, `--resume`, `-c`, `--continue` and
   `--from-pr`, for which there is `cld resume`.
 - It refuses those with which claude would not stay in the session: `-p`, `--print`, `--bg`,
@@ -634,6 +641,12 @@ to bring the conversation back into cld.
   `--permissions cld`, which override every developer's own settings. cld removes none of them:
   run `cld setup project` again, which adds the new lines and warns of what the old ones ignore,
   then remove the two lines, the four keys and the entries you do not want to share.
+- **Remote Control.** Earlier releases of cld turned Remote Control on in their sessions, over a
+  `false` in `/config`; now a session follows claude's own setting (see [Sessions](#sessions)).
+  `/remote-control` connects one session. Setting "Enable Remote Control for all sessions" to
+  `true` in `/config` connects cld's sessions as before, and every claude you start without cld
+  too: the setting is claude's, in its user settings. A session started before the upgrade keeps
+  Remote Control until it ends.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **Ended sessions.** cld 0.9.0 and earlier kept no record of the sessions: a session they started

@@ -55,9 +55,7 @@ for macOS's bash 3.2 among others.
 ## Usage
 
 A session is named `NAME-SUFFIX`: it is the tmux session `cld-NAME-SUFFIX` on a tmux server of its
-own, `tmux -L cld-NAME-SUFFIX`, running `claude --name cld-NAME-SUFFIX` with
-[Remote Control](https://code.claude.com/docs/en/remote-control) on, so that you can also continue
-it from claude.ai or the Claude app.
+own, `tmux -L cld-NAME-SUFFIX`, running `claude --name cld-NAME-SUFFIX`.
 
 `-n NAME` gives `NAME`, by default the name of the git repository you are in or, outside one, of
 the current directory; `-s SUFFIX` gives `SUFFIX`, which `cld new` otherwise makes an index: `0`, or
@@ -121,6 +119,13 @@ session. In claude's classic renderer, which draws in the terminal's main screen
 goes to tmux's history instead, the last 50000 lines, which the mouse wheel or `C-q [` opens in
 tmux's copy mode; claude's fullscreen renderer (`/tui fullscreen`) takes the wheel itself and
 scrolls its own transcript. See the [guide](docs/guide.md#scrollback), for screen readers too.
+
+[Remote Control](https://code.claude.com/docs/en/remote-control), with which you can also continue
+a session from claude.ai or the Claude app, is claude's own setting, as without cld: `/config`'s
+"Enable Remote Control for all sessions" connects every session as it starts, and
+`/remote-control` connects one. While it is connected, the session's transcript - your messages,
+claude's responses, tool activity - is stored on Anthropic's servers, as
+[Claude Code's docs](https://code.claude.com/docs/en/remote-control#connection-and-security) say.
 
 ### Notifications
 
