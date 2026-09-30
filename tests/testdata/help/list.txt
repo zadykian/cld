@@ -13,6 +13,10 @@ does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
 list. On a session that has ended, Enter resumes it as cld join does, and C-x
 twice forgets it. cld list | cat prints the list only.
 
+In a session, C-q s shows the list over it: Enter moves the terminal to the
+session picked, as ! cld join does, and Esc closes the list. So does Enter in
+cld list run in a shell on the session's tmux server.
+
 Usage:
   cld list [flags]
 

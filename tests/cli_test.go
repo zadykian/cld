@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -608,6 +609,14 @@ func TestNameOptions(t *testing.T) {
 		{[]string{"join", "--resume=", "-s", "x"}, "cld: option '--resume' needs a value (see cld help)\n"},
 		{[]string{"join", "--resume", "-p"}, "cld: invalid SESSION '-p' for --resume: claude would read it as an option (see cld help)\n"},
 		{[]string{"join", "--resume=-", "--fork"}, "cld: invalid SESSION '-' for --resume: claude would read it as an option (see cld help)\n"},
+		{[]string{"join", "--switched-from", "a.b"}, "cld: invalid session 'a.b' for --switched-from (see cld help)\n"},
+		{[]string{"join", "--moved=" + moved("/"), "-s", "y"}, "cld: join: --moved goes with --switched-from alone (see cld help)\n"},
+		{[]string{"join", "--moved=!"}, "cld: invalid value '!' for --moved (see cld help)\n"},
+		{[]string{"join", "--switched-from", "a", "--moved=" + moved("_", "-s", "x")}, "cld: invalid value '" + moved("_", "-s", "x") + "' for --moved (see cld help)\n"},
+		{[]string{"join", "--switched-from", "a", "--moved=" + moved("/", "-s", "a.b")}, "cld: invalid suffix 'a.b' (see cld help)\n"},
+		{[]string{"list", "--to", "next"}, "cld: list: --to needs --switch CLIENT (see cld help)\n"},
+		{[]string{"list", "--switch", "/dev/pts/0", "--to", "up"}, "cld: invalid value 'up' for --to: previous, next or last (see cld help)\n"},
+		{[]string{"list", "--switch", ""}, "cld: option '--switch' needs a value (see cld help)\n"},
 		{[]string{"join", "--new", "--resume", "x"},
 			"cld: join: --new and --resume exclude each other: each says which conversation claude starts with (see cld help)\n"},
 		{[]string{"join", "--resume", "x", "-w", "-s", "y"},
@@ -642,6 +651,13 @@ func TestNameOptions(t *testing.T) {
 			}
 		})
 	}
+}
+
+// moved is the value of join's --moved for a join run in directory dir with words after it, as
+// the command a terminal runs as that join moves it has it: dir and the words, each after a NUL,
+// in URL-safe base64 without padding (see TestJoinMovesTheTerminal).
+func moved(dir string, words ...string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(append([]string{dir}, words...), "\x00")))
 }
 
 // A session's name that the name of the repository, or outside one of the directory, or join's
@@ -1472,7 +1488,7 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 // "cld-main"), join attaches, and refuses there a terminal it does not have, or the --resume that
 // would be lost. The fake tmux lists the sessions that sessions names, none if it is empty, and
 // completion finds them through a socket cld-main. That it comes after the check for cld's own
-// pane, which needs a terminal, TestRefusesToNestInItsOwnPane pins.
+// pane, which needs a terminal, TestJoinInItsOwnPaneWithNoTerminal pins.
 func TestOnlyJoinRunsClaude(t *testing.T) {
 	t.Parallel()
 	noDocker := "cld: docker is not installed\n"
@@ -1704,6 +1720,33 @@ func endHook(options, run string) string {
 		`if -F '#{window_active_clients}' "` + endHint(options) + `" }`
 }
 
+// switchKeys are the keys join binds on the server of session name, which tmux, at the path tmux,
+// runs, for cld to move the terminal to another session (see TestSwitchKeys): C-q s shows cld list
+// in a popup, by tmux on the server's socket, and C-q (, C-q ) and C-q L run cld list --to, each a
+// run-shell in the background that prints nothing, naming the terminal that pressed the key, and
+// cld by the file it runs from. The paths go quoted for sh, with each "#" doubled for run-shell's
+// format.
+func switchKeys(t *testing.T, s *sandbox.Sandbox, tmux, name string) []string {
+	t.Helper()
+	cld, err := filepath.EvalSymlinks(sandbox.Cld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quoted := func(path string) string {
+		return strings.ReplaceAll("'"+strings.ReplaceAll(path, "'", `'\''`)+"'", "#", "##")
+	}
+	list := quoted(cld) + " list --switch #{q:client_name}"
+	popup := quoted(tmux) + " -S " + quoted(filepath.Join(s.SocketDir(), "cld-"+name)) +
+		" display-popup -c #{q:client_name} -B -w 100% -h 100% -E " + list
+	const quiet = " >/dev/null 2>&1 || true"
+	return []string{
+		"bind", "s", "run-shell", "-b", popup + quiet, ";",
+		"bind", "(", "run-shell", "-b", list + " --to previous" + quiet, ";",
+		"bind", ")", "run-shell", "-b", list + " --to next" + quiet, ";",
+		"bind", "L", "run-shell", "-b", list + " --to last" + quiet, ";",
+	}
+}
+
 // busyMarker is the marker join has tmux put before the session's name in the tab's
 // title while claude is busy: ◐ in even seconds and ◑ in odd ones, with a job that, a second
 // later, has tmux set the title again (see TestContractTitle).
@@ -1714,18 +1757,19 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // that takes the terminal for UTF-8 whatever the locale (see TestClientsTakeUTF8), the session's
 // own server, its options, the directory, claude - by the path of the one it checked - and its
 // arguments as separate words, what goes on claude's pane, and the tab's title on claude's session,
-// naming the tmux cld checked, as claude's hooks do. With --resume, claude gets --resume SESSION
-// after its other arguments, never with -w's, and with --fork --fork-session; the words after "--"
-// come last. A word ending in ";", which tmux would take for the end of its command, goes with a
-// "\" before the ";", which tmux drops: SESSION, a word after "--", or the directory cld runs in.
-// The directory goes with every "#" doubled, since tmux expands -c as a format, in which "##" is a
-// "#". The session's home - the repository, the work directory, or a directory that is a repository
-// of its own - goes with a "\" before a ";" at its end too, but with no "#" doubled: set does not
-// expand it. The fake tmux, which finds no server running for the session, records the command, and
-// the environment it gets: cld's own, without the variables that name the terminal to claude (see
-// TestVSCodeGit for VS Code's) and with an empty TMUX where TMUX was set, which join's client needs
-// (see TestNestsOnADeadPanesPty); a PS1, which the script's bash dropped, passes too (decision 11
-// in docs/design.md).
+// naming the tmux cld checked, as claude's hooks do, and the keys that move the terminal to another
+// session. With --switched-from, the session records the one the terminal came from. With
+// --resume, claude gets --resume SESSION after its other arguments, never with -w's, and with
+// --fork --fork-session; the words after "--" come last. A word ending in ";", which tmux would
+// take for the end of its command, goes with a "\" before the ";", which tmux drops: SESSION, a
+// word after "--", or the directory cld runs in. The directory goes with every "#" doubled, since
+// tmux expands -c as a format, in which "##" is a "#". The session's home - the repository, the
+// work directory, or a directory that is a repository of its own - goes with a "\" before a ";" at
+// its end too, but with no "#" doubled: set does not expand it. The fake tmux, which finds no
+// server running for the session, records the command, and the environment it gets: cld's own,
+// without the variables that name the terminal to claude (see TestVSCodeGit for VS Code's) and
+// with an empty TMUX where TMUX was set, which join's client needs (see TestNestsOnADeadPanesPty);
+// a PS1, which the script's bash dropped, passes too (decision 11 in docs/design.md).
 func TestCreateTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
@@ -1754,6 +1798,7 @@ func TestCreateTmuxCommand(t *testing.T) {
 		{[]string{"join", "-s", "x", "--fork", "--resume", "cld-a-0"}, "", "", "", []string{"--resume", "cld-a-0", "--fork-session"}},
 		{[]string{"join", "-s", "x", "--resume", "a;", "--fork"}, "", "", "", []string{"--resume", `a\;`, "--fork-session"}},
 		{[]string{"join", "-s", "x", "--fork", "--resume=a", "--", "b;"}, "", "", "", []string{"--resume", "a", "--fork-session", `b\;`}},
+		{[]string{"join", "--switched-from", "a-0", "-s", "x"}, "", "", "", nil},
 		{[]string{"join", "-s", "x"}, "w;", `w\;`, "", nil},
 		{[]string{"join", "-s", "x", "-w"}, "w;", `w\;`, "", []string{"--worktree", "cld-x"}},
 		{[]string{"join", "-s", "x", "--resume", "cld-x"}, "w;", `w\;`, "", []string{"--resume", "cld-x"}},
@@ -1804,8 +1849,9 @@ func TestCreateTmuxCommand(t *testing.T) {
 				"unbind", "-n", "C-MouseDown1Pane", ";", "unbind", "-n", "M-MouseDown3Pane", ";",
 				"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 				"set", "-g", "history-limit", "50000", ";",
-				"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
-				"new-session", "-s", "cld-x", "-n", "x", "-c", filepath.Join(s.Work, c)}
+				"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";"}
+			want = append(want, switchKeys(t, s, sandbox.FakeTmux, "x")...)
+			want = append(want, "new-session", "-s", "cld-x", "-n", "x", "-c", filepath.Join(s.Work, c))
 			// cld finds the fake tmux, which the hooks then name.
 			claude := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", filepath.Join(s.Work, dir), slices.Contains(args, "-w"))
 			want = append(append(want, probe, "--name", "cld-x", "--settings", claude), after...)
@@ -1818,6 +1864,9 @@ func TestCreateTmuxCommand(t *testing.T) {
 				"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",
 				"set", "-t", "=cld-x:", "set-titles-string", "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-x#{?@cld-worktree, [w],}", ";",
 				"set", "-t", "=cld-x:", "set-titles", "on", ";")
+			if i := slices.Index(args, "--switched-from"); i >= 0 {
+				want = append(want, "set", "-t", "=cld-x:", "@cld-last", args[i+1], ";")
+			}
 			want = append(want, marksCommand(s, "x")...)
 			record := s.FakeTmuxRecord()
 			if !slices.Equal(record.Argv, want) {
@@ -1907,7 +1956,8 @@ func TestVSCodeGit(t *testing.T) {
 }
 
 // join hands over to tmux with this command, word for word, where the session runs - a client that
-// takes the terminal for UTF-8, attach-session with -d only for --detach-others - and with the
+// takes the terminal for UTF-8, attach-session with -d only for --detach-others, and with
+// --switched-from the session the terminal came from recorded on the session - and with the
 // environment it got but for an empty TMUX where TMUX was set: TERMINAL_EMULATOR too, which join
 // leaves out only where it creates the session, and a PS1, which the script's bash dropped. The
 // fake tmux finds session x on its server, then records the command.
@@ -1915,15 +1965,18 @@ func TestJoinTmuxCommand(t *testing.T) {
 	t.Parallel()
 	for _, command := range []struct {
 		args []string
-		// attach is attach-session and its options, as tmux gets them
-		attach []string
+		// attach is attach-session and its options, as tmux gets them, and after what follows
+		// attach-session before the hint
+		attach, after []string
 	}{
-		{[]string{"join", "-s", "x"}, []string{"attach-session"}},
-		{[]string{"join", "-s", "x", "--detach-others"}, []string{"attach-session", "-d"}},
-		{[]string{"join", "--detach-others", "-s", "x"}, []string{"attach-session", "-d"}},
-		{[]string{"join", "-s", "x", "--detach-others=false"}, []string{"attach-session"}},
+		{[]string{"join", "-s", "x"}, []string{"attach-session"}, nil},
+		{[]string{"join", "-s", "x", "--detach-others"}, []string{"attach-session", "-d"}, nil},
+		{[]string{"join", "--detach-others", "-s", "x"}, []string{"attach-session", "-d"}, nil},
+		{[]string{"join", "-s", "x", "--detach-others=false"}, []string{"attach-session"}, nil},
+		{[]string{"join", "--switched-from", "a-0", "-s", "x"}, []string{"attach-session"}, []string{";", "set", "-t", "=cld-x:", "@cld-last", "a-0"}},
+		{[]string{"join", "--switched-from", "x", "-s", "x"}, []string{"attach-session"}, nil},
 	} {
-		args, attach := command.args, command.attach
+		args, attach, after := command.args, command.attach, command.after
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
@@ -1942,7 +1995,7 @@ func TestJoinTmuxCommand(t *testing.T) {
 				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, title)
 			}
 			record := s.FakeTmuxRecord()
-			want := slices.Concat([]string{"-u", "-L", "cld-x"}, attach, []string{"-t", "=cld-x", ";", "if", "-F", "#{pane_dead}", endHint("-s x")})
+			want := slices.Concat([]string{"-u", "-L", "cld-x"}, attach, []string{"-t", "=cld-x"}, after, []string{";", "if", "-F", "#{pane_dead}", endHint("-s x")})
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
 			}

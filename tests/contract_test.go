@@ -352,9 +352,11 @@ func TestContractClaudeExit(t *testing.T) {
 // C10: the session list reads the terminal's own keys, not tmux's: Down and Enter join the second
 // session, with the terminal handed to tmux as it was before the list, which a detach shows;
 // Ctrl+X twice kills the selected session, which then shows as ended; Esc leaves the terminal as
-// it was. (Whether a JetBrains
-// IDE passes Esc and Ctrl+X on to its terminal depends on its keymap, which the driver cannot see;
-// Ctrl+C also leaves.)
+// it was. Over a session, C-q s shows the list in tmux's popup, which the terminal shows as it
+// shows the session: Down and Enter move the terminal to the second session, leaving the first
+// running, detached, and Esc closes the popup, the terminal staying on its session. (Whether a
+// JetBrains IDE passes Esc and Ctrl+X on to its terminal depends on its keymap, which the driver
+// cannot see; Ctrl+C also leaves.)
 func TestContractList(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) {
 		t.Run("join", func(t *testing.T) {
@@ -405,6 +407,42 @@ func TestContractList(t *testing.T) {
 				t.Errorf("exit %s, want 0", code)
 			}
 			list.checkRestored(t, term)
+		})
+		t.Run("popup", func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			probes := detachedSessions(t, s, "b")
+			term := startCld(t, s, name, nil, "join", "-s", "a")
+			waitScreen(t, term, "probe --name cld-a")
+			term.Keys("C-q", "s")
+			waitScreen(t, term, listHints)
+			if selected := selectedRow(term); selected != "a" {
+				t.Errorf("row %q selected, want a", selected)
+			}
+			term.Keys("Escape")
+			sandbox.WaitFor(t, 10*time.Second, "the popup to close", func() bool {
+				return !strings.Contains(term.Screen(), listHints) && strings.Contains(term.Screen(), "probe --name cld-a")
+			})
+			term.Keys("C-q", "s")
+			waitScreen(t, term, listHints)
+			term.Keys("Down")
+			sandbox.WaitFor(t, 10*time.Second, "the selection to move to b", func() bool { return selectedRow(term) == "b" })
+			term.Keys("Enter")
+			waitScreen(t, term, "probe --name cld-b")
+			sandbox.WaitFor(t, 10*time.Second, "the terminal on cld-b alone", func() bool {
+				return slices.Equal(s.Clients(), []string{"cld-b"})
+			})
+			if title := term.Title(); title != "✳ cld-b" {
+				t.Errorf("terminal title %q, want %q", title, "✳ cld-b")
+			}
+			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) || !probes["b"].Alive() {
+				t.Errorf("sessions %q, want a and b running", sessions)
+			}
+			term.Keys("C-q", "d")
+			sandbox.WaitFor(t, 10*time.Second, "cld to exit", func() bool { return !term.Running() })
+			if modes := term.Modes(); modes.AltScreen || modes.Mouse {
+				t.Errorf("modes after detaching %+v, want everything off", modes)
+			}
 		})
 		t.Run("leave", func(t *testing.T) {
 			t.Parallel()

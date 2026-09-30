@@ -241,6 +241,8 @@ Without the key:
   the session; `cld join --detach-others` detaches them too, as it attaches the terminal it runs
   in.
 - Closing the terminal's tab detaches it as well. claude keeps running either way.
+- `! cld join -n NAME -s SUFFIX` in claude moves the terminal to another session, in place of
+  `C-q s` (see [Moving between sessions](#moving-between-sessions)).
 
 When claude has exited with an error, the line on screen names `cld detach -n NAME -s SUFFIX`, where
 the terminal is wide enough, for another terminal: claude no longer runs `!`.
@@ -276,11 +278,60 @@ held down does not go on to kill the next session.
 - A kill leaves a `cld join -w` worktree where it is, and the conversation stays: after a kill by
   mistake, `Enter` on its row, or `cld join -n NAME -s SUFFIX`, brings it back.
 - `cld list` prints the table and exits where its input or output is not a terminal
-  (`cld list | cat`), `TERM` is unset or `dumb`, it runs in the background, or it runs in a pane of
-  one of cld's servers; with no sessions, running or ended, it prints nothing. A script that
-  leaves it the terminal gets the list and waits for a key: pipe it for the table.
+  (`cld list | cat`, `! cld list` in claude), `TERM` is unset or `dumb`, or it runs in the
+  background; with no sessions, running or ended, it prints nothing. A script that leaves it the
+  terminal gets the list and waits for a key: pipe it for the table. In a session, `C-q s` shows
+  the list over it, and in a shell on a session's tmux server - a window you open with `C-q c` -
+  `cld list` shows it too: there `Enter` moves the terminal to the session picked (see
+  [Moving between sessions](#moving-between-sessions)).
 - Whether a JetBrains IDE passes `Esc` and `Ctrl+X` on to its terminal depends on its keymap;
   `Ctrl+C` also leaves the list.
+
+## Moving between sessions
+
+In a session, `C-q s` shows `cld list` over it, full screen: `Enter` moves the terminal to the
+session picked - bringing it back where it has ended - and `Esc` closes the list, as does `Ctrl+C`;
+`Ctrl+X` twice kills or forgets a session as in `cld list`. `C-q (` and `C-q )` move the terminal to
+the previous and the next session that runs, in the list's order, going round, and `C-q L` back to
+the session it came from. `! cld join` in claude moves it to the session it names:
+`! cld join -s 1`, `! cld join -n web -s 0`, or `! cld join -w` for a new session in a worktree.
+The session the terminal leaves runs on, detached, or beside the other terminals on it.
+
+- The terminal leaves its session and runs `cld join` in its place, as you would after `C-q d`,
+  with its own environment: a session it creates gets the terminal's variables, as if you had
+  typed `cld join` there, and none of claude's (`CLAUDE_CODE_SESSION_ID`). `! cld join` passes its
+  words on, in claude's directory: the session's name comes from there, as for the `cld join`
+  typed, and a new claude starts there.
+- `! cld join` refuses in claude what `cld join` would refuse before it starts claude - an option
+  that would be lost, another repository's session, an ended session's directory that has gone -
+  and the terminal stays. What the terminal's `cld join` refuses then, a claude too old, say, it
+  prints in the terminal, which has left its session: run `cld join` again from there.
+- With several terminals on the session, `! cld join` moves the one used last - normally the one
+  you typed it in - as `! cld detach` detaches it (see
+  [Terminals that take C-q](#terminals-that-take-c-q)); with none, it refuses. The same goes for
+  `cld join`, and `Enter` in `cld list`, in a shell in a window of the session (`C-q c`).
+- `C-q s` ends no idle session, where `cld list` does: tmux runs it with the environment the
+  session's server started with, not your shell's, so it would go by a `CLD_IDLE_DAYS` you may
+  have changed since (see [Idle sessions](#idle-sessions)).
+- `C-q L` goes back to the session that the one the terminal is on recorded as it arrived: with two
+  terminals on a session, both go where the last to arrive came from. Where that session has ended,
+  or no other session runs for `C-q (` and `C-q )`, the message line says so for three seconds, or
+  until a key, which goes on to claude.
+- tmux runs the terminal's `cld join` with your shell, the one in `SHELL` as the session's server
+  started or else your login shell, and sets `SHELL` to it there, for a claude that `cld join`
+  starts too. cld writes that command for sh, bash, zsh, fish, ksh and csh - sh, bash, zsh and fish
+  are checked, ksh and csh not yet - and passes the words of `! cld join`, and claude's directory,
+  on encoded, so that none of them can run in your shell as a command of its own. With another
+  shell - nu, pwsh - the terminal does not move, and cld says why: detach with `C-q d` and run
+  `cld join` in the terminal.
+- `C-q s` over the session and `! cld join` in claude are not checked yet in the real terminals and
+  with the real claude, but in the tests' terminals with a program in claude's place.
+- Inside your own tmux, the line naming the keys it keeps from claude (see
+  [Inside your own tmux](#inside-your-own-tmux)) shows as you first join, and not again after a
+  move: the terminal's `cld join` no longer knows that tmux.
+- A session started before cld had these keys keeps tmux's own - `C-q s` lists the sessions of its
+  own server, which are claude's - until it ends: end it with `cld kill` and bring it back with
+  `cld join` to have them (see [Upgrading](#upgrading)).
 
 ## Idle sessions
 
@@ -300,7 +351,8 @@ A claude holds some 0.2 to 0.5 GB of memory for as long as its session runs, use
 - To keep a session, join it now and then (`cld join`, then `C-q d`), or set `CLD_IDLE_DAYS` in
   your shell's profile: the number of days, such as `90` or `0.5`, or `0` to end none. `cld list`
   and `cld join` without `-s` refuse a value that is no number of days. Completion ends no
-  session, and neither does `cld join -s SUFFIX`.
+  session, and neither do `cld join -s SUFFIX` and `C-q s` (see
+  [Moving between sessions](#moving-between-sessions)).
 - cld never ends the session it runs in: a session's claude running `cld list`, say, or a shell in
   a pane on its tmux server. Ending it would end cld too, and that claude in the middle of its
   work. A session driven through Remote Control alone ends at the next `cld list` run elsewhere.
@@ -380,9 +432,12 @@ first line below and, for most terminals, the second. As claude starts, it can d
 tmux draws it again a second and three seconds after attaching, and a claude that draws over it
 later hides it until the key; `C-q ~` lists the messages tmux has shown, the line among them (`q`
 leaves the list). Your tmux has a prefix unless it is set to `None`, so the line comes back on
-every attach inside it. Where cld's own tmux is 3.5, which shows such a line only by holding back
-what claude draws until the key, cld shows none. Nor can it tell where `TMUX` does not name your
-tmux: run over ssh from a pane of it, cld says nothing, though the same keys are kept.
+every attach inside it - but not after a move to another session (see
+[Moving between sessions](#moving-between-sessions)): the `cld join` that the move runs no longer
+knows your tmux, and the keys stay kept all the same. Where cld's own tmux is 3.5, which shows such
+a line only by holding back what claude draws until the key, cld shows none. Nor can it tell where
+`TMUX` does not name your tmux: run over ssh from a pane of it, cld says nothing, though the same
+keys are kept.
 
 These lines in `~/.tmux.conf` bring back all but the prefix and those notifications:
 
@@ -847,6 +902,21 @@ move does to the session, and how to bring the conversation back into cld.
 - **`needs a terminal`.** `cld join` attaches the terminal its input comes from, and refuses
   without one - from cron, `ssh host cld join` or a script whose input is not the terminal - or
   with `TERM` unset, empty or `dumb`. Over ssh, `ssh -t host cld join` gives it one.
+- **`no terminal is attached to this session for join to move`.** `cld join` in a session - `!` in
+  claude, a shell in a window of the session - moves the terminal on that session, and there is
+  none: the session is detached, and you reached it otherwise, through Remote Control, say. Run
+  `cld join` in a terminal (see [Moving between sessions](#moving-between-sessions)).
+- **`cannot move the terminal with tmux's default-shell`.** tmux runs the `cld join` that moves the
+  terminal with your shell, and cld writes that command for sh, bash, zsh, fish, ksh and csh alone.
+  Detach with `C-q d` and run `cld join` in the terminal; a session started with `SHELL` naming one
+  of those shells, `SHELL=/bin/bash cld join ...`, moves the terminal from then on, though its
+  windows (`C-q c`) open that shell too.
+- **`C-q s`, `C-q (`, `C-q )` or `C-q L` does nothing.** The keys run cld by the file it ran from
+  when the session started - `tmux -L cld-NAME-SUFFIX list-keys | grep switch` shows it - and say
+  nothing where that file has gone, moved elsewhere or a build directory removed: the popup of
+  `C-q s` closes as it opens. `cld update` replaces the file in place, which keeps them working. To
+  give the session keys for cld where it is now, end it with `cld kill` and bring it back with
+  `cld join`.
 - **`would be lost`.** `cld join` refuses `-w`, `--new`, `--resume` and the words after `--` for a
   session that runs, one whose claude has exited too: its claude has started, and would take none
   of them. Attach with `cld join -s SUFFIX` alone, end the session with `cld kill` first, or give
@@ -983,6 +1053,13 @@ move does to the session, and how to bring the conversation back into cld.
   `-w`, `--new`, `--resume` and the words after `--`, which would be lost, where `cld new` refused
   the name. `Enter` in `cld list` brings back a session that has ended since the list read it, where
   it said so.
+- **Moving between sessions.** In cld 0.10.0 and earlier, `cld join` in a pane of a session's tmux
+  server refused, `this terminal is a pane of the tmux server of session 'S'`, and `cld list`
+  printed its table there; now each moves the terminal on that session to the session named or
+  picked (see [Moving between sessions](#moving-between-sessions)). `C-q s`, `C-q (`, `C-q )` and
+  `C-q L` are cld's in the sessions it starts, where tmux's showed and switched the sessions of
+  one server - those claude made: a session started before the upgrade keeps tmux's until it
+  ends.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **Ended sessions.** cld 0.9.0 and earlier kept no record of the sessions: a session they started

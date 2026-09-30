@@ -97,7 +97,7 @@ rows that name none were probed against tmux 3.6.
 | `claude --help` of 2.1.284 on its command line (run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`: it prints and exits, starting no conversation) | `Usage: claude [options] [command] [prompt]`, with commands such as `mcp`, `agents` and `attach`. Its short options are `-c, --continue`, `-d, --debug [filter]`, `-h, --help`, `-n, --name <name>`, `-p, --print` ("Print response and exit"), `-r, --resume [value]`, `-v, --version` and `-w, --worktree [name]`; `--bg` is also `--background` ("Start the session in the background and return immediately"); `--settings <file-or-json>`; `--tmux` "Create a tmux session for the worktree (requires --worktree)", `--tmux=classic` for plain tmux; `--teleport [session]` "Resume a teleport session"; `--from-pr [value]` "Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term"; `--bare` "Minimal mode: skip hooks (those defined in settings and by installed plugins; ...)", and `--safe-mode` starts with "hooks" among the customizations disabled. Hidden, in the bundle: `--init-only` "Run Setup and SessionStart:startup hooks, then exit", and `--rewind-files <user-message-id>` "Restore files to state at the specified user message and exit (requires --resume)" |
 | how `claude` 2.1.284 reads its command line (read from its bundle, not run) | commander, whose `.option()` calls the bundle holds, reads a word `-xyz` as `-x` with the value `yz` where `-x` takes a value, and else as `-x` followed by `-yz`, and `--x=VALUE` as `--x` with `VALUE`; an option given twice keeps the value given last, and `--settings`, `--name`, `--worktree` and `--resume` are such options - claude's own read of `--settings` from its raw arguments takes the last one too. claude also scans its raw arguments before commander: for `-p` and `--print` it stops at `--` and skips the values of the options that a table of its own names (`--model`, `--append-system-prompt`, `-n` and some 80 more; `--add-dir` and the other lists take each word up to one starting with `-`); for `--tmux` it looks at every word, after a `--` too, and where `-w` or `--worktree` is among them it goes to `execIntoTmuxWorktree` before anything else; for `--bg` and `--background` it looks at every word as well, and goes to its background sessions. `--from-pr` resumes as `--resume` does: claude's own check of whether it resumes names `-r`, `--resume` and `--from-pr` together. `--teleport` checks out the web session's branch in the current repository (`Switching to branch '...'`) and resumes the session there |
 | one of claude's commands after options (`claude --name cld-x --settings '{}' mcp --help` of 2.1.284, run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`) | printed `Usage: claude mcp [options] [command]` and exited 0: the first word that is no option's value names a command, cld's options before it notwithstanding, and claude runs that command instead of a conversation |
-| the longest command a tmux client hands its server (tmux 3.7c, the snap's binary run with its libraries on a private socket, and 3.5a in the tests' image: `new-session -d -s s SCRIPT WORD`, `WORD` ever longer; tmux 3.7c's `client.c` and `compat/imsg.c` read) | the client sends the words after its options, each followed by a NUL, behind their count (4 bytes), in one message of at most 16384 bytes with a 16-byte header: at 16364 bytes of words the script got `WORD`; at 16365 to 16380 tmux printed `failed to send command`, and beyond that `command too long`, exit 1 both, having started its server, which then ended, leaving its socket. `cld new -s x -- WORD` with a 20000-byte `WORD` made a command of 25968 bytes, 5967 of them cld's own, with tmux at a path of 97 characters, claude at `/tmp/fake/claude`, git's `/usr/bin/git`, the socket in `/tmp/tmux-0`, the directory `/root/repository/cld` and the record in `/root/.local/state/cld`, and 5029 in the tests' sandbox (both in the tests' image, measured again once 39 had given the hooks `timeout` and `async`, 133 bytes more than before, and again once 40 had added the record's hooks, 647 bytes more at those paths; 42 then left out `"remoteControlAtStartup":true,`, 30 bytes fewer, counted, not measured, and #64 gave the `pane-died` hook its border line and its text fitted to the pane's width (5), 784 bytes more at those paths, counted, and 763 in the sandbox, where cld's own then measured 5762; 43 added the line naming the keys another tmux keeps, and the redraws after it, some 180 bytes more inside such a tmux, counted; 47 added `"disableAgentView":true,`, 24 bytes more, counted; 48 the marks' `run-shell`, the busy mark's hooks and the `pane-died` hook's branch for status 0, 875 bytes more at those paths, counted; 50 the start mark's path in the marks' `run-shell`, 42 bytes more, counted): the hooks in claude's settings name tmux and the server's socket by their paths, the record's hooks the entry's file and the directory - since 48 the busy mark, five times, and the run mark too - the session's home names the directory, the `pane-died` hook the session, four times, and since 48 the run mark, and the marks' `run-shell` the busy and run marks, and since 50 the start mark |
+| the longest command a tmux client hands its server (tmux 3.7c, the snap's binary run with its libraries on a private socket, and 3.5a in the tests' image: `new-session -d -s s SCRIPT WORD`, `WORD` ever longer; tmux 3.7c's `client.c` and `compat/imsg.c` read) | the client sends the words after its options, each followed by a NUL, behind their count (4 bytes), in one message of at most 16384 bytes with a 16-byte header: at 16364 bytes of words the script got `WORD`; at 16365 to 16380 tmux printed `failed to send command`, and beyond that `command too long`, exit 1 both, having started its server, which then ended, leaving its socket. `cld new -s x -- WORD` with a 20000-byte `WORD` made a command of 25968 bytes, 5967 of them cld's own, with tmux at a path of 97 characters, claude at `/tmp/fake/claude`, git's `/usr/bin/git`, the socket in `/tmp/tmux-0`, the directory `/root/repository/cld` and the record in `/root/.local/state/cld`, and 5029 in the tests' sandbox (both in the tests' image, measured again once 39 had given the hooks `timeout` and `async`, 133 bytes more than before, and again once 40 had added the record's hooks, 647 bytes more at those paths; 42 then left out `"remoteControlAtStartup":true,`, 30 bytes fewer, counted, not measured, and #64 gave the `pane-died` hook its border line and its text fitted to the pane's width (5), 784 bytes more at those paths, counted, and 763 in the sandbox, where cld's own then measured 5762; 43 added the line naming the keys another tmux keeps, and the redraws after it, some 180 bytes more inside such a tmux, counted; 47 added `"disableAgentView":true,`, 24 bytes more, counted; 48 the marks' `run-shell`, the busy mark's hooks and the `pane-died` hook's branch for status 0, 875 bytes more at those paths, counted; 50 the start mark's path in the marks' `run-shell`, 42 bytes more, counted; 51 the keys that move the terminal, 419 bytes and six paths more, counted): the hooks in claude's settings name tmux and the server's socket by their paths, the record's hooks the entry's file and the directory - since 48 the busy mark, five times, and the run mark too - the session's home names the directory, the `pane-died` hook the session, four times, and since 48 the run mark, and the marks' `run-shell` the busy and run marks, and since 50 the start mark; since 51 the keys name cld four times, tmux and the socket |
 | what a resumed conversation keeps ([Claude Code's docs](https://code.claude.com/docs/en/sessions), read on 29 September 2026) | "Not every configuration flag from the original launch is restored. If the session depended on `--mcp-config`, `--settings`, `--plugin-dir`, `--fallback-model`, or directories added with `--add-dir`, pass them again when you resume"; the model is restored unless `--model` or an `ANTHROPIC_MODEL`-family variable picks one |
 | a `#` in `new-session`'s `-c` (tmux 3.3a, 3.4, 3.5a and 3.7c: plain tmux, and `cld new` and `cld resume` before and after the fix, by hand in Docker; `TestDirectoryTmuxWouldChange`) | tmux expands `-c` as a format, after splitting its command at `;`, and `#{session_path}` keeps the result: `/tmp/w/C#S` became `/tmp/w/C` (`#S` is empty then: the session does not exist yet), and `/tmp/w/x#(touch ran)` became `/tmp/w/x` while tmux ran `touch ran` through the shell in the client's directory (with `new-session -d`, 3.3a to 3.5a; with an attached client, as cld's, all four). A `-c` that names no directory starts the program in the home directory, and with 3.3a where the server started. So `cld new`, and `resume`, in such a directory started claude elsewhere, and in one named `x#(command)` ran command. `/tmp/w/C##S` gives `/tmp/w/C#S`: `##` is a `#` |
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` (since 33, also the other variables that name the terminal to claude) and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
@@ -234,6 +234,13 @@ rows that name none were probed against tmux 3.6.
 | `SessionEnd`'s reason for claude's ways out (claude 2.1.285's bundle, read, not run) | `prompt_input_exit` for the ways out of claude's prompt, `/exit` among them, and for the way out of the exit dialog that moves the conversation to the background; a signal gives `other`, as a kill does (see the row on SIGHUP above) |
 | a tmux server that a transient oneshot unit starts, once the unit is stopped: `systemd-run --user --unit=cldprobe-restore-N -p Type=oneshot -p RemainAfterExit=yes -p KillMode=process` running `tmux -L NAME -f /dev/null new-session -d`, then `systemctl --user stop` (systemd 259 on Ubuntu 26.04, a user manager with lingering on; the snap's tmux 3.7c as `/snap/bin/tmux`, and its binary `/snap/tmux/current/usr/local/bin/tmux` run as it is; each unit and server removed afterwards) | through `/snap/bin`, the server ran in a scope of the snap's own, `snap.tmux.tmux-UUID.scope` under `app.slice`, outside the unit; run as it is, in the unit's own cgroup. Both outlived the stop, and the unit showed `inactive`. With the default `KillMode` the second was killed with the unit |
 | tmux-resurrect (master cff343c, 2023-03-06) and tmux-continuum (master 0698e8f, 2024-01-20), their scripts read | resurrect saves a pane's program as the command line of the process whose parent is the pane's own program (`save_command_strategies/ps.sh`, `pgrep.sh`) - what claude runs, not claude, which is the pane's own program in cld - and restores it by typing it into the pane's shell with `send-keys` and `C-m`. continuum saves from `status-right`, where it puts its interpolation, and only where no other tmux server runs: it counts the user's processes whose command starts with `tmux`, cld's servers among them (`helpers.sh`); it restores as tmux starts only where no other server runs either |
+| a popup over a client (#112, tmux 3.5a and 3.7c, in the images `tests/Dockerfile` builds; each on private servers, the client attached from a pane of another server): `display-popup -c CLIENT -e 'X=#{client_name}' -E "sh -c '...'"`, which writes its `tty`, `TMUX`, `TMUX_PANE`, `X` and an argument `#{client_name}`; the same popup given several words, `sh -c 'printf "%s\|" "$@"' FILE 'a b' "it's" '#{client_name}' '$HOME'`; `-B -w 100% -h 100%` with `stty size`; a program in it that asks for the primary device attributes (`CSI c`) in raw mode and reads for 2 s, and its `ps -o pid,pgid,sid,tpgid` | the popup runs on a pty of its own (`/dev/pts/3`, where the pane's is `/dev/pts/0`), with `TMUX` naming the server and no `TMUX_PANE`, and neither its command nor `-e` expands a format: `X=#{client_name}`, `arg=#{client_name}`. Given several words it runs them as they are, with no shell: `a b`, `it's`, `#{client_name}` and `$HOME` arrive whole. `-B -w 100% -h 100%` fills the client: `30 100` on a client of 100 by 30. Nothing answers `CSI c` there. Its program leads a session and a process group of its own, which is the pty's foreground: pid, pgid, sid and tpgid are one |
+| `run-shell` from the command line and from a key (#112, tmux 3.5a and 3.7c, in the images): `run-shell -t =a: "echo '#{client_name} #{q:client_name} ##x' > FILE"`; `C-q s`, typed into the client's terminal, bound to a `run-shell` that writes the same and its job's `TMUX` and `TMUX_PANE`; then bound to `run-shell -b "tmux -S SOCKET display-popup -c #{q:client_name} -B -w 100% -h 100% -E sh -c '...' #{q:client_name}"` | `run-shell` expands its command as a format: `#{client_name}` is `/dev/pts/2`, the client that pressed the key where a key runs it, `#{q:client_name}` the same, quoted for `sh`, and `##` a `#`. The job has `TMUX` and no `TMUX_PANE`. From the key, `-b` shows the popup over the client that pressed it, with the client's name as its argument, and the popup closes as its program exits |
+| the environment of a `run-shell` job and of a popup's program (tmux 3.5a and 3.7c, in the images): a server started with `CLD_IDLE_DAYS=7`, a client attached through `script` from an environment with `CLD_IDLE_DAYS=0`, then `run-shell` and `display-popup -c CLIENT -E` of a `sh -c` that writes `printenv CLD_IDLE_DAYS` | both got `7`, the server's: tmux gives its jobs and popups the server's global environment with the session's over it, and a client's variables reach the session's only by `update-environment`, which names no `CLD_IDLE_DAYS` |
+| `detach-client -E` (#112, tmux 3.5a and 3.7c, in the images): `detach-client -t CLIENT -E "echo SHELL PWD TMUX #{session_name} >FILE; exec tmux -L b attach -t =b"` on server `a` with `default-shell /bin/sh`, its client attached from a pane of another server with `TMUX` unset; the same on server `b` with `default-shell /usr/bin/fish`, back to `a`, with `cd 'DIR/d i'\''r#x' && ...`; a bare `detach-client -E '...'` in `if -F '#{session_attached}'`, after `display-message -p '#{session_attached}'` in one command, by the socket and with the `TMUX` and `TMUX_PANE` of a pane on the session and input from `/dev/null`, the command quoted as `sh` quotes it within the `if`'s, for tmux's parser; the same with no client on the session; `detach-client -t CLIENT -E ...` run in a popup of that client by a program that traps `SIGHUP`, then writes the command's status and goes on for a second | the client leaves the session, which runs on, detached, and its process runs the command as `SHELL -c COMMAND` with the session's `default-shell`, which it puts in `SHELL`, in the client's directory and environment (`TMUX` as the client had it): the terminal moves to server `b`. `-E` expands no format: `#{session_name}` arrives as it is. fish reads `sh`'s quoting of `d i'r#x`: `cd` enters it, and `&&` goes on - but not of every word (see the next row). The bare one prints `1` and moves the client, which the pane's session has; with no client on the session it prints `0`, runs nothing and exits 0. From the popup, the client moves, and the popup closes with the detach, its program gone within the second, its trap silent: 3.5a's wrote the status, 0, and 3.7c's did not, gone before its `tmux` returned |
+| a word quoted for the user's shell (#112, fish 4.0.2, zsh 5.9, bash 5.2.37 and dash 0.5.12 in the image of tmux 3.7c that `tests/Dockerfile` builds): `fish -c "printf '[%s]' 'x\'\''; echo INJECTED #'"`, the word `x\'; echo INJECTED #` quoted as `sh` quotes it; then `printf '[%s]'` in each shell with the words `x\'`, `C:\`, `; echo INJECTED #`, `it's`, `a\\b`, `$HOME`, `~`, `*`, `{a,b}`, `!x`, `''`, an empty one, one of three lines, an indented one and one starting with `#`, `\`, `'`, `%s`, one with a tab, `=x` and `-n`, each bare where it has only letters, digits and `_@+:,./-` (and `=` but first), and otherwise in single quotes but for each `'` and `\`, which go outside them after a `\` | fish reads a `\` before a `\` or a `'` within single quotes as an escape, where `sh` reads a `\`: the first printed `[x'']` and ran `echo INJECTED`, as did the words `C:\` and `; echo INJECTED #` quoted so. Quoted with no `\` or `'` within the quotes, every word reached `printf` as it was, in dash, bash, zsh and fish alike |
+| a value of several lines within the command of an `if` (#112, tmux 3.5a and 3.7c, in the images): `if -F 1 "set -g @v '...'"`, the value's four lines `fix:`, `    indented`, `# heading` and `end` quoted as `sh` quotes them, then `show -gv @v` | the lines come back as `fix:`, `indented`, an empty one and `end`: within quotes, tmux's parser drops the spaces and tabs after each newline, and a line that starts with `#` as a comment. A command handed to tmux as a word of its own, not parsed, keeps them |
+| `display-message -p '#{default-shell}'` by the socket, with the `TMUX` and `TMUX_PANE` of a pane and input from `/dev/null`, on a server started with `SHELL=/usr/bin/fish`, then after `set -g default-shell /bin/sh` (#112, tmux 3.5a and 3.7c, in the images) | `/usr/bin/fish`, then `/bin/sh`: the format shows the option for the pane's session, which `detach-client -E` runs its command with (see the `detach-client -E` row) |
 
 ## Distribution
 
@@ -291,7 +298,7 @@ for the tests that hand over to the fake tmux, the sandbox's own (see 31.6).
 | C7 | after detach the terminal is clean: no mouse reporting, no alt screen | terminal |
 | C8 | a paste reaches claude bracketed and whole; a prefix key inside it is text, not a binding | probe input log |
 | C9 | claude exiting ends its session, and its server unless tmux sessions claude made keep it running; the terminal is left clean. A claude that fails - exit status other than 0, or a signal - keeps its session, with its message and how to end it on screen | terminal, tmux |
-| C10 | the session list (`cld list` on a terminal) reads the terminal's own keys: Down and Enter join the second session, which shows, with the title `✳ cld-NAME`; Ctrl+X pressed twice kills the selected session - its claude exits, and its row stays, selected, as `ended` (before 40 it went); Esc leaves the terminal as it was: the main screen, no mouse reporting, the cursor visible and the same `stty -g` | terminal, probe |
+| C10 | the session list (`cld list` on a terminal) reads the terminal's own keys: Down and Enter join the second session, which shows, with the title `✳ cld-NAME`; Ctrl+X pressed twice kills the selected session - its claude exits, and its row stays, selected, as `ended` (before 40 it went); Esc leaves the terminal as it was: the main screen, no mouse reporting, the cursor visible and the same `stty -g`. Over a session, `C-q s` shows the list in tmux's popup (51): Esc closes it, and Down and Enter move the terminal to the second session, the first running on, detached | terminal, probe, tmux |
 
 Results that legitimately differ per terminal are recorded as per-terminal expectations rather
 than skipped, so a terminal gaining or losing support flips a test.
@@ -359,13 +366,15 @@ comment `/fast-forward` from someone who can push; a pull request that changes
    one of its own servers - claude's external editor, say - a session attached would show inside
    a session of cld's, itself or another, both taking `C-q`, and `new`, `resume` and `join`
    refuse, pointing at `C-q d` (since 44 at `cld detach` too, which acts there; since 50 `join`
-   alone, before it looks anything up, 50.3); tmux refuses there too, but advises to unset
-   `$TMUX`. tmux goes by
+   alone, before it looks anything up, 50.3; since 51 `join` moves the terminal on that session
+   instead, refusing only where none is attached, 51.5); tmux refuses there too, but advises to
+   unset `$TMUX`. tmux goes by
    the tty's name, and a dead pane's name comes back with the next pty opened (see Findings), so
    `cld` looks at the live panes itself and gives its client an empty `TMUX`, which tmux's check
    skips. Since 13 it looks only when the socket `TMUX` names is one of cld's, `cld-NAME`, and
    asks that server; since 34, only where that server has cld's mark. `list` prints its table
-   there rather than the interactive list, whose Enter would be refused (see 14). Nesting has a
+   there rather than the interactive list, whose Enter would be refused (see 14; since 51 the
+   interactive list, whose `Enter` moves the terminal, 51.6). Nesting has a
    cost: the other tmux reads the keys first, and a default one keeps its prefix, `C-b`, claude's
    key to background a task, turns Shift+Enter into Enter, drops clipboard copies and focus
    events, and claude's links where it does not know the terminal takes them (30); no tmux passes
@@ -778,11 +787,12 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     a `tmux rename-session` claude runs, which renames its pane's session - is not the one its
     server is named after (as in cost 4), and `kill` ends its server, claude with it. Cost 6 has
     a server that is another session's. The interactive list's Ctrl+X ends such a server too, on
-    the row of the session it outlived (15.3). Since 34 `kill`'s format requires cld's mark too. `new`,
-    `resume` and `join` refuse a terminal that is a live pane of any of cld's servers (see 2),
-    found through the socket `TMUX` names, and say whose session's server it is; the terminal of any other tmux nests without a check. The
-    options stay as they were, the fixed `terminal-features` indexes too: `new` sets them on a
-    fresh server, but two `cld new -n NAME` at once can both set them on one.
+    the row of the session it outlived (15.3). Since 34 `kill`'s format requires cld's mark too.
+    `new`, `resume` and `join` refuse a terminal that is a live pane of any of cld's servers (see
+    2), found through the socket `TMUX` names, and say whose session's server it is (since 51
+    `join` moves the terminal on that session instead, 51.5); the terminal of any other tmux nests
+    without a check. The options stay as they were, the fixed `terminal-features` indexes too: `new`
+    sets them on a fresh server, but two `cld new -n NAME` at once can both set them on one.
 14. The session list (#23): on a terminal, `cld list` shows the sessions to pick one and join it, as
     Claude Code's agent view (`claude agents`, a research preview whose keys may change) lists its
     background sessions: `↑`/`↓` move between rows, Enter attaches, Esc leaves. Its footer follows
@@ -820,7 +830,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        lines it needs, but a terminal that reflows its lines as it narrows - tmux does (see
        Findings) - breaks the redraw, and recovering means clearing what the shell showed;
     3. in a live pane of one of cld's servers, where join refuses to attach (see 2), `list` prints
-       the table, as before, rather than a list whose Enter would be refused;
+       the table, as before, rather than a list whose Enter would be refused (since 51 the list,
+       whose `Enter` moves the terminal on the pane's session, as `join` there does, 51.6);
     4. with no sessions, or no server, `cld list` prints nothing and exits 0, on a terminal too
        (since 40, with no session running or ended: an entry of cld's record shows without a
        server, 40.3): the list opens only with something to pick. Once its last row has gone, it
@@ -945,7 +956,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        how agent view asks. Ctrl+X is the byte 0x18 in raw mode;
     2. the session the list runs in: moot, since the list is not interactive in a live pane of one
        of cld's servers (14.3), where a kill would take the list, and the claude it came from, down
-       with it;
+       with it (since 51 it is, in `C-q s`'s popup over the session and in a shell in a window of
+       it, 51.1, 51.6: Ctrl+X twice on the terminal's own row ends the session, and with its server
+       the popup, or the window, the list runs in, as `cld kill` run there would - the list asks
+       first, as for any row);
     3. the same session: the list kills the session on the row only while its claude is the one
        the list read. The list reads the pids of the session's panes (`#{pane_pid}`) from each
        server, and the lookup asks for them with the session's name: a session that has none of
@@ -1963,7 +1977,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     5. not done: a detached start (`cld new -d`, as `claude --bg` has), a feature of its own, and
        the check of the foreground that the list makes (14.1). Since 50 `join` alone hands tmux the
        terminal, and its refusal reads `join needs a terminal` whether it attaches, creates the
-       session or brings it back (50.3);
+       session or brings it back (50.3); since 51, in a pane of one of cld's servers - `!` in
+       claude, which has no terminal - `join` moves the terminal on that session instead, whose `cld
+       join` makes this check, and refuses where none is attached there (51.3, 51.5);
     6. the tests: `TestRefusesWithoutATerminal` runs each command without a terminal, and on one
        with `TERM` `dumb`, empty or unset - status 1, the message, nothing on stdout, no socket
        left by the real tmux for `new` and `resume`, no attach recorded by the fake tmux for
@@ -2474,7 +2490,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        check of the terminal (31.2) and the title: only the words for claude, or a long SESSION,
        make it so, cld's own taking some 7 KB. It counts the command before the session's
        entry is written (40.1), with the record's hooks for that entry (40.2) - since 48 with the
-       marks' too (48.1) - so that a command
+       marks' too (48.1), since 51 with the keys' (51.1), which take some 420 bytes and six paths
+       more of cld's own - so that a command
        refused leaves the record as it was; where cld then cannot write the entry, the command
        goes without those hooks (40.7), which only shortens it. The message and the guide say to
        give claude long text in a file (`--append-system-prompt-file` and the like);
@@ -2531,29 +2548,31 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     `cld-NAME` among them (34) - and that tmux keeps a key from claude, `new`, `resume`, `join`
     (since 50 `join` alone, 50.3) and the list's `Enter` name the keys on cld's message line once
     attached: `your tmux keeps C-b and Shift+Enter: see "Inside your own tmux" in cld's guide` for a
-    default tmux, until a key, which reaches claude. The user guide's section says what each loss
-    costs, and the lines of `~/.tmux.conf` that bring back what they can (see 2 and Findings).
-    Settled with it:
-    1. what is read, with `display -p` through the socket `TMUX` names: that tmux's
-       `extended-keys`, `prefix` and `prefix2` for the pane whose `#{pane_tty}` is the tty `tty`
-       names - tmux finds it by the tty of the client asking - and that pane's session, and
-       `#{client_termfeatures}`, the features of the client tmux formats for that session, the one
-       most recently active. Kept are the prefixes but `None`, and Shift+Enter unless
-       `extended-keys` is `always`, or `on` where cld's tmux is 3.7 or newer, and the features name
-       `extkeys`: with `off` tmux ignores the client's request for modified keys, with `on` it
-       passes them only to a client that asks, and cld's asks a tmux only from 3.7, the first
-       release that takes a tmux for a terminal that sends them; and without `extkeys` it asks its
-       terminal for none, which leaves out `extended-keys on` alone in front of any terminal tmux
-       does not recognise (see Findings). 3.7 is cld's tmux, the client, where the server decides
-       what it takes its terminal for: `join` to a server of 3.6 under a client of 3.7 leaves out a
-       Shift+Enter that `on` keeps (see Findings). Empty features - no client attached, a tmux older
-       than the format - count as none. Nothing is said where that tmux does not answer - a stale
-       socket, a server that cld's tmux cannot talk to - or where it finds another pane, as for a
-       `TMUX` that a program inherited without being in a pane of it. The same `display -p` reads
-       cld's mark (34): a server `cld-NAME` that has it is cld's own, whose live panes `OwnPane`
-       refuses, and nothing is said; one without it is the user's, as any other. The read is one
-       tmux run more where `TMUX` is set and cld's tmux is 3.6 or newer, as `OwnPane`'s is where it
-       names `cld-NAME`: 6-20 ms natively, and 100-200 ms through Ubuntu's snap (38);
+    default tmux, until a key, which reaches claude (since 51 not after a move to another session,
+    whose `cld join` runs with the empty `TMUX` of the terminal's client, 51.3). The user guide's
+    section says what each loss costs, and the lines of `~/.tmux.conf` that bring back what they
+    can (see 2 and Findings). Settled with it:
+    1. what is read, with `display -p` through the socket `TMUX` names: that tmux's `extended-keys`,
+       `prefix` and `prefix2` for the pane whose `#{pane_tty}` is the tty `tty` names - tmux finds
+       it by the tty of the client asking - and that pane's session, and `#{client_termfeatures}`,
+       the features of the client tmux formats for that session, the one most recently active. Kept
+       are the prefixes but `None`, and Shift+Enter unless `extended-keys` is `always`, or `on`
+       where cld's tmux is 3.7 or newer, and the features name `extkeys`: with `off` tmux ignores
+       the client's request for modified keys, with `on` it passes them only to a client that asks,
+       and cld's asks a tmux only from 3.7, the first release that takes a tmux for a terminal that
+       sends them; and without `extkeys` it asks its terminal for none, which leaves out
+       `extended-keys on` alone in front of any terminal tmux does not recognise (see Findings). 3.7
+       is cld's tmux, the client, where the server decides what it takes its terminal for: `join` to
+       a server of 3.6 under a client of 3.7 leaves out a Shift+Enter that `on` keeps (see
+       Findings). Empty features - no client attached, a tmux older than the format - count as none.
+       Nothing is said where that tmux does not answer - a stale socket, a server that cld's tmux
+       cannot talk to - or where it finds another pane, as for a `TMUX` that a program inherited
+       without being in a pane of it. The same `display -p` reads cld's mark (34): a server
+       `cld-NAME` that has it is cld's own, whose live panes `OwnPane` refuses (since 51 finds, for
+       `join` to move the terminal on the pane's session, 51.5), and nothing is said; one without it
+       is the user's, as any other. The read is one tmux run more where `TMUX` is set and cld's tmux
+       is 3.6 or newer, as `OwnPane`'s is where it names `cld-NAME`: 6-20 ms natively, and 100-200
+       ms through Ubuntu's snap (38);
     2. keys only: clipboard copies, focus events, links (30) and notifications take no key; the
        guide covers them. Its lines bring back all but the prefix and the notifications, of which
        only the bell passes the user's tmux; the `terminal-features` line gives `hyperlinks` with
@@ -2637,7 +2656,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        and the window between Enter and claude running the command is short, so `detach` leaves the
        choice to tmux. claude runs a shell command without a terminal (see Findings), so `detach`
        does not look at `tty` as the check for cld's own pane does (2): it is the one command that
-       acts in a pane of cld's servers, where `new`, `resume` and `join` refuse to. The `if`
+       acts in a pane of cld's servers, where `new`, `resume` and `join` refuse to (since 51 `join`
+       acts there too, moving the terminal that `detach` would detach, 51.3). The `if`
        matters more here: with no terminal on the session, a bare `detach-client` detaches the
        terminal of another session on the server - one claude made - where one is attached. `-n`
        without `-s` is refused as outside cld's servers, `-s` missing, rather than detach a
@@ -2657,7 +2677,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        as it left out `C-q d` alone before, and then the kill (5). For `-s 1` all of it takes 105
        columns where it took 86, counting the widest way claude exits, and the hook stays some
        1 KB. The refusal in a pane of cld's servers (2) reads
-       `detach with C-q d or cld detach first`, and the root help `! cld detach` in claude. The
+       `detach with C-q d or cld detach first` (since 51 there is none: `join` moves the terminal,
+       51.5), and the root help `! cld detach` in claude. The
        user guide's "Terminals that take C-q" says how to give the key back to tmux in those
        IDEs, and the other ways out;
     4. `detach -n` and `-s` complete as `join`'s (17); `detach` runs no claude, and makes the
@@ -2759,7 +2780,12 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        and none with `CLD_IDLE_DAYS=0`. A read that fails ends `list`, whose read it is, and is a
        warning in `new`, which goes on: the sweep is not what was asked. Since 50 it runs in `join`
        without `-s`, which refuses a pane of cld's own servers before it (50.3, 50.5), and keeps
-       `TMUX` set for it until its tmux command.
+       `TMUX` set for it until its tmux command; since 51 `join` moves the terminal there instead,
+       and the terminal's `cld join` sweeps with an empty `TMUX`, keeping the session the terminal
+       has just left (`--switched-from`), which a move from claude's Bash tool, with no key typed,
+       leaves idle and detached (51.5); the keys' `list --switch`, the list `C-q s` shows over a
+       session among them, sweeps none: it runs with the server's environment, not the
+       terminal's (51.2).
        It comes before `new`'s checks of its own session - a terminal to attach from (31), a server
        that outlived its session (13) - so a `new` refused there has ended the idle sessions all the
        same, as a `list` run there would have. Neither ends the session whose server cld runs on,
@@ -3204,7 +3230,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `--worktree` (`cld gives claude --worktree with -w, before --`);
     3. the order: `join` refuses a live pane of cld's servers (2) once tmux is checked, before it
        looks anything up (`ReadyClient`), where `new` and `resume` refused it after
-       `claude --version`: a lookup there would name a session only to refuse the terminal. It
+       `claude --version`: a lookup there would name a session only to refuse the terminal (since
+       51 it finds the terminal to move there instead, 51.5). It
        then reads what the tmux it runs in keeps from claude (43), and leaves `TMUX` set until
        `create` or `attach` empties it, just before its tmux command, so that the sweep (46.2)
        keeps the session whose server cld runs on. `claude --version` (6) runs only where `join`
@@ -3310,7 +3337,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         `TestForgetRacingJoin` the list's forget of an ended session while a `join` of it is held
         so, refused as starting, which leaves the entry, the environment and the marks to the
         session the `join` then makes.
-        `TestOnlyJoinRunsClaude` and `TestRefusesToNestInItsOwnPane` pin the order of 50.3,
+        `TestOnlyJoinRunsClaude` and `TestRefusesToNestInItsOwnPane` (since 51
+        `TestJoinInItsOwnPaneWithNoTerminal`) pin the order of 50.3,
         `TestJoinEndsIdleSessions` the sweep with `TMUX` kept, `TestListJoin` a row that ended
         since the read brought back and a forgotten one refused, and `TestRestoreAtOnce` a `join`
         waiting for `restore`'s lock. The tests of `new` and `resume` run `join`, renamed where
@@ -3320,6 +3348,214 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 
     Out of scope: a key in the list for `--new` or `--resume`, and footer words other than
     `enter to resume` on an ended row.
+
+51. Moving between sessions (#112), amending 2, 13, 14, 15, 31, 41, 43, 44, 46 and 50: `C-q s` shows
+    `cld list` in a popup over the session, where `Enter` moves the terminal to the session picked
+    and `Esc` closes it; `C-q (` and `C-q )` move it to the previous and the next session that runs,
+    and `C-q L` back to the one it came from; and `cld join` in a pane of cld's servers - `! cld
+    join` in claude, a shell in a window of the session - moves the terminal on that session to the
+    one it names, where it refused (2, 50.3), as `Enter` in `cld list` there does, where `list`
+    printed its table (14.3). Going from one session to another took leaving it: `C-q d`, `cld list`
+    in the shell, `Enter`; with agent view off (47), claude's `←` opens no list either. tmux's own
+    `C-q s` (`choose-tree`), `C-q (`, `C-q )` and `C-q L` (`switch-client`) switch among the
+    sessions of one server, and each session of cld's has a server of its own (13): tmux hands a
+    terminal from one server to another as `detach-client -E` has the terminal's client run a shell
+    command in its own place, which runs `cld join` of the other session (see Findings). Settled
+    with it:
+    1. the keys, which `create` binds in the prefix table, before `new-session` (`switchKeys`):
+       `bind s run-shell -b "TMUX -S SOCKET display-popup -c #{q:client_name} -B -w 100% -h 100% -E
+       CLD list --switch #{q:client_name}"`, and `bind ( run-shell -b "CLD list --switch
+       #{q:client_name} --to previous"`, `)` with `next` and `L` with `last`, each followed by
+       `>/dev/null 2>&1 || true`. `TMUX` is the tmux cld checked, `SOCKET` the server's, and `CLD`
+       the file cld runs from, its symbolic links resolved, which `update` replaces in place (21),
+       each quoted for `sh` with every `#` doubled for `run-shell`'s format, and `CLD` in the
+       popup's words with a `\` before a `;` that would end it, as tmux reads every word of a
+       command (`literal`). A popup's command and its `-e` expand no format, and `run-shell`'s do:
+       `#{client_name}` there is the terminal that pressed the key, which `list --switch` names to
+       `detach-client -t`, and `#{q:...}` quotes it for `sh`; a popup given several words runs them
+       with no shell (see Findings). `-b`, so that the key does not wait on the popup, which has no
+       border and fills the terminal, as `choose-tree` fills the pane: the list draws as `cld list`
+       does (14.2). Nothing a key's `run-shell` prints, nor a status other than 0, reaches the
+       terminal, where tmux would show it over claude's pane (48.1), and the popup takes what its
+       program printed away as it closes: `list --switch` says what goes wrong on the terminal's
+       message line, `cld: MESSAGE` for three seconds or until a key, which reaches claude, as tmux
+       shows its own (`display-message -c CLIENT -d 3000`, `Tmux.Tell`), as well as on stderr - from
+       tmux's checks on, where it knows the terminal and a tmux, by the tmux it found where the
+       checks refuse it.
+       With `-C` from tmux 3.6, as 43's line: without it tmux draws nothing more of claude's pane
+       until the message goes (see Findings), and `-d 0`, as the `pane-died` hint (5) has it, held
+       claude's screen until the key, which then reached claude - `Esc` interrupting a turn; 3.5,
+       which has no `-C`, holds it for those three seconds at most. The keys take some 420 bytes and
+       six paths, cld's four times, of tmux's command (41.5); a server an older cld started keeps
+       tmux's keys until its session ends, which the user guide's Upgrading says. Where the file the
+       keys name has gone - moved, or a build directory removed - they do nothing and say nothing:
+       `sh` fails, and the popup ends as it opens, which the guide's Troubleshooting says;
+    2. `list --switch CLIENT` and `--to previous|next|last` are the keys' own options of `list`,
+       hidden from the help and from completion: `--to` needs `--switch`, and takes those words
+       alone, status 2, and `--switch` outside cld's servers - no `TMUX` naming one - is refused,
+       status 1. They, and `join`'s `--switched-from` (4 below) and `--moved` (3 below), are an
+       interface every later release keeps with these meanings, as it keeps `completion SHELL`
+       (22.5): the keys of a server that runs, and the command a terminal runs as it moves, name cld
+       by its file, which `update` replaces in place (21), and a release that dropped one would
+       leave the keys of the sessions an older cld started doing nothing, saying nothing. With
+       `--to`, `list` reads the sessions, and sweeps none (46.1), and moves the terminal to the
+       session before or after the server's own among those that run - attached, detached or exited
+       (5) - in the order of their names, going round as tmux's keys do, or to the session the
+       server's own recorded (4 below); where there is none - no other session runs, none was
+       recorded, the one recorded has ended or gone - it says so on the message line, `cld: no other
+       session runs`, `cld: no session to go back to`, `cld: session 'S' has ended`, and the
+       terminal stays. Without `--to` it is the interactive list, in the popup, which sweeps none
+       either: tmux runs a key's `run-shell`, and the popup, with the environment of the session's
+       server - that of the `cld join` that started it, or the one `restore` recorded (48.4) - not
+       the terminal's (see Findings), so the sweep would go by a `CLD_IDLE_DAYS` the terminal no
+       longer has, or never had, and the popup takes its notes away as it closes. `Enter` looks the
+       session up as ever (`Joinable`, 50.8) and moves the terminal, `Ctrl+X` kills as ever, and
+       `Esc` and `Ctrl+C` close the popup and print nothing (`picker.Run`'s `switching`: no title,
+       no question to the terminal, which a popup does not answer - see Findings);
+    3. the move (`Tmux.switchTerminal`): for a key, `tmux -S SOCKET detach-client -t CLIENT -E
+       COMMAND`; the popup of `list` closes with the detach, and tmux ends `list` before or after
+       that command returns (see Findings), so nothing follows it. In a pane, `display-message -p
+       'MARK #{session_attached}' ; if -F '#{&&:MARK,#{session_attached}}' "detach-client -E
+       'COMMAND'"`, by the socket `TMUX` names, with cld's stdin: tmux finds the terminal as a bare
+       `cld detach` does (44.2), the one used last on the pane's session, and the `if` keeps a bare
+       `detach-client` from taking a terminal of another session of the server. With no terminal on
+       the session, `join` refuses, status 1: `no terminal is attached to this session for join to
+       move; run cld join in a terminal (see cld help join)`, where `detach` does nothing (44.2):
+       there is nothing to detach, but a `join` that moves nothing has not done what it was asked.
+       COMMAND is `exec CLD join --switched-from S WORDS...`, quoted as `sh` quotes it for tmux's
+       parser within the `if`. tmux runs it with the session's `default-shell`, the user's shell as
+       the server started - `SHELL`, else the login shell - which it puts in the command's `SHELL`
+       too (see Findings), and a word of COMMAND, as that shell reads it, can run as a command of
+       its own: fish reads a `\` before a `\` or a `'` within single quotes as an escape, and a word
+       of claude's quoted as `sh` quotes it - `x\'\''; curl ... | sh #`, or `C:\` before `; ...` -
+       ends its quotes early, and the rest runs in the terminal, outside claude. So COMMAND is
+       written for every shell alike, and cld checks the shell (`checkShell`): `display-message -p
+       '#{default-shell}'`, for the client or the pane's session, before the move, whose base name
+       has to be `sh`, `ash`, `dash`, `bash`, `ksh`, `mksh`, `oksh`, `yash`, `zsh`, `fish`, `csh` or
+       `tcsh` - each has `exec`, and reads CLD, quoted as below, alike - or cld refuses, status 1,
+       `cannot move the terminal with tmux's default-shell 'SHELL': cld writes the move for sh,
+       bash, zsh, fish, ksh and csh alone; detach with C-q d and run cld join (see cld help join)`,
+       the terminal staying: nu, pwsh, elvish would leave it out of any session, running nothing.
+       CLD, the one word that can need quoting, goes bare where it has only letters, digits and
+       `_@+:,./-` (and `=` but first), and otherwise in single quotes but for each `'` and `\`,
+       which go outside them after a `\` (`shellArgument`): dash, bash, zsh and fish read that alike
+       (see Findings), and ksh and csh by their manuals, not tried; a path with a control character
+       in it names no cld to the terminal (`self`), and the keys stay tmux's. WORDS are `-n NAME -s
+       SUFFIX` from the list and the keys (7 below), and else `--moved=VALUE`: the directory `join`
+       ran in and the words it was given in a pane (5 below), or `/` and `-s S` for a session with
+       no such split, each after the one before and a NUL, in URL-safe base64 without padding
+       (`encodeMove`) - letters, digits, `-` and `_`. Passed on as words, one of claude's with a
+       newline in it would come out changed from tmux's parser within the `if`, which drops the
+       spaces and tabs after a newline, and a line that starts with `#` (see Findings). The
+       terminal's `cld join --moved` enters the directory, with `PWD` naming it as it did for the
+       `join` in the pane, and runs `join` with the words anew (`session.Moved`), saying in the
+       terminal where the directory has gone since; the words make VALUE a third longer, and where
+       they make the move's tmux command longer than tmux takes (41.5), past some 12 KB of them,
+       `join` refuses them there as it would where it made the session, whose own command takes
+       fewer still (7 KB and more of it are cld's). The client runs COMMAND in its own environment -
+       the terminal's, as its `cld join` handed it to tmux (31, 33), with an empty `TMUX` - so that
+       a session the move creates gets the terminal's variables, and none of claude's
+       (`CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_CHILD_SESSION`) or the Bash tool's. That empty `TMUX`
+       also leaves the terminal's `cld join` without the tmux the terminal may be a pane of: after a
+       move, 43's line naming the keys that tmux keeps is not shown again, where the first `cld
+       join` in that pane showed it. Carrying that tmux's socket along would put it in the
+       environment of the server a move makes, as `create`'s client's is;
+    4. `C-q L` goes back to the session the terminal came from, as tmux's `L` does on one server:
+       tmux knows the last session of each client, and a client that moves to another server is a
+       new one there. So the session a move reaches records the one the terminal left, as
+       `@cld-last` on claude's session, which `cld join --switched-from S` - a hidden option, a
+       NAME, else status 2 - sets as it attaches (`attach-session -t =cld-NAME ; set -t =cld-NAME:
+       @cld-last S`, cut short with a failed attach) or makes the session (after `set-titles`,
+       within 41.5's limit), unless S is the session itself; `--to last` reads it from the server's
+       session. It is the session's, not the terminal's: of two terminals on a session, `C-q L`
+       takes each where the last to arrive came from. Kept per terminal - by its tty's name, which
+       its new client keeps - it would follow the terminal, but a tty's name comes back with the
+       next terminal opened (2), and one that never moved could be sent anywhere;
+    5. `join` in a pane of one of cld's servers moves the terminal, the maintainer's call on the
+       issue's second open decision (`Switching`): where cld's stdin is a terminal that is a live
+       pane of the server `TMUX` names, which has cld's mark (2, 34) - a shell in a window of the
+       session, claude's external editor - and where it is none, as for claude's `!` and Bash tool
+       (44.2), where that server has cld's mark, which a `display-message -p` of the mark says. A
+       terminal that is no pane of that server, and a pane of any other tmux, attach there as before
+       (43). `join` checks the command line, the tools and tmux as ever (50.3); then, without `-s`,
+       it moves the terminal at once - but for `-w` outside a git work tree (4), which it refuses
+       first - the terminal's `cld join` taking the index (24.1) under the record's lock; with `-s`,
+       it looks the session up first, and refuses what `join` refuses before it would start claude,
+       so that the terminal stays and claude shows why: another repository's session (37), what
+       would be lost (50.2), a server without its session (13), an
+       ended session's directory it cannot enter (40.4), `-w` outside a git work tree (4). That
+       lookup takes no lock, and a session another cld is starting it leaves to the terminal's `cld
+       join`, which waits for it (50.4): a `join` that waited there held claude's `!` for 10 s,
+       after which the terminal's `join` took the start mark for a stale one and made the session
+       again: two moves at once into one session made it twice (`TestJoinMovesToOneSessionAtOnce`, 9
+       below). `claude --version` it leaves to the terminal's `cld join` too, as the claude that
+       starts is the one on the terminal's `PATH` (6). The words go on as given, with the directory
+       `join` ran in, in `--moved` (3), which the terminal's `cld join` enters: `NAME`'s default
+       comes from there (24.3), as for the `join` typed, and a claude it starts runs there. The
+       issue passed `-s 1` on bare, and `cd DIR` only to a `join` that creates: in the terminal's
+       own directory, `-s 1` would name a session of another repository, or of `/` once a move had
+       gone there (7 below). What the terminal's `cld join` refuses then - a race the lookup could
+       not see, a claude too old - it prints in the terminal, which has left its session. Without
+       `-s`, the terminal's `cld join` ends the idle sessions once it has its index (46.2), with
+       `TMUX` empty, which keeps no session: it keeps the one the terminal has just left, its
+       `--switched-from`, whose claude may have moved it from its Bash tool - driven through Remote
+       Control, say - with no key typed on the session for longer than `CLD_IDLE_DAYS`, and which
+       the move has left with no terminal: the sweep would end the claude that ran it, as 46.2 keeps
+       the session whose server cld runs on;
+    6. `list` in a live pane of one of cld's servers is interactive, where it printed its table
+       (14.3): its `Enter` moves the terminal on the pane's session as `join` does there, and `Esc`
+       prints the table as elsewhere; without a terminal, as under `!`, it prints the table as ever;
+    7. the command of a key and of the list names the session with `-n NAME -s SUFFIX`, split at its
+       last `-` (24), and a NAME without such a split with `-s S` in `/`, where `NAME`'s default is
+       empty (24.3), in `--moved` (3). The terminal's `cld join` then attaches, brings the session
+       back or, where it has gone since the list read it, makes it, as `cld join -n NAME -s SUFFIX`
+       would, where the list's own `Enter` refuses it (50.8): a race of the list's lookup and the
+       move. The terminal's own session in the popup closes it and moves nothing; a `join` of its
+       own session in a pane moves the terminal there again - with `--detach-others`, detaching the
+       others;
+    8. not taken: `switch-client` for a session on the same server, which only the sessions claude
+       makes share, and a hint in the list's footer for the popup. Nor a line in the keys, after `||
+       true`, that shows `cannot run CLD` where `sh` gives 126 or 127: the popup's program runs with
+       no shell, where tmux ends one it cannot start with status 1, as any failure of `list`'s, so
+       it would serve `C-q (`, `C-q )` and `C-q L` alone, and put tmux's and the socket's paths in
+       each key again, where claude's words share the command's 16 KB (41.5). Nor a `default-shell`
+       of cld's own for the move - set on the session for the one command, `/bin/sh` - since tmux
+       puts it in the command's `SHELL`, and a session the move made would then give claude's
+       windows `sh`;
+    9. the tests, on tmux 3.7c in the image before the push, and on 3.5a and macOS in CI:
+       `TestContractList`'s `popup` (C10) `C-q s`, `Esc` closing the popup, and `Down` and `Enter`
+       moving the terminal to the second session, the first running on, detached, in the baseline
+       terminal and JediTerm's emulator; `TestSwitchKeys` `C-q (`, `C-q )` and `C-q L` over three
+       sessions, going round, `@cld-last`, a session ended passed over, and the messages - `C-q L`
+       with no session to go back to first, claude's pane drawn while the message shows, which with
+       `-d 0` and no `-C` it was not until a key; `TestSwitchQuoting`, under `sh`, bash, zsh and
+       fish as `default-shell`, each where it is installed, `C-q s` and `Enter`, `C-q )` and `C-q L`
+       by a copy of cld named `cld;` in a directory named `' #\;`, and `cld join -s c` run as claude
+       runs `!` there, with words after `--` that fish or tmux's parser read otherwise quoted as
+       `sh` quotes them - `x\'`, `C:\` before `; echo moved #`, one of four lines, one indented and
+       one starting with `#` - which claude gets as given, in that directory;
+       `TestMoveNeedsAKnownShell` a `default-shell` named `nu` refused for `C-q )` on the message
+       line and for `! cld join`, the terminal staying; `TestJoinMoveKeepsTheSessionItLeft` a move
+       without `-s` from a session idle past `CLD_IDLE_DAYS`, whose sweep ends another idle session
+       and keeps that one; `TestPopupEndsNoSession` `C-q s` over a session whose server started
+       with a `CLD_IDLE_DAYS` another session is idle past, which the popup leaves running;
+       `TestJoinMovesTheTerminal` `cld join -s` run as claude runs `!`, without
+       a terminal and with its pane's `TMUX` and `TMUX_PANE` and claude's variables: of two
+       terminals on the session the one a key was typed in last moves, and the other stays; a
+       session it creates from a directory named `' #;$`, which goes encoded and leaves nothing of a
+       NAME, with the second terminal's variables, none of claude's and the words after `--`; one
+       without `-s`, under the next index; a refusal of what would be lost, the terminal staying; no
+       terminal on the session, refused; and a shell in a window of the session;
+       `TestJoinMovesToOneSessionAtOnce` two moves at once, from claude's panes in two sessions,
+       into one that does not run, the first terminal's tmux held as it is about to make it: one
+       session, one claude, both terminals on it - with 5's lookup waiting for the start mark, as
+       `settled` does, it made two; `TestJoinInItsOwnPaneWithNoTerminal` -
+       `TestRefusesToNestInItsOwnPane` until now - the refusal with no terminal, for each state and
+       before `claude --version`; `TestListJoin`'s `own pane` the list's `Enter` in a window of the
+       session; `TestCreateTmuxCommand`, `TestJoinTmuxCommand` and `TestServerOptions` the keys and
+       `@cld-last`; `TestNameOptions` the hidden options' refusals, `--moved` with other words, a
+       value that is no base64 or names no absolute directory, and one whose words `join` refuses as
+       typed.
 
 ## Implementation notes
 
@@ -3589,6 +3825,21 @@ Where the implementation departs from the plan above:
   session's own name (45.1): before any tool is looked for where `-n` and `-s` make the name
   (`naming.givenName`), and otherwise once `naming.resolve` has made it; `joinOptions` the
   combinations of 50.2.
+- Moving between sessions (decision 51) is `internal/session/switch.go`: a `Switch` is the
+  server's socket, its session and the terminal's client, where a key named it. `Switching` finds
+  the terminal where `join` or the list runs in a pane of cld's servers - `ReadyClient` returns it
+  in place of the keys kept - and `SwitchClient` the one a key names; `switchJoin`, which `join`
+  calls in place of `settled`, and `SwitchJoin` make `join`'s checks there without the lock, and
+  `move` and `SwitchTo` give `switchTerminal` the words of the command the terminal runs, which
+  builds it (`moving`, `shellArgument`, `encodeMove`), checks tmux's `default-shell`
+  (`checkShell`) and hands it to `detach-client -E`; `Moved` is the terminal's `join --moved`,
+  which `join`'s `RunE` hands the words it returns to `run` anew. `Step` is `--to`, `Tell` the
+  message line, and `switchKeys` the bindings `create` gives the server, by the file `self`
+  finds. `Joining.Typed` carries the words given after `join`, which `run` hands `commandLine` for
+  the move, and `Joining.SwitchedFrom` `--switched-from`, which `attach`, and `create` through
+  `launch.from`, set as `@cld-last`, and which `sweep` keeps. `picker.Run` takes `switching`, with
+  which it skips `handOver`, and `switchList` in `cmd/cld` is `list --switch`, whose `tell` puts
+  its errors on the message line.
 - `setup telemetry` (decision 18) is `internal/telemetry`. The settings edit needs no new
   dependency: `json.Decoder`'s tokens read the top-level object and `env` into lists of keys and
   raw values in the file's order, and the file is written back from them, the values byte for
@@ -3856,6 +4107,14 @@ into Enter, see Findings and 43).
   footer of an ended row in the list should say `enter to join`, and whether `-w` with `--new`
   over an ended session should be refused as the issue had it (50.2), are the maintainer's to
   settle.
+- Moving between sessions (51) is tested with the probe in claude's place, on tmux 3.7c and 3.5a in
+  the images before the push and on macOS in CI: the keys, the popup in the baseline terminal and
+  JediTerm's emulator, and `cld join` run as claude runs `!` - without a terminal, with its pane's
+  `TMUX` and `TMUX_PANE` - not by the real claude's `!`, which was read in its bundle (44). tmux ran
+  the command in the terminal's place with `sh` (dash in the images), bash, zsh and fish as
+  `default-shell` in the tests (`TestSwitchQuoting`); ash, ksh, mksh, oksh, yash, csh and tcsh,
+  which `checkShell` lets through, were not tried, nor a popup in a real terminal, nor `C-q s` on a
+  terminal narrower than the list's footer.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

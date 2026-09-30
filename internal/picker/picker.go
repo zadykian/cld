@@ -58,6 +58,12 @@
 // is typed after its last key stays with the terminal: for the shell after Esc or Ctrl+C, for
 // tmux after Enter - but for what comes before the terminal's answer to the list's last question,
 // or an answer later than answerWait, which reaches claude (see handOver).
+//
+// Where the session picked goes to another terminal - the list in the popup of C-q s over a
+// session, or in a pane of one of cld's servers, whose Enter moves the terminal on that session
+// (see session.Switch) - the list hands nothing over: it puts the terminal back as on Esc, writing
+// no title and asking the terminal nothing, and returns the session picked. A popup answers no
+// question of the list's (see Findings in docs/design.md).
 package picker
 
 import (
@@ -162,8 +168,8 @@ var attributes = regexp.MustCompile(`\x1b\[\?[0-9;]*c$`)
 // back. It returns the session picked, with no name when the user left, and the sessions the
 // list last read, less one its kill ended or its forget forgot since (see abandon). The terminal
 // is back as it was when Run returns; after a pick, it also has the session's title (see
-// handOver).
-func Run(source Source, sessions []session.Session) (picked session.Session, last []session.Session, err error) {
+// handOver), but where switching: the terminal is not the one that goes to the session picked.
+func Run(source Source, sessions []session.Session, switching bool) (picked session.Session, last []session.Session, err error) {
 	// Signals are caught before the terminal changes, and let go after it is back.
 	in := &input{
 		resized:   make(chan os.Signal, 1),
@@ -222,8 +228,10 @@ func Run(source Source, sessions []session.Session) (picked session.Session, las
 	if err := in.signalled(); err != nil {
 		return session.Session{}, l.rows, err
 	}
-	if err := handOver(in, tty, row.Name); err != nil {
-		return session.Session{}, l.rows, err
+	if !switching {
+		if err := handOver(in, tty, row.Name); err != nil {
+			return session.Session{}, l.rows, err
+		}
 	}
 	tty.restore()
 	// From here on these signals end cld as they would without the list. os/signal passes on

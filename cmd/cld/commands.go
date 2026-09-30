@@ -74,7 +74,7 @@ func run(args []string) error {
 	// ("write /dev/stdout: ..."). Nothing is written when there is nothing to print, as for kill,
 	// since even an empty write to a stdout that cannot take one fails.
 	var out bytes.Buffer
-	root := commandLine(typed, &out)
+	root := commandLine(typed, args[1:], &out)
 	root.SetArgs(append([]string{command}, args[1:]...))
 	if err := root.Execute(); err != nil {
 		return err
@@ -133,8 +133,8 @@ func shellArgument(args []string) error {
 	return fail.Usage(fmt.Sprintf("setup completion: unknown shell '%s': %s", args[0], hint))
 }
 
-// commandLine is cld's commands, for a command typed as typed: the messages name it that way,
-// "-V" for version, say. What cobra prints goes to out.
+// commandLine is cld's commands, for a command typed as typed, with words after it: the messages
+// name it that way, "-V" for version, say. What cobra prints goes to out.
 //
 // The help is cobra's, from its default templates: each command's Use, and its Long or else its
 // Short, then its options with their usages, which name their value in backquotes (`NAME`). Its
@@ -160,8 +160,10 @@ func shellArgument(args []string) error {
 //
 // join, detach and kill name their session NAME-SUFFIX with -n NAME and -s SUFFIX (see naming):
 // NAME defaults to the repository's or directory's name, and SUFFIX, for join, to the next index;
-// kill needs -s, and detach too but in one of cld's servers (see session.Inside).
-func commandLine(typed string, out io.Writer) *cobra.Command {
+// kill needs -s, and detach too but in one of cld's servers (see session.Inside). In a pane of one
+// of cld's servers, join moves the terminal on that session instead of attaching this one: the
+// terminal runs cld join with the same words (see session.Switch).
+func commandLine(typed string, words []string, out io.Writer) *cobra.Command {
 	cobra.EnableCommandSorting = false // The commands in the order they are added.
 	root := &cobra.Command{
 		Use: "cld",
@@ -174,9 +176,12 @@ claude's agent view (/bg) off. What claude starts through tmux runs on that
 server too, and ends with it.
 
 Detach with C-q d, or ! cld detach in claude where the terminal keeps C-q from
-tmux; C-q C-q sends C-q to claude. A session whose claude fails stays, showing
-why, until cld kill ends it, or it has been idle for longer than $CLD_IDLE_DAYS
-days (see cld help list).`,
+tmux; C-q C-q sends C-q to claude. C-q s shows cld list over the session, where
+Enter moves the terminal to the session picked, and Esc closes it; C-q ( and
+C-q ) move the terminal to the previous and the next session, C-q L back to
+the one it came from, and ! cld join in claude to the session it names. A
+session whose claude fails stays, showing why, until cld kill ends it, or it
+has been idle for longer than $CLD_IDLE_DAYS days (see cld help list).`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -224,6 +229,13 @@ goes only to a new conversation, as claude takes one it resumes back to its
 worktree itself: where the session has ended, it needs --new, and it excludes
 --resume, as --new does.
 
+In a session - ! cld join in claude, or a shell on the session's tmux server -
+join moves the terminal attached to that session, or of several the one used
+last, as cld detach finds it: the terminal leaves the session, which runs on,
+and runs cld join with the same words in the directory join ran in, with its
+own environment, where cld join says what it refuses then. With no terminal
+attached, join refuses.
+
 ARGS, after --, go to claude after cld's own arguments: claude's options, such
 as --model opus, and a prompt to start with. cld refuses the options it gives
 claude itself: -n, --name, -w, --worktree and --settings; those that resume a
@@ -245,7 +257,35 @@ and --version. A resumed conversation does not keep --mcp-config, --plugin-dir,
 	fork := join.Flags().Bool("fork", false, "with --resume, resume a copy of SESSION under a new\n"+
 		"session ID, leaving SESSION as it is (claude\n--fork-session)")
 	detachOthers := join.Flags().Bool("detach-others", false, "detach any other terminal attached to the session")
+	// The command a terminal runs as it moves gives these, not the user (see session.Switch): the
+	// session a switch moved the terminal from, which the session joined records for C-q L, and,
+	// where join ran in a pane, the directory it ran in and the words it was given, encoded.
+	switchedFrom := join.Flags().String("switched-from", "", "")
+	moved := join.Flags().String("moved", "", "")
+	for _, hidden := range []string{"switched-from", "moved"} {
+		if err := join.Flags().MarkHidden(hidden); err != nil {
+			panic(err)
+		}
+	}
 	join.RunE = func(c *cobra.Command, args []string) error {
+		if c.Flags().Changed("switched-from") && !session.ValidName(*switchedFrom) {
+			return fail.Usage(fmt.Sprintf("invalid session '%s' for --switched-from (see cld help)", *switchedFrom))
+		}
+		// The terminal that a join in a pane moved runs join as that join was given it, in its
+		// directory (see session.Moved): run parses the words anew.
+		if c.Flags().Changed("moved") {
+			if len(args) > 0 || c.Flags().NFlag() > 2 || c.Flags().NFlag() == 2 && !c.Flags().Changed("switched-from") {
+				return fail.Usage(typed + ": --moved goes with --switched-from alone (see cld help)")
+			}
+			words, err := session.Moved(*moved)
+			if err != nil {
+				return err
+			}
+			if *switchedFrom != "" {
+				words = append([]string{"--switched-from", *switchedFrom}, words...)
+			}
+			return run(append([]string{"join"}, words...))
+		}
 		if err := joinNaming.check(typed, ""); err != nil {
 			return err
 		}
@@ -262,9 +302,9 @@ and --version. A resumed conversation does not keep --mcp-config, --plugin-dir,
 				return err
 			}
 		}
-		_, words := atDash(c, args)
+		_, claudeWords := atDash(c, args)
 		joining := session.Joining{DetachOthers: *detachOthers, Worktree: *worktree, New: *fresh,
-			Conversation: *conversation, Fork: *fork, Args: words}
+			Conversation: *conversation, Fork: *fork, Args: claudeWords, SwitchedFrom: *switchedFrom, Typed: words}
 		// Without -s, join creates the session under the next index (see session.Tmux.Next), and
 		// then reads every server to end the idle sessions, as list does (see sweep); with -s it
 		// reads its session's server only.
@@ -284,12 +324,10 @@ and --version. A resumed conversation does not keep --mcp-config, --plugin-dir,
 		if err != nil {
 			return err
 		}
-		// join refuses a terminal that is a pane of cld's own servers before it looks anything
-		// up, and reads what the tmux it runs in keeps from claude (see session.Tmux.ReadyClient).
-		kept, err := tmux.ReadyClient()
-		if err != nil {
-			return err
-		}
+		// join finds a terminal to move where it runs in a pane of cld's own servers before it looks
+		// anything up, and otherwise reads what the tmux it runs in keeps from claude (see
+		// session.Tmux.ReadyClient).
+		kept, sw := tmux.ReadyClient()
 		if !next {
 			suffix, home, err := joinNaming.resolve(tmux)
 			if err != nil {
@@ -301,7 +339,11 @@ and --version. A resumed conversation does not keep --mcp-config, --plugin-dir,
 				}
 			}
 			joining.Home = home
-			return tmux.Join(suffix, joining, kept)
+			return tmux.Join(suffix, joining, kept, sw)
+		}
+		// Moved, the terminal's cld join takes the index, and checks the claude it starts.
+		if sw != nil {
+			return tmux.SwitchJoin(sw, joining)
 		}
 		// join starts claude, so it checks claude's version, after the checks every command makes,
 		// so that cld runs claude only once the tools are found and tmux's version passes. detach,
@@ -331,7 +373,7 @@ and --version. A resumed conversation does not keep --mcp-config, --plugin-dir,
 			if sessions, err := tmux.Sessions(context.Background()); err != nil {
 				output.Warn("cannot end the idle sessions: " + err.Error())
 			} else {
-				sweep(tmux, sessions, limit)
+				sweep(tmux, sessions, limit, *switchedFrom)
 			}
 		}
 		return tmux.Create(claude, suffix, joining, kept)
@@ -414,12 +456,14 @@ conversation back; cld restore leaves it ended.`,
 		return tmux.Kill(suffix, home)
 	}
 
-	// list is interactive on a terminal it can draw on, other than a pane of one of cld's servers,
-	// where join would refuse the session picked; with no sessions there is nothing to pick.
+	// list is interactive on a terminal it can draw on; with no sessions there is nothing to pick.
 	// Leaving it prints the table, from the sessions it last read. The session picked is joined as
 	// join -n NAME -s SUFFIX joins it, but for one that has gone meanwhile: one that has ended is
 	// brought back, its claude checked once the list has handed the terminal over (see
-	// session.Tmux.JoinPicked). It ends the idle sessions first (see sweep).
+	// session.Tmux.JoinPicked). In a pane of one of cld's servers, where a session attached would
+	// show inside one of cld's, the terminal on the pane's session moves to the session picked
+	// instead, as join moves it there (see session.Tmux.SwitchTo). It ends the idle sessions first
+	// (see sweep). --switch CLIENT and --to are the keys', which end none (see switchList).
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "list cld's sessions; on a terminal, join or kill one",
@@ -436,35 +480,63 @@ On a terminal, pick one to join or kill: Up and Down select a session, Enter
 joins it as cld join does, C-x twice within two seconds kills it as cld kill
 does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
 list. On a session that has ended, Enter resumes it as cld join does, and C-x
-twice forgets it. cld list | cat prints the list only.`,
-		RunE: func(*cobra.Command, []string) error {
-			limit, err := idleLimit()
+twice forgets it. cld list | cat prints the list only.
+
+In a session, C-q s shows the list over it: Enter moves the terminal to the
+session picked, as ! cld join does, and Esc closes the list. So does Enter in
+cld list run in a shell on the session's tmux server.`,
+	}
+	// The keys' own options, which the help does not show: C-q s runs list --switch CLIENT in a
+	// popup, and C-q (, C-q ) and C-q L list --switch CLIENT --to previous, next or last (see
+	// session.switchKeys).
+	switchClient := list.Flags().String("switch", "", "")
+	to := list.Flags().String("to", "", "")
+	for _, hidden := range []string{"switch", "to"} {
+		if err := list.Flags().MarkHidden(hidden); err != nil {
+			panic(err)
+		}
+	}
+	list.RunE = func(c *cobra.Command, _ []string) error {
+		switching := c.Flags().Changed("switch")
+		switch {
+		case switching && *switchClient == "":
+			return fail.Usage("option '--switch' needs a value (see cld help)")
+		case c.Flags().Changed("to") && !switching:
+			return fail.Usage(typed + ": --to needs --switch CLIENT (see cld help)")
+		case c.Flags().Changed("to") && !slices.Contains([]string{"previous", "next", "last"}, *to):
+			return fail.Usage(fmt.Sprintf("invalid value '%s' for --to: previous, next or last (see cld help)", *to))
+		}
+		if switching {
+			return switchList(*switchClient, *to)
+		}
+		limit, err := idleLimit()
+		if err != nil {
+			return err
+		}
+		tmux, err := session.Check()
+		if err != nil {
+			return err
+		}
+		sessions, err := tmux.Sessions(context.Background())
+		if err != nil {
+			return err
+		}
+		sessions = sweep(tmux, sessions, limit, "")
+		if len(sessions) > 0 && picker.Available() {
+			sw := tmux.Switching()
+			picked, last, err := picker.Run(listSource{tmux}, sessions, sw != nil)
 			if err != nil {
 				return err
 			}
-			tmux, err := session.Check()
-			if err != nil {
-				return err
+			switch {
+			case picked.Name != "" && sw != nil:
+				return tmux.SwitchTo(sw, picked.Name)
+			case picked.Name != "":
+				return tmux.JoinPicked(picked.Name)
 			}
-			sessions, err := tmux.Sessions(context.Background())
-			if err != nil {
-				return err
-			}
-			sessions = sweep(tmux, sessions, limit)
-			if len(sessions) > 0 && picker.Available() {
-				if _, own := tmux.OwnPane(); !own {
-					picked, last, err := picker.Run(listSource{tmux}, sessions)
-					if err != nil {
-						return err
-					}
-					if picked.Name != "" {
-						return tmux.JoinPicked(picked.Name)
-					}
-					sessions = last
-				}
-			}
-			return output.Print(table(sessions))
-		},
+			sessions = last
+		}
+		return output.Print(table(sessions))
 	}
 
 	// restore checks tmux as every command does, CLD_IDLE_DAYS as list does, and the claude of each
@@ -627,6 +699,64 @@ cld setup completion wrote are written anew where the new cld prints others.`,
 		return nil
 	}
 	return root
+}
+
+// switchList is list --switch CLIENT, which the keys of a session run on its server with the
+// terminal that pressed the key, tmux client CLIENT (see session.Switch): with to, C-q (, C-q ) or
+// C-q L, it moves the terminal to the previous, next or last session (see session.Tmux.Step);
+// without, C-q s, it is the interactive list in a popup over the terminal, whose Enter moves the
+// terminal to the session picked, as join moves it in a pane of the server, leaving its popup to
+// close with it; Esc closes the popup, and prints nothing. Neither ends the idle sessions, as list
+// does (see sweep): tmux runs the keys with the environment of the session's server - that of the
+// cld join that started it, or the one restore recorded - not the terminal's, so a CLD_IDLE_DAYS
+// the terminal no longer has, or never had, would decide, and the popup takes the notes of the
+// sessions ended away as it closes. The popup takes away what cld writes, and tmux shows over
+// claude's pane what a key's run-shell writes, which the keys throw away: so cld says what goes
+// wrong on the terminal's message line (see session.Tmux.Tell), as well as on stderr - once it
+// knows the terminal, from tmux's checks on, by the tmux found where the checks refuse it.
+func switchList(client, to string) error {
+	sw, err := session.SwitchClient(client)
+	if err != nil {
+		return err
+	}
+	tmux, err := session.Check()
+	if err != nil {
+		if found, ferr := session.Find(); ferr == nil {
+			tell(found, sw, err)
+		}
+		return err
+	}
+	err = func() error {
+		if to != "" {
+			return tmux.Step(context.Background(), sw, to)
+		}
+		sessions, err := tmux.Sessions(context.Background())
+		if err != nil {
+			return err
+		}
+		if len(sessions) == 0 || !picker.Available() {
+			return nil
+		}
+		picked, _, err := picker.Run(listSource{tmux}, sessions, true)
+		if err != nil || picked.Name == "" {
+			return err
+		}
+		return tmux.SwitchTo(sw, picked.Name)
+	}()
+	tell(tmux, sw, err)
+	return err
+}
+
+// tell shows err on the message line of the terminal of sw (see session.Tmux.Tell), where it is
+// cld's own message: an exit status of tmux's follows tmux's message on stderr.
+func tell(tmux *session.Tmux, sw *session.Switch, err error) {
+	var failure *fail.Error
+	switch {
+	case errors.As(err, &failure):
+		tmux.Tell(sw, failure.Message)
+	case err != nil && !errors.As(err, new(fail.Status)):
+		tmux.Tell(sw, err.Error())
+	}
 }
 
 // bleLines go at the end of __start_cld, the function through which cobra's bash script completes
@@ -1595,20 +1725,23 @@ func idleLimit() (time.Duration, error) {
 // sweep ends each of sessions that has been idle for longer than limit - none where limit is 0 - as
 // kill ends it, with a note on stderr for each, and returns the sessions as list then shows them:
 // those it ended as ended, where cld's record keeps them (see session.EndedSession), as after cld
-// kill. It is list's first step, and join's without -s once it has its index. The kill checks again
-// that the session is idle (see session.Tmux.EndIdle): one that a terminal has attached to since,
-// say, stays. A kill that fails is a warning, and the session stays too: the sweep is not what was
-// asked. The session whose server cld runs on, as when its claude runs cld, stays however long it
-// has been idle (see session.OwnServer), and one that has ended is idle for no time (see
+// kill. It is list's first step - but for the keys' list --switch (see switchList) - and join's
+// without -s once it has its index. The kill checks again that the session is idle (see
+// session.Tmux.EndIdle): one that a terminal has attached to since, say, stays. A kill that fails
+// is a warning, and the session stays too: the sweep is not what was asked. The session whose
+// server cld runs on, as when its claude runs cld, stays however long it has been idle (see
+// session.OwnServer), and so does session left, the one a join that a move runs has just moved the
+// terminal from (join --switched-from), whose claude may have run the join that moved it, from its
+// Bash tool, with no key on the session; one that has ended is idle for no time (see
 // session.Session's Idle).
-func sweep(tmux *session.Tmux, sessions []session.Session, limit time.Duration) []session.Session {
+func sweep(tmux *session.Tmux, sessions []session.Session, limit time.Duration, left string) []session.Session {
 	if limit == 0 {
 		return sessions
 	}
 	own, inside := session.OwnServer()
 	var kept []session.Session
 	for _, s := range sessions {
-		if s.Idle > limit && !(inside && s.Name == own) {
+		if s.Idle > limit && !(inside && s.Name == own) && s.Name != left {
 			ended, err := tmux.EndIdle(context.Background(), s.Name, limit)
 			if err != nil {
 				output.Warn(fmt.Sprintf("cannot end session '%s', idle for %s: %s", s.Name, idleFor(s.Idle), err))

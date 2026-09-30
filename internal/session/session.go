@@ -36,9 +36,12 @@
 // and DetachTerminal), `cld kill` ends it with its server (see Tmux.Kill), and `cld list` shows
 // the sessions, asking each server for its own (see Tmux.Sessions) - on a terminal as a list to
 // pick one from with the arrow keys, to join with Enter, as join does, or to kill with Ctrl+X
-// pressed twice, as kill does (see internal/picker). The shell completion that `cld completion
-// SHELL` prints reads the same sessions, where `cld join -n` completes the NAME of NAME-SUFFIX for
-// the names `cld list` shows, and `cld detach -n` for those that run, and their -s the SUFFIX.
+// pressed twice, as kill does (see internal/picker). In a session, C-q s shows that list in a
+// popup, and join, the list's Enter and the keys C-q (, C-q ) and C-q L move the terminal on the
+// session to another one, from its server to the other's (see switch.go). The shell completion
+// that `cld completion SHELL` prints reads the same sessions, where `cld join -n` completes the
+// NAME of NAME-SUFFIX for the names `cld list` shows, and `cld detach -n` for those that run, and
+// their -s the SUFFIX.
 //
 // cld keeps a record of its sessions beside tmux, which forgets a session with its server (see
 // entry): join writes each session's entry as it makes it - the directory claude starts in and,
@@ -114,6 +117,10 @@
 //   - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
 //     C-q; detach is C-q d - or cld detach, where the terminal keeps C-q from tmux - and C-q C-q
 //     sends a C-q through
+//   - C-q s, C-q (, C-q ) and C-q L bound to cld: where tmux's own keys show and switch the
+//     sessions of one server, and each session of cld's has a server of its own, cld's list shows
+//     them all in a popup, and the keys move the terminal from one server to another (see
+//     switch.go)
 //   - remain-on-exit on: a claude that fails - at startup, say, for a worktree in a directory it
 //     does not trust - leaves its pane on screen with its message, instead of taking both away;
 //     /exit and claude's other ways out exit with status 0, and there the pane-died hook removes
@@ -170,12 +177,14 @@
 // that attaches gives tmux the update-environment variables of its terminal, SSH_AUTH_SOCK and
 // DISPLAY among them, for what starts on the session later, not claude.
 //
-// cld nests in any tmux but its own (see OwnPane): its client runs in a pane of the user's tmux,
-// which reads the terminal's keys first and keeps some from claude - its prefix, C-b by default,
-// and Shift+Enter where its extended-keys is off (where cld's tmux is older than 3.7, anything but
-// always) or it does not take its terminal for one that sends modified keys. Where cld's tmux is
-// 3.6 or newer, join and the list's Enter name them on the message line once attached, until a key
-// is pressed (see keptKeys and showKept).
+// cld nests in any tmux but its own, where it moves the terminal on the session instead (see
+// Switching): its client runs in a pane of the user's tmux, which reads the terminal's keys first
+// and keeps some from claude - its prefix, C-b by default, and Shift+Enter where its extended-keys
+// is off (where cld's tmux is older than 3.7, anything but always) or it does not take its terminal
+// for one that sends modified keys. Where cld's tmux is 3.6 or newer, join and the list's Enter
+// name them on the message line once attached, until a key is pressed (see keptKeys and
+// showKept); not after a move to another session (see switch.go), whose cld join runs with the
+// empty TMUX of the terminal's client, and does not know that tmux.
 package session
 
 import (
@@ -688,7 +697,9 @@ func shellWord(text string) string {
 // has ended, rather than resume the one it had; with Conversation, claude resumes that - whatever
 // claude --resume takes - and with Fork, a copy of it under a new ID, which leaves the
 // conversation as it was; and Args, the words given after "--", go to claude after cld's own
-// arguments.
+// arguments. SwitchedFrom is the session a switch moved the terminal from (see Switch), which the
+// session joined records for C-q L, and Typed are the words given after join, which join passes on
+// where it moves a terminal instead of attaching this one (see Tmux.move).
 type Joining struct {
 	Home         Home
 	DetachOthers bool
@@ -697,6 +708,8 @@ type Joining struct {
 	Conversation string
 	Fork         bool
 	Args         []string
+	SwitchedFrom string
+	Typed        []string
 }
 
 // launch is how create makes session cld-SUFFIX for a join that makes it, with kept, the keys that
@@ -705,7 +718,7 @@ type Joining struct {
 // resumes, or the copy, takes the session's name, as claude sets --name's before it restores the
 // conversation's own, which it keeps only where none is set.
 func (j Joining) launch(kept []string) launch {
-	l := launch{worktree: j.Worktree, args: j.Args, kept: kept}
+	l := launch{worktree: j.Worktree, args: j.Args, kept: kept, from: j.SwitchedFrom}
 	if j.Conversation != "" {
 		l.resume = []string{"--resume", j.Conversation}
 		if j.Fork {
@@ -754,8 +767,8 @@ func (j Joining) lost(suffix string, ended bool) error {
 // the next index (see Next): with Conversation, claude resumes that, and otherwise starts a new
 // one. claude finds the conversation, and says so when it cannot: cld does not read claude's
 // transcripts, whose format claude keeps to itself. The caller has readied the client, which gave
-// kept (see ReadyClient), and holds the record's lock (see Lock). It returns only when it does not
-// get as far.
+// kept and no terminal to move (see ReadyClient; SwitchJoin moves one), and holds the record's lock
+// (see Lock). It returns only when it does not get as far.
 func (t *Tmux) Create(c *Claude, suffix string, j Joining, kept []string) error {
 	return t.create(c, suffix, j.launch(kept))
 }
@@ -772,23 +785,29 @@ func (t *Tmux) Create(c *Claude, suffix string, j Joining, kept []string) error 
 // elsewhere (see foreign). The record's lock covers the lookup and, where join makes the session,
 // the rest, up to tmux (see settled): two joins of one session at once make it once, and the second
 // attaches to it. claude --version runs only where join starts claude (see CheckClaude), under the
-// lock. It returns only when it does not get as far.
-func (t *Tmux) Join(suffix string, j Joining, kept []string) error {
-	return t.join(suffix, j, kept, true)
+// lock. With sw, a terminal that ReadyClient found in a pane of cld's servers, join moves that
+// terminal instead, once it has refused what it would refuse before claude --version, which the
+// terminal's own cld join runs (see switchJoin). It returns only when it does not get as far.
+func (t *Tmux) Join(suffix string, j Joining, kept []string, sw *Switch) error {
+	return t.join(suffix, j, kept, true, sw)
 }
 
 // JoinPicked is the interactive list's Enter on session cld-SUFFIX, once the list has handed the
 // terminal over: it reads the keys that any other tmux the terminal is a pane of keeps from claude
-// (see keptKeys) - the list has made sure that it is no live pane of cld's servers (see OwnPane) -
-// and joins the session as Join does, but for a session that neither runs nor has ended, which it
-// refuses: the row picked has gone. It returns only when it does not get as far.
+// (see keptKeys) - in a live pane of cld's servers the list moves the terminal instead (see
+// SwitchTo) - and joins the session as Join does, but for a session that neither runs nor has
+// ended, which it refuses: the row picked has gone. It returns only when it does not get as far.
 func (t *Tmux) JoinPicked(suffix string) error {
-	return t.join(suffix, Joining{}, t.keptKeys(), false)
+	return t.join(suffix, Joining{}, t.keptKeys(), false, nil)
 }
 
 // join is Join's and JoinPicked's work: with makes, a session that neither runs nor has ended is
-// made, and otherwise it is refused.
-func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool) error {
+// made, and otherwise it is refused; with sw, the terminal of sw moves to the session (see
+// switchJoin).
+func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool, sw *Switch) error {
+	if sw != nil {
+		return t.switchJoin(sw, suffix, j)
+	}
 	unlock, server, exists, made, err := t.settled(suffix)
 	if err != nil || exists || server {
 		unlock()
@@ -803,7 +822,7 @@ func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool) error {
 		if err := j.lost(suffix, false); err != nil {
 			return err
 		}
-		return t.attach(suffix, j.DetachOthers, kept)
+		return t.attach(suffix, j, kept)
 	case server:
 		_, refused := t.lingering(context.Background(), suffix)
 		return refused
@@ -877,7 +896,8 @@ func resumed(suffix string, l launch) launch {
 // the terminal attached is shown (see showKept); with looked, the caller has looked the session up
 // under the record's lock, and found no server, and create does not look again; with detached, the
 // session is made without a terminal, and cld waits for tmux instead of becoming its client; and
-// with restored, the session comes back as it ran, and its run mark keeps its time (see setMarks).
+// with restored, the session comes back as it ran, and its run mark keeps its time (see setMarks);
+// from is the session a switch moved the terminal from, which the session records (see Switch).
 type launch struct {
 	worktree bool
 	resume   []string
@@ -888,6 +908,7 @@ type launch struct {
 	looked   bool
 	detached bool
 	restored bool
+	from     string
 }
 
 // create makes session cld-SUFFIX for join and restore, which differ only in claude's arguments
@@ -919,10 +940,10 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 		return err
 	}
 	_, home := DefaultName()
-	// cld reports a missing repository in the terminal; claude would report it in a session left
-	// to kill.
-	if l.worktree && !inWorkTree() {
-		return fail.Runtime("--worktree needs a git repository, and " + dir + " is not in one")
+	if l.worktree {
+		if err := workTree(); err != nil {
+			return err
+		}
 	}
 	socket, err := filepath.Abs(filepath.Join(socketDir(), name))
 	if err != nil {
@@ -936,6 +957,10 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 	if state, err := stateDir(); err == nil {
 		plannedFile, plannedRun = entryFile(state, suffix), companion(state, suffix, runMark)
 	}
+	// The keys that move the terminal to another session name cld by its file; where cld cannot
+	// find it, tmux's own keys stay (see switchKeys).
+	cld, _ := self()
+	keys := switchKeys(t.path, socket, cld)
 	// build is tmux's command, whose claude gets the hooks that keep the session's entry in file
 	// where file is not empty, and which sets the marks beside it once the session is made - the
 	// run mark, run, where that is not empty - and whose pane-died hook removes the run mark,
@@ -1020,8 +1045,9 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 			"unbind", "-n", "C-MouseDown1Pane", ";", "unbind", "-n", "M-MouseDown3Pane", ";",
 			"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 			"set", "-g", "history-limit", "50000", ";",
-			"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
-			"new-session")
+			"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";")
+		argv = append(argv, keys...)
+		argv = append(argv, "new-session")
 		if l.detached {
 			argv = append(argv, "-d")
 		}
@@ -1038,6 +1064,9 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 			"set", "-t", target, "@cld-busy", busyMarker, ";",
 			"set", "-t", target, "set-titles-string", titles(suffix), ";",
 			"set", "-t", target, "set-titles", "on")
+		if l.from != "" && l.from != suffix {
+			argv = append(argv, ";", "set", "-t", target, "@cld-last", l.from)
+		}
 		argv = append(argv, marks...)
 		argv = append(argv, showKept(kept)...)
 		return argv, commandSize(argv[options:]), nil
@@ -1174,9 +1203,10 @@ func withoutTerminal(environ []string) []string {
 // tmux and the server's socket by their paths, and the files of the session's entry and its marks
 // in cld's record, some 1 KB the pane-died hook, which names the session in each text it fits to
 // the pane's width and the file of its run mark (see died), some 60 bytes and three paths the
-// run-shell that sets the marks (see setMarks), and inside a tmux that keeps keys from claude some
-// 180 bytes the line that names them (see showKept); the rest is for the words given to claude,
-// --resume's SESSION among them.
+// run-shell that sets the marks (see setMarks), some 420 bytes and six paths, cld's four times, the
+// keys that move the terminal to another session (see switchKeys), and inside a tmux that keeps
+// keys from claude some 180 bytes the line that names them (see showKept); the rest is for the
+// words given to claude, --resume's SESSION among them.
 const commandLimit = 16384 - 16 - 4
 
 // commandSize is the size of command as a tmux client hands it to its server, without the count:
@@ -1279,10 +1309,11 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 
 // attach is join's last step for a session that runs: it empties TMUX (see emptyTMUX), refuses a
 // terminal tmux could not attach from (see checkTerminal), becomes a tmux client attached to
-// session cld-SUFFIX, beside any other or, with detachOthers, detaching them, and shows the keys
+// session cld-SUFFIX, beside any other or, with j's DetachOthers, detaching them, records on the
+// session where a switch moved the terminal from (SwitchedFrom; see Switch), and shows the keys
 // kept, which the tmux cld runs in keeps from claude (see showKept). It returns only when it does
 // not get as far.
-func (t *Tmux) attach(suffix string, detachOthers bool, kept []string) error {
+func (t *Tmux) attach(suffix string, j Joining, kept []string) error {
 	if err := emptyTMUX(); err != nil {
 		return err
 	}
@@ -1295,12 +1326,17 @@ func (t *Tmux) attach(suffix string, detachOthers bool, kept []string) error {
 	}
 	// -u takes the terminal for UTF-8 whatever the locale, as create's client does.
 	attach := []string{"tmux", "-u", "-L", name, "attach-session"}
-	if detachOthers {
+	if j.DetachOthers {
 		attach = append(attach, "-d")
 	}
-	// After attach-session in one command list, the keys kept and the hint go to this terminal,
-	// attached by then: the hint, for a claude that exited, in place of the keys.
-	attach = append(append(attach, "-t", "="+name), showKept(kept)...)
+	attach = append(attach, "-t", "="+name)
+	// After attach-session in one command list, which tmux cuts short where the attach fails, the
+	// session records where the terminal came from, and the keys kept and the hint go to this
+	// terminal, attached by then: the hint, for a claude that exited, in place of the keys.
+	if j.SwitchedFrom != "" && j.SwitchedFrom != suffix {
+		attach = append(attach, ";", "set", "-t", "="+name+":", "@cld-last", j.SwitchedFrom)
+	}
+	attach = append(attach, showKept(kept)...)
 	return t.become(append(attach, ";", "if", "-F", "#{pane_dead}", hint(suffix)), os.Environ())
 }
 
@@ -1346,13 +1382,13 @@ func (t *Tmux) Detach(suffix string, home Home) error {
 // session, leaving the others attached: normally the one the command was typed in, but a mouse
 // report or a focus event counts as a key does - the mouse moving over another terminal of the
 // session too, as claude has tmux ask for every motion - and tmux shows no client's last key to go
-// by instead (see Findings in docs/design.md). It is the one command that acts inside a pane of
-// cld's servers, where join refuses to (see ReadyClient). With no terminal on the session there is
-// nothing to detach: a bare detach-client would detach the terminal of another session on the
-// server - one claude made - where any is attached (see Findings in docs/design.md). A server that
-// cld did not start (see mark) is not cld's to act on: the if runs nothing there either, and the
-// mark, which the same tmux command prints first, refuses it. A detach that fails - on a server
-// that has exited, say - is its exit status, after tmux's message.
+// by instead (see Findings in docs/design.md). join, which acts there too, moves the terminal it
+// finds the same way (see switchTerminal). With no terminal on the session there is nothing to
+// detach: a bare detach-client would detach the terminal of another session on the server - one
+// claude made - where any is attached (see Findings in docs/design.md). A server that cld did not
+// start (see mark) is not cld's to act on: the if runs nothing there either, and the mark, which
+// the same tmux command prints first, refuses it. A detach that fails - on a server that has
+// exited, say - is its exit status, after tmux's message.
 func (t *Tmux) DetachTerminal() error {
 	socket, suffix, _ := ownServer()
 	detach := t.command("-S", socket, "display-message", "-p", mark, ";",
@@ -1977,15 +2013,15 @@ func noServer(message string) bool {
 // cld makes the check itself, on the live panes, and gives its client an empty TMUX, which tmux's
 // check skips; set, even empty, TMUX still tells the client that the terminal takes UTF-8.
 
-// ReadyClient readies cld to become a tmux client, as join's first step once tmux is checked: it
-// refuses a terminal that is a live pane of one of cld's servers, pointing at C-q d and at cld
-// detach, which acts there (see DetachTerminal), and reads the keys that any other tmux it is a
-// pane of keeps from claude (see keptKeys), which it returns. TMUX stays as it is until create or
-// attach empty it, just before the tmux command they run: the sweep of the idle sessions, which
-// join without -s makes first, keeps the session whose server TMUX names (see OwnServer).
-func (t *Tmux) ReadyClient() ([]string, error) {
-	if suffix, found := t.OwnPane(); found {
-		return nil, fail.Runtime(fmt.Sprintf("this terminal is a pane of the tmux server of session '%s'; detach with C-q d or cld detach first", suffix))
+// ReadyClient readies cld to become a tmux client, as join's first step once tmux is checked: in a
+// pane of one of cld's servers, where a session attached would show inside a session of cld's,
+// both taking C-q, it returns the terminal there to move instead (see Switching), and elsewhere the
+// keys that any other tmux cld runs in keeps from claude (see keptKeys). TMUX stays as it is until
+// create or attach empty it, just before the tmux command they run: the sweep of the idle sessions,
+// which join without -s makes first, keeps the session whose server TMUX names (see OwnServer).
+func (t *Tmux) ReadyClient() ([]string, *Switch) {
+	if sw := t.Switching(); sw != nil {
+		return nil, sw
 	}
 	return t.keptKeys(), nil
 }
@@ -1999,12 +2035,13 @@ func emptyTMUX() error {
 }
 
 // OwnPane reports whether this terminal is a live pane of one of cld's servers - claude's external
-// editor, say - and names the server's session: join refuses it, and list prints its table there. A
-// session attached there would show inside a session of cld's, itself or another, both taking C-q.
-// tmux refuses the first too, advising to unset $TMUX, but goes by name, dead panes included (see
-// above); cld says how to get out instead. Like tmux it looks only when $TMUX is set, and only on
-// the server TMUX names, if that is one of cld's - named cld-NAME, and started by cld (see mark):
-// the terminal of any other tmux nests. tty names the terminal on its stdin, cld's.
+// editor, say - and names the server's session: join and the interactive list move the terminal
+// on its session there instead of attaching this one (see Switching). A session attached there
+// would show inside a session of cld's, itself or another, both taking C-q. tmux refuses the first
+// too, advising to unset $TMUX, but goes by name, dead panes included (see above). Like tmux it
+// looks only when $TMUX is set, and only on the server TMUX names, if that is one of cld's - named
+// cld-NAME, and started by cld (see mark): the terminal of any other tmux nests. tty names the
+// terminal on its stdin, cld's.
 func (t *Tmux) OwnPane() (string, bool) {
 	socket, suffix, found := ownServer()
 	if !found {
@@ -2219,8 +2256,8 @@ func DefaultName() (string, Home) {
 // what comes before it and -s what follows, where both are NAMEs; otherwise -s NAME alone, which
 // names it where DefaultName is "" - in the root directory, say, where such a NAME is made.
 func Options(name string) string {
-	if i := strings.LastIndexByte(name, '-'); i > 0 && ValidName(name[:i]) && ValidName(name[i+1:]) {
-		return "-n " + name[:i] + " -s " + name[i+1:]
+	if prefix, suffix, ok := split(name); ok {
+		return "-n " + prefix + " -s " + suffix
 	}
 	return "-s " + name
 }

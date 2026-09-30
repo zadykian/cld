@@ -7,9 +7,12 @@ claude's agent view (/bg) off. What claude starts through tmux runs on that
 server too, and ends with it.
 
 Detach with C-q d, or ! cld detach in claude where the terminal keeps C-q from
-tmux; C-q C-q sends C-q to claude. A session whose claude fails stays, showing
-why, until cld kill ends it, or it has been idle for longer than $CLD_IDLE_DAYS
-days (see cld help list).
+tmux; C-q C-q sends C-q to claude. C-q s shows cld list over the session, where
+Enter moves the terminal to the session picked, and Esc closes it; C-q ( and
+C-q ) move the terminal to the previous and the next session, C-q L back to
+the one it came from, and ! cld join in claude to the session it names. A
+session whose claude fails stays, showing why, until cld kill ends it, or it
+has been idle for longer than $CLD_IDLE_DAYS days (see cld help list).
 
 Usage:
   cld [command]

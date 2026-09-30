@@ -93,13 +93,22 @@ same name made.
 |---|---|
 | `C-q d` | detach; claude keeps running. Where the terminal keeps `Ctrl+Q` to itself, as VS Code and Rider can, `! cld detach` in claude does the same (see the [guide](docs/guide.md#terminals-that-take-c-q)) |
 | `C-q C-q` | send `C-q` to claude |
+| `C-q s` | show `cld list` over the session: `Enter` moves the terminal to the session picked, bringing it back where it has ended, and `Esc` closes the list |
+| `C-q (`, `C-q )` | move the terminal to the previous or the next session that runs, in the list's order |
+| `C-q L` | move the terminal back to the session it came from |
 
 | Keys in `cld list` | Action |
 |---|---|
 | `↑` / `↓` | select a session |
 | `Enter` | join it, or resume one that has ended |
 | `Ctrl+X` twice within two seconds | kill it, or forget one that has ended; `Esc` after the first keeps it |
-| `Esc`, `Ctrl+C` | leave, printing the table |
+| `Esc`, `Ctrl+C` | leave, printing the table; over a session (`C-q s`), close the list |
+
+In a session, `! cld join` in claude moves the terminal to the session it names - `! cld join -s 1`,
+or `! cld join -w` for a new one in a worktree - creating it or bringing it back as `cld join`
+would in the terminal, with the terminal's environment, in claude's directory; `C-q s` and the
+keys above move it too. The session the terminal leaves runs on. See the
+[guide](docs/guide.md#moving-between-sessions).
 
 Leaving claude (`/exit`, `Ctrl+C` twice) ends its session, which `cld list` then shows as
 `ended`. If claude exits with an error, the session stays, as `exited` in `cld list`, with its
