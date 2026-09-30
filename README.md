@@ -78,7 +78,7 @@ another repository or directory of the same name made.
 | `cld join [-n NAME] -s SUFFIX [--detach-others]` | attach to the session, beside any other terminal on it; with `--detach-others`, detach those |
 | `cld detach [-n NAME] [-s SUFFIX]` | detach every terminal from the session; without `-n` and `-s`, as `! cld detach` in claude, the terminal used last, normally the one you typed it in |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
-| `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`), when each was last active and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
+| `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`) and claude's status (`busy`, `waiting` for you or `idle`), as in `detached, waiting`, when each was last active and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
 | `cld restore` | bring back, detached, the sessions that ran when the machine stopped, each resuming its conversation where it ran |
 | `cld setup project [--mcp SERVER] [--permissions SET]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
@@ -121,7 +121,8 @@ the next `cld list`, or `cld new` without `-s`, as `cld kill` would end it, with
 
 The terminal's tab shows the session, `✳ cld-NAME-SUFFIX`, and while claude works `◐` and `◑` in
 turn in place of the `✳`, as claude's own title does outside tmux; while claude works in a linked
-git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it; the
+git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it, which
+`cld list` reads too, to show whether claude is busy, waiting for you or idle; the
 [guide](docs/guide.md#sessions) says what they miss. Each hook starts a tmux client, and while the
 title turns so does each terminal on the session, every second: a tmux slow to start, such as
 Ubuntu's snap, holds claude up a moment as it starts, after each tool and as each turn starts and

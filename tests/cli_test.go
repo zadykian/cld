@@ -2241,6 +2241,43 @@ func TestIdleSessionsWithFakeTmux(t *testing.T) {
 	}
 }
 
+// list shows claude's status after the session's state, from the one field tmux writes both in:
+// the state, a space and busy, waiting or idle - or nothing, where no hook has set the status - and
+// for a claude that has exited the state alone. STATE is as wide as its longest, and at least as
+// wide as detached; completion describes the session by both. TestListShowsClaudesStatus has the
+// real tmux write the field.
+func TestClaudesStatusWithFakeTmux(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct{ field, state string }{
+		{"detached ", "detached"},
+		{"detached busy", "detached, busy"},
+		{"detached waiting", "detached, waiting"},
+		{"detached idle", "detached, idle"},
+		{"attached waiting", "attached, waiting"},
+		{"exited", "exited"},
+	} {
+		t.Run(test.field, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			socket(t, s, "cld-a")
+			fake := map[string]string{
+				"PATH":                   filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
+				"CLD_FAKE_TMUX_VERSION":  "tmux 3.7c",
+				"CLD_FAKE_TMUX_SESSIONS": fakeSessionIn("a", test.field, fakeTime(0), fakeTime(0)),
+			}
+			width := max(len(test.state), 8)
+			want := fmt.Sprintf("NAME  %-*s  LAST ACTIVE  DIRECTORY\n"+"a     %-*s  now          /w\n", width, "STATE", width, test.state)
+			if result := s.RunCld(fake, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant exit 0, stdout\n%s", result.Code, result.Stderr, result.Stdout, want)
+			}
+			want = "a\t" + test.state + "\n:4\n"
+			if result := s.RunCld(fake, "__complete", "join", "-s", ""); result.Code != 0 || result.Stdout != want {
+				t.Errorf("__complete join -s: exit %d, stdout %q, want %q", result.Code, result.Stdout, want)
+			}
+		})
+	}
+}
+
 // list keeps the session whose server cld runs on - TMUX names its socket, as in any pane of that
 // server, claude's Bash tool included - however long it has been idle: ending the server would end
 // cld, and a claude that ran it. It goes by the socket's file, as TMUX gives the socket's path with
@@ -2806,7 +2843,19 @@ func fakeSession(name string, idle time.Duration) string {
 // fakeSessionAt is fakeSession's line with the session's activity and its last attach as tmux
 // gives them: seconds since the epoch, the last attach empty where no terminal has attached.
 func fakeSessionAt(name, activity, attached string) string {
-	return "cld-" + name + "\tdetached\t0\t100\t" + activity + " " + attached + "\t0\t/w"
+	return fakeSessionIn(name, "detached ", activity, attached)
+}
+
+// fakeSessionIn is fakeSessionAt's line with state, the field that holds the session's state and
+// claude's status as tmux writes it: "detached " where no hook has set the status, as for
+// fakeSession, "attached busy", "exited" (see session.Tmux.Sessions). A session attached has a
+// terminal attached.
+func fakeSessionIn(name, state, activity, attached string) string {
+	clients := "0"
+	if strings.HasPrefix(state, "attached") {
+		clients = "1"
+	}
+	return "cld-" + name + "\t" + state + "\t" + clients + "\t100\t" + activity + " " + attached + "\t0\t/w"
 }
 
 // fakeTime is the time ago before now in whole seconds since the epoch, as tmux gives a session's

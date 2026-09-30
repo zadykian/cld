@@ -482,12 +482,13 @@ conversation back; cld restore leaves it ended.`,
 		Use:   "list",
 		Short: "list cld's sessions; on a terminal, join, kill or resume one",
 		Long: `list the sessions cld started: name, whether a terminal is attached (or claude
-exited, or the session ended), when it was last active (a terminal attaching,
-or a key typed in one) and the directory claude is in or ran in. cld keeps a
-session that has ended - by cld kill, claude's /exit, a reboot - for 30 days.
-A session idle for longer than $CLD_IDLE_DAYS days, 30 where unset or empty,
-is ended first, as cld kill ends it, with a line on stderr; cld resume brings
-its conversation back. CLD_IDLE_DAYS=0 ends none.
+exited, or the session ended) and whether claude is busy, waiting for an answer
+or idle, when it was last active (a terminal attaching, or a key typed in one)
+and the directory claude is in or ran in. cld keeps a session that has ended -
+by cld kill, claude's /exit, a reboot - for 30 days. A session idle for longer
+than $CLD_IDLE_DAYS days, 30 where unset or empty, is ended first, as cld kill
+ends it, with a line on stderr; cld resume brings its conversation back.
+CLD_IDLE_DAYS=0 ends none.
 
 On a terminal, pick one to join or kill: Up and Down select a session, Enter
 joins it as cld join does, C-x twice within two seconds kills it as cld kill
@@ -1089,10 +1090,11 @@ func sessionNames(ended bool) cobra.CompletionFunc {
 // with ended true: for the sessions list shows that run, or that have ended, whose names are
 // NAME-SUFFIX with the NAME the command takes - -n's, or else the repository's or directory's
 // (see defaultName) - their SUFFIX, where it starts with what was typed and the command takes it,
-// in list's order, each described by its state or, for a session that has ended, the directory it
-// ran in. Without -n, join and detach take none made in another repository or directory of the
-// same name (see session.Home.Takes), so none is offered; a session that has ended has no home
-// (see session.Session), and each is offered. Where NAME is "", every name is a SUFFIX.
+// in list's order, each described by its state as list shows it, claude's status included -
+// "detached, waiting" - or, for a session that has ended, by the directory it ran in. Without -n,
+// join and detach take none made in another repository or directory of the same name (see
+// session.Home.Takes), so none is offered; a session that has ended has no home (see
+// session.Session), and each is offered. Where NAME is "", every name is a SUFFIX.
 func sessionSuffixes(ended bool) cobra.CompletionFunc {
 	return func(c *cobra.Command, _ []string, typed string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		var name string
@@ -1111,7 +1113,7 @@ func sessionSuffixes(ended bool) cobra.CompletionFunc {
 				continue
 			}
 			if suffix, found := strings.CutPrefix(s.Name, name); found && strings.HasPrefix(suffix, typed) && session.ValidName(suffix) {
-				description := s.State
+				description := s.ShownState()
 				if ended {
 					description = s.Directory
 				}
@@ -1619,20 +1621,22 @@ func unexpected(typed, argument string) error {
 	return fail.Usage(fmt.Sprintf("%s: unexpected argument '%s' (see cld help)", typed, argument))
 }
 
-// table lays out sessions for list: NAME, at least four wide, STATE, LAST ACTIVE and DIRECTORY,
-// under a header; nothing at all without sessions.
+// table lays out sessions for list: NAME, at least four wide, STATE, with claude's status (see
+// session.Session's ShownState) and at least eight wide, each as wide as its longest, LAST ACTIVE
+// and DIRECTORY, under a header; nothing at all without sessions.
 func table(sessions []session.Session) string {
 	if len(sessions) == 0 {
 		return ""
 	}
-	width := 4
+	width, stateWidth := 4, 8
 	for _, s := range sessions {
 		width = max(width, utf8.RuneCountInString(s.Name))
+		stateWidth = max(stateWidth, utf8.RuneCountInString(s.ShownState()))
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "%-*s  %-8s  %-11s  %s\n", width, "NAME", "STATE", "LAST ACTIVE", "DIRECTORY")
+	fmt.Fprintf(&out, "%-*s  %-*s  %-11s  %s\n", width, "NAME", stateWidth, "STATE", "LAST ACTIVE", "DIRECTORY")
 	for _, s := range sessions {
-		fmt.Fprintf(&out, "%-*s  %-8s  %-11s  %s\n", width, s.Name, s.State, s.LastActive(), s.Directory)
+		fmt.Fprintf(&out, "%-*s  %-*s  %-11s  %s\n", width, s.Name, stateWidth, s.ShownState(), s.LastActive(), s.Directory)
 	}
 	return out.String()
 }

@@ -147,15 +147,19 @@ install it as `cld`, executable, in a directory on your `PATH`.
 - The tab's title is `✳ cld-S`, with `◐` and `◑` in turn in place of the `✳` while claude
   works. Under tmux claude keeps its own marker at `✳`, so cld gives claude hooks with
   `--settings` that tell tmux when a turn starts, when claude asks for a permission and when the
-  turn ends. They miss:
+  turn ends; `cld list` shows the same status (see [The session list](#the-session-list)). They
+  miss:
   - an interrupt (`Esc`) as claude writes: the title stays busy until the next prompt, or until
     claude, idle for a minute, notifies it; an interrupt in a tool comes through;
   - a prompt that a `UserPromptSubmit` hook of your own blocks: busy until the next one;
+  - your answer to a permission, of which claude tells nothing: until the tool it asked for has
+    run - a long command you allow - the title stays `✳` and `cld list` says `waiting`; after you
+    refuse one, until the turn ends or your next prompt (not checked yet);
   - everything under `disableAllHooks`, or a policy that allows only managed hooks: the title
-    stays `✳ cld-S`.
+    stays `✳ cld-S`, and `cld list` shows no status.
 
-  A terminal that detaches keeps the title it had, a busy one too. A session that an older cld
-  started keeps `✳ cld-S`.
+  A terminal that detaches keeps the title it had, a busy one too. A session that a cld before
+  0.8.0 started keeps `✳ cld-S`, and shows no status in `cld list`.
 
   Each hook starts a tmux client, and while the title is busy each terminal on the session starts
   `sh`, `sleep` and a tmux client every second to turn the marker: each takes as long, and as
@@ -253,6 +257,14 @@ held down does not go on to kill the next session.
   On such a row, `Enter` resumes it as `cld resume -n NAME -s SUFFIX` does, and `Ctrl+X` twice
   forgets it: cld's record of it goes, and its conversation stays in claude's history. cld
   checks claude for the resume once the list has closed.
+- `STATE` has claude's status after the state, as the tab's title follows it: `busy` while claude
+  works, `waiting` while it asks you something - a permission, an MCP server's question - drawn in
+  bold, and `idle` once its turn is done, as in `detached, waiting`. The rows stay in the order of
+  their names. There is none until claude's first prompt in the session, none once claude has
+  exited (`exited`), and none where claude runs no hooks; the hooks miss some changes (see
+  [Sessions](#sessions)). A pane split off in claude's window that keeps the session after claude
+  has gone, or that you are in beside claude's `exited` one, shows the status claude left, as the
+  title does. The status is as of when the list read the sessions.
 - The state `attached` counts terminals only: someone on the session through Remote Control does
   not show, and a kill ends the session for them too.
 - A kill leaves a `cld new -w` worktree where it is, and the conversation stays: after a kill by
@@ -272,12 +284,13 @@ A claude holds some 0.2 to 0.5 GB of memory for as long as its session runs, use
 `LAST ACTIVE` column of `cld list` shows how long ago each session was active - `now`, `5m`, `2h`,
 `31d` - as of when the list read the sessions, and `-` for a session that has ended.
 
-- A session is idle while no terminal is attached to it, from the last key typed into a terminal
-  on it or the last terminal attaching, whichever came later: tmux counts nothing else. claude
-  working on its own - a long task, `/loop` - does not count, nor does a conversation continued
-  through Remote Control. A session with a terminal attached is never idle. `C-q d` is a key; a
-  terminal that closes without it, or that `cld join --detach-others` or `cld detach` detaches,
-  leaves the session idle from its last key, or from when it attached.
+- A session is idle while no terminal is attached to it, from the last key typed into a terminal on
+  it or the last terminal attaching, whichever came later: tmux counts nothing else. claude working
+  on its own - a long task, `/loop` - does not count, nor does a conversation continued through
+  Remote Control, nor claude's status in `STATE`: a `detached, busy` session is ended too. A session
+  with a terminal attached is never idle. `C-q d` is a key; a terminal that closes without it, or
+  that `cld join --detach-others` or `cld detach` detaches, leaves the session idle from its last
+  key, or from when it attached.
 - To keep a session, join it now and then (`cld join`, then `C-q d`), or set `CLD_IDLE_DAYS` in
   your shell's profile: the number of days, such as `90` or `0.5`, or `0` to end none. `cld list`
   and `cld new` without `-s` refuse a value that is no number of days. Completion ends no
@@ -483,11 +496,11 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
   "cld-S" is running in the background (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.
   ```
 
-  `claude attach ID` opens the copy in the terminal you run it in, outside cld. The copy keeps
-  the hooks for the tab's title, which name cld's session `S`: while a session `S` runs - the one
-  it left, or a later `cld new` that gives the index again - its tab shows the copy's status
-  until the copy stops, and while none runs the hooks fail after each tool, with a hook error (not
-  checked yet). To bring the conversation back into cld, run `claude stop ID`, then
+  `claude attach ID` opens the copy in the terminal you run it in, outside cld. The copy keeps the
+  hooks for the tab's title, which name cld's session `S`: while a session `S` runs - the one it
+  left, or a later `cld new` that gives the index again - its tab and its row in `cld list` show the
+  copy's status until the copy stops, and while none runs the hooks fail after each tool, with a
+  hook error (not checked yet). To bring the conversation back into cld, run `claude stop ID`, then
   `cld kill -n NAME -s SUFFIX` where the session stays, and `cld resume -n NAME -s SUFFIX` (not
   checked yet: the old transcript has the name too). With `--fork`, cld passes `--fork-session`:
   `cld resume -s OTHER --fork cld-S` resumes a copy in another session, as the message offers,
@@ -718,12 +731,13 @@ cld reads the file when it runs: edits apply when you run it again. The containe
 `cld join -n <TAB>` offers the `NAME` of the names of the sessions that run, with how many
 sessions have it; `cld join -s <TAB>` offers the `SUFFIX` of each session that runs whose `NAME` is
 `-n`'s, or else that of the repository or directory you are in and that was made there (or by
-cld 0.8.2 or earlier), with its state; `--mcp` the next server after a comma; and `--permissions`
-its sets. `cld detach -n` and `-s` complete as `cld join`'s, and `cld resume -n` and `-s` the same
-of the sessions that have ended, each `SUFFIX` with the directory it ran in. No file names are
-offered, and `cld new`, `cld kill` and the values of `cld setup telemetry` offer nothing. The
-script runs `cld` on every TAB, so the names are always current. `CLD_COMPLETION_DESCRIPTIONS=0` in
-the environment leaves out the states and the other descriptions.
+cld 0.8.2 or earlier), with its state and claude's status as `cld list` shows them,
+`detached, waiting` say; `--mcp` the next server after a comma; and `--permissions` its sets.
+`cld detach -n` and `-s` complete as `cld join`'s, and `cld resume -n` and `-s` the same of the
+sessions that have ended, each `SUFFIX` with the directory it ran in. No file names are offered,
+and `cld new`, `cld kill` and the values of `cld setup telemetry` offer nothing. The script runs
+`cld` on every TAB, so the names are always current. `CLD_COMPLETION_DESCRIPTIONS=0` in the
+environment leaves out the states and the other descriptions.
 
 `cld setup completion SHELL` writes the script that `cld completion SHELL` prints where the shell
 reads it, making its directories, and says what it wrote; start a new shell for it to take effect.
@@ -796,7 +810,7 @@ say what changed since:
 | Idle | claude keeps running, working or waiting, until you end it or the session has had no terminal attached and no key typed for 30 days: then the next `cld list`, or `cld new` without `-s`, ends it (see [Idle sessions](#idle-sessions)), and `cld resume` resumes the conversation | the supervisor stops claude once it is done, or waits for your next message, and has been unattached for about an hour, unless the session is pinned (`Ctrl+T` in agent view); attaching resumes the conversation |
 | claude crashes | the session stays, with claude's last screen and how it exited, `exited` in `cld list` | the supervisor starts claude again; `claude logs ID` shows its recent output |
 | Reboot | claude stops; `cld restore`, which `cld setup restore` has your systemd run, resumes each conversation in a new session and continues a turn the reboot cut off | claude stops; the session shows failed - stopped after 48 hours - and attaching resumes the conversation |
-| Listing | `cld list`: name, state, when last active and directory; join or kill | `claude agents`: state, activity and age; attach, peek, reply, dispatch, stop |
+| Listing | `cld list`: name, state and whether claude is busy, waiting or idle, when last active and directory; join or kill | `claude agents`: state, activity and age; attach, peek, reply, dispatch, stop |
 
 A cld session is not one of them, and agent view does not show it; nor does `cld list` show
 background sessions. With agent view on in the session, `claude agents --json` of 2.1.284 listed it
@@ -922,6 +936,10 @@ move does to the session, and how to bring the conversation back into cld.
   record whether they run: one started before the upgrade ends at the next reboot, and
   `cld resume` brings it back as before. On Linux, run `cld setup restore` once for your systemd
   to run `cld restore` as it starts (see [After a reboot](#after-a-reboot)).
+- **claude's status in `cld list`.** In cld 0.10.0 and earlier, `STATE` in the table of
+  `cld list` was one word. Now it has claude's status after a comma where claude has one, as in
+  `detached, waiting`, and is as wide as the longest: a script that splits the table at spaces
+  finds more words on such a row, and its first word with the comma.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **Ended sessions.** cld 0.9.0 and earlier kept no record of the sessions: a session they started

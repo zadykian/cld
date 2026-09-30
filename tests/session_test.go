@@ -846,6 +846,106 @@ func TestList(t *testing.T) {
 	}
 }
 
+// list shows claude's status after each session's state, as the title's hooks keep it on the
+// session (see TestStatusHooks): idle once a turn is done, busy, waiting while claude asks, and
+// nothing where no hook has set it, where the option holds anything else - here a tab, which
+// would split the line's fields if tmux wrote it - or once claude has exited - here in a turn,
+// which leaves the option busy. The rows keep the order of the names, the waiting session among
+// them, and STATE is as wide as the longest, in the table and in the interactive list, which
+// draws waiting in bold - on the selected row too, in inverse video - and nothing else. join -s
+// and detach -s describe each session so too.
+func TestListShowsClaudesStatus(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	probes := detachedSessions(t, s, "a", "b", "c", "d", "e")
+	probes["a"].Hook("Stop", `{}`)
+	probes["b"].Hook("UserPromptSubmit", `{"prompt":"go"}`)
+	probes["c"].Hook("PermissionRequest", `{"tool_name":"Bash"}`)
+	s.MustTmux("cld-d", "set", "-t", "=cld-d:", "@cld-status", "bu\tsy")
+	probes["e"].Hook("UserPromptSubmit", `{"prompt":"go"}`)
+	probes["e"].Send("exit 1")
+	sandbox.WaitFor(t, 10*time.Second, "claude e to exit", func() bool { return s.Format("cld-e", "#{pane_dead}") == "1" })
+	if status := s.Format("cld-e", "#{@cld-status}"); status != "busy" {
+		t.Errorf("@cld-status of the session whose claude exited is %q, want busy", status)
+	}
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
+	waitClients(t, s, 1)
+
+	states := [][2]string{{"a", "detached, idle"}, {"b", "attached, busy"}, {"c", "detached, waiting"}, {"d", "detached"}, {"e", "exited"}}
+	table := "NAME  STATE              LAST ACTIVE  DIRECTORY\n"
+	for _, row := range states {
+		table += fmt.Sprintf("%-4s  %-17s  now          %s\n", row[0], row[1], s.Work)
+	}
+	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != table || result.Stderr != "" {
+		t.Errorf("exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, table)
+	}
+	completions := "a\tdetached, idle\nb\tattached, busy\nc\tdetached, waiting\nd\tdetached\ne\texited\n:4\n"
+	for _, command := range []string{"join", "detach"} {
+		if result := s.RunCld(nil, "__complete", command, "-s", ""); result.Code != 0 || result.Stdout != completions {
+			t.Errorf("__complete %s -s: exit %d, stdout %q, want %q", command, result.Code, result.Stdout, completions)
+		}
+	}
+
+	term := terminal.New(t, "tmux", s)
+	list := startList(t, s, term, listScript, nil)
+	// shown is the list with the session selected, in a terminal columns wide, as text and styled,
+	// as cells(term.Styled()) has it: waiting in bold as far as the line holds it.
+	shown := func(selected string, columns int) (text, styled []string) {
+		header := strings.TrimRight(cutTo("  NAME  STATE              LAST ACTIVE  DIRECTORY", columns), " ")
+		text, styled = []string{header}, []string{"[]" + header}
+		for _, row := range states {
+			marker, attributes := " ", ""
+			if row[0] == selected {
+				marker, attributes = ">", "inverse=7"
+			}
+			full := fmt.Sprintf("%s %-4s  %-17s  now          %s", marker, row[0], row[1], s.Work)
+			line := cutTo(full, columns)
+			text = append(text, strings.TrimRight(line, " "))
+			if attributes == "" {
+				line = strings.TrimRight(line, " ")
+			}
+			if i := strings.Index(full, "waiting"); i >= 0 && i < len(line) {
+				end := min(i+len("waiting"), len(line))
+				bold := "[" + strings.TrimSpace("intensity=1 "+attributes) + "]" + line[i:end]
+				if end < len(line) {
+					bold += "[" + attributes + "]"
+				}
+				line = line[:i] + bold + line[end:]
+			}
+			styled = append(styled, "["+attributes+"]"+line)
+		}
+		footer := footerIn(listHints, columns)
+		return append(text, "", footer), append(styled, "", "[intensity=2]"+footer)
+	}
+	for _, step := range []struct {
+		keys     []string
+		columns  int
+		selected string
+	}{
+		{nil, 120, "a"},
+		{[]string{"Down", "Down"}, 120, "c"},
+		{nil, 21, "c"}, // > c     detached, wai
+		{[]string{"Up"}, 21, "b"},
+	} {
+		if step.keys != nil {
+			term.Keys(step.keys...)
+		}
+		if step.columns != 120 {
+			term.Resize(step.columns, 10)
+		}
+		text, styled := shown(step.selected, step.columns)
+		waitLines(t, term, text...)
+		if got := cells(term.Styled()); !slices.Equal(got, styled) {
+			t.Errorf("session %s selected, %d columns, the list is\n%s\nwant\n%s", step.selected, step.columns, strings.Join(got, "\n"), strings.Join(styled, "\n"))
+		}
+	}
+	term.Keys("Escape")
+	if code := list.code(t); code != "0" {
+		t.Errorf("exit %s, want 0", code)
+	}
+	afterList(t, term, table)
+}
+
 // list first ends each session idle for longer than CLD_IDLE_DAYS days - no terminal attached, and
 // neither a key typed into one nor an attach since - as kill ends it, claude and the server with
 // it, and says so on stderr; the table shows it as ended, from its entry in cld's record, as after

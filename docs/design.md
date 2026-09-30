@@ -197,6 +197,8 @@ rows that name none were probed against tmux 3.6.
 | the helpers VS Code's git extension gives git in its terminal (`extensions/git/src` of microsoft/vscode at d8dfa8f, 2026-09-29: `askpass.ts`, `askpassManager.ts`, `gitEditor.ts`, `ipc/ipcServer.ts`, `ipc/ipcClient.ts`, `askpass-main.ts`, `git-editor-main.ts`, the scripts; read, not run) | with `git.terminalAuthentication` (on by default) the askpass: `GIT_ASKPASS` naming `askpass.sh`, or `askpass-empty.sh` where the extension has no IPC server, and `VSCODE_GIT_ASKPASS_NODE`, `VSCODE_GIT_ASKPASS_EXTRA_ARGS` and `VSCODE_GIT_ASKPASS_MAIN` naming `askpass-main.js` in the same directory, the extension's (on Windows, a copy of it); `SSH_ASKPASS` goes to the extension's own git, not the terminal. With `git.terminalGitEditor` (off by default) the editor: `GIT_EDITOR` naming `git-editor.sh` (or `git-editor-empty.sh`) in the same directory, in double quotes, and `VSCODE_GIT_EDITOR_NODE`, `VSCODE_GIT_EDITOR_EXTRA_ARGS` and `VSCODE_GIT_EDITOR_MAIN` naming `git-editor-main.js`. Whatever the settings, where the extension runs its IPC server, `VSCODE_GIT_IPC_HANDLE`, the window's socket. Each script runs `NODE` on `MAIN`, which asks the window through the socket, and without `VSCODE_GIT_IPC_HANDLE` exits 1 at once (`Missing VSCODE_GIT_IPC_HANDLE`) |
 | `claude` 2.1.283's own title (read from its bundle; and the `#{pane_title}` of a claude working in a session of cld's, read every 50 ms for 45 s) | `MARKER NAME`, the marker from claude's status: `◐` and `◑` in turn, every 960 ms, while it is `busy`; `✳` while it is `idle` or `waiting` - a permission dialog, an MCP server's question. Where `TMUX`, `STY` or `ZELLIJ` is set and the feature flag `tengu_static_title_under_mux` (on by default) holds, the marker stays `✳`: the pane's title read `✳ cld-NAME` throughout. claude also writes its status to `~/.claude/sessions/PID.json` (`status`, `statusUpdatedAt`), which no documentation names, and sends no OSC 9;4 that tmux records: `#{pane_pb_state}` stayed `hidden` |
 | claude's hook events (the linux-x64 bundles of 2.1.232 and 2.1.283, read, not run) | both have `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest` ("When a permission dialog is displayed"), `Elicitation`, `ElicitationResult`, `Notification` - of the types `permission_prompt`, `idle_prompt`, `elicitation_dialog` and others - `Stop` and `StopFailure` ("Fires instead of Stop when an API error ... ended the turn"). `PostToolUseFailure`'s input has `is_interrupt`. No event comes when the user interrupts claude as it writes |
+| the events around a permission (claude 2.1.285's bundle, read, not run: the hook events' descriptions and input schemas) | `PermissionRequest` comes "When a permission dialog is displayed", within the tool's call: `PostToolUse` ("After tool execution") and `PostToolUseFailure` carry `duration_ms`, "Tool execution time in milliseconds. Excludes permission-prompt and hook time". `PreToolUse` ("Before tool execution") comes before the dialog, which its `permissionDecision` - `allow`, `deny`, `ask` or `defer` - can spare. Of the 33 events none comes with the user's answer: `PermissionDenied` is "After auto mode classifier denies a tool call". A tool the user allows runs with nothing between the dialog and its `PostToolUse`; one the user refuses gets "The user doesn't want to proceed with this tool use. ... STOP what you are doing and wait for the user to tell you how to proceed" as its result, and which event comes next was not traced |
+| `@cld-status` as `list` reads it (#113; tmux 3.5a and 3.7c, in the images `tests/Dockerfile` builds): `list-sessions -f '#{==:#{session_name},cld-x}' -F` with the state's field `#{?pane_dead,exited,#{?session_attached,attached,detached} #{?#{==:#{@cld-status},busy},busy,#{?#{==:#{@cld-status},waiting},waiting,#{?#{==:#{@cld-status},idle},idle,}}}}`, read with `sed -n l`, on session `cld-x` with the option set on the session (`set -t =cld-x:`), then its pane dead (`remain-on-exit failed`, `respawn-pane -k 'exit 3'`) | `detached busy`, `detached waiting` and `detached idle` for the three values; `detached ` - a trailing space - for the option unset, for a tab inside it (`bu<TAB>sy`) and for `busyx`; `exited` alone for the dead pane with `waiting` set. A space in a branch of `#{?...}` stays, nested conditionals and an empty last branch included. Both releases wrote the same |
 | hooks given with `--settings` (the real `claude` 2.1.283, alone on a scratch tmux server, in a directory whose trust was accepted, Remote Control off; a second `UserPromptSubmit` hook exited 2, which blocks the prompt, so nothing reached the API) | claude ran them - `SessionStart` as it started, `UserPromptSubmit` on Enter - in its own environment, with `TMUX` naming the server and `TMUX_PANE` its pane: `tmux if -F -t "$TMUX_PANE" '#{!=:#{@cld-status},busy}' 'set @cld-status busy'` set the option on claude's session. No `Stop` followed the blocked prompt: the option stayed `busy` |
 | hooks of a conversation claude runs in the background (the real `claude` 2.1.284 on Linux, in a session cld 0.8.1 made on tmux 3.7c; read with `ps`, `/proc/PID/environ`, the daemon's log and the transcript - not made to happen by hand) | two seconds after cld started claude, `claude daemon run` - started the day before, from a claude in the default tmux server - logged `bg spawned ID (slash)` and ran the conversation in a worker of its own: `claude bg-pty-host`, running claude `--session-id ID` with the `--settings` of the claude in the pane word for word. The claude in the pane showed the conversation, whose transcript entries say `"sessionKind":"bg"`. The worker's environment had no `TMUX` and no `TMUX_PANE` - the daemon's had those of its tmux - and its directory was the session's. Every hook failed there: `tmux if -F -t "$TMUX_PANE" ...` went to the default server, which ran with no session; `if -t ''` found no target, which `if` allows, and its `set`, without one either, said `no current session`, exit 1. claude showed that after each tool (`PostToolUse:Bash hook error`), 141 times in two hours, and `@cld-status` stayed unset. Without a target tmux takes the pane in the client's `TMUX_PANE`, and without that the session with the latest activity (`cmd-find.c`, tmux 3.7c): with a session on the default server, the option would have gone there. `tmux -S SOCKET if -F -t =cld-NAME: '#{!=:#{@X},x}' 'set -t =cld-NAME: @X x'`, run from `/tmp` without either variable, set the option on the session, and nothing on the default server |
 | Claude Code's background sessions beside cld's (the [agent view](https://code.claude.com/docs/en/agent-view) and [fullscreen](https://code.claude.com/docs/en/fullscreen) docs, read 2026-09-29; the linux-x64 bundles of 2.1.283 and 2.1.284, read; `claude agents --json` of 2.1.284, run beside two sessions of cld's - nothing started, attached or stopped) | the docs: `claude --bg`, `/bg` and `←` hand a conversation to a supervisor process that runs it without a terminal, and `/fork` a copy of it; an attached one renders fullscreen whatever the `tui` setting says, screen reader mode included, and tmux's copy mode sees only the screen; the supervisor stops a session's process once it is done, or waiting for the next message, and has been unattached for about an hour, unless it is pinned, and resumes the conversation on attach; it starts a process that exits unexpectedly again; after a shutdown a session shows failed - stopped past 48 hours - and attaching resumes it; agent view is a research preview, and shows an interactive session only once it has gone to the background. Both bundles: `claude attach`, `logs` and `stop` take a prefix of a short ID, 8 hex digits (`/^[a-f0-9]{8}$/`), and for anything else, a name included, print `No job matching 'X'. Run 'claude agents' to list running sessions.` and exit 1; the setting `disableAgentView`, "Equivalent to CLAUDE_CODE_DISABLE_AGENT_VIEW=1", disables "agent view (`claude agents`, `--bg`, /background, the on-demand daemon)". `claude agents --json` listed each session of cld's as `"kind": "interactive"` and `"name": "cld-NAME-SUFFIX"`, with its `pid`, `sessionId` and `status`, and no `id`, which only a background session has. The idle stop, the restart, the renderer and a shutdown were not seen |
@@ -1060,13 +1062,14 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         has gone, as any other): that would take `claude agents --json`, and `list`, whose way of
         reading the names completion shares (17), runs no claude. The copy keeps the title's hooks
         (25, 26), which name the server's socket and the session: until the copy stops, they set
-        the status of any session of the name that runs, a later `new`'s too, and fail while none
-        does; so it keeps the record's (40.2), which touch the session's entry, and after a
-        `/clear` there write it anew with the copy's conversation, a later `new`'s entry too. cld
-        leaves that as well. The README and the user guide say how to bring the conversation back:
-        `claude attach ID`, or `claude stop ID`, then `kill` where the session stays, and `resume`.
-        Since 47 agent view is off in cld's sessions, and this holds only for a session of cld
-        0.10.0 or earlier, until it ends, and for a conversation moved before (47.3).
+        the status of any session of the name that runs, a later `new`'s too - its title and,
+        since 49, its row in `list` - and fail while none does; so it keeps the record's (40.2),
+        which touch the session's entry, and after a `/clear` there write it anew with the copy's
+        conversation, a later `new`'s entry too. cld leaves that as well. The README and the user
+        guide say how to bring the conversation back: `claude attach ID`, or `claude stop ID`,
+        then `kill` where the session stays, and `resume`. Since 47 agent view is off in cld's
+        sessions, and this holds only for a session of cld 0.10.0 or earlier, until it ends, and
+        for a conversation moved before (47.3).
 17. Shell completion (#25): `cld completion SHELL` prints a completion script for bash, zsh or
     fish, with which `cld join -n <TAB>` offers the names `cld list` shows (since 24 `-n` their
     NAME and `-s` their SUFFIX, 24.8).
@@ -1633,9 +1636,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     8. completion: `join -n` offers, for the names `list` shows, what comes before their last `-`,
        where that and what follows are NAMEs, once each, described by the number of its sessions;
        `join -s` offers the SUFFIX of the sessions whose names start with `NAME-` - `-n`'s, or the
-       repository's or directory's - where `join` takes it, described by their states; where
-       `NAME` leaves nothing, every name. A TAB there runs `git rev-parse` besides `list`'s reads
-       (17.4). `new`, `resume` and `kill` offer none, as their `-n` did not (17.3);
+       repository's or directory's - where `join` takes it, described by their states, with
+       claude's status since 49 (49.6); where `NAME` leaves nothing, every name. A TAB there runs
+       `git rev-parse` besides `list`'s reads (17.4). `new`, `resume` and `kill` offer none, as
+       their `-n` did not (17.3);
     9. the tests: the default names in a repository, outside one and in the root directory, with
        running sessions, a gap, a server without its session, a stale socket and the names of
        another repository or directory, of none and in other letters, and with `-n`; `resume
@@ -1661,12 +1665,13 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        pane's output, which typing and redraws make too; passing claude's title on, which never
        turns under tmux; and taking `TMUX` away from claude, which needs it for its passthrough;
     2. the events: `UserPromptSubmit`, `PostToolUse` and `ElicitationResult` make claude busy -
-       `PostToolUse` also after a permission answered - `PermissionRequest` and `Elicitation` make
-       it wait, and `Stop`, `StopFailure`, `Notification` of the type `idle_prompt` and
-       `PostToolUseFailure` with `is_interrupt` make it idle; a failure that is no interrupt
-       leaves it busy. An interrupt as claude writes has no event: the title stays busy until the
-       next prompt, or until claude, idle for a minute (its default), notifies `idle_prompt`.
-       Waiting shows `✳`, as claude's title does;
+       `PostToolUse` also after a permission answered, once the tool has run (49.5) -
+       `PermissionRequest` and `Elicitation` make it wait, and `Stop`, `StopFailure`,
+       `Notification` of the type `idle_prompt` and `PostToolUseFailure` with `is_interrupt` make
+       it idle; a failure that is no interrupt leaves it busy. An interrupt as claude writes has no
+       event: the title stays busy until the next prompt, or until claude, idle for a minute (its
+       default), notifies `idle_prompt`. Waiting shows `✳`, as claude's title does, and `list`
+       names it since 49;
     3. a hook runs tmux, by the path cld checked, quoted for sh, on claude's server by its socket
        and for claude's session by name, both written in as the session is made - `tmux -S
        SOCKET if -F -t =cld-S: ... "set -t =cld-S: ..."` - and sets `@cld-status` on that
@@ -1708,8 +1713,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        get neither option; the socket's absolute path under a relative `TMUX_TMPDIR`. The probe
        draws its settings as `{...}`, which with the hooks no longer fit a line.
 
-    Out of scope: a marker for `waiting` of its own (claude's title has none), a title that shows
-    more than the marker, and the title a terminal keeps after it detaches.
+    Out of scope: a marker for `waiting` of its own (claude's title has none; `list` names it since
+    49), a title that shows more than the marker, and the title a terminal keeps after it detaches.
 26. The tab marks a worktree: while claude works in a linked git worktree - one `new -w` has
     claude make, one it enters with `EnterWorktree`, one `cld new` runs in - the title ends in
     ` [w]`, as in `✳ cld-S [w]`, and loses it as claude leaves. It follows claude as 25's
@@ -3042,6 +3047,67 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 
     Out of scope: a real reboot, which Status leaves to check.
 
+49. claude's status in the list (#113): `list`, its interactive list (14) and the completion of
+    `join -s` and `detach -s` show claude's status after the session's state, as in
+    `detached, waiting`: `busy`, `waiting` or `idle`, as the title's hooks keep it in `@cld-status`
+    (25). `list` said whether a terminal is attached, not whether claude works or waits for the
+    user, which the hooks already told tmux. Settled with it:
+    1. folded into STATE, after a comma, rather than a column of its own, as the maintainer
+       chose: a session without a status shows its state alone, with no empty column beside it -
+       one whose claude has had no prompt yet, a session `restore` brought back with no turn to
+       continue among them (48.5), runs no hooks (5 below), has exited - `exited`, whose option a
+       turn it failed in left `busy` (25.4) - or has ended (40.3). Like `exited` and the title's
+       marker (25.4), the status goes by the active pane of the session's window: a pane split off
+       there that keeps the session after claude's has closed - `/exit`, status 0 (5, 48.2) - or
+       that is the active one beside claude's dead pane shows the status claude left, which no
+       hook clears. STATE is as wide as its longest, and at least eight cells, `attached`
+       and `detached`, in the table and in the list, as NAME is as wide as its longest:
+       `detached, waiting` takes seventeen, and a table with no status is as before. A script
+       that splits the table at spaces finds two words on a row with a status, the first with its
+       comma, which the user guide's Upgrading says;
+    2. the rows keep the order of the names (13.1, 40.3), and `waiting` stands out on its own: the
+       list draws the word in bold (SGR 1, ended by 22 as the footer's dim is), inside the
+       selected row's inverse video too, as far as the row, cut at the terminal's width, holds
+       it. The table has no attributes, as before, on a terminal too (14.1, 14.3): it is what
+       scripts and pipes read, plain text byte for byte wherever it goes. Rejected, as the
+       maintainer chose: the `waiting` rows first, which would move a row between two reads (14.6)
+       and order the table apart from completion;
+    3. the read: `#{@cld-status}` in the `list-sessions -F` that `Sessions` runs anyway (13.1,
+       38), no tmux more, in the state's field after a space - the fields split at runs of tabs,
+       so an empty one would go, as the times share one (46.5). tmux writes only `busy`, `waiting`
+       or `idle` there, comparing the option with each, so that nothing else set in it - a tab,
+       say - reaches the line, and nothing on the `exited` branch of `pane_dead` (see Findings).
+       Not the busy mark (48.3), a file beside the entry that `restore` alone reads: it does not
+       tell `waiting` from `busy`, and would take a read of a file for each session;
+    4. the status is as of the read: the list reads the sessions when it opens and after its own
+       actions (14.6), so a row's status does not change under a key, nor does its LAST ACTIVE
+       (46.5);
+    5. the hooks' limits, which the title had, now show in `list`: an interrupt as claude writes
+       leaves `busy` until claude, idle a minute, notifies `idle_prompt`, or the next prompt, and a
+       prompt that a `UserPromptSubmit` hook of the user's blocks until the next one (25.2);
+       nothing is set under `disableAllHooks` or a policy that allows only managed hooks, in a
+       session of a cld before 0.8.0, which had no hooks, or before claude's first prompt. And one
+       the title hid, as `waiting` and `idle` both show `✳` there: claude sends no event with the
+       user's answer to a permission (see Findings), so a tool allowed shows `waiting` until it has
+       run and its `PostToolUse` makes claude busy again - a long command, say. What a refused
+       permission leaves until the next event was not traced. A conversation moved to the
+       background from a session that keeps agent view (47.3) keeps the hooks, so its copy's status
+       shows on any session of the name that runs, a later `new`'s too (16.10). `idle` is claude's
+       word: the sweep of idle sessions goes by LAST ACTIVE, not by the status (46.1), and ends a
+       `busy` session all the same;
+    6. completion describes the SUFFIX of `join -s` and `detach -s` (24.8, 44) by the same words,
+       `detached, waiting`; `resume -s`, whose sessions have ended, keeps their directory (40.8);
+    7. the tests: with the real tmux, sessions whose claudes ran the hooks of `Stop`,
+       `UserPromptSubmit` - one attached - and `PermissionRequest`, one with none run and a tab set
+       in its option by hand, and one whose claude exited in a turn, its option still `busy`: the
+       table, `join -s` and `detach -s` completing, and the list at 120 columns and at 21, where
+       the row cuts the word to `wai` - `waiting` bold on a row, and in inverse video on the
+       selected one, and nothing else bold. With the fake tmux, the state's field as tmux writes
+       it, with each status, none and `exited`: the table's widths and the completion.
+
+    Out of scope: a status as claude starts, which a hook of `SessionStart` could set for every
+    session, the title's too, and reading the sessions again on a timer, which 14.6 rules out.
+
 ## Implementation notes
 
 Where the implementation departs from the plan above:
@@ -3552,6 +3618,13 @@ into Enter, see Findings and 43).
   shutdown, and a real claude resumed with the prompt - read in the bundles of 2.1.232 and 2.1.285,
   not run - asking a permission in the turn it continues. `setup restore` is refused on macOS, which
   has no systemd; launchd is not looked into.
+- claude's status in `list` (49) is tested with the probe running the hooks, on tmux 3.5a and 3.7c
+  in CI, and its format was probed on both (see Findings); with the real `claude`, no status was
+  seen in the list: a permission asked, allowed and refused, an MCP server's question and an
+  interrupt each take a prompt to the API, so the maintainer runs or allows them. That an allowed
+  tool shows `waiting` until it has run was read in claude 2.1.285's bundle, and what a refused
+  one leaves was not found there. The bold `waiting` was seen in tmux's own rendering only, not in
+  JediTerm or a real terminal.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

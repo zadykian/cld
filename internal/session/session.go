@@ -145,7 +145,8 @@
 // @cld-status of its session (see statusHooks), and tmux, with set-titles on for that session
 // only, sets the title of every terminal on it from that (see titles). The same hooks keep
 // @cld-worktree, and the title ends in " [w]" while claude works in a linked git worktree. claude's
-// own title stays in its pane. A terminal that detaches keeps the title tmux set last.
+// own title stays in its pane. A terminal that detaches keeps the title tmux set last. list reads
+// @cld-status too, and shows it after the session's state (see Session's Status).
 //
 // The clients of new, resume and join - and of the list's Enter, which joins - take the terminal
 // for UTF-8 (tmux -u), as list's reads of the sessions do (see Tmux.Sessions): tmux by itself does
@@ -593,11 +594,13 @@ type hookCommand struct {
 const hookTimeout = 5
 
 // statusHooks are the hooks that keep claude's status on its session, for the tab's title (see
-// titles). @cld-status is busy from a prompt on, waiting while claude asks - a permission, an MCP
-// server's question - and idle once the turn is done, as claude tells its own status apart for
-// its title outside tmux. PostToolUse goes back to busy after a question answered; an interrupt
-// ends a tool's run with PostToolUseFailure, which says so, while one that comes as claude writes
-// leaves busy until claude, idle a minute, notifies idle_prompt, or the next prompt.
+// titles) and list (see Session's Status). @cld-status is busy from a prompt on, waiting while
+// claude asks - a permission, an MCP server's question - and idle once the turn is done, as claude
+// tells its own status apart for its title outside tmux. PostToolUse goes back to busy after a
+// permission answered, once the tool has run - no event comes with the answer itself - and
+// ElicitationResult after an MCP server's question. An interrupt ends a tool's run with
+// PostToolUseFailure, which says so, while one that comes as claude writes leaves busy until
+// claude, idle a minute, notifies idle_prompt, or the next prompt.
 //
 // @cld-worktree is 1 while claude's directory is in a linked git worktree - its git directory is
 // not the repository's common one - and 0 elsewhere: in the main worktree, outside a repository.
@@ -1360,6 +1363,20 @@ type Session struct {
 	State string
 	// Attached is whether a terminal is attached, claude exited or not.
 	Attached bool
+	// Status is what claude is doing, as the title's hooks keep it in @cld-status on its session
+	// (see statusHooks): "busy", "waiting" - for a permission, an MCP server's question - or
+	// "idle". It is "" where no hook has set it - before claude's first prompt, under claude's
+	// disableAllHooks, in a session of a cld before 0.8.0 - where the option holds anything else,
+	// once claude has exited ("exited"), of which the option may still say busy, and for a
+	// session that has ended. Like "exited", it goes by the active pane of the session's window:
+	// a pane split off there that keeps the session after claude's has closed, or that is active
+	// beside claude's dead one, has the status claude left, which no hook clears. The hooks miss
+	// what claude tells them nothing of: an interrupt as claude writes, and a prompt that a hook
+	// of the user's blocks, leave busy; the answer to a permission leaves waiting until the tool
+	// has run; a conversation moved to the background from a session that keeps agent view - one
+	// of cld 0.10.0 or earlier - sets the status of a session of its name that runs (see
+	// docs/design.md, decisions 16, 47 and 49).
+	Status string
 	// PIDs are the process ids of the programs in the session's panes, tmux's #{pane_pid}: claude's,
 	// and those of panes made by hand in its session - a window split, say. A pane keeps its pid
 	// once its program has exited, and a session made again under the name has others (see End).
@@ -1380,6 +1397,15 @@ type Session struct {
 	// give as a number, counts as now, so that nothing is ended on a value cld cannot read (see
 	// EndIdle). A session that has ended has none: 0, which no sweep ends.
 	Idle time.Duration
+}
+
+// ShownState is State as list shows it: with claude's Status after it, where there is one -
+// "detached, waiting".
+func (s Session) ShownState() string {
+	if s.Status == "" {
+		return s.State
+	}
+	return s.State + ", " + s.Status
 }
 
 // LastActive is Idle as list shows it: "now" under a minute, and otherwise in whole minutes,
@@ -1505,8 +1531,12 @@ func (t *Tmux) session(ctx context.Context, suffix string) (*Session, error) {
 	// session's times share a field, as session_last_attached is empty where no terminal has
 	// attached. The session's home comes right before the directory, both paths, which can hold a
 	// tab: the home's length in bytes (n:) goes before them, and the directory takes the rest of
-	// the line.
-	state := "#{?pane_dead,exited,#{?session_attached,attached,detached}}"
+	// the line. claude's status shares the state's field, after a space, as runs of tabs separate
+	// the fields and it is empty where no hook has set it. tmux writes it only as one of the words
+	// the hooks set, so that nothing else in the option - a tab, say - reaches the line, and not at
+	// all for a dead pane: claude's, the active one, once claude has exited.
+	status := "#{?#{==:#{@cld-status},busy},busy,#{?#{==:#{@cld-status},waiting},waiting,#{?#{==:#{@cld-status},idle},idle,}}}"
+	state := "#{?pane_dead,exited,#{?session_attached,attached,detached} " + status + "}"
 	times := "#{session_activity} #{session_last_attached}"
 	path := "#{n:@cld-home}\t#{@cld-home}#{?pane_dead,#{session_path},#{pane_current_path}}"
 	// tmux writes to a client whose LC_ALL, LC_CTYPE or LANG does not name UTF-8 - unset or C, as
@@ -1529,8 +1559,8 @@ func (t *Tmux) session(ctx context.Context, suffix string) (*Session, error) {
 	}
 	clients, _ := strconv.Atoi(field[2])
 	home, directory := cutHome(field[5], field[6])
-	s := &Session{Name: suffix, State: field[1], Attached: clients > 0, PIDs: strings.Fields(field[3]),
-		Directory: directory, Home: home}
+	s := &Session{Name: suffix, Attached: clients > 0, PIDs: strings.Fields(field[3]), Directory: directory, Home: home}
+	s.State, s.Status, _ = strings.Cut(field[1], " ")
 	if !s.Attached {
 		s.Idle = idleSince(read, strings.Fields(field[4]))
 	}

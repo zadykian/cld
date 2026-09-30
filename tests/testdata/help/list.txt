@@ -1,10 +1,11 @@
 list the sessions cld started: name, whether a terminal is attached (or claude
-exited, or the session ended), when it was last active (a terminal attaching,
-or a key typed in one) and the directory claude is in or ran in. cld keeps a
-session that has ended - by cld kill, claude's /exit, a reboot - for 30 days.
-A session idle for longer than $CLD_IDLE_DAYS days, 30 where unset or empty,
-is ended first, as cld kill ends it, with a line on stderr; cld resume brings
-its conversation back. CLD_IDLE_DAYS=0 ends none.
+exited, or the session ended) and whether claude is busy, waiting for an answer
+or idle, when it was last active (a terminal attaching, or a key typed in one)
+and the directory claude is in or ran in. cld keeps a session that has ended -
+by cld kill, claude's /exit, a reboot - for 30 days. A session idle for longer
+than $CLD_IDLE_DAYS days, 30 where unset or empty, is ended first, as cld kill
+ends it, with a line on stderr; cld resume brings its conversation back.
+CLD_IDLE_DAYS=0 ends none.
 
 On a terminal, pick one to join or kill: Up and Down select a session, Enter
 joins it as cld join does, C-x twice within two seconds kills it as cld kill

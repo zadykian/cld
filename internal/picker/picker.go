@@ -1,7 +1,9 @@
 // Package picker is cld list on a terminal: the sessions on the alternate screen, one of them
 // selected, to join with Enter as cld join does, or to kill with Ctrl+X pressed twice as cld kill
 // does - or, for a session that has ended, to resume with Enter as cld resume does, or to forget
-// with Ctrl+X pressed twice.
+// with Ctrl+X pressed twice. A row shows a session as the table of cld list does, claude's status
+// after its state - "detached, waiting" - with waiting in bold, the one status that asks for the
+// user; the rows keep the order of the names.
 //
 // The list opens with the first row selected; ↑ and ↓ move the selection, stopping at the first and
 // the last row, Enter joins the selected session, and Esc or Ctrl+C leave, joining nothing. Ctrl+X
@@ -32,12 +34,13 @@
 // session.Tmux.End); a session whose claude exited with its server running on - what its claude
 // started through tmux keeps it running - is ended with the server, as cld kill ends it. The list
 // reads the sessions only when it opens and after its own actions, never on a timer, so a row does
-// not change under a key - its LAST ACTIVE neither, which is how long ago as of the read. While
-// Enter looks the session up, or the kill or forget runs, and the list reads the sessions again,
-// Esc, Ctrl+C and the signals below still leave - its tmux is killed - and other keys do nothing:
-// a lookup that hangs, on a server that does, does not hold the list. A session the kill has ended
-// by then is in the sessions the list leaves with as one that has ended where the list has read
-// them again, and otherwise not at all; one the forget has forgotten is not.
+// not change under a key - its LAST ACTIVE neither, which is how long ago as of the read, nor
+// claude's status, which is as of the read too. While Enter looks the session up, or the kill or
+// forget runs, and the list reads the sessions again, Esc, Ctrl+C and the signals below still
+// leave - its tmux is killed - and other keys do nothing: a lookup that hangs, on a server that
+// does, does not hold the list. A session the kill has ended by then is in the sessions the list
+// leaves with as one that has ended where the list has read them again, and otherwise not at all;
+// one the forget has forgotten is not.
 //
 // The list redraws the whole screen after each key and each resize - once for the bytes of a key,
 // and once for keys that come together, pasted say - and cuts every line at the terminal's
@@ -147,6 +150,8 @@ const (
 	noInverse   = "\x1b[27m"
 	dim         = "\x1b[2m"
 	noDim       = "\x1b[22m"
+	bold        = "\x1b[1m"
+	noBold      = "\x1b[22m"
 	// askAttributes asks the terminal what it is (primary device attributes, DA1): every terminal
 	// the list runs on answers, CSI ? and its attributes then c, once it has read what came before.
 	askAttributes = "\x1b[c"
@@ -867,18 +872,21 @@ func (l *list) frame() string {
 
 // lines are the lines the list shows, styled: the header, the rows in view with the selected
 // one marked and in inverse video - or "no sessions" once none are left - a blank line and the
-// footer. A terminal too short for the header, a row, the blank line and the footer loses the
-// blank line, then the header, then the footer.
+// footer. STATE has claude's status after the state, as the table does (see
+// session.Session's ShownState), and a waiting claude's in bold (see waiting). A terminal too
+// short for the header, a row, the blank line and the footer loses the blank line, then the
+// header, then the footer.
 func (l *list) lines() []string {
-	nameWidth := 4
+	nameWidth, stateWidth := 4, 8
 	for _, row := range l.rows {
 		nameWidth = max(nameWidth, cells(row.Name))
+		stateWidth = max(stateWidth, cells(row.ShownState()))
 	}
 	format := func(marker, name, state, active, directory string) string {
-		return marker + " " + pad(name, nameWidth) + "  " + pad(state, 8) + "  " + pad(active, 11) + "  " + directory
+		return marker + " " + pad(name, nameWidth) + "  " + pad(state, stateWidth) + "  " + pad(active, 11) + "  " + directory
 	}
 	row := func(marker string, s session.Session) string {
-		return format(marker, s.Name, s.State, s.LastActive(), s.Directory)
+		return format(marker, s.Name, s.ShownState(), s.LastActive(), s.Directory)
 	}
 	title := format(" ", "NAME", "STATE", "LAST ACTIVE", "DIRECTORY")
 	header := []string{cut(title, l.columns)}
@@ -898,9 +906,10 @@ func (l *list) lines() []string {
 		l.top = max(min(l.top, len(l.rows)-fits), 0)
 		for i := l.top; i < min(l.top+fits, len(l.rows)); i++ {
 			if i == l.selected {
-				rows = append(rows, inverse+pad(cut(row(">", l.rows[i]), l.columns), min(tableWidth, l.columns))+noInverse)
+				line := pad(cut(row(">", l.rows[i]), l.columns), min(tableWidth, l.columns))
+				rows = append(rows, inverse+waiting(line, l.rows[i], nameWidth)+noInverse)
 			} else {
-				rows = append(rows, cut(row(" ", l.rows[i]), l.columns))
+				rows = append(rows, waiting(cut(row(" ", l.rows[i]), l.columns), l.rows[i], nameWidth))
 			}
 		}
 	}
@@ -911,6 +920,36 @@ func (l *list) lines() []string {
 		}
 	}
 	return slices.Concat(header, rows, blank, footer)
+}
+
+// waiting is line, the row of session s cut at the terminal's width, with the word waiting in
+// bold where claude waits for an answer - the one status that asks for the user - as far as line
+// holds it; any other row as it is. The word follows the marker, the name nameWidth wide and the
+// state (see lines), in cells.
+func waiting(line string, s session.Session, nameWidth int) string {
+	if s.Status != "waiting" {
+		return line
+	}
+	return embolden(line, 2+nameWidth+2+cells(s.State+", "), cells(s.Status))
+}
+
+// embolden is line with the count cells from cell from on in bold, as many of them as line has.
+func embolden(line string, from, count int) string {
+	start, end, used := -1, len(line), 0
+	for i, r := range line {
+		if used >= from+count {
+			end = i
+			break
+		}
+		if used >= from && start < 0 {
+			start = i
+		}
+		used += runeCells(r)
+	}
+	if start < 0 {
+		return line
+	}
+	return line[:start] + bold + line[start:end] + noBold + line[end:]
 }
 
 // footer is the line under the rows: the message, the kill's question once it is armed, or the

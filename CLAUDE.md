@@ -274,6 +274,16 @@ not push such a change. Rebase onto `main` before either.
   most (`timeout`) for each hook but `CwdChanged`'s, which it runs in the background (`async`;
   decision 39), and the record's `SessionEnd` one (above). The hook events, `async` and `timeout`
   must exist in the minimum claude.
+- `list`, its interactive list and the completion of `join -s` and `detach -s` show claude's
+  status after the state, `detached, waiting`, from `@cld-status`, read in the `list-sessions -F`
+  that `list` runs anyway, in the state's field after a space: tmux writes only `busy`, `waiting`
+  or `idle` there, and nothing for a dead active pane (`exited`); like `exited` and the title, it
+  goes by the active pane, so a pane split off beside claude's shows the status claude left.
+  STATE is as wide as its longest, at least 8; the rows keep the order of the names, and the
+  interactive list draws `waiting` in bold, the table nothing (decision 49). The hooks miss an
+  interrupt as claude writes and a prompt a hook blocks (`busy` stays), and the answer to a
+  permission (`waiting` until the tool has run); nothing is set before the first prompt, under
+  `disableAllHooks`, or in a session of a cld before 0.8.0.
 - `--settings` carries those hooks and the record's, `"disableAgentView": true` in every session
   and, with `-w`, `worktree.baseRef`, nothing more: flag settings outrank the user's, so what is
   theirs to choose - Remote Control (`remoteControlAtStartup`) among it - stays claude's own
@@ -386,9 +396,10 @@ comments at the top of each file for details.
   Legitimate per-terminal differences are encoded as expectations, not skips.
 - `session_test.go` — session lifecycle and server behaviour, `detach` as claude runs it, the
   names `new` gives from the repository and the index, the sessions of another repository of the
-  same name, the hooks that keep claude's status and its worktree for the title, the names
-  completion offers, the keys a tmux cld runs inside keeps from claude, and the idle sessions
-  `list` and `new` end (`CLD_IDLE_DAYS` of a few seconds);
+  same name, the hooks that keep claude's status and its worktree for the title, claude's status
+  in `list`, its interactive list and completion, the names completion offers, the keys a tmux cld
+  runs inside keeps from claude, and the idle sessions `list` and `new` end (`CLD_IDLE_DAYS` of a
+  few seconds);
   `restore_test.go` — the run mark, the busy mark and the environment beside an entry, no mark
   where tmux made no session, the kill's and the idle sweep's `rm` of the mark held while the
   session holds its name, `restore` of sessions whose servers `kill-server` ended (a reboot)
@@ -402,8 +413,9 @@ comments at the top of each file for details.
   `resume` by the ID (or the name) in the entry's directory, the copy's after `resume --fork`, the
   indexes, expiry, the lock of two `new` at once, `XDG_STATE_HOME` and a record cld cannot write;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
-  byte with `testdata/help`, the completion scripts, and `LAST ACTIVE`, the kill of an idle
-  session, the session cld runs in kept and `new`'s sweep that cannot read against the fake tmux;
+  byte with `testdata/help`, the completion scripts, and `LAST ACTIVE`, claude's status, the kill
+  of an idle session, the session cld runs in kept and `new`'s sweep that cannot read against the
+  fake tmux;
   `telemetry_test.go` — `setup telemetry`
   against the fake docker: its calls, the collector config, the port, the settings file, failures
   (Linux only; macOS checks the refusal); `project_test.go` — `setup project` against the real
