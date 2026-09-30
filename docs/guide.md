@@ -131,6 +131,19 @@ install it as `cld`, executable, in a directory on your `PATH`.
   transcript - your messages, claude's responses, tool activity - is stored on Anthropic's
   servers; see
   [Connection and security](https://code.claude.com/docs/en/remote-control#connection-and-security).
+- cld turns Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) off in a
+  session: `disableAgentView` in the settings it gives claude, which outrank yours. With agent
+  view on, `/background` (`/bg`), "Move to background and exit" in `/exit`'s dialog and `←` on an
+  empty prompt move the conversation to claude's background sessions, out of cld: the session
+  ends, or keeps claude in agent view, while the conversation goes on as a copy with the hooks cld
+  gave claude, which name the session (see [Resuming a conversation](#resuming-a-conversation)).
+  What `/bg`, `←`, the dialog and `/fork` do under the setting has not been checked yet with
+  claude running - claude's code has another `/fork` then, "Spawn a background agent that
+  inherits the full conversation" - nor have `ListAgents` and `SendMessage` between cld's
+  sessions, or what else of claude needs its daemon. No option of cld's turns agent view on in a
+  session, and `--settings` after `--` is refused (see [claude's options](#claudes-options)); a
+  claude you start without cld keeps it (see
+  [cld and Claude Code's background sessions](#cld-and-claude-codes-background-sessions)).
 - The tab's title is `✳ cld-S`, with `◐` and `◑` in turn in place of the `✳` while claude
   works. Under tmux claude keeps its own marker at `✳`, so cld gives claude hooks with
   `--settings` that tell tmux when a turn starts, when claude asks for a permission and when the
@@ -442,20 +455,25 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
   (`Remote Control not started here`) until `/remote-control` moves it over; whether a session
   that Remote Control connected as it started records that session in its conversation has not
   been checked yet.
-- Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) moves a conversation to
-  its background sessions, where claude's supervisor process runs it on as a copy, with a new
-  session ID and the same name, which Claude Code's docs say it numbers, as in `cld-S (2)`, where a
-  background session has it already. `/background` (`/bg`), and "Move to background and exit" in
-  the dialog `/exit` shows while background work runs, exit claude without an error, which ends
-  the session and its server. `←` on an empty prompt leaves claude in the session, in agent view,
-  where `Esc`, or `Enter` on the conversation's row, goes back to the conversation (not checked
-  yet), which the supervisor goes on running: `cld kill` ends the claude in the session but not
-  the copy. `cld list` does not tell that a conversation moved; `claude agents` lists the
-  background sessions. While the copy runs, `cld resume -n NAME -s SUFFIX` finds it by the name,
-  and claude refuses it and exits with an error, which leaves the session `exited`:
+- Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) is off in cld's sessions
+  (see [Sessions](#sessions)), but not in one that cld 0.10.0 or earlier started, until it ends
+  (see [Upgrading](#upgrading)). There, as in every session before the upgrade, agent view moves a
+  conversation to its background sessions, where claude's supervisor process runs it on as a copy,
+  with a new session ID and the same name, which Claude Code's docs say it numbers, as in
+  `cld-S (2)`, where a background session has it already. `/background` (`/bg`), and "Move to
+  background and exit" in the dialog `/exit` shows while background work runs, exit claude without
+  an error, which ends the session and its server. `←` on an empty prompt leaves claude in the
+  session, in agent view, where `Esc`, or `Enter` on the conversation's row, goes back to the
+  conversation (not checked yet), which the supervisor goes on running: `cld kill` ends the claude
+  in the session but not the copy. `cld list` does not tell that a conversation moved;
+  `claude agents` lists the background sessions. While the copy runs,
+  `cld resume -n NAME -s SUFFIX` finds it by the name, and claude refuses it and exits with an
+  error, which leaves the session `exited` - agent view off in the new session changes none of
+  that (read in claude's code, not run). claude 2.1.285 says what follows, where 2.1.284 and
+  earlier began `Session UUID is running as a background session (ID).`:
 
   ```text
-  Session UUID is running as a background session (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.
+  "cld-S" is running in the background (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.
   ```
 
   `claude attach ID` opens the copy in the terminal you run it in, outside cld. The copy keeps
@@ -466,9 +484,8 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
   `cld kill -n NAME -s SUFFIX` where the session stays, and `cld resume -n NAME -s SUFFIX` (not
   checked yet: the old transcript has the name too). With `--fork`, cld passes `--fork-session`:
   `cld resume -s OTHER --fork cld-S` resumes a copy in another session, as the message offers,
-  and leaves the background session running (not checked yet).
-  claude's `disableAgentView` setting turns agent view off, `/bg` with it; `/config` has
-  `← opens agents` to turn off the key alone.
+  and leaves the background session running (not checked yet). In a session that keeps agent
+  view, `/config`'s `← opens agents` turns off the key alone.
 
 ## Worktrees
 
@@ -503,9 +520,9 @@ arguments: `--name cld-S` and `--settings`, then `--worktree cld-S` for `cld new
 - cld refuses, naming why, the options it gives claude itself, of which claude would keep the
   last: `-n` and `--name`, as `-n` and `-s` name the session and claude; `-w` and `--worktree` -
   `cld new -w` gives claude the worktree, and `cld resume` none, as claude takes a conversation
-  back to its worktree itself; and `--settings`, which would replace cld's - the worktree's base,
-  and the hooks of the tab's title and of cld's record: your own go in a settings file, such as
-  `.claude/settings.local.json`.
+  back to its worktree itself; and `--settings`, which would replace cld's - agent view off, the
+  worktree's base, and the hooks of the tab's title and of cld's record: your own go in a
+  settings file, such as `.claude/settings.local.json`.
 - It refuses those that resume a conversation, `-r`, `--resume`, `-c`, `--continue` and
   `--from-pr`, for which there is `cld resume`.
 - It refuses those with which claude would not stay in the session: `-p`, `--print`, `--bg`,
@@ -686,12 +703,15 @@ cld removes nothing: to undo it, delete the script, and for zsh the lines in `.z
 Claude Code runs conversations without a terminal itself: `claude --bg PROMPT` starts one, and
 `/bg` (`/background`) or `←` on an empty prompt hands the one you are in to a supervisor process.
 `claude attach ID` opens such a background session in any terminal, and
-[agent view](https://code.claude.com/docs/en/agent-view), `claude agents`, lists them. As of
-Claude Code 2.1.284 - agent view is a research preview, and its docs say what changed since:
+[agent view](https://code.claude.com/docs/en/agent-view), `claude agents`, lists them. The two
+answer the same need, and a conversation runs in one or the other, as you start claude: cld turns
+agent view off in its sessions (see [Sessions](#sessions)), and a claude you start without cld
+keeps it. To choose, as of Claude Code 2.1.285 - agent view is a research preview, and its docs
+say what changed since:
 
 | | cld | Background sessions |
 |---|---|---|
-| Needs | cld and tmux, of the version the [README](../README.md#install) names | nothing but claude; the `disableAgentView` setting, or `CLAUDE_CODE_DISABLE_AGENT_VIEW`, turns agent view off, and `--bg` and `/bg` with it |
+| Needs | cld and tmux, of the version the [README](../README.md#install) names; agent view is off in a session | nothing but claude; the `disableAgentView` setting, or `CLAUDE_CODE_DISABLE_AGENT_VIEW`, turns agent view off, and `--bg` and `/bg` with it |
 | Address | a name - `-s SUFFIX` in its repository - which TAB completes | an ID of 8 hex digits, or its start: `claude attach 7c5d`; for a name, claude says `No job matching 'NAME'` |
 | Coming back | claude as you left it, in the renderer you chose with `/tui`; in the classic one, the wheel scrolls the pane's history in tmux's copy mode | always fullscreen, whatever `/tui` chose; the terminal's scrollback and tmux's copy mode see only the screen |
 | Idle | claude keeps running, working or waiting, until you end it or the session has had no terminal attached and no key typed for 30 days: then the next `cld list`, or `cld new` without `-s`, ends it (see [Idle sessions](#idle-sessions)), and `cld resume` resumes the conversation | the supervisor stops claude once it is done, or waits for your next message, and has been unattached for about an hour, unless the session is pinned (`Ctrl+T` in agent view); attaching resumes the conversation |
@@ -699,13 +719,14 @@ Claude Code 2.1.284 - agent view is a research preview, and its docs say what ch
 | Reboot | claude stops; `cld resume` resumes the conversation in a new session | claude stops; the session shows failed - stopped after 48 hours - and attaching resumes the conversation |
 | Listing | `cld list`: name, state, when last active and directory; join or kill | `claude agents`: state, activity and age; attach, peek, reply, dispatch, stop |
 
-A cld session is not one of them: `claude agents --json` lists it as `"kind": "interactive"`, named
-`cld-NAME-SUFFIX` and without the `id` that `claude attach`, `claude logs` and `claude stop` take,
-and agent view does not show it; nor does `cld list` show background sessions. The two combine: in
-a cld session, `/bg` or `←` on an empty prompt moves the conversation to a background session, and
-`/fork` copies it into one while the original stays in the session.
-[Resuming a conversation](#resuming-a-conversation) says what a move does to the session, and how
-to bring the conversation back into cld.
+A cld session is not one of them, and agent view does not show it; nor does `cld list` show
+background sessions. With agent view on in the session, `claude agents --json` of 2.1.284 listed it
+as `"kind": "interactive"`, named `cld-NAME-SUFFIX` and without the `id` that `claude attach`,
+`claude logs` and `claude stop` take; whether it still does has not been checked yet. In a session
+that cld 0.10.0 or earlier started, which keeps agent view until it ends, `/bg` or `←` on an empty
+prompt still moves the conversation to a background session, and `/fork` copies it into one while
+the original stays in the session: [Resuming a conversation](#resuming-a-conversation) says what a
+move does to the session, and how to bring the conversation back into cld.
 
 ## Troubleshooting
 
@@ -812,6 +833,12 @@ to bring the conversation back into cld.
   through Remote Control alone: to keep them, set `CLD_IDLE_DAYS` (see
   [Idle sessions](#idle-sessions)) before the first run. The table of `cld list` gains
   `LAST ACTIVE` before `DIRECTORY`, which a script now finds fourth, after a header of five words.
+- **Agent view.** cld 0.10.0 and earlier left claude's agent view on in their sessions, where
+  `/bg`, "Move to background and exit" and `←` moved the conversation out of cld; now it is off in
+  a session, and a claude you start without cld keeps it (see [Sessions](#sessions)). A session
+  started before the upgrade keeps it until it ends: end it with `cld kill` and bring its
+  conversation back with `cld resume` to have it off. A conversation moved out of such a session
+  comes back into cld as [Resuming a conversation](#resuming-a-conversation) says.
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **Ended sessions.** cld 0.9.0 and earlier kept no record of the sessions: a session they started

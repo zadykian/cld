@@ -2,8 +2,9 @@ Run Claude Code in named sessions, each on a private tmux server that ignores
 ~/.tmux.conf. A session is named NAME-SUFFIX: NAME is by default the name of
 the git repository the current directory is in, or else of the directory, and
 SUFFIX, for a new session, the next index. Session S is the tmux session
-"cld-S" on the server "tmux -L cld-S", running "claude --name cld-S". What
-claude starts through tmux runs on that server too, and ends with it.
+"cld-S" on the server "tmux -L cld-S", running "claude --name cld-S" with
+claude's agent view (/bg) off. What claude starts through tmux runs on that
+server too, and ends with it.
 
 Detach with C-q d, or ! cld detach in claude where the terminal keeps C-q from
 tmux; C-q C-q sends C-q to claude. A session whose claude fails stays, showing

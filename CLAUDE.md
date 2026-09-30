@@ -241,9 +241,13 @@ not push such a change. Rebase onto `main` before either.
   most (`timeout`) for each hook but `CwdChanged`'s, which it runs in the background (`async`;
   decision 39), and the record's `SessionEnd` one (above). The hook events, `async` and `timeout`
   must exist in the minimum claude.
-- `--settings` carries those hooks and the record's and, with `-w`, `worktree.baseRef`, nothing
-  more: flag settings outrank the user's, so what is theirs to choose - Remote Control
-  (`remoteControlAtStartup`) among it - stays claude's own setting (decision 42).
+- `--settings` carries those hooks and the record's, `"disableAgentView": true` in every session
+  and, with `-w`, `worktree.baseRef`, nothing more: flag settings outrank the user's, so what is
+  theirs to choose - Remote Control (`remoteControlAtStartup`) among it - stays claude's own
+  setting (decision 42). Agent view is not theirs to choose in a session: `/bg`, `/exit`'s "Move to
+  background and exit" and `←` hand the conversation to claude's daemon, out of cld, so it is off
+  in every session, with no option to turn it on, and a claude started without cld keeps it
+  (decision 47). The key must exist in the minimum claude, as the hook events must.
 - The variables that name the terminal to claude, which it trusts over `TERM_PROGRAM=tmux` -
   `TERMINAL_EMULATOR`, `__CFBundleIdentifier`, `CURSOR_TRACE_ID`, `VisualStudioVersion` and
   `VSCODE_GIT_ASKPASS_MAIN` - are removed from the environment `new` and `resume` exec tmux with,

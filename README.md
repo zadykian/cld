@@ -105,11 +105,11 @@ message on screen and a line below it that says how to end the session, until `c
 or it has been idle for longer than 30 days (below).
 The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
 
-`/background` (`/bg`), and "Move to background and exit" where `/exit` offers it, end the session
-too: they move the conversation to Claude Code's
-[background sessions](https://code.claude.com/docs/en/agent-view), where it goes on without cld.
-`←` on an empty prompt moves it there as well, and leaves claude in the session, in agent view,
-where `Esc` goes back to the conversation, which goes on in the background all the same.
+Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) is off in a session:
+`/background` (`/bg`), "Move to background and exit" in `/exit`'s dialog and `←` on an empty
+prompt would move the conversation to claude's background sessions, out of cld, ending the
+session or leaving claude there in agent view. A claude you start without cld keeps agent view;
+see [below](#cld-and-claude-codes-background-sessions) for choosing between the two.
 
 A session idle for longer than 30 days - no terminal attached, and no key typed into one - ends at
 the next `cld list`, or `cld new` without `-s`, as `cld kill` would end it, with a line on stderr:
@@ -255,11 +255,13 @@ only. See the [guide](docs/guide.md#telemetry), turning it off included.
 Claude Code keeps conversations running without a terminal too, and without tmux: `claude --bg`,
 or `/bg` or `←` in a conversation, hands one to a supervisor process; `claude attach ID` opens it
 again, and [agent view](https://code.claude.com/docs/en/agent-view), `claude agents`, lists them
-all on one screen. cld keeps claude as you run it in a terminal: a session goes by a name, not an
-ID, and TAB completes it; claude keeps running, working or waiting, until you end it or leave it
-idle for 30 days; and it renders as your settings say, where an attached background session is
-always fullscreen. The [guide](docs/guide.md#cld-and-claude-codes-background-sessions) compares
-the two point by point, and says how they combine.
+all on one screen. The two answer the same need, and you choose between them as you start
+claude: cld turns agent view off in its sessions, and a claude started without cld keeps it. cld
+keeps claude as you run it in a terminal: a session goes by a name, not an ID, and TAB completes
+it; claude keeps running, working or waiting, until you end it or leave it idle for 30 days; and
+it renders as your settings say, where an attached background session is always fullscreen. The
+[guide](docs/guide.md#cld-and-claude-codes-background-sessions) compares the two point by point,
+and says how to bring back into cld a conversation moved out of a session of an older cld.
 
 ## cld and `claude --tmux`
 

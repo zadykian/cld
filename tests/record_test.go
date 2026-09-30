@@ -368,7 +368,8 @@ func TestNewAtOnce(t *testing.T) {
 
 // The record is in $XDG_STATE_HOME/cld where that is a whole path, and otherwise in the home
 // directory's .local/state/cld. Where cld cannot write it, new warns, and makes the session all
-// the same, without the hooks that would write it; list reads no entries there.
+// the same, without the hooks that would write it, and with agent view off; list reads no entries
+// there.
 func TestRecordPlace(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -406,6 +407,8 @@ func TestRecordPlace(t *testing.T) {
 	}
 	if settings := argv[i+1]; strings.Contains(settings, "SessionEnd") || strings.Contains(settings, "session_id") {
 		t.Errorf("settings with the record's hooks: %s", settings)
+	} else if !strings.HasPrefix(settings, `{"disableAgentView":true,"hooks":{`) {
+		t.Errorf("settings without agent view off: %s", settings)
 	}
 	if result := s.RunCld(env, "list"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
 		t.Errorf("list: exit %d, stdout %q, stderr %q, want exit 0 and no output", result.Code, result.Stdout, result.Stderr)

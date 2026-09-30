@@ -97,7 +97,7 @@ rows that name none were probed against tmux 3.6.
 | `claude --help` of 2.1.284 on its command line (run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`: it prints and exits, starting no conversation) | `Usage: claude [options] [command] [prompt]`, with commands such as `mcp`, `agents` and `attach`. Its short options are `-c, --continue`, `-d, --debug [filter]`, `-h, --help`, `-n, --name <name>`, `-p, --print` ("Print response and exit"), `-r, --resume [value]`, `-v, --version` and `-w, --worktree [name]`; `--bg` is also `--background` ("Start the session in the background and return immediately"); `--settings <file-or-json>`; `--tmux` "Create a tmux session for the worktree (requires --worktree)", `--tmux=classic` for plain tmux; `--teleport [session]` "Resume a teleport session"; `--from-pr [value]` "Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term"; `--bare` "Minimal mode: skip hooks (those defined in settings and by installed plugins; ...)", and `--safe-mode` starts with "hooks" among the customizations disabled. Hidden, in the bundle: `--init-only` "Run Setup and SessionStart:startup hooks, then exit", and `--rewind-files <user-message-id>` "Restore files to state at the specified user message and exit (requires --resume)" |
 | how `claude` 2.1.284 reads its command line (read from its bundle, not run) | commander, whose `.option()` calls the bundle holds, reads a word `-xyz` as `-x` with the value `yz` where `-x` takes a value, and else as `-x` followed by `-yz`, and `--x=VALUE` as `--x` with `VALUE`; an option given twice keeps the value given last, and `--settings`, `--name`, `--worktree` and `--resume` are such options - claude's own read of `--settings` from its raw arguments takes the last one too. claude also scans its raw arguments before commander: for `-p` and `--print` it stops at `--` and skips the values of the options that a table of its own names (`--model`, `--append-system-prompt`, `-n` and some 80 more; `--add-dir` and the other lists take each word up to one starting with `-`); for `--tmux` it looks at every word, after a `--` too, and where `-w` or `--worktree` is among them it goes to `execIntoTmuxWorktree` before anything else; for `--bg` and `--background` it looks at every word as well, and goes to its background sessions. `--from-pr` resumes as `--resume` does: claude's own check of whether it resumes names `-r`, `--resume` and `--from-pr` together. `--teleport` checks out the web session's branch in the current repository (`Switching to branch '...'`) and resumes the session there |
 | one of claude's commands after options (`claude --name cld-x --settings '{}' mcp --help` of 2.1.284, run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`) | printed `Usage: claude mcp [options] [command]` and exited 0: the first word that is no option's value names a command, cld's options before it notwithstanding, and claude runs that command instead of a conversation |
-| the longest command a tmux client hands its server (tmux 3.7c, the snap's binary run with its libraries on a private socket, and 3.5a in the tests' image: `new-session -d -s s SCRIPT WORD`, `WORD` ever longer; tmux 3.7c's `client.c` and `compat/imsg.c` read) | the client sends the words after its options, each followed by a NUL, behind their count (4 bytes), in one message of at most 16384 bytes with a 16-byte header: at 16364 bytes of words the script got `WORD`; at 16365 to 16380 tmux printed `failed to send command`, and beyond that `command too long`, exit 1 both, having started its server, which then ended, leaving its socket. `cld new -s x -- WORD` with a 20000-byte `WORD` made a command of 25968 bytes, 5967 of them cld's own, with tmux at a path of 97 characters, claude at `/tmp/fake/claude`, git's `/usr/bin/git`, the socket in `/tmp/tmux-0`, the directory `/root/repository/cld` and the record in `/root/.local/state/cld`, and 5029 in the tests' sandbox (both in the tests' image, measured again once 39 had given the hooks `timeout` and `async`, 133 bytes more than before, and again once 40 had added the record's hooks, 647 bytes more at those paths; 42 then left out `"remoteControlAtStartup":true,`, 30 bytes fewer, counted, not measured, and #64 gave the `pane-died` hook its border line and its text fitted to the pane's width (5), 784 bytes more at those paths, counted, and 763 in the sandbox, where cld's own then measured 5762; 43 added the line naming the keys another tmux keeps, and the redraws after it, some 180 bytes more inside such a tmux, counted): the hooks in claude's settings name tmux and the server's socket by their paths, the record's hooks the entry's file and the directory, the session's home names the directory, and the `pane-died` hook the session, four times |
+| the longest command a tmux client hands its server (tmux 3.7c, the snap's binary run with its libraries on a private socket, and 3.5a in the tests' image: `new-session -d -s s SCRIPT WORD`, `WORD` ever longer; tmux 3.7c's `client.c` and `compat/imsg.c` read) | the client sends the words after its options, each followed by a NUL, behind their count (4 bytes), in one message of at most 16384 bytes with a 16-byte header: at 16364 bytes of words the script got `WORD`; at 16365 to 16380 tmux printed `failed to send command`, and beyond that `command too long`, exit 1 both, having started its server, which then ended, leaving its socket. `cld new -s x -- WORD` with a 20000-byte `WORD` made a command of 25968 bytes, 5967 of them cld's own, with tmux at a path of 97 characters, claude at `/tmp/fake/claude`, git's `/usr/bin/git`, the socket in `/tmp/tmux-0`, the directory `/root/repository/cld` and the record in `/root/.local/state/cld`, and 5029 in the tests' sandbox (both in the tests' image, measured again once 39 had given the hooks `timeout` and `async`, 133 bytes more than before, and again once 40 had added the record's hooks, 647 bytes more at those paths; 42 then left out `"remoteControlAtStartup":true,`, 30 bytes fewer, counted, not measured, and #64 gave the `pane-died` hook its border line and its text fitted to the pane's width (5), 784 bytes more at those paths, counted, and 763 in the sandbox, where cld's own then measured 5762; 43 added the line naming the keys another tmux keeps, and the redraws after it, some 180 bytes more inside such a tmux, counted; 47 added `"disableAgentView":true,`, 24 bytes more, counted): the hooks in claude's settings name tmux and the server's socket by their paths, the record's hooks the entry's file and the directory, the session's home names the directory, and the `pane-died` hook the session, four times |
 | what a resumed conversation keeps ([Claude Code's docs](https://code.claude.com/docs/en/sessions), read on 29 September 2026) | "Not every configuration flag from the original launch is restored. If the session depended on `--mcp-config`, `--settings`, `--plugin-dir`, `--fallback-model`, or directories added with `--add-dir`, pass them again when you resume"; the model is restored unless `--model` or an `ANTHROPIC_MODEL`-family variable picks one |
 | a `#` in `new-session`'s `-c` (tmux 3.3a, 3.4, 3.5a and 3.7c: plain tmux, and `cld new` and `cld resume` before and after the fix, by hand in Docker; `TestDirectoryTmuxWouldChange`) | tmux expands `-c` as a format, after splitting its command at `;`, and `#{session_path}` keeps the result: `/tmp/w/C#S` became `/tmp/w/C` (`#S` is empty then: the session does not exist yet), and `/tmp/w/x#(touch ran)` became `/tmp/w/x` while tmux ran `touch ran` through the shell in the client's directory (with `new-session -d`, 3.3a to 3.5a; with an attached client, as cld's, all four). A `-c` that names no directory starts the program in the home directory, and with 3.3a where the server started. So `cld new`, and `resume`, in such a directory started claude elsewhere, and in one named `x#(command)` ran command. `/tmp/w/C##S` gives `/tmp/w/C#S`: `##` is a `#` |
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` (since 33, also the other variables that name the terminal to claude) and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
@@ -200,6 +200,8 @@ rows that name none were probed against tmux 3.6.
 | hooks given with `--settings` (the real `claude` 2.1.283, alone on a scratch tmux server, in a directory whose trust was accepted, Remote Control off; a second `UserPromptSubmit` hook exited 2, which blocks the prompt, so nothing reached the API) | claude ran them - `SessionStart` as it started, `UserPromptSubmit` on Enter - in its own environment, with `TMUX` naming the server and `TMUX_PANE` its pane: `tmux if -F -t "$TMUX_PANE" '#{!=:#{@cld-status},busy}' 'set @cld-status busy'` set the option on claude's session. No `Stop` followed the blocked prompt: the option stayed `busy` |
 | hooks of a conversation claude runs in the background (the real `claude` 2.1.284 on Linux, in a session cld 0.8.1 made on tmux 3.7c; read with `ps`, `/proc/PID/environ`, the daemon's log and the transcript - not made to happen by hand) | two seconds after cld started claude, `claude daemon run` - started the day before, from a claude in the default tmux server - logged `bg spawned ID (slash)` and ran the conversation in a worker of its own: `claude bg-pty-host`, running claude `--session-id ID` with the `--settings` of the claude in the pane word for word. The claude in the pane showed the conversation, whose transcript entries say `"sessionKind":"bg"`. The worker's environment had no `TMUX` and no `TMUX_PANE` - the daemon's had those of its tmux - and its directory was the session's. Every hook failed there: `tmux if -F -t "$TMUX_PANE" ...` went to the default server, which ran with no session; `if -t ''` found no target, which `if` allows, and its `set`, without one either, said `no current session`, exit 1. claude showed that after each tool (`PostToolUse:Bash hook error`), 141 times in two hours, and `@cld-status` stayed unset. Without a target tmux takes the pane in the client's `TMUX_PANE`, and without that the session with the latest activity (`cmd-find.c`, tmux 3.7c): with a session on the default server, the option would have gone there. `tmux -S SOCKET if -F -t =cld-NAME: '#{!=:#{@X},x}' 'set -t =cld-NAME: @X x'`, run from `/tmp` without either variable, set the option on the session, and nothing on the default server |
 | Claude Code's background sessions beside cld's (the [agent view](https://code.claude.com/docs/en/agent-view) and [fullscreen](https://code.claude.com/docs/en/fullscreen) docs, read 2026-09-29; the linux-x64 bundles of 2.1.283 and 2.1.284, read; `claude agents --json` of 2.1.284, run beside two sessions of cld's - nothing started, attached or stopped) | the docs: `claude --bg`, `/bg` and `←` hand a conversation to a supervisor process that runs it without a terminal, and `/fork` a copy of it; an attached one renders fullscreen whatever the `tui` setting says, screen reader mode included, and tmux's copy mode sees only the screen; the supervisor stops a session's process once it is done, or waiting for the next message, and has been unattached for about an hour, unless it is pinned, and resumes the conversation on attach; it starts a process that exits unexpectedly again; after a shutdown a session shows failed - stopped past 48 hours - and attaching resumes it; agent view is a research preview, and shows an interactive session only once it has gone to the background. Both bundles: `claude attach`, `logs` and `stop` take a prefix of a short ID, 8 hex digits (`/^[a-f0-9]{8}$/`), and for anything else, a name included, print `No job matching 'X'. Run 'claude agents' to list running sessions.` and exit 1; the setting `disableAgentView`, "Equivalent to CLAUDE_CODE_DISABLE_AGENT_VIEW=1", disables "agent view (`claude agents`, `--bg`, /background, the on-demand daemon)". `claude agents --json` listed each session of cld's as `"kind": "interactive"` and `"name": "cld-NAME-SUFFIX"`, with its `pid`, `sessionId` and `status`, and no `id`, which only a background session has. The idle stop, the restart, the renderer and a shutdown were not seen |
+| agent view turned off (#111: the real `claude` 2.1.285, run by the maintainer - its commands only, no conversation started: `claude agents`, `claude agents --json`, `attach`, `logs`, `stop`, `rm` and `respawn` under `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`; `claude agents --json` with `"disableAgentView": true` in `--settings`, and in each settings file, and with a `false` in `--settings` beside a `true` in them) | under the variable, each exited 1 with `'attach' is disabled by ...`, the command's name first; `claude agents --json` did the same for the key in `--settings` and in every settings file, and a `false` in `--settings` beat a `true` in them, as flag settings outrank the user's and the project's |
+| `disableAgentView` in claude's code (the linux-x64 bundles of 2.1.232, from npm, and 2.1.285, the native installer's; read, not run) and Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) docs, read 2026-09-30 | both bundles describe the setting as "Disable agent view (`claude agents`, `--bg`, /background, the on-demand daemon). Typically set in managed settings. Equivalent to CLAUDE_CODE_DISABLE_AGENT_VIEW=1.", and check it alike: the variable first, `is disabled by CLAUDE_CODE_DISABLE_AGENT_VIEW`, then `disableAgentView === true` in the merged settings, `is disabled by the 'disableAgentView' setting`; a command it refuses prints `'COMMAND' REASON.` on stderr and exits 1. The merged settings are the user's, the project's, the local ones, the flag settings (`--settings`) and the managed ones, merged in that order, a later source's value replacing an earlier one's. In 2.1.285, `/background` and `/stop` are among claude's commands only while agent view is on, and so are `/subtask` and the `/fork` that copies the conversation "into a new background session"; while it is off, `/fork` is another command, "Spawn a background agent that inherits the full conversation". The `/exit` dialog offers "Move to background and exit" only while agent view is on, `/config` shows `← opens agents` and "Start in agent view" only then, and `claude daemon run` exits 0 with `claude daemon: background agents disabled (3P/opt-out)`. `←` on an empty prompt opens agents only while agent view is on as well: its handler asks the same check as the `/config` entry. The refusal to resume a conversation that runs in the background does not ask it: `--resume NAME` looks the name up, then asks the live sessions claude registers (`listAllLiveSessions`) for one of that ID that is not interactive, and refuses it, under the setting too, with ``"TITLE" is running in the background (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.``, where 2.1.283 and 2.1.284 printed ``Session UUID is running as a background session (ID). ...`` (16.10). The docs: "To turn off background agents and agent view entirely, set the `disableAgentView` setting to `true` or set the `CLAUDE_CODE_DISABLE_AGENT_VIEW` environment variable"; they still say that the supervisor stops a session unattached for about an hour, that `Ctrl+T` pins one, that a session shows failed within 48 hours of a shutdown, and that an attached one renders fullscreen. 2.1.285 has the strings the user guide's comparison rests on, as 2.1.284 had them: `No job matching '`, the short ID's `/^[a-f0-9]{8}$/`, `Background sessions always use the fullscreen renderer while attached`, and `claude stop` and `claude attach`'s descriptions |
 | where claude runs a hook, and what `SessionStart` and `CwdChanged` see (the real `claude` 2.1.283 started in a linked worktree whose trust was accepted, alone on a scratch tmux server, Remote Control off; bash mode's `!cd /tmp`, `!cd` to the main worktree and `!cd` back - which claude answered with the model all the same, three short replies) | `SessionStart` ran in claude's directory, with it as its input's `cwd`. `!cd /tmp` fired `CwdChanged` with `new_cwd` `/tmp`, and `!cd` to the main worktree one with that; each time claude then took its shell back to the worktree the session works in ("Shell cwd was reset"), with no event, and the hooks' own directory, their `cwd` and `#{pane_current_path}` stayed the worktree throughout. `!cd` back to it fired nothing, the shell being there already |
 | where claude sets its directory (claude 2.1.283's bundle, read, not run) | a hook runs in the host's project root where a launch sets one, and otherwise in claude's current directory. claude sets that - `process.chdir` and the session's `setCwd`, whose change fires `CwdChanged` - for `--worktree` as it starts; for `EnterWorktree` and `ExitWorktree`, the latter back to the directory it came from; and for a resumed conversation that recorded a worktree. A `WorktreeCreate` hook replaces claude's own making of a worktree (its stdout names the directory), so it is no event to listen to |
 | the conversation's ID in the input of `SessionStart` and `SessionEnd`, and how long claude keeps a conversation (the linux-x64 bundles of 2.1.232, from npm, and 2.1.283 and 2.1.284, read, not run) | all three build a hook's input from the same fields - `session_id`, the ID of the conversation claude goes on with, which `--resume` takes, then `transcript_path` and `cwd` among others - and add the event's own: `SessionStart` `source` (`startup`, `resume`, `clear`, `compact`), `agent_type`, `model` and `session_title`, `SessionEnd` `reason`. In 2.1.283 and 2.1.284 the input of a hook claude runs for a call served to another process has `session_id` `served:` and the caller's ID, or `served:unknown`. 2.1.284 writes the input to a command hook's stdin as `JSON.stringify` makes it, on one line, and a newline. `cleanupPeriodDays` is "Number of days to retain chat transcripts before automatic cleanup (default: 30)" in all three, at least 1 |
@@ -501,17 +503,18 @@ comment `/fast-forward` from someone who can push; a pull request that changes
    - Why 2.1.232: the tests never run the real claude, so there is no tested version to require;
      the minimum is the first release that takes what cld passes and does what it relies on. What
      it passes came earlier - `--worktree` in 2.1.49, `--name` in 2.1.76, `remoteControlAtStartup`
-     in the settings in 2.1.119, `worktree.baseRef` in 2.1.133 - but only from 2.1.222 does a
-     project's `false` keep Remote Control off despite cld's `--settings`, as 10 and the user guide
-     promised (see Findings), and #21 set the minimum there - a reason gone since 42, as cld
-     passes no `remoteControlAtStartup` any more. `resume` (16) relies on behaviour
-     documented up to 2.1.232 - the search for a session ID across projects in 2.1.223, and
-     variants for live names and Remote Control staying with the claude that has it in 2.1.232
-     (16.7) - so the minimum rose to 2.1.232 with it (#26), rather than the user guide saying which
-     of `resume`'s behaviours need a newer claude than cld accepts. 2.1.133 would have needed the
-     Remote Control promise qualified; 2.1.281, the version probed, would refuse the stable
-     channel (2.1.274), which runs about a week behind and passes 2.1.232. The exit status of
-     `/exit` and the key mode, recorded for 2.1.281, were not checked on older releases.
+     in the settings in 2.1.119, `worktree.baseRef` in 2.1.133, and since 47 `disableAgentView`,
+     which 2.1.232 has (47.4) - but only from 2.1.222 does a project's `false` keep Remote Control
+     off despite cld's `--settings`, as 10 and the user guide promised (see Findings), and #21 set
+     the minimum there - a reason gone since 42, as cld passes no `remoteControlAtStartup` any more.
+     `resume` (16) relies on behaviour documented up to 2.1.232 - the search for a session ID across
+     projects in 2.1.223, and variants for live names and Remote Control staying with the claude
+     that has it in 2.1.232 (16.7) - so the minimum rose to 2.1.232 with it (#26), rather than the
+     user guide saying which of `resume`'s behaviours need a newer claude than cld accepts. 2.1.133
+     would have needed the Remote Control promise qualified; 2.1.281, the version probed, would
+     refuse the stable channel (2.1.274), which runs about a week behind and passes 2.1.232. The
+     exit status of `/exit` and the key mode, recorded for 2.1.281, were not checked on older
+     releases.
      The minimum rises when cld starts to pass a flag, or to rely on behaviour, that needs a newer
      claude, and only once the stable channel has that release. An upper bound, or an exact match,
      would break cld every few days: npm published 2.1.280 to 2.1.282 on 22 to 24 September 2026.
@@ -1050,6 +1053,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         `/clear` there write it anew with the copy's conversation, a later `new`'s entry too. cld
         leaves that as well. The README and the user guide say how to bring the conversation back:
         `claude attach ID`, or `claude stop ID`, then `kill` where the session stays, and `resume`.
+        Since 47 agent view is off in cld's sessions, and this holds only for a session of cld
+        0.10.0 or earlier, until it ends, and for a conversation moved before (47.3).
 17. Shell completion (#25): `cld completion SHELL` prints a completion script for bash, zsh or
     fish, with which `cld join -n <TAB>` offers the names `cld list` shows (since 24 `-n` their
     NAME and `-s` their SUFFIX, 24.8).
@@ -2371,20 +2376,20 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     2. refused, naming the word and why, with status 2 before any tool is looked for: the options
        cld gives claude itself, of which claude keeps the last (see Findings) - `-n` and
        `--name`, `-w` and `--worktree` (for `new`, cld's `-w`; for `resume`, none: 16.3), and
-       `--settings`, which would replace the worktree's base (4), the title's hooks (25, 26) and
-       the record's (40.2), and until 42 Remote Control (10). Then those that resume a conversation,
-       pointing at `cld resume`: `-r` and `--resume` (for `resume`, its SESSION), `-c` and
-       `--continue`, as the maintainer chose over passing them, and `--from-pr`, which claude
-       counts with `--resume` (see Findings): claude's most recent conversation in the
-       directory, or the one of a pull request, need not be the session's, and would take the
-       session's name. Then the options with which claude would not stay in the session: `-p`
-       and `--print`, `--bg` and `--background`, `-h` and `--help`, `-v` and `--version` print
-       and exit, and the hidden `--init-only` and `--rewind-files` run the startup hooks or
-       restore files and exit, which ends the session with status 0 before anyone reads what
-       they printed (5); `--tmux` takes claude to a tmux session of its own, and `--teleport`
+       `--settings`, which would replace the worktree's base (4), the title's hooks (25, 26), the
+       record's (40.2) and since 47 agent view off (47.2), and until 42 Remote Control (10). Then
+       those that resume a conversation, pointing at `cld resume`: `-r` and `--resume` (for
+       `resume`, its SESSION), `-c` and `--continue`, as the maintainer chose over passing them, and
+       `--from-pr`, which claude counts with `--resume` (see Findings): claude's most recent
+       conversation in the directory, or the one of a pull request, need not be the session's, and
+       would take the session's name. Then the options with which claude would not stay in the
+       session: `-p` and `--print`, `--bg` and `--background`, `-h` and `--help`, `-v` and
+       `--version` print and exit, and the hidden `--init-only` and `--rewind-files` run the startup
+       hooks or restore files and exit, which ends the session with status 0 before anyone reads
+       what they printed (5); `--tmux` takes claude to a tmux session of its own, and `--teleport`
        resumes a session from the web, checking out its branch. The issue named `-p`, `--bg`,
-       `--tmux` and `--teleport`; `--background`, `-h`, `-v` and `--rewind-files` are the same
-       kind, and the review named `--from-pr` and `--init-only`;
+       `--tmux` and `--teleport`; `--background`, `-h`, `-v` and `--rewind-files` are the same kind,
+       and the review named `--from-pr` and `--init-only`;
     3. how a word gives an option: a short one at the start of the word, with a value or more
        options after it, as claude reads `-xyz` (see Findings); a long one alone or with
        `=VALUE`. Every word counts, after a second `--` too, whatever comes before it: cld does
@@ -2450,7 +2455,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     2. `--settings` carries what cld needs and nothing that is the user's to choose: the title's
        hooks (25, 26), the record's (40.2) and, with `-w`, the worktree's base (4), as the
        notification channel stays the user's (29). They still go again with every `resume`, since
-       a resumed conversation does not keep them (10);
+       a resumed conversation does not keep them (10). Since 47 they also turn agent view off,
+       which in a session of cld's is not the user's to choose (47.2);
     3. for one session: `/remote-control` connects it, as in any claude, and claude's own
        `--remote-control`, given after `--` (41), connects it as it starts. cld has no option of
        its own for it, which would copy claude's;
@@ -2750,6 +2756,58 @@ comment `/fast-forward` from someone who can push; a pull request that changes
 
     Out of scope: a server that has outlived its session, which `list` shows only as an `ended`
     entry (40.3) and `kill` ends (13).
+
+47. Agent view is off in cld's sessions (#111), amending 42.2 and narrowing 16.10: `new` and
+    `resume` give claude `"disableAgentView": true` in `--settings`, in every session, which turns
+    Claude Code's agent view off for the session's claude - `/background` (`/bg`), "Move to
+    background and exit" in the dialog `/exit` shows while background work runs, the `/fork` that
+    copies a conversation into a background session, and `←` on an empty prompt (see Findings). A
+    `claude agents` run in another pane of the session's server reads the user's settings, not
+    cld's, and a daemon another claude started runs on. cld's sessions and Claude Code's background
+    sessions answer the same need, and met badly inside a session: a move handed the conversation to
+    claude's daemon, which ran it on as a copy while the session ended, or kept claude in agent view
+    after `←`, and the copy kept the title's hooks and the record's, which name the session (16.10).
+    A claude started without cld keeps agent view: which of the two a conversation runs in is chosen
+    by how claude starts.
+    Settled with it:
+    1. why in `--settings`, which 42.2 keeps to what cld needs: a move to the background takes the
+       conversation out of cld, ending the session (5) or leaving claude in it with the
+       conversation gone, while the copy carries cld's hooks on (16.10) - in a session of cld's,
+       agent view is a way out of cld that leaves the hooks behind, not a way of working cld
+       offers. `disableAgentView` is claude's own switch for it; in `--settings` it needs no
+       project setup and reaches the session's claude alone. Not taken:
+       `CLAUDE_CODE_DISABLE_AGENT_VIEW=1` in the environment `new` and `resume` run tmux with,
+       which would reach every process of the session's server - a claude started by hand in a
+       pane of it too - and which claude reads before any setting (see Findings);
+       `leftArrowOpensAgents` off, which leaves `/bg` and the dialog's move; and a hint once a
+       move has happened, too late for the session;
+    2. no option turns it back on, and `--settings` after `--` stays refused (41.2): a move to the
+       background ends the session, so agent view in a session of cld's is not the user's to
+       choose. The key goes to every session, `new -w`'s and `resume --fork`'s too, and wins over
+       the user's and the project's settings, as flag settings outrank them (see Findings). 42.2
+       now reads: `--settings` carries what cld needs, agent view off among it, and nothing that
+       is the user's to choose;
+    3. 16.10 narrows to a session of cld 0.10.0 or earlier, whose claude keeps the settings it
+       started with until it ends, and to a conversation moved before: there it stands, and the
+       README and the user guide keep the way back into cld - `claude stop ID`, then `kill` where
+       the session stays, and `resume`. The guide's Upgrading says that such a session keeps
+       agent view until `kill` and `resume` bring its conversation back in a new one;
+    4. the minimum of 6 stands: 2.1.232's bundle has the setting, with the same description, and
+       the same check of the merged settings, `--settings` among them (see Findings);
+    5. the settings grow by 24 bytes, `"disableAgentView":true,`, of the 16364 tmux takes (41.5),
+       counted;
+    6. the README and the user guide say that agent view is off in a session and that a claude
+       started without cld keeps it; their comparison of the two becomes a choice between them,
+       dated to 2.1.285, and the root's help says it of a session;
+    7. the tests: the settings word for word (25.7), which now start with the key, and the key
+       where cld cannot write its record (`TestRecordPlace`) and where it finds no git
+       (`TestWorktreeHooksWithoutGit`).
+
+    Not run, as an interactive claude may connect to claude.ai: `/bg`, `←`, `/exit`'s dialog and
+    `/fork` under the setting, `ListAgents` and `SendMessage` between cld's sessions, and what else
+    of claude needs the daemon (see Status). Out of scope: bridging the two - a command that moves
+    a conversation between a session of cld's and a background session, or `list` showing
+    background sessions.
 
 ## Implementation notes
 
@@ -3166,14 +3224,15 @@ into Enter, see Findings and 43).
   were read in its bundle, not run. The hooks of a conversation claude 2.1.284 ran in the
   background were seen failing as cld 0.8.1 wrote them (see Findings); the hooks as they are now
   were run by hand without `TMUX` and `TMUX_PANE`, not by a real background worker. `/bg`, the
-  `/exit` dialog and `←` make claude run a conversation in the background (16.10), and after `←`
-  the worker outlives `cld kill` (see Findings); what made claude run one in a worker two seconds
-  after it started, which the claude in the pane showed (see Findings), is not known. A copy's
-  hooks after its session has ended were not seen: run by hand, they say that no server runs,
-  and set the option on a later session of the name. The hooks' `async` and `timeout` (39) were
-  read in claude 2.1.284's bundle and Claude Code's reference, not run: a `CwdChanged` that runs
-  in the background, a hook that reaches its timeout, and a tool's `PermissionRequest` right
-  after the `PostToolUse` of another of the same answer are still to see.
+  `/exit` dialog and `←` make claude run a conversation in the background (16.10) - since 47, by
+  claude's code and docs, in a session of an older cld only (not run under the setting: below) - and
+  after `←` the worker outlives `cld kill` (see Findings); what made claude run one in a worker two
+  seconds after it started, which the claude in the pane showed (see Findings), is not known. A
+  copy's hooks after its session has ended were not seen: run by hand, they say that no server runs,
+  and set the option on a later session of the name. The hooks' `async` and `timeout` (39) were read
+  in claude 2.1.284's bundle and Claude Code's reference, not run: a `CwdChanged` that runs in the
+  background, a hook that reaches its timeout, and a tool's `PermissionRequest` right after the
+  `PostToolUse` of another of the same answer are still to see.
 - Notifications (29): what each channel writes was read in claude's bundle, and the contract
   checks that the baseline terminal and JediTerm get it; a real claude notifying in a session,
   and iTerm2, kitty and Ghostty showing it, were not seen.
@@ -3226,6 +3285,14 @@ into Enter, see Findings and 43).
   as #72 says, and that the settings the user guide gives free it, was not checked here.
 - The sweep of idle sessions (46) is tested with limits of seconds; a session idle for days, the
   session of a real claude ended, and claude's cleanup of such a conversation were not seen.
+- That `disableAgentView` in `--settings` turns agent view off (47) was checked by the maintainer
+  with claude 2.1.285's commands - `claude agents --json` refused under the key, in `--settings`
+  and in each settings file - and read in the bundles of 2.1.232 and 2.1.285 (see Findings), not
+  in a session: `/bg`, `←` on an empty prompt, `/exit`'s dialog and `/fork` under the setting,
+  `ListAgents` and `SendMessage` between cld's sessions, what else of claude needs the daemon, and
+  whether `claude agents` outside cld still lists a session of cld's, were not run, as an
+  interactive claude may connect to claude.ai: the maintainer runs or allows them. Until then the
+  user guide says which of it is not checked.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

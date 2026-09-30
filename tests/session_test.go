@@ -37,8 +37,9 @@ func sessionSettings(s *sandbox.Sandbox, name, dir string) string {
 }
 
 // settings is the --settings the claude of session name, cld-NAME, started in dir, gets in s from
-// a cld that found tmux and git at those paths: with fromHead, new -w's worktree branched from
-// HEAD, then the hooks that keep claude's status and whether it is in a linked worktree on its
+// a cld that found tmux and git at those paths: agent view off, in every session, where /bg and ←
+// would move the conversation out of it; with fromHead, new -w's worktree branched from HEAD;
+// then the hooks that keep claude's status and whether it is in a linked worktree on its
 // session, for the tab's title (see TestStatusHooks, TestWorktreeHooks and
 // TestHooksOutsideThePane), and the session's entry in cld's record (see TestRecordHooks). Each
 // of the first runs that tmux on the session's server, by the socket in the sandbox's directory,
@@ -92,7 +93,7 @@ func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) st
 	if fromHead {
 		base = `"worktree":{"baseRef":"head"},`
 	}
-	return `{` + base + `"hooks":{` + strings.Join([]string{
+	return `{"disableAgentView":true,` + base + `"hooks":{` + strings.Join([]string{
 		background("CwdChanged", worktree),
 		on("Elicitation", "", status("waiting")),
 		on("ElicitationResult", "", status("busy")),
@@ -2470,7 +2471,8 @@ func TestWorktreeHooks(t *testing.T) {
 }
 
 // Where cld finds no git, claude gets no hooks that run it, and the title never says [w]; the
-// hooks that keep the session's entry in cld's record run no git.
+// hooks that keep the session's entry in cld's record run no git, and agent view is off all the
+// same.
 func TestWorktreeHooksWithoutGit(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -2484,10 +2486,14 @@ func TestWorktreeHooksWithoutGit(t *testing.T) {
 		t.Fatalf("no --settings in tmux's arguments %q", argv)
 	}
 	var given struct {
-		Hooks map[string]any `json:"hooks"`
+		DisableAgentView bool           `json:"disableAgentView"`
+		Hooks            map[string]any `json:"hooks"`
 	}
 	if err := json.Unmarshal([]byte(argv[i+1]), &given); err != nil {
 		t.Fatal(err)
+	}
+	if !given.DisableAgentView {
+		t.Errorf("settings without agent view off: %s", argv[i+1])
 	}
 	events := slices.Sorted(maps.Keys(given.Hooks))
 	if want := []string{"Elicitation", "ElicitationResult", "Notification", "PermissionRequest", "PostToolUse",
