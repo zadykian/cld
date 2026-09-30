@@ -1,7 +1,7 @@
 bring back the sessions that ran when the machine stopped: a reboot or a crash
 ends them, and cld list shows them as ended, beside those that cld kill, C-x in
 cld list, the idle sweep or claude's /exit ended, which stay ended. Each comes
-back as cld resume -n NAME -s SUFFIX brings it back, but without a terminal:
+back as cld join -n NAME -s SUFFIX brings it back, but without a terminal:
 claude resumes its conversation in the directory it ran in, with the
 environment the session started with and without the words given after --,
 and is told to continue the turn it was in, if any. A session not started or

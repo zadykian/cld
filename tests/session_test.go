@@ -38,7 +38,7 @@ func sessionSettings(s *sandbox.Sandbox, name, dir string) string {
 
 // settings is the --settings the claude of session name, cld-NAME, started in dir, gets in s from
 // a cld that found tmux and git at those paths: agent view off, in every session, where /bg and ←
-// would move the conversation out of it; with fromHead, new -w's worktree branched from HEAD;
+// would move the conversation out of it; with fromHead, join -w's worktree branched from HEAD;
 // then the hooks that keep claude's status and whether it is in a linked worktree on its
 // session, for the tab's title (see TestStatusHooks, TestWorktreeHooks and
 // TestHooksOutsideThePane), and the session's entry in cld's record and its busy mark (see
@@ -150,7 +150,7 @@ func entry(name, dir, conversation string) string {
 	return `{"name":` + jsonText(name) + `,"directory":` + jsonText(dir) + `,"conversation":"` + conversation + "\"}\n"
 }
 
-// writeEntry writes session name's entry in cld's record in s, as new would have written it for a
+// writeEntry writes session name's entry in cld's record in s, as join would have written it for a
 // session in dir, with the conversation of that ID, "" for none yet.
 func writeEntry(t *testing.T, s *sandbox.Sandbox, name, dir, conversation string) {
 	t.Helper()
@@ -175,24 +175,24 @@ func TestSessionNames(t *testing.T) {
 		// claude is what claude gets after cld's arguments
 		claude []string
 	}{
-		{[]string{"new"}, "cld-work-0", nil},
-		{[]string{"new", "-n", "review"}, "cld-review-0", nil},
-		{[]string{"new", "--name", "Fix_42-b"}, "cld-Fix_42-b-0", nil},
-		{[]string{"new", "-s", "fix"}, "cld-work-fix", nil},
-		{[]string{"new", "--suffix", "Fix_42-b"}, "cld-work-Fix_42-b", nil},
-		{[]string{"new", "-n", "api", "-s", "fix"}, "cld-api-fix", nil},
-		{[]string{"new", "-s", "fix", "--name", "api"}, "cld-api-fix", nil},
+		{[]string{"join"}, "cld-work-0", nil},
+		{[]string{"join", "-n", "review"}, "cld-review-0", nil},
+		{[]string{"join", "--name", "Fix_42-b"}, "cld-Fix_42-b-0", nil},
+		{[]string{"join", "-s", "fix"}, "cld-work-fix", nil},
+		{[]string{"join", "--suffix", "Fix_42-b"}, "cld-work-Fix_42-b", nil},
+		{[]string{"join", "-n", "api", "-s", "fix"}, "cld-api-fix", nil},
+		{[]string{"join", "-s", "fix", "--name", "api"}, "cld-api-fix", nil},
 		// The spellings of pflag, which reads the options.
-		{[]string{"new", "--name=x"}, "cld-x-0", nil},
-		{[]string{"new", "-ny"}, "cld-y-0", nil},
-		{[]string{"new", "-n=z"}, "cld-z-0", nil},
-		{[]string{"new", "-sq"}, "cld-work-q", nil},
-		{[]string{"new", "--suffix=7"}, "cld-work-7", nil},
-		{[]string{"new", "-nx", "-s=y"}, "cld-x-y", nil},
+		{[]string{"join", "--name=x"}, "cld-x-0", nil},
+		{[]string{"join", "-ny"}, "cld-y-0", nil},
+		{[]string{"join", "-n=z"}, "cld-z-0", nil},
+		{[]string{"join", "-sq"}, "cld-work-q", nil},
+		{[]string{"join", "--suffix=7"}, "cld-work-7", nil},
+		{[]string{"join", "-nx", "-s=y"}, "cld-x-y", nil},
 		// claude's words.
-		{[]string{"new", "-s", "a", "--"}, "cld-work-a", nil},
-		{[]string{"new", "-n", "m", "--", "--model", "opus", "fix the -p bug"}, "cld-m-0", []string{"--model", "opus", "fix the -p bug"}},
-		{[]string{"new", "-s", "p", "--", "--append-system-prompt=-p", "", "-dapi,hooks", "--", "fix it"}, "cld-work-p",
+		{[]string{"join", "-s", "a", "--"}, "cld-work-a", nil},
+		{[]string{"join", "-n", "m", "--", "--model", "opus", "fix the -p bug"}, "cld-m-0", []string{"--model", "opus", "fix the -p bug"}},
+		{[]string{"join", "-s", "p", "--", "--append-system-prompt=-p", "", "-dapi,hooks", "--", "fix it"}, "cld-work-p",
 			[]string{"--append-system-prompt=-p", "", "-dapi,hooks", "--", "fix it"}},
 	} {
 		t.Run(test.session, func(t *testing.T) {
@@ -219,9 +219,9 @@ func TestSessionNames(t *testing.T) {
 
 // tmux takes a command of 16364 bytes at most, each word after its options followed by a NUL (see
 // commandLimit in internal/session), and fails on a longer one once it has started its server,
-// which leaves the socket. new and resume refuse words for claude that make theirs longer - a
-// SESSION too - naming its size, before they write the session's entry in cld's record, check the
-// terminal, which they run without here, print the title or start tmux's server; at the limit,
+// which leaves the socket. join refuses words for claude that make its command longer - --resume's
+// SESSION too - naming its size, before it writes the session's entry in cld's record, checks the
+// terminal, which it runs without here, prints the title or starts tmux's server; at the limit,
 // counted with the record's hooks, tmux starts claude with them.
 func TestCommandLimit(t *testing.T) {
 	t.Parallel()
@@ -240,26 +240,26 @@ func TestCommandLimit(t *testing.T) {
 		return size
 	}
 	long := strings.Repeat("a", 20000)
-	fits := long[:len(long)-(refused("new", "-s", "x", "--", "go", long)-limit)]
-	if size := refused("new", "-s", "x", "--", "go", fits+"a"); size != limit+1 {
+	fits := long[:len(long)-(refused("join", "-s", "x", "--", "go", long)-limit)]
+	if size := refused("join", "-s", "x", "--", "go", fits+"a"); size != limit+1 {
 		t.Errorf("a word one byte longer makes the command %d bytes, want %d", size, limit+1)
 	}
-	refused("resume", "-s", "x", long)
-	refused("resume", "-s", "x", "a", "--", long)
+	refused("join", "-s", "x", "--resume", long)
+	refused("join", "-s", "x", "--resume", "a", "--", long)
 	if _, err := os.Lstat(filepath.Join(s.SocketDir(), "cld-x")); err == nil {
 		t.Errorf("a socket cld-x is left")
 	}
 	if entry := readEntry(s, "x"); entry != "" {
 		t.Errorf("an entry of x is written: %q", entry)
 	}
-	startCld(t, s, "tmux", nil, "new", "-s", "x", "--", "go", fits)
+	startCld(t, s, "tmux", nil, "join", "-s", "x", "--", "go", fits)
 	probe := s.WaitProbes(1)[0]
 	if want := []string{"--name", "cld-x", "--settings", sessionSettings(s, "cld-x", s.Work), "go", fits}; !slices.Equal(probe.Argv, want) {
 		t.Errorf("claude arguments %d words, want %d: the last %.20q, want %.20q", len(probe.Argv), len(want), probe.Argv[len(probe.Argv)-1], fits)
 	}
 }
 
-// tmux starts the claude that new checked. A relative PATH entry before the probe's, "." or an
+// tmux starts the claude that join checked. A relative PATH entry before the probe's, "." or an
 // empty one, holds a claude of its own, which records that it ran and fails: cld skips it, and
 // tmux, handed the probe by its path, does not take it either, as it would the bare word. A
 // claude that is a script without #!, which starts the probe, passes the check through /bin/sh
@@ -288,7 +288,7 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 				}
 			}
 			s.WriteProgram(filepath.Join(dir, "claude"), test.script, 0o755)
-			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "new")
+			startCld(t, s, "tmux", map[string]string{"PATH": entry + string(os.PathListSeparator) + s.Env["PATH"]}, "join")
 			probe := s.WaitProbes(1)[0]
 			if want := []string{"--name", "cld-0", "--settings", sessionSettings(s, "cld-0", s.Work)}; !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
@@ -300,11 +300,11 @@ func TestStartsTheClaudeItChecks(t *testing.T) {
 	}
 }
 
-// new -w hands the worktree to claude: claude gets --worktree cld-NAME-SUFFIX, named as the session
-// is, with settings that also make it branch a new worktree from HEAD, and starts where cld runs;
-// it then makes or reopens the worktree itself and moves into it. The words after "--" come after
-// --worktree's value. The repository is named work.
-func TestNewWorktree(t *testing.T) {
+// join -w hands the worktree to claude: claude gets --worktree cld-NAME-SUFFIX, named as the
+// session is, with settings that also make it branch a new worktree from HEAD, and starts where cld
+// runs; it then makes or reopens the worktree itself and moves into it. The words after "--" come
+// after --worktree's value. The repository is named work.
+func TestJoinWorktree(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args []string
@@ -313,13 +313,14 @@ func TestNewWorktree(t *testing.T) {
 		// after is what claude gets after --worktree's value
 		after []string
 	}{
-		{[]string{"new", "-w"}, "cld-work-0", nil},
-		{[]string{"new", "-n", "feat", "--worktree"}, "cld-feat-0", nil},
-		{[]string{"new", "-w", "--name=feat"}, "cld-feat-0", nil},
-		{[]string{"new", "-wn", "feat"}, "cld-feat-0", nil},
-		{[]string{"new", "-s", "feat", "-w"}, "cld-work-feat", nil},
-		{[]string{"new", "-ws", "x", "-n", "feat"}, "cld-feat-x", nil},
-		{[]string{"new", "-w", "--", "--effort", "high", "start"}, "cld-work-0", []string{"--effort", "high", "start"}},
+		{[]string{"join", "-w"}, "cld-work-0", nil},
+		{[]string{"join", "-n", "feat", "--worktree"}, "cld-feat-0", nil},
+		{[]string{"join", "-w", "--name=feat"}, "cld-feat-0", nil},
+		{[]string{"join", "-wn", "feat"}, "cld-feat-0", nil},
+		{[]string{"join", "-s", "feat", "-w"}, "cld-work-feat", nil},
+		{[]string{"join", "-ws", "x", "-n", "feat"}, "cld-feat-x", nil},
+		{[]string{"join", "-s", "feat", "-w", "--new"}, "cld-work-feat", nil},
+		{[]string{"join", "-w", "--", "--effort", "high", "start"}, "cld-work-0", []string{"--effort", "high", "start"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -341,15 +342,15 @@ func TestNewWorktree(t *testing.T) {
 	}
 }
 
-// resume makes its session as new does, in the current directory, and claude gets new's arguments
-// - never -w's - then --resume with the conversation: the one named like the session, or SESSION,
-// as one word, whatever it holds, and with --fork --fork-session after it; then the words after
-// "--", after SESSION too, as new gives them. tmux would end its command at a word ending in ";"
-// (see literal in internal/session), and a git repository makes no worktree session. Its name,
-// "_", leaves nothing, so -s SUFFIX names the session SUFFIX; with SESSION and without -s the
-// session gets the index new would give it.
-func TestResume(t *testing.T) {
+// join --resume SESSION makes its session as join makes any, in the current directory, and claude
+// gets the same arguments - never -w's - then --resume with SESSION, as one word, whatever it
+// holds, and with --fork --fork-session after it; then the words after "--", as join gives them to
+// any claude. tmux would end its command at a word ending in ";" (see literal in
+// internal/session), and a git repository makes no worktree session. Its name, "_", leaves
+// nothing, so -s SUFFIX names the session SUFFIX; without -s the session gets the next index.
+func TestJoinResume(t *testing.T) {
 	t.Parallel()
+	const id = "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"
 	for _, test := range []struct {
 		args         []string
 		name, resume string
@@ -357,27 +358,27 @@ func TestResume(t *testing.T) {
 		// after "--"
 		after []string
 	}{
-		{[]string{"resume", "-s", "x"}, "x", "cld-x", nil},
-		{[]string{"resume", "--suffix=x"}, "x", "cld-x", nil},
-		{[]string{"resume", "-n", "a", "-s", "x"}, "a-x", "cld-a-x", nil},
-		{[]string{"resume", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", nil},
-		{[]string{"resume", "-n", "a", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "a-0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", nil},
-		{[]string{"resume", "-s", "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "x", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", nil},
-		{[]string{"resume", "-s", "x", "a b"}, "x", "a b", nil},
-		{[]string{"resume", "-s", "x", "fix;"}, "x", "fix;", nil},
-		{[]string{"resume", "-s", "x", `fix\;`}, "x", `fix\;`, nil},
-		{[]string{"resume", "-s", "x", "#{session_name}"}, "x", "#{session_name}", nil},
-		{[]string{"resume", "-s", "x", "--", "--mcp-config", "m.json", "--add-dir", "../y"}, "x", "cld-x", []string{"--mcp-config", "m.json", "--add-dir", "../y"}},
-		{[]string{"resume", "-s", "x", "--"}, "x", "cld-x", nil},
-		{[]string{"resume", "a", "--", "--fork-session", "go on;"}, "0", "a", []string{"--fork-session", "go on;"}},
-		{[]string{"resume", "-s", "x", "a", "--", "--"}, "x", "a", []string{"--"}},
-		{[]string{"resume", "--fork", "cld-a-0"}, "0", "cld-a-0", []string{"--fork-session"}},
-		{[]string{"resume", "-s", "b", "--fork", "cld-a-0"}, "b", "cld-a-0", []string{"--fork-session"}},
-		{[]string{"resume", "--fork", "-n", "a", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, "a-0", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f", []string{"--fork-session"}},
-		{[]string{"resume", "-s", "x", "--fork=true", "fix;"}, "x", "fix;", []string{"--fork-session"}},
-		{[]string{"resume", "-s", "x", "--fork", "cld-x-0"}, "x", "cld-x-0", []string{"--fork-session"}},
-		{[]string{"resume", "-s", "x", "--fork=false"}, "x", "cld-x", nil},
-		{[]string{"resume", "-s", "x", "--fork", "a", "--", "--add-dir", "../y"}, "x", "a", []string{"--fork-session", "--add-dir", "../y"}},
+		{[]string{"join", "-s", "x", "--resume", "cld-x"}, "x", "cld-x", nil},
+		{[]string{"join", "--suffix=x", "--resume=cld-x"}, "x", "cld-x", nil},
+		{[]string{"join", "-n", "a", "-s", "x", "--resume", "cld-a-x"}, "a-x", "cld-a-x", nil},
+		{[]string{"join", "--resume", id}, "0", id, nil},
+		{[]string{"join", "-n", "a", "--resume", id}, "a-0", id, nil},
+		{[]string{"join", "-s", "x", "--resume", id}, "x", id, nil},
+		{[]string{"join", "-s", "x", "--resume", "a b"}, "x", "a b", nil},
+		{[]string{"join", "-s", "x", "--resume", "fix;"}, "x", "fix;", nil},
+		{[]string{"join", "-s", "x", "--resume", `fix\;`}, "x", `fix\;`, nil},
+		{[]string{"join", "-s", "x", "--resume", "#{session_name}"}, "x", "#{session_name}", nil},
+		{[]string{"join", "-s", "x", "--resume", "cld-x", "--", "--mcp-config", "m.json", "--add-dir", "../y"}, "x", "cld-x", []string{"--mcp-config", "m.json", "--add-dir", "../y"}},
+		{[]string{"join", "-s", "x", "--resume", "cld-x", "--"}, "x", "cld-x", nil},
+		{[]string{"join", "--resume", "a", "--", "--fork-session", "go on;"}, "0", "a", []string{"--fork-session", "go on;"}},
+		{[]string{"join", "-s", "x", "--resume", "a", "--", "--"}, "x", "a", []string{"--"}},
+		{[]string{"join", "--fork", "--resume", "cld-a-0"}, "0", "cld-a-0", []string{"--fork-session"}},
+		{[]string{"join", "-s", "b", "--fork", "--resume", "cld-a-0"}, "b", "cld-a-0", []string{"--fork-session"}},
+		{[]string{"join", "--fork", "-n", "a", "--resume", id}, "a-0", id, []string{"--fork-session"}},
+		{[]string{"join", "-s", "x", "--fork=true", "--resume", "fix;"}, "x", "fix;", []string{"--fork-session"}},
+		{[]string{"join", "-s", "x", "--fork", "--resume", "cld-x-0"}, "x", "cld-x-0", []string{"--fork-session"}},
+		{[]string{"join", "-s", "x", "--fork=false", "--resume", "cld-x"}, "x", "cld-x", nil},
+		{[]string{"join", "-s", "x", "--fork", "--resume", "a", "--", "--add-dir", "../y"}, "x", "a", []string{"--fork-session", "--add-dir", "../y"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -404,14 +405,14 @@ func TestResume(t *testing.T) {
 	}
 }
 
-// resume --fork refuses a SESSION that is the name its copy would take, cld-NAME, compared as
-// claude compares names - in any case, the spaces around it trimmed - since claude would resume a
-// copy of the conversation of that name and give the copy that name too. Where the directory's or
-// the repository's name, or the index, makes that name, the refusal comes with exit status 1
+// join --fork refuses a --resume SESSION that is the name its copy would take, cld-NAME, compared
+// as claude compares names - in any case, the spaces around it trimmed - since claude would resume
+// a copy of the conversation of that name and give the copy that name too. Where the directory's
+// or the repository's name, or the index, makes that name, the refusal comes with exit status 1
 // (TestNameOptions has -n and -s alone, with status 2): in repository api with no session of that
 // name running or recorded, a copy of cld-api-0 would be session api-0 again. No session is made,
 // and claude is run for its version only.
-func TestResumeForkOwnName(t *testing.T) {
+func TestForkOwnName(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args []string
@@ -419,12 +420,12 @@ func TestResumeForkOwnName(t *testing.T) {
 		// whose name leaves nothing; name is the session's
 		repository, name string
 	}{
-		{[]string{"resume", "--fork", "cld-0"}, "", "0"},
-		{[]string{"resume", "-s", "x", "--fork", "cld-x"}, "", "x"},
-		{[]string{"resume", "-s", "x", "--fork", " CLD-X\t"}, "", "x"},
-		{[]string{"resume", "-n", "a", "--fork", "cld-a-0"}, "", "a-0"},
-		{[]string{"resume", "--fork", "cld-api-0"}, "api", "api-0"},
-		{[]string{"resume", "-s", "Fix", "--fork", "cld-API-fix"}, "api", "api-Fix"},
+		{[]string{"join", "--fork", "--resume", "cld-0"}, "", "0"},
+		{[]string{"join", "-s", "x", "--fork", "--resume", "cld-x"}, "", "x"},
+		{[]string{"join", "-s", "x", "--fork", "--resume", " CLD-X\t"}, "", "x"},
+		{[]string{"join", "-n", "a", "--fork", "--resume", "cld-a-0"}, "", "a-0"},
+		{[]string{"join", "--fork", "--resume", "cld-api-0"}, "api", "api-0"},
+		{[]string{"join", "-s", "Fix", "--fork", "--resume", "cld-API-fix"}, "api", "api-Fix"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
@@ -433,7 +434,7 @@ func TestResumeForkOwnName(t *testing.T) {
 			if test.repository != "" {
 				dir = repository(t, s, test.repository)
 			}
-			want := "cld: resume: --fork would give the copy SESSION's own name, cld-" + test.name + "; give another -s SUFFIX (see cld help)\n"
+			want := "cld: join: --fork would give the copy SESSION's own name, cld-" + test.name + "; give another -s SUFFIX (see cld help)\n"
 			if result := s.RunCldIn(dir, nil, test.args...); result.Code != 1 || result.Stderr != want || result.Stdout != "" {
 				t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
 			}
@@ -447,20 +448,20 @@ func TestResumeForkOwnName(t *testing.T) {
 	}
 }
 
-// tmux would change the directory cld runs in, which cld gives it with -c: tmux ends a command at
-// a word ending in ";" (see literal in internal/session), and expands -c as a format (see
-// unexpanded), where "#S" is the session's name and "#(touch ran)" runs touch. new and resume
-// still make their session there, with claude in that directory, and run nothing. The session's
-// path is -c as tmux expanded it: for a directory that does not exist, tmux starts claude in the
-// home directory.
+// tmux would change the directory cld runs in, which cld gives it with -c: tmux ends a command at a
+// word ending in ";" (see literal in internal/session), and expands -c as a format (see
+// unexpanded), where "#S" is the session's name and "#(touch ran)" runs touch. join still makes its
+// session there, with claude in that directory, with --resume and without, and runs nothing. The
+// session's path is -c as tmux expanded it: for a directory that does not exist, tmux starts claude
+// in the home directory.
 func TestDirectoryTmuxWouldChange(t *testing.T) {
 	t.Parallel()
 	for _, command := range []struct {
 		// after is what claude gets after its settings
 		args, after []string
 	}{
-		{[]string{"new", "-n", "a", "-s", "x"}, nil},
-		{[]string{"resume", "-n", "a", "-s", "x"}, []string{"--resume", "cld-a-x"}},
+		{[]string{"join", "-n", "a", "-s", "x"}, nil},
+		{[]string{"join", "-n", "a", "-s", "x", "--resume", "cld-a-x"}, []string{"--resume", "cld-a-x"}},
 	} {
 		for _, name := range []string{"w;", "C#S", "x#(touch ran)", "#{session_name};"} {
 			args, after := command.args, command.after
@@ -494,13 +495,13 @@ func TestDirectoryTmuxWouldChange(t *testing.T) {
 	}
 }
 
-// Outside a git work tree new -w fails before starting anything: claude would say so in a
+// Outside a git work tree join -w fails before starting anything: claude would say so in a
 // session left to kill.
-func TestNewWorktreeRequiresRepository(t *testing.T) {
+func TestJoinWorktreeRequiresRepository(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	want := "cld: --worktree needs a git repository, and " + s.Work + " is not in one\n"
-	if result := s.RunCld(nil, "new", "-s", "feat", "-w"); result.Code != 1 || result.Stderr != want || result.Stdout != "" {
+	if result := s.RunCld(nil, "join", "-s", "feat", "-w"); result.Code != 1 || result.Stderr != want || result.Stdout != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
 	}
 	if sessions := s.Sessions(); len(sessions) != 0 {
@@ -508,13 +509,13 @@ func TestNewWorktreeRequiresRepository(t *testing.T) {
 	}
 }
 
-// Without -s, new gives a session the SUFFIX above the highest index of the sessions NAME-INDEX
+// Without -s, join gives a session the SUFFIX above the highest index of the sessions NAME-INDEX
 // that run, NAME being the git repository's name, work here, or -n's: a gap stays, a server that
 // has outlived its session counts, and so does a server that cld did not start (see
-// TestLeavesAForeignServerAlone), as new would refuse either name, and a session whose name
+// TestLeavesAForeignServerAlone), as join would refuse either name, and a session whose name
 // has NAME in other letters, whose socket would be the same where the socket directory ignores
 // case. A stale socket does not count, nor does a session of another NAME, one without NAME, or
-// one with no index after it. resume with SESSION alone names its session the same way. Outside a
+// one with no index after it. join --resume SESSION names its session the same way. Outside a
 // repository the directory's name takes the repository's place - in the root directory, which
 // leaves none, the index alone is the session's name.
 func TestDefaultNames(t *testing.T) {
@@ -524,13 +525,13 @@ func TestDefaultNames(t *testing.T) {
 		// dir is where cld runs: the repository work where it is empty, and otherwise a
 		// directory, in the sandbox's root unless it is a whole path
 		dir string
-		// options go to new and to resume
+		// options go to join, and to join --resume SESSION
 		options []string
 		// running are the sessions that run before, each on its server, marked as cld marks one;
 		// lingering such servers that run without their session, foreign servers that cld did not
 		// start, unmarked, each holding a session other, and stale the sockets no server answers on
 		running, lingering, foreign, stale []string
-		// want are the names that new, then resume SESSION, give
+		// want are the names that join, then join --resume SESSION, give
 		want []string
 	}{
 		{"in a repository", "", nil, nil, nil, nil, nil, []string{"cld-work-0", "cld-work-1"}},
@@ -572,9 +573,9 @@ func TestDefaultNames(t *testing.T) {
 			for _, name := range test.stale {
 				staleSocket(t, s, name)
 			}
-			startCldIn(t, s, "tmux", dir, nil, append([]string{"new"}, test.options...)...)
+			startCldIn(t, s, "tmux", dir, nil, append([]string{"join"}, test.options...)...)
 			s.WaitProbes(1)
-			startCldIn(t, s, "tmux", dir, nil, append(append([]string{"resume"}, test.options...), "SESSION")...)
+			startCldIn(t, s, "tmux", dir, nil, append(append([]string{"join"}, test.options...), "--resume", "SESSION")...)
 			var names []string
 			for _, probe := range s.WaitProbes(2) {
 				names = append(names, probe.Argv[1])
@@ -593,7 +594,7 @@ func TestDefaultNames(t *testing.T) {
 	}
 }
 
-// What -s and new's default put before SUFFIX or the index is the name of the git repository: that
+// What -s and join's default put before SUFFIX or the index is the name of the git repository: that
 // of the directory holding the .git that its work trees share, from a subdirectory or a linked
 // worktree - one of claude's - too, or else that of the repository's git directory, without
 // ".git": a bare repository's, for its worktree, or a submodule's. Outside a work tree - in a
@@ -601,7 +602,8 @@ func TestDefaultNames(t *testing.T) {
 // names it where PWD is that directory: a symbolic link's own, not that of the directory it leads
 // to. Each run of the characters a NAME cannot have becomes "-", and "-" and "_" go from either
 // end; where nothing is left, as for the root directory, the NAME is the index alone, or SUFFIX.
-// The fake tmux finds no server.
+// The fake tmux finds no server: the second join -s fix brings back the session the first made,
+// by its entry in cld's record.
 func TestNamePrefixes(t *testing.T) {
 	t.Parallel()
 	// committed makes the repository work with a commit, from which a worktree can branch, and
@@ -701,9 +703,9 @@ func TestNamePrefixes(t *testing.T) {
 				args []string
 				want string
 			}{
-				{[]string{"new"}, "cld-" + test.prefix + "0"},
-				{[]string{"new", "-s", "fix"}, "cld-" + test.prefix + "fix"},
-				{[]string{"resume", "-s", "fix"}, "cld-" + test.prefix + "fix"},
+				{[]string{"join"}, "cld-" + test.prefix + "0"},
+				{[]string{"join", "-s", "fix"}, "cld-" + test.prefix + "fix"},
+				{[]string{"join", "-s", "fix"}, "cld-" + test.prefix + "fix"},
 			} {
 				result := s.RunCldOnTerminalIn(dir, fake, command.args...)
 				if title := "\x1b]0;\u2733 " + command.want + "\x07"; result.Code != 0 || result.Stdout != title || result.Stderr != "" {
@@ -718,30 +720,39 @@ func TestNamePrefixes(t *testing.T) {
 	}
 }
 
-// new and resume refuse a session that exists, before touching it: the attached client and its
-// claude carry on. The message names the directory the session was made in, and the session as
-// join takes it: -n what comes before the last "-" of its name and -s what follows - here, where
-// the directory's name leaves nothing, -s alone for a name without one.
-func TestNewRefusesExistingSession(t *testing.T) {
+// join refuses, where the session runs, what would be lost on it - -w, --new, --resume (with
+// --fork too) and the words for claude after "--" - before touching it: the attached client and
+// its claude carry on. The message names the option, and the session as join takes it: -n what
+// comes before the last "-" of its name and -s what follows - here, where the directory's name
+// leaves nothing, -s alone for a name without one. --detach-others is never refused: join goes on
+// to attach, and refuses here only the terminal it does not have.
+func TestJoinRefusesWhatWouldBeLost(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "new", "-s", "dup")
+	first := startCld(t, s, "tmux", nil, "join", "-s", "dup")
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
-	second := startCld(t, s, "tmux", nil, "new", "-n", "my-api", "-s", "fix")
+	second := startCld(t, s, "tmux", nil, "join", "-n", "my-api", "-s", "fix")
 	s.WaitProbes(2)
 	waitClients(t, s, 2)
 
+	lost := func(name, option, options string) string {
+		return "cld: session '" + name + "' exists, and " + option + " would be lost: its claude has started; attach to it with cld join " + options + ", or give another -s SUFFIX\n"
+	}
 	for _, test := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"new", "-s", "dup"}, "cld: session 'dup' exists in " + s.Work + "; attach to it with cld join -s dup\n"},
-		{[]string{"resume", "-s", "dup"}, "cld: session 'dup' exists in " + s.Work + "; attach to it with cld join -s dup\n"},
-		{[]string{"resume", "-s", "dup", "other"}, "cld: session 'dup' exists in " + s.Work + "; attach to it with cld join -s dup\n"},
-		{[]string{"new", "-n", "my-api", "-s", "fix"}, "cld: session 'my-api-fix' exists in " + s.Work + "; attach to it with cld join -n my-api -s fix\n"},
-		{[]string{"new", "-n", "my", "-s", "api-fix"}, "cld: session 'my-api-fix' exists in " + s.Work + "; attach to it with cld join -n my-api -s fix\n"},
-		{[]string{"new", "-s", "my-api-fix"}, "cld: session 'my-api-fix' exists in " + s.Work + "; attach to it with cld join -n my-api -s fix\n"},
+		{[]string{"join", "-s", "dup", "-w"}, lost("dup", "-w", "-s dup")},
+		{[]string{"join", "-s", "dup", "--new"}, lost("dup", "--new", "-s dup")},
+		{[]string{"join", "-s", "dup", "--resume", "other"}, lost("dup", "--resume", "-s dup")},
+		{[]string{"join", "-s", "dup", "--fork", "--resume", "other"}, lost("dup", "--resume", "-s dup")},
+		{[]string{"join", "-s", "dup", "--", "--model", "opus"}, lost("dup", "the words after --", "-s dup")},
+		{[]string{"join", "-s", "dup", "--new", "-w", "--", "go"}, lost("dup", "-w", "-s dup")},
+		{[]string{"join", "-n", "my-api", "-s", "fix", "-w"}, lost("my-api-fix", "-w", "-n my-api -s fix")},
+		{[]string{"join", "-n", "my", "-s", "api-fix", "--new"}, lost("my-api-fix", "--new", "-n my-api -s fix")},
+		{[]string{"join", "-s", "my-api-fix", "--", "go"}, lost("my-api-fix", "the words after --", "-n my-api -s fix")},
+		{[]string{"join", "-s", "dup", "--detach-others"}, "cld: join needs a terminal, and its input is not one\n"},
 	} {
 		result := s.RunCld(nil, test.args...)
 		if result.Code != 1 || result.Stderr != test.want {
@@ -754,29 +765,169 @@ func TestNewRefusesExistingSession(t *testing.T) {
 	if probes := s.Probes(); len(probes) != 2 || !first.Running() || !second.Running() {
 		t.Errorf("%d claude processes, clients running: %v, %v; want the original two, attached", len(probes), first.Running(), second.Running())
 	}
+	waitClients(t, s, 2)
 }
 
-// join finds only the session it names: without its server there is none, and session review,
-// on a server of its own, is not session rev, although its name starts with rev. A session like
+// join finds only the session it names: session review, on a server of its own, is not session
+// rev, although its name starts with rev, so join -s rev creates rev beside it. A session like
 // that on the named session's own server is TestSeesOnlyItsOwnSessions' to check.
-func TestJoinRequiresSession(t *testing.T) {
+func TestJoinFindsOnlyItsSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	want := "cld: no session 'rev'; create it with cld new -s rev\n"
-	if result := s.RunCld(nil, "join", "-s", "rev"); result.Code != 1 || result.Stderr != want {
-		t.Errorf("without a server: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
-	}
-	if sessions := s.Sessions(); len(sessions) != 0 {
-		t.Errorf("sessions %q, want none", sessions)
-	}
-
-	startCld(t, s, "tmux", nil, "new", "-s", "review")
+	startCld(t, s, "tmux", nil, "join", "-s", "review")
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
-	if result := s.RunCld(nil, "join", "-s", "rev"); result.Code != 1 || result.Stderr != want {
-		t.Errorf("beside cld-review: exit %d, stderr %q, want exit 1, stderr %q", result.Code, result.Stderr, want)
+	startCld(t, s, "tmux", nil, "join", "-s", "rev")
+	probes := s.WaitProbes(2)
+	waitClients(t, s, 2)
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-rev", "cld-review"}) {
+		t.Errorf("sessions %q, want [cld-rev cld-review]", sessions)
 	}
+	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-rev", "cld-review"}) {
+		t.Errorf("clients on %q, want one on each", clients)
+	}
+	if names := []string{probes[0].Argv[1], probes[1].Argv[1]}; !slices.Contains(names, "cld-rev") {
+		t.Errorf("claudes named %q, want one cld-rev", names)
+	}
+}
+
+// join is the one command for a session, in each of its states: where the session runs - a
+// terminal attached, none, or claude exited - it attaches beside the others, starting no claude;
+// where it has ended, cld's record keeping its entry, claude resumes its conversation by the
+// entry's ID, in the directory it ran in, wherever join runs; where there is no such session, and
+// without -s, it creates it in the current directory. The session a runs detached, b has a
+// terminal, c's claude has exited, and d has ended in another directory, where its conversation
+// has an ID.
+func TestJoinStates(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	elsewhere := filepath.Join(s.Root, "elsewhere")
+	if err := os.Mkdir(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	probes := detachedSessions(t, s, "a", "c")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
+	s.WaitProbes(3)
 	waitClients(t, s, 1)
+	probes["c"].Send("exit 3")
+	sandbox.WaitFor(t, 10*time.Second, "claude of c to exit", func() bool { return s.Format("cld-c", "#{pane_dead}") == "1" })
+	writeEntry(t, s, "d", elsewhere, "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f")
+
+	for _, test := range []struct {
+		name, session string
+		args          []string
+		// clients is how many terminals are then on the session, with this one
+		clients int
+		// resume is what claude gets after its settings where join starts one, and dir where
+		// it runs; nil where join starts none
+		resume []string
+		dir    string
+	}{
+		{"detached", "a", []string{"join", "-s", "a"}, 1, nil, ""},
+		{"attached", "b", []string{"join", "-s", "b"}, 2, nil, ""},
+		{"exited", "c", []string{"join", "-s", "c"}, 1, nil, ""},
+		{"ended", "d", []string{"join", "-s", "d"}, 1, []string{"--resume", "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"}, elsewhere},
+		{"unknown", "e", []string{"join", "-s", "e"}, 1, []string{}, s.Work},
+		{"no -s", "0", []string{"join"}, 1, []string{}, s.Work},
+	} {
+		name := "cld-" + test.session
+		before := len(s.Probes())
+		term := startCld(t, s, "tmux", nil, test.args...)
+		sandbox.WaitFor(t, 10*time.Second, test.name+": the terminals on "+name, func() bool {
+			count := 0
+			for _, client := range s.Clients() {
+				if client == name {
+					count++
+				}
+			}
+			return count == test.clients
+		})
+		if !term.Running() {
+			t.Errorf("%s: cld is not attached", test.name)
+		}
+		if test.resume == nil {
+			time.Sleep(300 * time.Millisecond)
+			if after := len(s.Probes()); after != before {
+				t.Errorf("%s: %d claudes started, want none", test.name, after-before)
+			}
+			continue
+		}
+		var probe *sandbox.Probe
+		sandbox.WaitFor(t, 10*time.Second, test.name+": the claude of "+name, func() bool {
+			for _, p := range s.Probes() {
+				if p.Argv[1] == name {
+					probe = p
+				}
+			}
+			return probe != nil
+		})
+		want := append([]string{"--name", name, "--settings", sessionSettings(s, name, test.dir)}, test.resume...)
+		if !slices.Equal(probe.Argv, want) {
+			t.Errorf("%s: claude arguments %q, want %q", test.name, probe.Argv, want)
+		}
+		if probe.Cwd != test.dir {
+			t.Errorf("%s: claude runs in %s, want %s", test.name, probe.Cwd, test.dir)
+		}
+	}
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-0", "cld-a", "cld-b", "cld-c", "cld-d", "cld-e"}) {
+		t.Errorf("sessions %q, want cld-0 and cld-a to cld-e", sessions)
+	}
+}
+
+// join refuses, where the session has ended and it resumes its conversation, -w, which would be
+// lost: claude takes a conversation back to its worktree itself. With --new it makes the session
+// anew, a new conversation, in the worktree with -w; with --resume SESSION it resumes that - here
+// in the current directory, not the one the session ran in - and the entry then names the new
+// conversation's directory, with no ID until claude's hook gives one. The repository is work, and
+// the session work-x, whose entry names another directory.
+func TestJoinOverAnEndedSession(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		// claude is what claude gets after its settings; nil where join refuses
+		claude []string
+	}{
+		{[]string{"join", "-s", "x", "-w"}, nil},
+		{[]string{"join", "-s", "x", "--new"}, []string{}},
+		{[]string{"join", "-s", "x", "--new", "-w"}, []string{"--worktree", "cld-work-x"}},
+		{[]string{"join", "-s", "x", "--resume", "other"}, []string{"--resume", "other"}},
+		{[]string{"join", "-s", "x", "--resume", "other", "--fork"}, []string{"--resume", "other", "--fork-session"}},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			work := repository(t, s, "work")
+			runGit(t, s, work, "commit", "-q", "--allow-empty", "-m", "first")
+			elsewhere := filepath.Join(s.Root, "elsewhere")
+			if err := os.Mkdir(elsewhere, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeEntry(t, s, "work-x", elsewhere, "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f")
+			if test.claude == nil {
+				want := "cld: session 'work-x' has ended, and -w would be lost: claude takes its conversation back to its worktree itself; " +
+					"resume it with cld join -n work -s x, or give --new for a new conversation\n"
+				if result := s.RunCldIn(work, nil, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != want {
+					t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+				}
+				if probes := s.Probes(); len(probes) != 0 {
+					t.Errorf("%d claudes started, want none", len(probes))
+				}
+				return
+			}
+			startCldIn(t, s, "tmux", work, nil, test.args...)
+			probe := s.WaitProbes(1)[0]
+			settings := settings(s, sandbox.RealTmux, sandbox.RealGit, "cld-work-x", work, slices.Contains(test.args, "-w"))
+			if want := append([]string{"--name", "cld-work-x", "--settings", settings}, test.claude...); !slices.Equal(probe.Argv, want) {
+				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
+			}
+			if probe.Cwd != work {
+				t.Errorf("claude runs in %s, want %s", probe.Cwd, work)
+			}
+			if got, want := readEntry(s, "work-x"), entry("work-x", work, ""); got != want {
+				t.Errorf("entry %q, want %q", got, want)
+			}
+		})
+	}
 }
 
 // list shows cld's sessions: the name, whether a terminal is attached, and the directory claude
@@ -808,9 +959,9 @@ func TestList(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	startCld(t, s, "tmux", nil, "new", "-s", "b")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	b := s.WaitProbes(1)[0]
-	detached := startCldIn(t, s, "tmux", elsewhere, nil, "new", "-n", "long_name", "-s", "1")
+	detached := startCldIn(t, s, "tmux", elsewhere, nil, "join", "-n", "long_name", "-s", "1")
 	s.WaitProbes(2)
 	waitClients(t, s, 2)
 	detached.Keys("C-q", "d")
@@ -964,14 +1115,14 @@ func TestListShowsClaudesStatus(t *testing.T) {
 // a kill. CLD_IDLE_DAYS takes a fraction of a day: 0.0001 is 8.64 s. A session with a terminal
 // attached is never idle, and a key typed into a terminal on one makes it active again: session c,
 // whose terminal attached before the limit and is detached by tmux's detach-client, which moves
-// neither time, stays for the key alone. The table shows each that runs as active now. With CLD_IDLE_DAYS 0 list ends none, and neither completion nor
-// new with -s ends one; a value that is no number of days is refused before anything runs, by
-// list and by new without -s.
+// neither time, stays for the key alone. The table shows each that runs as active now. With
+// CLD_IDLE_DAYS 0 list ends none, and neither completion nor join with -s ends one; a value that
+// is no number of days is refused before anything runs, by list and by join without -s.
 func TestEndsIdleSessions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	probes := detachedSessions(t, s, "a", "c")
-	startCld(t, s, "tmux", nil, "new", "-s", "b")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	s.WaitProbes(3)
 	joined := startCld(t, s, "tmux", nil, "join", "-s", "c")
 	waitClients(t, s, 2)
@@ -980,7 +1131,7 @@ func TestEndsIdleSessions(t *testing.T) {
 
 	for _, value := range []string{"x", "-1", "1e3", "30d", " 30", "0x1p3", "inf"} {
 		want := "cld: CLD_IDLE_DAYS is not a number of days: '" + value + "'\n"
-		for _, command := range []string{"list", "new"} {
+		for _, command := range []string{"list", "join"} {
 			if result := s.RunCld(map[string]string{"CLD_IDLE_DAYS": value}, command); result.Code != 1 || result.Stdout != "" || result.Stderr != want {
 				t.Errorf("%s, CLD_IDLE_DAYS=%q: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", command, value, result.Code, result.Stdout, result.Stderr, want)
 			}
@@ -997,7 +1148,7 @@ func TestEndsIdleSessions(t *testing.T) {
 	if result := s.RunCld(idle, "__complete", "join", "-s", ""); result.Code != 0 || result.Stdout != completions {
 		t.Errorf("__complete join -s: exit %d, stdout %q, want %q", result.Code, result.Stdout, completions)
 	}
-	startCld(t, s, "tmux", idle, "new", "-s", "d")
+	startCld(t, s, "tmux", idle, "join", "-s", "d")
 	s.WaitProbes(4)
 	waitClients(t, s, 3)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b", "cld-c", "cld-d"}) {
@@ -1032,18 +1183,18 @@ func TestEndsIdleSessions(t *testing.T) {
 	checkMarks(t, s, "after the sweep", map[string]bool{"a": false, "b": true, "c": true, "d": true})
 }
 
-// new without -s ends the idle sessions as list does, and says so on stderr, once it has taken
+// join without -s ends the idle sessions as list does, and says so on stderr, once it has taken
 // the index: the session it makes does not take the name of one it has just ended, whose
-// conversation cld resume finds by that name. Here, where the directory's name leaves nothing,
-// the session is the index alone: 0, which ends, and new makes session 1, with a claude of its
-// own, as cld resume with SESSION would. new runs with the TMUX of session x's claude, as in a
-// pane of x's server, and keeps x, as idle as 0: ending it would end the claude that ran cld.
-func TestNewEndsIdleSessions(t *testing.T) {
+// conversation cld join finds by that name. Here, where the directory's name leaves nothing, the
+// session is the index alone: 0, which ends, and join makes session 1, with a claude of its own,
+// as cld join --resume SESSION would. join runs with the TMUX of session x's claude, as in a pane
+// of x's server, and keeps x, as idle as 0: ending it would end the claude that ran cld.
+func TestJoinEndsIdleSessions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	probes := detachedSessions(t, s, "0", "x")
 	time.Sleep(10 * time.Second)
-	term := startCld(t, s, "tmux", map[string]string{"CLD_IDLE_DAYS": "0.0001", "TMUX": probes["x"].Env["TMUX"]}, "new")
+	term := startCld(t, s, "tmux", map[string]string{"CLD_IDLE_DAYS": "0.0001", "TMUX": probes["x"].Env["TMUX"]}, "join")
 	sandbox.WaitFor(t, 10*time.Second, "claude 0 to exit", func() bool { return !probes["0"].Alive() })
 	var fresh *sandbox.Probe
 	for _, probe := range s.WaitProbes(3) {
@@ -1052,7 +1203,7 @@ func TestNewEndsIdleSessions(t *testing.T) {
 		}
 	}
 	if !slices.Equal(fresh.Argv[:2], []string{"--name", "cld-1"}) {
-		t.Errorf("new started claude with %q, want --name cld-1", fresh.Argv)
+		t.Errorf("join started claude with %q, want --name cld-1", fresh.Argv)
 	}
 	waitClients(t, s, 1)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-1", "cld-x"}) || !probes["x"].Alive() {
@@ -1108,9 +1259,9 @@ func TestKill(t *testing.T) {
 	// The terminal runs cld a in a shell that writes down its exit status.
 	status := filepath.Join(s.Root, "a.status")
 	a := terminal.New(t, "tmux", s)
-	a.Start(append([]string{"sh", "-c", `"$@"; echo $? >"$0"`, status}, s.CldArgv("new", "-s", "a")...), s.Env, s.Work)
+	a.Start(append([]string{"sh", "-c", `"$@"; echo $? >"$0"`, status}, s.CldArgv("join", "-s", "a")...), s.Env, s.Work)
 	s.WaitProbes(1)
-	startCld(t, s, "tmux", nil, "new", "-s", "b")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	probes := map[string]*sandbox.Probe{}
 	for _, probe := range s.WaitProbes(2) {
 		probes[probe.Argv[1]] = probe
@@ -1161,7 +1312,7 @@ func TestKillRequiresSession(t *testing.T) {
 		}
 	}
 
-	startCld(t, s, "tmux", nil, "new", "-s", "review")
+	startCld(t, s, "tmux", nil, "join", "-s", "review")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	for _, command := range []string{"kill", "detach"} {
@@ -1175,10 +1326,10 @@ func TestKillRequiresSession(t *testing.T) {
 }
 
 // Repositories of one name share NAME and its indexes: work/api and scratch/api here, and the
-// directory api outside a repository, whose path holds a tab. new records where it made a session,
-// the repository's directory - by a symbolic link to work here, as PWD names it - or outside one
-// the directory. Without -n, join and kill refuse a session of NAME made elsewhere, naming where,
-// and new and resume name the directory of a session they refuse; list shows each session's
+// directory api outside a repository, whose path holds a tab. join records where it made a
+// session, the repository's directory - by a symbolic link to work here, as PWD names it - or
+// outside one the directory. Without -n, join and kill refuse a session of NAME made elsewhere,
+// naming where, before join looks at what it would lose there; list shows each session's
 // directory whatever its home. A subdirectory and a linked worktree of the repository, where git
 // names it by its real path, take its sessions, and join -s offers only the sessions join takes,
 // the refusals and completion in a locale without UTF-8 too. With -n, in the root directory,
@@ -1203,15 +1354,15 @@ func TestSessionOfAnotherRepository(t *testing.T) {
 	if err := os.Symlink(filepath.Join(s.Root, "work"), filepath.Dir(linked)); err != nil {
 		t.Fatal(err)
 	}
-	startCldIn(t, s, "tmux", linked, map[string]string{"PWD": linked}, "new")
+	startCldIn(t, s, "tmux", linked, map[string]string{"PWD": linked}, "join")
 	s.WaitProbes(1)
-	startCldIn(t, s, "tmux", other, nil, "new")
+	startCldIn(t, s, "tmux", other, nil, "join")
 	s.WaitProbes(2)
 	// An older cld's server: no @cld-home, and no @cld, but its prefix, C-q, marks it as cld's (see
 	// TestLeavesAForeignServerAlone).
 	s.MustTmux("cld-api-2", "-f", "/dev/null", "set", "-g", "prefix", "C-q", ";",
 		"new-session", "-d", "-s", "cld-api-2", "-c", s.Work, "sleep", "600")
-	startCldIn(t, s, "tmux", plain, nil, "new")
+	startCldIn(t, s, "tmux", plain, nil, "join")
 	claudes := s.WaitProbes(3)
 	waitClients(t, s, 3)
 	for session, home := range map[string]string{"cld-api-0": linked, "cld-api-1": other, "cld-api-3": plain} {
@@ -1244,9 +1395,9 @@ func TestSessionOfAnotherRepository(t *testing.T) {
 			{plain, []string{"kill", "-s", "0"}, "cld: session 'api-0' belongs to " + linked + ", not to this directory; name it with cld kill -n api -s 0\n"},
 			{work, []string{"join", "-s", "1"}, "cld: session 'api-1' belongs to " + other + ", not to this repository; name it with cld join -n api -s 1\n"},
 			{sub, []string{"kill", "-s", "3"}, "cld: session 'api-3' belongs to " + plain + ", not to this repository; name it with cld kill -n api -s 3\n"},
-			{other, []string{"new", "-s", "0"}, "cld: session 'api-0' exists in " + linked + "; attach to it with cld join -n api -s 0\n"},
-			{other, []string{"resume", "-s", "0"}, "cld: session 'api-0' exists in " + linked + "; attach to it with cld join -n api -s 0\n"},
-			{other, []string{"new", "-s", "2"}, "cld: session 'api-2' exists; attach to it with cld join -n api -s 2\n"},
+			{other, []string{"join", "-s", "0", "--new"}, "cld: session 'api-0' belongs to " + linked + ", not to this repository; name it with cld join -n api -s 0\n"},
+			{other, []string{"join", "-s", "0", "--resume", "x"}, "cld: session 'api-0' belongs to " + linked + ", not to this repository; name it with cld join -n api -s 0\n"},
+			{other, []string{"join", "-s", "2", "--new"}, "cld: session 'api-2' exists, and --new would be lost: its claude has started; attach to it with cld join -n api -s 2, or give another -s SUFFIX\n"},
 		} {
 			if result := s.RunCldIn(test.dir, env, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
 				t.Errorf("%s in %s, environment %q: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", strings.Join(test.args, " "), test.dir, env, result.Code, result.Stdout, result.Stderr, test.want)
@@ -1307,17 +1458,17 @@ func TestSessionOfAnotherRepository(t *testing.T) {
 
 // cld sees only the sessions it started, each cld-NAME on its server cld-NAME. A bare tmux that
 // claude runs reaches claude's own server through TMUX, and a session made that way has another
-// name there, even named like a session of cld's: list leaves it out, join, detach and kill act as
-// for no session, and new and resume make a session of that name on a server of its own. Beside one
-// whose name starts with claude's session's, as cld-a-x does with cld-a, cld still finds cld-a,
-// by its whole name: new and resume say that a exists, join attaches to it, beside the terminal
-// there, and kill ends it.
+// name there, even named like a session of cld's: list leaves it out, detach and kill act as for
+// no session, and join makes a session of that name on a server of its own, --resume too. Beside
+// one whose name starts with claude's session's, as cld-a-x does with cld-a, cld still finds
+// cld-a, by its whole name: join refuses --resume there, as it would be lost, attaches to it,
+// beside the terminal there, and kill ends it.
 // kill ends the others with the server. What cld sets for a failed claude stays on claude's
 // window: a session claude makes whose program fails closes, as tmux would close it.
 func TestSeesOnlyItsOwnSessions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "new", "-s", "a")
+	first := startCld(t, s, "tmux", nil, "join", "-s", "a")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	for _, session := range []string{"cld-inside", "cld-a-x"} {
@@ -1339,17 +1490,14 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
-	exists := "cld: session 'a' exists in " + s.Work + "; attach to it with cld join -s a\n"
-	for _, command := range []string{"new", "resume"} {
-		if result := s.RunCld(nil, command, "-s", "a"); result.Code != 1 || result.Stdout != "" || result.Stderr != exists {
-			t.Errorf("%s -n a: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", command, result.Code, result.Stdout, result.Stderr, exists)
-		}
+	lost := "cld: session 'a' exists, and --resume would be lost: its claude has started; attach to it with cld join -s a, or give another -s SUFFIX\n"
+	if result := s.RunCld(nil, "join", "-s", "a", "--resume", "cld-a"); result.Code != 1 || result.Stdout != "" || result.Stderr != lost {
+		t.Errorf("join -s a --resume cld-a: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, lost)
 	}
 	second := startCld(t, s, "tmux", nil, "join", "-s", "a")
 	waitClients(t, s, 2)
 	waitScreen(t, second, "probe --name cld-a")
 	for _, test := range []struct{ command, want string }{
-		{"join", "cld: no session 'inside'; create it with cld new -s inside\n"},
 		{"kill", "cld: no session 'inside' (see cld list)\n"},
 		{"detach", "cld: no session 'inside' (see cld list)\n"},
 	} {
@@ -1357,14 +1505,14 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 			t.Errorf("%s -n inside: exit %d, stderr %q, want exit 1, stderr %q", test.command, result.Code, result.Stderr, test.want)
 		}
 	}
-	startCld(t, s, "tmux", nil, "new", "-s", "inside")
-	if probe := s.WaitProbes(2)[1]; !slices.Equal(probe.Argv[:2], []string{"--name", "cld-inside"}) {
-		t.Errorf("new -n inside started claude with %q", probe.Argv)
+	startCld(t, s, "tmux", nil, "join", "-s", "inside")
+	if probes := s.WaitProbes(2); !slices.ContainsFunc(probes, func(p *sandbox.Probe) bool { return p.Argv[1] == "cld-inside" }) {
+		t.Errorf("join -s inside started no claude named cld-inside")
 	}
-	startCld(t, s, "tmux", nil, "resume", "-s", "a-x")
+	startCld(t, s, "tmux", nil, "join", "-s", "a-x", "--resume", "cld-a-x")
 	resumed := []string{"--name", "cld-a-x", "--settings", sessionSettings(s, "cld-a-x", s.Work), "--resume", "cld-a-x"}
 	if probes := s.WaitProbes(3); !slices.ContainsFunc(probes, func(p *sandbox.Probe) bool { return slices.Equal(p.Argv, resumed) }) {
-		t.Errorf("resume -n a-x started no claude with %q", resumed)
+		t.Errorf("join -s a-x --resume cld-a-x started no claude with %q", resumed)
 	}
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-a-x", "cld-a/cld-a-x", "cld-a/cld-inside", "cld-inside"}) {
 		t.Errorf("sessions %q, want [cld-a cld-a-x cld-a/cld-a-x cld-a/cld-inside cld-inside]", sessions)
@@ -1380,11 +1528,11 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 }
 
 // A server outlives its session when claude exits while the tmux sessions it made keep the
-// server running. list shows the session as one that has ended, from cld's record, and new,
-// resume and join refuse the name, pointing at kill: new and resume would start claude there with
-// the environment of the cld that started the server, and join finds no session to attach to.
-// kill ends the server, and what claude made with it, as it prints nothing, and new then starts a
-// fresh one. A server that runs without any session - one a cld new is starting, or one exiting -
+// server running. list shows the session as one that has ended, from cld's record, and join
+// refuses the name, pointing at kill, whatever its options: it would start claude there with the
+// environment of the cld that started the server, and finds no session to attach to. kill ends
+// the server, and what claude made with it, as it prints nothing, and join --new then starts a
+// fresh one. A server that runs without any session - one a cld join is starting, or one exiting -
 // kill leaves as it is, and refuses the name; so it does a server where session cld-NAME has been
 // made since its lookup, and where it has been made since kill read the server, the kill's own
 // tmux command ends nothing. detach refuses the name as join does, finding no session to detach
@@ -1392,7 +1540,7 @@ func TestSeesOnlyItsOwnSessions(t *testing.T) {
 func TestLingeringServer(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	term := startCld(t, s, "tmux", nil, "new", "-s", "a")
+	term := startCld(t, s, "tmux", nil, "join", "-s", "a")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	probe.Send("tmux new-session -d -s side sleep 600")
@@ -1415,9 +1563,9 @@ func TestLingeringServer(t *testing.T) {
 		{[]string{"list"}, 0, "NAME  STATE     LAST ACTIVE  DIRECTORY\na     ended     -            " + s.Work + "\n", ""},
 		{[]string{"join", "-s", "a"}, 1, "", refused},
 		{[]string{"detach", "-s", "a"}, 1, "", refused},
-		{[]string{"new", "-s", "a"}, 1, "", refused},
-		{[]string{"resume", "-s", "a"}, 1, "", refused},
-		{[]string{"resume", "-s", "a", "SESSION"}, 1, "", refused},
+		{[]string{"join", "-s", "a", "--new"}, 1, "", refused},
+		{[]string{"join", "-s", "a", "--resume", "SESSION"}, 1, "", refused},
+		{[]string{"join", "-s", "a", "-w"}, 1, "", refused},
 		{[]string{"kill", "-s", "a"}, 0, "", ""},
 	} {
 		if result := s.RunCld(nil, test.args...); result.Code != test.code || result.Stdout != test.stdout || result.Stderr != test.want {
@@ -1429,16 +1577,16 @@ func TestLingeringServer(t *testing.T) {
 		t.Errorf("sessions %q, %d claude processes; want none and the first one", sessions, len(s.Probes()))
 	}
 
-	startCld(t, s, "tmux", nil, "new", "-s", "a")
+	startCld(t, s, "tmux", nil, "join", "-s", "a", "--new")
 	s.WaitProbes(2)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a"}) {
 		t.Errorf("sessions %q, want [cld-a]", sessions)
 	}
 	if server := s.MustTmux("cld-a", "list-sessions", "-F", "#{pid}"); server == lingering {
-		t.Errorf("new reached the server %s that outlived a, want a fresh one", server)
+		t.Errorf("join reached the server %s that outlived a, want a fresh one", server)
 	}
 
-	// Marked, as the server a cld new is starting is (see TestLeavesAForeignServerAlone).
+	// Marked, as the server a cld join is starting is (see TestLeavesAForeignServerAlone).
 	s.MustTmux("cld-b", "start-server", ";", "set", "-s", "exit-empty", "off", ";", "set", "-s", "@cld", "1")
 	const empty = "cld: session 'b' has ended, but its tmux server still runs (see tmux -L cld-b ls)\n"
 	for _, command := range []string{"kill", "join", "detach"} {
@@ -1451,7 +1599,7 @@ func TestLingeringServer(t *testing.T) {
 	}
 
 	// Session cld-NAME made on a server that looks like one that outlived it - a fresh server of
-	// a cld new's, say - after the lookup, by the time kill reads the server (display-message), or
+	// a cld join's, say - after the lookup, by the time kill reads the server (display-message), or
 	// after that read, by the time of the kill (kill-server). A tmux first on the PATH makes it.
 	for _, test := range []struct {
 		name, at string
@@ -1477,9 +1625,9 @@ func TestLingeringServer(t *testing.T) {
 
 // Where tmux's socket directory ignores case, as macOS's does by default, names that differ only
 // in case share one socket: tmux -L cld-A reaches the server of session a, which has no session
-// cld-A. new, resume, join and kill refuse A and name session a, rather than take its server for
-// one that outlived session A and end it, or point at a kill that would - also once a's claude
-// has exited and a session it made keeps the server running. list shows a once. Where the
+// cld-A. join, whatever its options, and kill refuse A and name session a, rather than take its
+// server for one that outlived session A and end it, or point at a kill that would - also once a's
+// claude has exited and a session it made keeps the server running. list shows a once. Where the
 // sandbox's socket directory ignores case, as on macOS, the name cld-A finds a's socket already
 // and the test runs against the real thing; elsewhere a symlink cld-A to a's socket plays such a
 // directory, as a casefold tmpfs does on Linux (see docs/design.md, Findings).
@@ -1487,7 +1635,7 @@ func TestLingeringServer(t *testing.T) {
 func TestNamesDifferingInCase(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	term := startCld(t, s, "tmux", nil, "new", "-s", "a")
+	term := startCld(t, s, "tmux", nil, "join", "-s", "a")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	socket := filepath.Join(s.SocketDir(), "cld-A")
@@ -1501,9 +1649,10 @@ func TestNamesDifferingInCase(t *testing.T) {
 	const clash = "cld: session name 'A' clashes with session 'a': tmux's socket directory ignores case here, so both names reach server cld-a (see tmux -L cld-a ls)\n"
 	refused := func(when string) {
 		t.Helper()
-		for _, command := range []string{"new", "resume", "join", "detach", "kill"} {
-			if result := s.RunCld(nil, command, "-s", "A"); result.Code != 1 || result.Stdout != "" || result.Stderr != clash {
-				t.Errorf("%s: %s -n A: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", when, command, result.Code, result.Stdout, result.Stderr, clash)
+		for _, args := range [][]string{{"join", "-s", "A"}, {"join", "-s", "A", "--new"}, {"join", "-s", "A", "--resume", "x"},
+			{"detach", "-s", "A"}, {"kill", "-s", "A"}} {
+			if result := s.RunCld(nil, args...); result.Code != 1 || result.Stdout != "" || result.Stderr != clash {
+				t.Errorf("%s: %s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", when, strings.Join(args, " "), result.Code, result.Stdout, result.Stderr, clash)
 			}
 		}
 	}
@@ -1530,14 +1679,14 @@ func TestNamesDifferingInCase(t *testing.T) {
 
 // A server that dies - SIGKILL - leaves its socket behind, as tmux leaves every socket: list
 // passes over it, showing its session as one that has ended, from cld's record, beside the other
-// sessions; join, detach and kill find no session, and point at resume; and new starts a fresh
-// server on it.
+// sessions; detach and kill find no session, and point at join; and join brings the session back,
+// by its name where its entry has no ID yet, starting a fresh server on the socket.
 func TestStaleSocket(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	a := startCld(t, s, "tmux", nil, "new", "-s", "a")
+	a := startCld(t, s, "tmux", nil, "join", "-s", "a")
 	s.WaitProbes(1)
-	startCld(t, s, "tmux", nil, "new", "-s", "b")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	s.WaitProbes(2)
 	waitClients(t, s, 2)
 	pid, err := strconv.Atoi(s.MustTmux("cld-a", "list-sessions", "-F", "#{pid}"))
@@ -1557,16 +1706,18 @@ func TestStaleSocket(t *testing.T) {
 		t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, want)
 	}
 	for _, test := range []struct{ command, want string }{
-		{"join", "cld: session 'a' has ended; resume it with cld resume -s a\n"},
-		{"kill", "cld: session 'a' has ended; resume it with cld resume -s a\n"},
-		{"detach", "cld: session 'a' has ended; resume it with cld resume -s a\n"},
+		{"kill", "cld: session 'a' has ended; resume it with cld join -s a\n"},
+		{"detach", "cld: session 'a' has ended; resume it with cld join -s a\n"},
 	} {
 		if result := s.RunCld(nil, test.command, "-s", "a"); result.Code != 1 || result.Stderr != test.want {
 			t.Errorf("%s -n a: exit %d, stderr %q, want exit 1, stderr %q", test.command, result.Code, result.Stderr, test.want)
 		}
 	}
-	startCld(t, s, "tmux", nil, "new", "-s", "a")
-	s.WaitProbes(3)
+	startCld(t, s, "tmux", nil, "join", "-s", "a")
+	resumed := []string{"--name", "cld-a", "--settings", sessionSettings(s, "cld-a", s.Work), "--resume", "cld-a"}
+	if probes := s.WaitProbes(3); !slices.ContainsFunc(probes, func(p *sandbox.Probe) bool { return slices.Equal(p.Argv, resumed) }) {
+		t.Errorf("join -s a started no claude with %q", resumed)
+	}
 	waitClients(t, s, 2)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
 		t.Errorf("sessions %q, want [cld-a cld-b]", sessions)
@@ -1577,7 +1728,8 @@ func TestStaleSocket(t *testing.T) {
 // runs tmux there, and passes over one that refuses the connection, and a name with no socket, as
 // tmux would say no server is running. list asks only the servers that take the connection -
 // more of them here than it asks at once - and shows their sessions in the order of their names;
-// join, detach and kill of a stale socket's name run no tmux but tmux -V; new without -s looks
+// join, detach and kill of a stale socket's name run no tmux but tmux -V - join, which would create
+// the session there, no lookup of its own, and has no terminal here; join without -s looks
 // from the highest index down, only until a server runs, here one that outlives its session, and
 // then reads the servers that run, and no stale socket, for its sweep of the idle sessions. The
 // sockets stay. A tmux first on the PATH writes down what it runs.
@@ -1617,10 +1769,10 @@ func TestStaleSocketsRunNoTmux(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"join", "-s", "work-20"}, "cld: no session 'work-20'; create it with cld new -n work -s 20\n"},
+		{[]string{"join", "-s", "work-20"}, "cld: join needs a terminal, and its input is not one\n"},
 		{[]string{"kill", "-s", "work-99"}, "cld: no session 'work-99' (see cld list)\n"},
 		{[]string{"detach", "-s", "work-25"}, "cld: no session 'work-25' (see cld list)\n"},
-		{[]string{"join", "-s", "work-50"}, "cld: no session 'work-50'; create it with cld new -n work -s 50\n"},
+		{[]string{"join", "-s", "work-50"}, "cld: join needs a terminal, and its input is not one\n"},
 	} {
 		if result := s.RunCld(logged, test.args...); result.Code != 1 || result.Stdout != "" || result.Stderr != test.want {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", strings.Join(test.args, " "), result.Code, result.Stdout, result.Stderr, test.want)
@@ -1630,13 +1782,13 @@ func TestStaleSocketsRunNoTmux(t *testing.T) {
 		}
 	}
 
-	startCld(t, s, "tmux", logged, "new", "-n", "work")
+	startCld(t, s, "tmux", logged, "join", "-n", "work")
 	if name := s.WaitProbes(1)[0].Argv[1]; name != "cld-work-12" {
 		t.Errorf("claude named %s, want cld-work-12", name)
 	}
 	// The index's lookup comes first, then the sweep's read of the sessions, at once.
 	if got := asked(); len(got) == 0 || got[0] != "cld-work-11" || !slices.Equal(slices.Sorted(slices.Values(got[1:])), slices.Sorted(slices.Values(servers))) {
-		t.Errorf("new asked %q, want cld-work-11, then %q", got, servers)
+		t.Errorf("join asked %q, want cld-work-11, then %q", got, servers)
 	}
 	for _, name := range stale {
 		if _, err := os.Stat(filepath.Join(s.SocketDir(), name)); err != nil {
@@ -1694,8 +1846,8 @@ func TestListAsksServersAtOnce(t *testing.T) {
 }
 
 // cld 0.3.0 and earlier ran every session on one server, -L cld. cld leaves it alone: list does
-// not show its sessions, join, detach and kill find none there, and new makes a session of that
-// name on a server of its own.
+// not show its sessions, detach and kill find none there, and join makes a session of that name on
+// a server of its own - here without a terminal first, which it refuses.
 func TestLeavesTheSharedServerAlone(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1706,7 +1858,7 @@ func TestLeavesTheSharedServerAlone(t *testing.T) {
 		want string
 	}{
 		{[]string{"list"}, 0, ""},
-		{[]string{"join", "-s", "old"}, 1, "cld: no session 'old'; create it with cld new -s old\n"},
+		{[]string{"join", "-s", "old"}, 1, "cld: join needs a terminal, and its input is not one\n"},
 		{[]string{"kill", "-s", "old"}, 1, "cld: no session 'old' (see cld list)\n"},
 		{[]string{"detach", "-s", "old"}, 1, "cld: no session 'old' (see cld list)\n"},
 	} {
@@ -1715,7 +1867,7 @@ func TestLeavesTheSharedServerAlone(t *testing.T) {
 				strings.Join(test.args, " "), result.Code, result.Stdout, result.Stderr, test.code, test.want)
 		}
 	}
-	startCld(t, s, "tmux", nil, "new", "-s", "old")
+	startCld(t, s, "tmux", nil, "join", "-s", "old")
 	s.WaitProbes(1)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-old"}) {
 		t.Errorf("sessions on cld's servers %q, want [cld-old]", sessions)
@@ -1727,12 +1879,13 @@ func TestLeavesTheSharedServerAlone(t *testing.T) {
 
 // A tmux server named like one of cld's that cld did not start - the user's own tmux -L cld-x,
 // say - is none of cld's, whatever its sessions are called: cld marks the servers it starts with
-// @cld. list shows nothing there, and new, resume, join and kill refuse the name, pointing at no
-// kill, which would end the sessions there; they stay, and kill ends none of them, not even on a
-// server that loses the mark only after kill read it. A server that cld 0.8.2 and earlier started
-// has no mark, but its prefix is C-q: it is cld's, list shows its session, new finds it and kill
-// ends it. detach -s refuses the name as join does, and finds the old session; without -s, in a
-// pane of such a server, it detaches no terminal there, and refuses as it is none of cld's.
+// @cld. list shows nothing there, and join, whatever its options, and kill refuse the name,
+// pointing at no kill, which would end the sessions there; they stay, and kill ends none of them,
+// not even on a server that loses the mark only after kill read it. A server that cld 0.8.2 and
+// earlier started has no mark, but its prefix is C-q: it is cld's, list shows its session, join
+// finds it, refusing --new there, and kill ends it. detach -s refuses the name as join does, and
+// finds the old session; without -s, in a pane of such a server, it detaches no terminal there,
+// and refuses as it is none of cld's.
 func TestLeavesAForeignServerAlone(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1747,12 +1900,13 @@ func TestLeavesAForeignServerAlone(t *testing.T) {
 	}
 	runs := []run{{[]string{"list"}, 0, "NAME  STATE     LAST ACTIVE  DIRECTORY\n" + "old   detached  now          " + s.Work + "\n", ""}}
 	for _, name := range []string{"x", "y"} {
-		for _, command := range []string{"new", "resume", "join", "detach", "kill"} {
-			runs = append(runs, run{[]string{command, "-s", name}, 1, "", "cld: tmux server cld-" + name + " is not one of cld's; use another name\n"})
+		for _, args := range [][]string{{"join"}, {"join", "--new"}, {"join", "--resume", "x"}, {"detach"}, {"kill"}} {
+			runs = append(runs, run{append(args, "-s", name), 1, "", "cld: tmux server cld-" + name + " is not one of cld's; use another name\n"})
 		}
 	}
 	runs = append(runs,
-		run{[]string{"new", "-s", "old"}, 1, "", "cld: session 'old' exists; attach to it with cld join -s old\n"},
+		run{[]string{"join", "-s", "old", "--new"}, 1, "",
+			"cld: session 'old' exists, and --new would be lost: its claude has started; attach to it with cld join -s old, or give another -s SUFFIX\n"},
 		run{[]string{"detach", "-s", "old"}, 0, "", ""},
 		run{[]string{"kill", "-s", "old"}, 0, "", ""})
 	for _, test := range runs {
@@ -1795,20 +1949,19 @@ func TestLeavesAForeignServerAlone(t *testing.T) {
 }
 
 // join -s completes the names of the sessions list shows - here, where the directory's name
-// leaves nothing, a session's name is its SUFFIX - attached, detached, or with claude exited -
-// that start with what was typed, in list's order, each with its state, and then offers
-// no file names (":4", ShellCompDirectiveNoFileComp). That is cobra's __complete, which the
-// completion scripts run on every TAB; it starts no server and no claude. As list does, it asks
-// the server of each socket for its own session, and leaves out the sessions cld did not start -
-// one that claude makes, on its own session's server under another name, one made there by hand,
-// one on a server named like cld's that cld did not start, and one on the server that cld 0.3.0
-// and earlier shared - a session renamed by hand, whose server then runs without it, and a stale
-// socket, whose server has died: those two list shows as sessions that have ended, from cld's
-// record, which resume -s offers, with the directories they ran in, and join -s does not. join -n
-// and resume -n offer what comes before a "-" of a name, and none has one here (see
-// TestCompleteSuffixes). new -n, its -s and resume's SESSION offer nothing, and neither do the
+// leaves nothing, a session's name is its SUFFIX - attached, detached, with claude exited, or
+// ended, that start with what was typed, in list's order, each with its state - a session that
+// has ended with the directory it ran in - and then offers no file names (":4",
+// ShellCompDirectiveNoFileComp). That is cobra's __complete, which the completion scripts run on
+// every TAB; it starts no server and no claude. As list does, it asks the server of each socket
+// for its own session, and leaves out the sessions cld did not start - one that claude makes, on
+// its own session's server under another name, one made there by hand, one on a server named like
+// cld's that cld did not start, and one on the server that cld 0.3.0 and earlier shared - and
+// offers a session renamed by hand, whose server then runs without it, and a stale socket's, whose
+// server has died, as those that have ended, from cld's record. detach -s offers the same of the
+// sessions that run. join -n and detach -n offer what comes before a "-" of a name, and none has
+// one here (see TestCompleteSuffixes). --resume's SESSION offers nothing, and neither do the
 // other arguments, file names included, nor claude's words after "--", cld's options included.
-// detach -n and -s offer what join's do.
 func TestCompleteNames(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1819,11 +1972,11 @@ func TestCompleteNames(t *testing.T) {
 		t.Errorf("sessions %q after completing without a server, want none", sessions)
 	}
 
-	startCld(t, s, "tmux", nil, "new", "-s", "rev")
+	startCld(t, s, "tmux", nil, "join", "-s", "rev")
 	rev := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	for i, name := range []string{"review", "cafe", "bad", "gone"} {
-		term := startCld(t, s, "tmux", nil, "new", "-s", name)
+		term := startCld(t, s, "tmux", nil, "join", "-s", name)
 		s.WaitProbes(2 + i)
 		waitClients(t, s, 2)
 		term.Keys("C-q", "d")
@@ -1866,7 +2019,9 @@ func TestCompleteNames(t *testing.T) {
 	probes := len(s.Probes())
 
 	listed := []string{"bad", "cafe", "gone", "rev", "review"}
-	names := []string{"bad\texited", "rev\tattached", "review\tdetached"}
+	cafe, gone := "cafe\tended in "+s.Work, "gone\tended in "+s.Work
+	names := []string{"bad\texited", cafe, gone, "rev\tattached", "review\tdetached"}
+	running := []string{"bad\texited", "rev\tattached", "review\tdetached"}
 	result := s.RunCld(nil, "list")
 	var shown []string
 	for _, line := range strings.Split(strings.TrimSuffix(result.Stdout, "\n"), "\n")[1:] {
@@ -1881,9 +2036,12 @@ func TestCompleteNames(t *testing.T) {
 		return strings.Join(append(names, ":4"), "\n") + "\n"
 	}
 	all := offered(names...)
-	var bare []string
-	for _, name := range names {
-		bare = append(bare, strings.Split(name, "\t")[0])
+	bare := func(names []string) []string {
+		var bare []string
+		for _, name := range names {
+			bare = append(bare, strings.Split(name, "\t")[0])
+		}
+		return bare
 	}
 	notUTF8 := map[string]string{"LC_ALL": "", "LC_CTYPE": "", "LANG": "C"}
 	for _, test := range []struct {
@@ -1897,8 +2055,8 @@ func TestCompleteNames(t *testing.T) {
 		{[]string{"__complete", "join", "-s", "re"}, nil, offered("rev\tattached", "review\tdetached")},
 		{[]string{"__complete", "join", "-s", "revi"}, nil, offered("review\tdetached")},
 		{[]string{"__complete", "join", "-s", "x"}, nil, offered()},
-		{[]string{"__complete", "join", "-s", "caf"}, nil, offered()},
-		{[]string{"__complete", "join", "-s", "g"}, nil, offered()},
+		{[]string{"__complete", "join", "-s", "caf"}, nil, offered(cafe)},
+		{[]string{"__complete", "join", "-s", "g"}, nil, offered(gone)},
 		{[]string{"__complete", "join", "-s", "in"}, nil, offered()},
 		{[]string{"__complete", "join", "-s", "b"}, nil, offered("bad\texited")},
 		{[]string{"__complete", "join", "-s", "o"}, nil, offered()},
@@ -1906,28 +2064,24 @@ func TestCompleteNames(t *testing.T) {
 		// pflag's -s=SUFFIX; in -sSUFFIX cobra takes the word for options, and finds none.
 		{[]string{"__complete", "join", "-s=re"}, nil, offered("rev\tattached", "review\tdetached")},
 		{[]string{"__complete", "join", "-sre"}, nil, offered()},
-		{[]string{"__completeNoDesc", "join", "-s", ""}, nil, offered(bare...)},
-		{[]string{"__complete", "join", "-s", ""}, map[string]string{"CLD_COMPLETION_DESCRIPTIONS": "0"}, offered(bare...)},
+		{[]string{"__completeNoDesc", "join", "-s", ""}, nil, offered(bare(names)...)},
+		{[]string{"__complete", "join", "-s", ""}, map[string]string{"CLD_COMPLETION_DESCRIPTIONS": "0"}, offered(bare(names)...)},
 		{[]string{"__complete", "join", "-s", ""}, notUTF8, all},
-		{[]string{"__complete", "detach", "-s", ""}, nil, all},
+		{[]string{"__complete", "join", "--resume", "x", "-s", "g"}, nil, offered(gone)},
+		{[]string{"__complete", "detach", "-s", ""}, nil, offered(running...)},
+		{[]string{"__complete", "detach", "-s", "g"}, nil, offered()},
 		{[]string{"__complete", "detach", "--suffix=re"}, nil, offered("rev\tattached", "review\tdetached")},
-		{[]string{"__completeNoDesc", "detach", "-s", ""}, nil, offered(bare...)},
+		{[]string{"__completeNoDesc", "detach", "-s", ""}, nil, offered(bare(running)...)},
 		// No name here has a NAME of NAME-SUFFIX for -n.
 		{[]string{"__complete", "join", "-n", ""}, nil, offered()},
 		{[]string{"__complete", "detach", "-n", ""}, nil, offered()},
-		{[]string{"__complete", "new", "-n", ""}, nil, offered()},
-		{[]string{"__complete", "new", "-s", ""}, nil, offered()},
-		{[]string{"__complete", "resume", "-s", ""}, nil, offered("cafe\t"+s.Work, "gone\t"+s.Work)},
-		{[]string{"__complete", "resume", "-s", "g"}, nil, offered("gone\t" + s.Work)},
-		{[]string{"__complete", "resume", "-s", "re"}, nil, offered()},
-		{[]string{"__completeNoDesc", "resume", "-s", ""}, nil, offered("cafe", "gone")},
-		{[]string{"__complete", "resume", "-n", ""}, nil, offered()},
-		{[]string{"__complete", "resume", ""}, nil, offered()},
-		{[]string{"__complete", "resume", "-s", "rev", ""}, nil, offered()},
-		{[]string{"__complete", "new", "--", ""}, nil, offered()},
-		{[]string{"__complete", "new", "--", "--"}, nil, offered()},
-		{[]string{"__complete", "resume", "-s", "rev", "x", "--", "-"}, nil, offered()},
-		{[]string{"__complete", "resume", "--", "-s", ""}, nil, offered()},
+		{[]string{"__complete", "join", "--resume", ""}, nil, offered()},
+		{[]string{"__complete", "join", "--resume", "g"}, nil, offered()},
+		{[]string{"__complete", "join", "-s", "rev", ""}, nil, offered()},
+		{[]string{"__complete", "join", "--", ""}, nil, offered()},
+		{[]string{"__complete", "join", "--", "--"}, nil, offered()},
+		{[]string{"__complete", "join", "-s", "rev", "--", "-"}, nil, offered()},
+		{[]string{"__complete", "join", "--", "-s", ""}, nil, offered()},
 		{[]string{"__complete", "kill", "-s", ""}, nil, offered()},
 		{[]string{"__complete", "join", ""}, nil, offered()},
 		{[]string{"__complete", "detach", ""}, nil, offered()},
@@ -1946,15 +2100,15 @@ func TestCompleteNames(t *testing.T) {
 	}
 }
 
-// join -n offers the NAME of NAME-SUFFIX for the sessions cld list shows that run: what comes
-// before the last "-" of their names, where that and what follows are both NAMEs, once each,
-// described by the number of its sessions. join -s offers the SUFFIX of the sessions named after
-// NAME - -n's, or else the git repository's, work here, from a subdirectory too - where join takes
-// it, and not the sessions of another NAME, or of none. Outside a repository NAME is the
-// directory's name - in the root directory, whose name leaves nothing, every name is a SUFFIX.
-// detach -n and -s offer the same. resume -n and -s offer the same of the sessions that have
-// ended, entries of cld's record without their sessions, each SUFFIX described by the directory
-// its session ran in.
+// join -n offers the NAME of NAME-SUFFIX for the sessions cld list shows, those that run and those
+// that have ended: what comes before the last "-" of their names, where that and what follows are
+// both NAMEs, once each, described by the number of its sessions. join -s offers the SUFFIX of the
+// sessions named after NAME - -n's, or else the git repository's, work here, from a subdirectory
+// too - where join takes it, and not the sessions of another NAME, or of none, each described by
+// its state, and a session that has ended by the directory it ran in: entries of cld's record
+// without their sessions. Outside a repository NAME is the directory's name - in the root
+// directory, whose name leaves nothing, every name is a SUFFIX. detach -n and -s offer the same of
+// the sessions that run.
 func TestCompleteSuffixes(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -1973,45 +2127,37 @@ func TestCompleteSuffixes(t *testing.T) {
 	for _, name := range []string{"work-0", "work-7", "other-2", "4"} {
 		writeEntry(t, s, name, other, "")
 	}
+	ended := "\tended in " + other + "\n"
 	for _, test := range []struct {
 		dir  string
 		args []string
-		want string
+		// join and detach are what join and detach offer
+		join, detach string
 	}{
-		{work, []string{"-s", ""}, "0\tdetached\nfix\tdetached\n:4\n"},
-		{sub, []string{"-s", ""}, "0\tdetached\nfix\tdetached\n:4\n"},
-		{work, []string{"-s", "f"}, "fix\tdetached\n:4\n"},
-		{work, []string{"-s", "-"}, ":4\n"},
-		{work, []string{"-s", "work"}, ":4\n"},
-		{work, []string{"-n", "other", "-s", ""}, "1\tdetached\n:4\n"},
-		{work, []string{"--name=a", "-s", ""}, "b-c\tdetached\n:4\n"},
-		{work, []string{"-n", "a-b", "--suffix", ""}, "c\tdetached\n:4\n"},
-		{other, []string{"-s", ""}, "1\tdetached\n:4\n"},
-		{"/", []string{"-s", ""}, "3\tdetached\na-b-c\tdetached\nother-1\tdetached\nwork\tdetached\nwork--x\tdetached\nwork-0\tdetached\nwork-fix\tdetached\n:4\n"},
-		{work, []string{"-n", ""}, "a-b\t1 session\nother\t1 session\nwork-\t1 session\nwork\t2 sessions\n:4\n"},
-		{work, []string{"-n", "w"}, "work-\t1 session\nwork\t2 sessions\n:4\n"},
-		{work, []string{"-s", "0", "-n", ""}, "a-b\t1 session\nother\t1 session\nwork-\t1 session\nwork\t2 sessions\n:4\n"},
+		{work, []string{"-s", ""}, "0\tdetached\n7" + ended + "fix\tdetached\n:4\n", "0\tdetached\nfix\tdetached\n:4\n"},
+		{sub, []string{"-s", ""}, "0\tdetached\n7" + ended + "fix\tdetached\n:4\n", "0\tdetached\nfix\tdetached\n:4\n"},
+		{work, []string{"-s", "f"}, "fix\tdetached\n:4\n", "fix\tdetached\n:4\n"},
+		{work, []string{"-s", "7"}, "7" + ended + ":4\n", ":4\n"},
+		{work, []string{"-s", "-"}, ":4\n", ":4\n"},
+		{work, []string{"-s", "work"}, ":4\n", ":4\n"},
+		{work, []string{"-n", "other", "-s", ""}, "1\tdetached\n2" + ended + ":4\n", "1\tdetached\n:4\n"},
+		{work, []string{"--name=a", "-s", ""}, "b-c\tdetached\n:4\n", "b-c\tdetached\n:4\n"},
+		{work, []string{"-n", "a-b", "--suffix", ""}, "c\tdetached\n:4\n", "c\tdetached\n:4\n"},
+		{other, []string{"-s", ""}, "1\tdetached\n2" + ended + ":4\n", "1\tdetached\n:4\n"},
+		{"/", []string{"-s", ""},
+			"3\tdetached\n4" + ended + "a-b-c\tdetached\nother-1\tdetached\nother-2" + ended + "work\tdetached\nwork--x\tdetached\nwork-0\tdetached\nwork-7" + ended + "work-fix\tdetached\n:4\n",
+			"3\tdetached\na-b-c\tdetached\nother-1\tdetached\nwork\tdetached\nwork--x\tdetached\nwork-0\tdetached\nwork-fix\tdetached\n:4\n"},
+		{work, []string{"-n", ""}, "a-b\t1 session\nother\t2 sessions\nwork-\t1 session\nwork\t3 sessions\n:4\n",
+			"a-b\t1 session\nother\t1 session\nwork-\t1 session\nwork\t2 sessions\n:4\n"},
+		{work, []string{"-n", "w"}, "work-\t1 session\nwork\t3 sessions\n:4\n", "work-\t1 session\nwork\t2 sessions\n:4\n"},
+		{work, []string{"-s", "0", "-n", ""}, "a-b\t1 session\nother\t2 sessions\nwork-\t1 session\nwork\t3 sessions\n:4\n",
+			"a-b\t1 session\nother\t1 session\nwork-\t1 session\nwork\t2 sessions\n:4\n"},
 	} {
-		for _, command := range []string{"join", "detach"} {
+		for command, want := range map[string]string{"join": test.join, "detach": test.detach} {
 			args := append([]string{"__complete", command}, test.args...)
-			if result := s.RunCldIn(test.dir, nil, args...); result.Code != 0 || result.Stdout != test.want {
-				t.Errorf("%s %q in %s: exit %d, stdout\n%s\nwant\n%s", command, test.args, test.dir, result.Code, result.Stdout, test.want)
+			if result := s.RunCldIn(test.dir, nil, args...); result.Code != 0 || result.Stdout != want {
+				t.Errorf("%s %q in %s: exit %d, stdout\n%s\nwant\n%s", command, test.args, test.dir, result.Code, result.Stdout, want)
 			}
-		}
-	}
-	for _, test := range []struct {
-		dir  string
-		args []string
-		want string
-	}{
-		{work, []string{"-s", ""}, "7\t" + other + "\n:4\n"},
-		{work, []string{"-n", "other", "-s", ""}, "2\t" + other + "\n:4\n"},
-		{"/", []string{"-s", ""}, "4\t" + other + "\nother-2\t" + other + "\nwork-7\t" + other + "\n:4\n"},
-		{work, []string{"-n", ""}, "other\t1 session\nwork\t1 session\n:4\n"},
-	} {
-		args := append([]string{"__complete", "resume"}, test.args...)
-		if result := s.RunCldIn(test.dir, nil, args...); result.Code != 0 || result.Stdout != test.want {
-			t.Errorf("resume %q in %s: exit %d, stdout\n%s\nwant\n%s", test.args, test.dir, result.Code, result.Stdout, test.want)
 		}
 	}
 }
@@ -2021,7 +2167,7 @@ func TestCompleteSuffixes(t *testing.T) {
 func TestJoinBesideOtherClients(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "new", "-s", "shared")
+	first := startCld(t, s, "tmux", nil, "join", "-s", "shared")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 
@@ -2098,12 +2244,12 @@ func TestDetach(t *testing.T) {
 		}
 	}
 
-	first, firstStatus := attach("new", "-s", "a")
+	first, firstStatus := attach("join", "-s", "a")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	second, secondStatus := attach("join", "-s", "a")
 	waitClients(t, s, 2)
-	startCld(t, s, "tmux", nil, "new", "-s", "b")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	s.WaitProbes(2)
 	waitClients(t, s, 3)
 	pane := map[string]string{"TMUX": probe.Env["TMUX"], "TMUX_PANE": probe.Env["TMUX_PANE"]}
@@ -2195,7 +2341,7 @@ func TestDetach(t *testing.T) {
 func TestJoinFromElsewhereKeepsClaude(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "new", "-n", "app", "-s", "task")
+	first := startCld(t, s, "tmux", nil, "join", "-n", "app", "-s", "task")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	first.Keys("C-q", "d")
@@ -2222,7 +2368,7 @@ func TestJoinFromElsewhereKeepsClaude(t *testing.T) {
 func TestReattachRepaintsTheSameScreen(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "new", "-s", "paint")
+	first := startCld(t, s, "tmux", nil, "join", "-s", "paint")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	probe.Send("rekey")
@@ -2258,9 +2404,9 @@ func TestReattachRepaintsTheSameScreen(t *testing.T) {
 func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	a := startCld(t, s, "tmux", nil, "new", "-s", "a")
+	a := startCld(t, s, "tmux", nil, "join", "-s", "a")
 	s.WaitProbes(1)
-	b := startCld(t, s, "tmux", nil, "new", "-s", "b")
+	b := startCld(t, s, "tmux", nil, "join", "-s", "b")
 	probes := map[string]*sandbox.Probe{}
 	for _, probe := range s.WaitProbes(2) {
 		probes[probe.Argv[1]] = probe
@@ -2280,12 +2426,12 @@ func TestClaudeExitClosesOnlyItsSession(t *testing.T) {
 	})
 }
 
-// A claude that fails keeps its session: the terminal stays attached and shows claude's last
-// words and how to end the session, on the message line and, once a key has cleared it, on a line
-// of the pane's border below claude's words, which stay at the top; list says claude exited, and
-// new and resume refuse the name until kill ends the session. A resume whose claude finds no
-// conversation fails that way. A pane split off in claude's window that fails while claude runs
-// closes, with no hint.
+// A claude that fails keeps its session: the terminal stays attached and shows claude's last words
+// and how to end the session, on the message line and, once a key has cleared it, on a line of the
+// pane's border below claude's words, which stay at the top; list says claude exited, and join,
+// which attaches to the session (see TestClaudeFailingDetached), refuses to make it anew until kill
+// ends it. A join --resume whose claude finds no conversation fails that way. A pane split off in
+// claude's window that fails while claude runs closes, with no hint.
 func TestFailedClaudeKeepsSession(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -2298,12 +2444,12 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 		how  []string
 		fail func(t *testing.T, s *sandbox.Sandbox)
 	}{
-		{"start", []string{"new", "-s", "bad"}, "Error: cannot start", []string{"status 1"}, nil},
-		{"resume", []string{"resume", "-s", "bad", "x"}, "No conversation found with session ID: x", []string{"status 1"}, nil},
-		{"status", []string{"new", "-s", "bad"}, "", []string{"status 3"}, func(t *testing.T, s *sandbox.Sandbox) {
+		{"start", []string{"join", "-s", "bad"}, "Error: cannot start", []string{"status 1"}, nil},
+		{"resume", []string{"join", "-s", "bad", "--resume", "x"}, "No conversation found with session ID: x", []string{"status 1"}, nil},
+		{"status", []string{"join", "-s", "bad"}, "", []string{"status 3"}, func(t *testing.T, s *sandbox.Sandbox) {
 			s.WaitProbes(1)[0].Send("exit 3")
 		}},
-		{"signal", []string{"new", "-s", "bad"}, "", []string{"signal 15", "signal term"}, func(t *testing.T, s *sandbox.Sandbox) {
+		{"signal", []string{"join", "-s", "bad"}, "", []string{"signal 15", "signal term"}, func(t *testing.T, s *sandbox.Sandbox) {
 			if err := syscall.Kill(s.WaitProbes(1)[0].PID, syscall.SIGTERM); err != nil {
 				t.Fatal(err)
 			}
@@ -2356,10 +2502,14 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 			if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != list || result.Stderr != "" {
 				t.Errorf("list: exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, list)
 			}
-			want := "cld: session 'bad' exists in " + s.Work + ", but its claude exited; end it with cld kill -s bad\n"
-			for _, command := range []string{"new", "resume"} {
-				if result := s.RunCld(nil, command, "-s", "bad"); result.Code != 1 || result.Stderr != want {
-					t.Errorf("%s: exit %d, stderr %q, want exit 1, stderr %q", command, result.Code, result.Stderr, want)
+			for _, option := range []string{"--new", "--resume"} {
+				want := "cld: session 'bad' exists, and " + option + " would be lost: its claude has started; attach to it with cld join -s bad, or give another -s SUFFIX\n"
+				args := []string{"join", "-s", "bad", option}
+				if option == "--resume" {
+					args = append(args, "x")
+				}
+				if result := s.RunCld(nil, args...); result.Code != 1 || result.Stderr != want {
+					t.Errorf("%s: exit %d, stderr %q, want exit 1, stderr %q", strings.Join(args, " "), result.Code, result.Stderr, want)
 				}
 			}
 			if result := s.RunCld(nil, "kill", "-s", "bad"); result.Code != 0 {
@@ -2381,7 +2531,7 @@ func TestFailedClaudeKeepsSession(t *testing.T) {
 func TestClaudeFailingDetached(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	first := startCld(t, s, "tmux", nil, "new", "-s", "bad")
+	first := startCld(t, s, "tmux", nil, "join", "-s", "bad")
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	probe.Send("tmux new-session -d -s side sleep 600")
@@ -2398,7 +2548,7 @@ func TestClaudeFailingDetached(t *testing.T) {
 		}
 	}
 
-	other := startCld(t, s, "tmux", nil, "new", "-s", "other")
+	other := startCld(t, s, "tmux", nil, "join", "-s", "other")
 	s.WaitProbes(2)
 	waitClients(t, s, 1)
 	if mode := s.Format("cld-other", "#{pane_mode}"); mode != "" {
@@ -2435,7 +2585,7 @@ func TestFailedClaudeLinesFit(t *testing.T) {
 	// message line, which covers the border line until a key is pressed, say less.
 	term := terminal.New(t, "tmux", s)
 	term.Resize(150, 40)
-	term.Start(s.CldArgv("new", "-n", "my-awesome-proj", "-s", "12"), s.Env, s.Work)
+	term.Start(s.CldArgv("join", "-n", "my-awesome-proj", "-s", "12"), s.Env, s.Work)
 	waitClients(t, s, 1)
 	s.WaitProbes(1)[0].Send("exit 1")
 	exited := "claude exited with status 1"
@@ -2453,10 +2603,10 @@ func TestFailedClaudeLinesFit(t *testing.T) {
 }
 
 // Each session runs on a server of its own, named like it, and each claude gets the environment of
-// the shell that ran cld new or cld resume - where resume's claude looks for the conversation, in
-// CLAUDE_CONFIG_DIR. On one server shared by every session, tmux started each pane with the
-// environment of the client that had started the server - the first session's - but for PATH and
-// the update-environment variables.
+// the shell that ran the cld join that made it - where a resuming claude looks for the
+// conversation, in CLAUDE_CONFIG_DIR. On one server shared by every session, tmux started each pane
+// with the environment of the client that had started the server - the first session's - but for
+// PATH and the update-environment variables.
 func TestServerPerSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -2465,11 +2615,11 @@ func TestServerPerSession(t *testing.T) {
 		"b": {"CLAUDE_CONFIG_DIR": filepath.Join(s.Home, ".claude-b"), "VIRTUAL_ENV": "/venv/b"},
 		"c": {"CLAUDE_CONFIG_DIR": filepath.Join(s.Home, ".claude-c")},
 	}
-	startCld(t, s, "tmux", shells["a"], "new", "-s", "a")
+	startCld(t, s, "tmux", shells["a"], "join", "-s", "a")
 	s.WaitProbes(1)
-	startCld(t, s, "tmux", shells["b"], "new", "-s", "b")
+	startCld(t, s, "tmux", shells["b"], "join", "-s", "b")
 	s.WaitProbes(2)
-	startCld(t, s, "tmux", shells["c"], "resume", "-s", "c")
+	startCld(t, s, "tmux", shells["c"], "join", "-s", "c", "--resume", "cld-c")
 	for _, probe := range s.WaitProbes(3) {
 		shell := shells[strings.TrimPrefix(probe.Argv[1], "cld-")]
 		for _, name := range []string{"CLAUDE_CONFIG_DIR", "VIRTUAL_ENV"} {
@@ -2486,7 +2636,7 @@ func TestServerPerSession(t *testing.T) {
 func TestIgnoresUserTmuxConfig(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "new")
+	startCld(t, s, "tmux", nil, "join")
 	s.WaitProbes(1)
 	if left := s.MustTmux("cld-0", "show", "-gv", "status-left"); left == "POISONED" {
 		t.Error("~/.tmux.conf was loaded")
@@ -2497,7 +2647,7 @@ func TestIgnoresUserTmuxConfig(t *testing.T) {
 	}
 }
 
-// The hooks new and resume give claude keep its status in @cld-status on its session, which the
+// The hooks join gives claude keep its status in @cld-status on its session, which the
 // tab's title reads (see TestContractTitle), telling apart what claude's own title does outside
 // tmux: busy from a prompt on, and after a question answered; waiting while claude asks - a
 // permission, an MCP server's question; idle once the turn is done, or failed, or a tool of it was
@@ -2507,7 +2657,7 @@ func TestIgnoresUserTmuxConfig(t *testing.T) {
 func TestStatusHooks(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "resume", "-s", "x")
+	startCld(t, s, "tmux", nil, "join", "-s", "x", "--resume", "cld-x")
 	probe := s.WaitProbes(1)[0]
 	status := func() string { return s.Format("cld-x", "#{@cld-status}") }
 	if got := status(); got != "" {
@@ -2566,7 +2716,7 @@ func TestWorktreeHooks(t *testing.T) {
 			if err := os.Mkdir(filepath.Join(worktree, "sub"), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			startCldIn(t, s, "tmux", filepath.Join(s.Work, test.start), nil, "new", "-s", "x")
+			startCldIn(t, s, "tmux", filepath.Join(s.Work, test.start), nil, "join", "-s", "x")
 			probe := s.WaitProbes(1)[0]
 			status := func() string { return s.Format("cld-x", "#{@cld-worktree}") }
 			probe.Hook("SessionStart", `{"source":"startup"}`)
@@ -2597,7 +2747,7 @@ func TestWorktreeHooks(t *testing.T) {
 func TestWorktreeHooksWithoutGit(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	result := s.RunCldOnTerminal(map[string]string{"PATH": s.Tools("tmux", "claude"), "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "new", "-s", "x")
+	result := s.RunCldOnTerminal(map[string]string{"PATH": s.Tools("tmux", "claude"), "CLD_FAKE_TMUX_VERSION": "tmux 3.7c"}, "join", "-s", "x")
 	if result.Code != 0 {
 		t.Fatalf("exit %d, stderr %q, want exit 0", result.Code, result.Stderr)
 	}
@@ -2635,7 +2785,7 @@ func TestWorktreeHooksWithoutGit(t *testing.T) {
 func TestHooksOutsideThePane(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "new", "-s", "x")
+	startCld(t, s, "tmux", nil, "join", "-s", "x")
 	probe := s.WaitProbes(1)[0]
 	s.MustTmux("cld-x", "new-session", "-d", "-s", "made")
 	s.MustTmux("default", "new-session", "-d", "-s", "other")
@@ -2668,7 +2818,7 @@ func TestHooksUnderRelativeTmuxTmpdir(t *testing.T) {
 		"PATH":                  filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_VERSION": "tmux 3.7c",
 		"TMUX_TMPDIR":           "..",
-	}, "new", "-s", "x")
+	}, "join", "-s", "x")
 	if result.Code != 0 {
 		t.Fatalf("exit %d, stderr %q, want exit 0", result.Code, result.Stderr)
 	}
@@ -2686,7 +2836,7 @@ func TestHooksUnderRelativeTmuxTmpdir(t *testing.T) {
 func TestServerOptions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "new")
+	startCld(t, s, "tmux", nil, "join")
 	s.WaitProbes(1)
 	for _, option := range []struct{ scope, name, value string }{
 		{"-sv", "@cld", "1"},
@@ -2741,7 +2891,8 @@ func TestServerOptions(t *testing.T) {
 	if hooks := strings.Split(s.MustTmux("cld-0", "show-hooks", "-p", "-t", "=cld-0:", "pane-died"), "\n"); len(hooks) != 1 || !strings.Contains(hooks[0], "window_active_clients") {
 		t.Errorf("pane-died hooks of claude's pane, want one:\n%s", strings.Join(hooks, "\n"))
 	}
-	// Two cld new -s 0 at once can both set the options on one server: the lookup of each finds no
+	// Two cld join -s 0 at once could both set the options on one server - the second one going on
+	// without the record's lock, past its wait (see TestJoinAtOnce): the lookup of each finds no
 	// server, and the tmux command of the second reaches the server the first one started, setting
 	// them again before its new-session fails. The terminal features go to fixed indexes, so each
 	// entry is there once however often it is set. The fake tmux says no server is running, and
@@ -2753,9 +2904,9 @@ func TestServerOptions(t *testing.T) {
 	second := s.RunCldOnTerminal(map[string]string{
 		"PATH":               filepath.Dir(sandbox.FakeTmux) + string(os.PathListSeparator) + s.Env["PATH"],
 		"CLD_FAKE_TMUX_REAL": realTmux,
-	}, "new", "-s", "0")
+	}, "join", "-s", "0", "--new")
 	if want := "duplicate session: cld-0\n"; second.Code != 1 || second.Stderr != want {
-		t.Errorf("a second cld new: exit %d, stderr %q, want exit 1, stderr %q", second.Code, second.Stderr, want)
+		t.Errorf("a second cld join: exit %d, stderr %q, want exit 1, stderr %q", second.Code, second.Stderr, want)
 	}
 	features := strings.Split(s.MustTmux("cld-0", "show", "-sv", "terminal-features"), "\n")
 	for _, entry := range []string{"xterm*:extkeys:hyperlinks", "wezterm:hyperlinks", "alacritty:hyperlinks"} {
@@ -2811,7 +2962,7 @@ func TestClaudeNeverSeesTheTerminal(t *testing.T) {
 		"VSCODE_GIT_EDITOR_EXTRA_ARGS":  "",
 		"GIT_EDITOR":                    `"` + dist + `git-editor.sh"`,
 	}
-	startCld(t, s, "tmux", given, "new", "-s", "ide")
+	startCld(t, s, "tmux", given, "join", "-s", "ide")
 	probe := s.WaitProbes(1)[0]
 	global := strings.Split(s.MustTmux("cld-ide", "show-environment", "-g"), "\n")
 	for _, name := range slices.Sorted(maps.Keys(given)) {
@@ -2826,9 +2977,9 @@ func TestClaudeNeverSeesTheTerminal(t *testing.T) {
 
 // tmux takes a terminal for UTF-8 only where TMUX is set or LC_ALL, LC_CTYPE or LANG names UTF-8,
 // and otherwise draws each character that is not ASCII as "_" - most of claude's UI, over ssh to
-// a host whose sshd takes no LANG. The clients of new, resume, join and the list's Enter take it
-// for UTF-8 whatever the locale, and show what claude draws as it is: here its arguments, where
-// resume puts SESSION.
+// a host whose sshd takes no LANG. The clients of join - where it creates the session, with
+// --resume here, and where it attaches - and of the list's Enter take it for UTF-8 whatever the
+// locale, and show what claude draws as it is: here its arguments, where --resume puts SESSION.
 func TestClientsTakeUTF8(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -2852,11 +3003,11 @@ func TestClientsTakeUTF8(t *testing.T) {
 		waitClients(t, s, 0)
 	}
 
-	term := startCld(t, s, "tmux", notUTF8, "new", "-s", "n")
-	attached("new", term, "n", false)
+	term := startCld(t, s, "tmux", notUTF8, "join", "-s", "n")
+	attached("join creating", term, "n", false)
 	detach(term)
-	term = startCld(t, s, "tmux", notUTF8, "resume", "-s", "r", conversation)
-	attached("resume", term, "r", true)
+	term = startCld(t, s, "tmux", notUTF8, "join", "-s", "r", "--resume", conversation)
+	attached("join --resume", term, "r", true)
 	detach(term)
 	term = startCld(t, s, "tmux", notUTF8, "join", "-s", "r")
 	attached("join", term, "r", true)
@@ -2880,7 +3031,7 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	elsewhere := filepath.Join(s.Root, "elsewhere", "default") + ",1,0"
-	startCld(t, s, "tmux", map[string]string{"TMUX": elsewhere, "LANG": "C"}, "new")
+	startCld(t, s, "tmux", map[string]string{"TMUX": elsewhere, "LANG": "C"}, "join")
 	s.WaitProbes(1)
 	waitClients(t, s, 1)
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-0"}) {
@@ -2895,14 +3046,14 @@ func TestNestsInsideAnotherTmux(t *testing.T) {
 		name := "in" + strconv.Itoa(i)
 		out := filepath.Join(s.Root, name)
 		s.MustTmux(server, append([]string{"-f", "/dev/null", "new-session", "-d", "-s", "outer", "-c", s.Work,
-			"sh", "-c", `"$@" 2>"$0.err"; echo $? >"$0.code"`, out}, s.CldArgv("new", "-s", name)...)...)
+			"sh", "-c", `"$@" 2>"$0.err"; echo $? >"$0.code"`, out}, s.CldArgv("join", "-s", name)...)...)
 		sandbox.WaitFor(t, 10*time.Second, "cld in a pane of server "+server+" to attach or return", func() bool {
 			_, err := os.Stat(out + ".code")
 			return err == nil || slices.Contains(s.Clients(), "cld-"+name)
 		})
 		if !slices.Contains(s.Clients(), "cld-"+name) {
 			stderr, _ := os.ReadFile(out + ".err")
-			t.Errorf("cld new in a pane of server %s did not attach: %q", server, stderr)
+			t.Errorf("cld join in a pane of server %s did not attach: %q", server, stderr)
 		}
 	}
 	s.MustTmux("cld-outer", append([]string{"new-session", "-d", "-s", "list", "-c", s.Work}, s.CldArgv("list")...)...)
@@ -2960,23 +3111,23 @@ func shownMessages(s *sandbox.Sandbox, server string) []string {
 	return messages
 }
 
-// Inside the user's own tmux, which reads the terminal's keys before cld's client in its pane
-// does, new, resume, join and the list's Enter name the keys it keeps from claude on the message
-// line once attached, until a key, which reaches claude: its prefix and prefix2, and Shift+Enter
-// where its extended-keys is off - it then ignores the request for modified keys that cld's client
-// makes, and Shift+Enter reaches claude as Enter. The claude of new draws over the message as it
-// enters the alternate screen, and tmux draws it again a second later. A default tmux keeps C-b,
-// which C-b C-b sends through, and Shift+Enter; with the user guide's lines Shift+Enter and
-// clipboard copies come through, and with no prefix either nothing is said, which tmux's log of
-// messages would show however soon claude drew over it. The baseline terminal runs the user's
-// tmux, server yours, whose pane runs cld once yours has taken the terminal for a tmux, which it
-// recognises by its answers: from tmux 3.7 for one that sends modified keys (see
-// TestKeysYourTmuxKeepsWithoutItsTerminal), and before, not, so that under extended-keys always
-// alone cld names Shift+Enter all the same. Before 3.7 cld's tmux does not take yours for one
-// either, and its client asks yours for no modified keys: with extended-keys on, which passes
-// them only to a program that asks, Shift+Enter arrives as Enter, and the guide's lines have
-// always. tmux 3.5 shows no message but by holding back claude's screen until the key, and there
-// cld names nothing, the keys kept as elsewhere. resume makes its session as new does.
+// Inside the user's own tmux, which reads the terminal's keys before cld's client in its pane does,
+// join and the list's Enter name the keys it keeps from claude on the message line once attached,
+// until a key, which reaches claude: its prefix and prefix2, and Shift+Enter where its
+// extended-keys is off - it then ignores the request for modified keys that cld's client makes, and
+// Shift+Enter reaches claude as Enter. The claude join starts draws over the message as it enters
+// the alternate screen, and tmux draws it again a second later. A default tmux keeps C-b, which C-b
+// C-b sends through, and Shift+Enter; with the user guide's lines Shift+Enter and clipboard copies
+// come through, and with no prefix either nothing is said, which tmux's log of messages would show
+// however soon claude drew over it. The baseline terminal runs the user's tmux, server yours, whose
+// pane runs cld once yours has taken the terminal for a tmux, which it recognises by its answers:
+// from tmux 3.7 for one that sends modified keys (see TestKeysYourTmuxKeepsWithoutItsTerminal), and
+// before, not, so that under extended-keys always alone cld names Shift+Enter all the same. Before
+// 3.7 cld's tmux does not take yours for one either, and its client asks yours for no modified
+// keys: with extended-keys on, which passes them only to a program that asks, Shift+Enter arrives
+// as Enter, and the guide's lines have always. tmux 3.5 shows no message but by holding back
+// claude's screen until the key, and there cld names nothing, the keys kept as elsewhere. join
+// makes a session it resumes as it makes any.
 func TestKeysYourTmuxKeeps(t *testing.T) {
 	t.Parallel()
 	const guide = `: see "Inside your own tmux" in cld's guide`
@@ -3023,7 +3174,7 @@ func TestKeysYourTmuxKeeps(t *testing.T) {
 				features, err := s.Tmux("yours", "display", "-p", "-t", "=yours:", "#{client_termfeatures}")
 				return err == nil && slices.Contains(strings.Split(features, ","), "overline")
 			})
-			s.MustTmux("yours", append([]string{"respawn-pane", "-k", "-t", "=yours:", "-c", s.Work}, s.CldArgv("new", "-s", "nested")...)...)
+			s.MustTmux("yours", append([]string{"respawn-pane", "-k", "-t", "=yours:", "-c", s.Work}, s.CldArgv("join", "-s", "nested")...)...)
 			probe := s.WaitProbes(1)[0]
 			waitClients(t, s, 1)
 			waitScreen(t, term, "probe --name cld-nested")
@@ -3095,7 +3246,7 @@ func TestKeysYourTmuxKeepsWithoutItsTerminal(t *testing.T) {
 			s := sandbox.New(t)
 			conf := filepath.Join(s.Root, "yours.conf")
 			s.WriteFile(conf, "set -s extended-keys on\nset -g prefix2 C-a\n")
-			s.MustTmux(server, append([]string{"-f", conf, "new-session", "-d", "-s", "yours", "-c", s.Work}, s.CldArgv("new", "-s", "nested")...)...)
+			s.MustTmux(server, append([]string{"-f", conf, "new-session", "-d", "-s", "yours", "-c", s.Work}, s.CldArgv("join", "-s", "nested")...)...)
 			s.WaitProbes(1)
 			waitClients(t, s, 1)
 			if messages := shownMessages(s, "cld-nested"); !slices.Equal(messages, want) {
@@ -3108,7 +3259,7 @@ func TestKeysYourTmuxKeepsWithoutItsTerminal(t *testing.T) {
 		s := sandbox.New(t)
 		s.MustTmux("yours", "-f", "/dev/null", "new-session", "-d", "-s", "yours", "sleep", "3600")
 		socket, pane, _ := strings.Cut(s.MustTmux("yours", "list-panes", "-t", "=yours:", "-F", "#{socket_path} #{pane_id}"), " ")
-		startCld(t, s, "tmux", map[string]string{"TMUX": socket + ",1,0", "TMUX_PANE": pane}, "new", "-s", "elsewhere")
+		startCld(t, s, "tmux", map[string]string{"TMUX": socket + ",1,0", "TMUX_PANE": pane}, "join", "-s", "elsewhere")
 		s.WaitProbes(1)
 		waitClients(t, s, 1)
 		if messages := shownMessages(s, "cld-elsewhere"); len(messages) != 0 {
@@ -3118,10 +3269,11 @@ func TestKeysYourTmuxKeepsWithoutItsTerminal(t *testing.T) {
 }
 
 // A dead pane - one cld keeps for a failed claude, say - keeps the name of its closed pty, and the
-// system hands the name to the next terminal opened. tmux takes a client with $TMUX set on a pty
-// of that name for one inside its own pane, when the pane is on the server it attaches to; cld's
-// client, with an empty TMUX, attaches. join, that is: new starts a server of its own, with no
-// dead pane. Not parallel: a terminal another test opens could take the name first.
+// system hands the name to the next terminal opened. tmux takes a client with $TMUX set on a pty of
+// that name for one inside its own pane, when the pane is on the server it attaches to; cld's
+// client, with an empty TMUX, attaches. join to a session that runs, that is: one that makes its
+// session starts a server of its own, with no dead pane. Not parallel: a terminal another test
+// opens could take the name first.
 func TestNestsOnADeadPanesPty(t *testing.T) {
 	s := sandbox.New(t)
 	// Session main, on a server marked as cld marks its own, and a dead pane on its server:
@@ -3159,18 +3311,19 @@ func TestNestsOnADeadPanesPty(t *testing.T) {
 }
 
 // In a live pane of one of cld's servers - claude's external editor, say - a session attached
-// would show inside a session of cld's, itself or another, both taking C-q: new, resume and join
-// refuse, saying how to get out, and the terminals attached before stay. cld finds the server
-// through the socket the pane's TMUX names, also where TMUX_TMPDIR has changed since. new and
-// resume check claude's version before any tmux command but tmux -V, this check's list-panes
-// included: a claude too old is what they report there (TestOnlyNewAndResumeRunClaude has no
-// terminal, so cld makes no such check there).
+// would show inside a session of cld's, itself or another, both taking C-q: join refuses, saying
+// how to get out, whether it would attach, create the session or bring it back, and the terminals
+// attached before stay. cld finds the server through the socket the pane's TMUX names, also where
+// TMUX_TMPDIR has changed since. join makes this check before any tmux command but tmux -V, the
+// lookup included, and before claude --version, which it runs only where it starts claude: a
+// claude too old is not what it reports there (TestOnlyJoinRunsClaude has no terminal, so cld makes
+// no such check there).
 func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "new", "-s", "a")
+	startCld(t, s, "tmux", nil, "join", "-s", "a")
 	s.WaitProbes(1)
-	startCld(t, s, "tmux", nil, "new", "-s", "b")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	s.WaitProbes(2)
 	waitClients(t, s, 2)
 	nested := "cld: this terminal is a pane of the tmux server of session 'a'; detach with C-q d or cld detach first\n"
@@ -3186,14 +3339,13 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 	}{
 		{nil, []string{"join", "-s", "a"}, nested},
 		{nil, []string{"join", "-s", "b"}, nested},
-		{nil, []string{"new", "-s", "c"}, nested},
-		{nil, []string{"resume", "-s", "c"}, nested},
+		{nil, []string{"join", "-s", "c"}, nested},
+		{nil, []string{"join", "-s", "c", "--resume", "x"}, nested},
+		{nil, []string{"join"}, nested},
 		// tmux -L cld-a would look for the socket in the directory TMUX_TMPDIR names now.
 		{[]string{"TMUX_TMPDIR=" + moved}, []string{"join", "-s", "a"}, nested},
-		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.231 (Claude Code)"}, []string{"new", "-s", "d"},
-			"cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n"},
-		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.231 (Claude Code)"}, []string{"resume", "-s", "d"},
-			"cld: claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n"},
+		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.231 (Claude Code)"}, []string{"join", "-s", "d"}, nested},
+		{[]string{"CLD_FAKE_CLAUDE_VERSION=2.1.231 (Claude Code)"}, []string{"join", "-s", "d", "--resume", "x"}, nested},
 	} {
 		// A pane on session a's server runs cld on its own pty, with the TMUX tmux sets for it.
 		out := filepath.Join(s.Root, strconv.Itoa(i))
@@ -3211,9 +3363,9 @@ func TestRefusesToNestInItsOwnPane(t *testing.T) {
 		}
 	}
 	if sessions := s.Sessions(); slices.ContainsFunc(sessions, func(session string) bool {
-		return strings.HasSuffix(session, "cld-c") || strings.HasSuffix(session, "cld-d")
+		return strings.HasSuffix(session, "cld-c") || strings.HasSuffix(session, "cld-d") || strings.HasSuffix(session, "cld-0")
 	}) {
-		t.Errorf("sessions %q, want no cld-c or cld-d", sessions)
+		t.Errorf("sessions %q, want no cld-0, cld-c or cld-d", sessions)
 	}
 	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-a", "cld-b"}) {
 		t.Errorf("clients attached to %q, want the first ones, to cld-a and cld-b", clients)
@@ -3349,7 +3501,7 @@ func TestListJoin(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a")
-		other := startCld(t, s, "tmux", nil, "new", "-s", "b")
+		other := startCld(t, s, "tmux", nil, "join", "-s", "b")
 		s.WaitProbes(2)
 		waitClients(t, s, 1)
 		term := startCld(t, s, "tmux", nil, "list")
@@ -3403,7 +3555,7 @@ func TestListJoin(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a")
-		other := startCld(t, s, "tmux", nil, "new", "-s", "b")
+		other := startCld(t, s, "tmux", nil, "join", "-s", "b")
 		s.WaitProbes(2)
 		waitClients(t, s, 1)
 		for _, probe := range s.Probes() {
@@ -3791,20 +3943,25 @@ func TestListJoin(t *testing.T) {
 		}
 		term.Keys("Enter")
 		waitFrames(t, term, 4)
+		if count := lookup.begun(t); count != 1 {
+			t.Errorf("cld-a looked up %d times during the lookup, want once: the second Enter looked it up again", count)
+		}
 		lookup.release(t)
 		waitScreen(t, term, "probe --name cld-a")
 		waitClients(t, s, 1)
 		if clients := s.Clients(); !slices.Equal(clients, []string{"cld-a"}) {
 			t.Errorf("clients attached to %q, want one, to cld-a", clients)
 		}
-		if count := lookup.begun(t); count != 1 {
-			t.Errorf("cld-a looked up %d times, want once: the second Enter looked it up again", count)
+		// join looks the session up again, under the record's lock, once the list has handed over.
+		if count := lookup.begun(t); count != 2 {
+			t.Errorf("cld-a looked up %d times, want twice: Enter's, then join's", count)
 		}
 	})
 
-	// A session ended when Enter is pressed - killed elsewhere - stays unjoined: the footer says
-	// so, and the list, still in raw mode, reads the sessions again and keeps the row selected, now
-	// as a session that has ended.
+	// A session ended when Enter is pressed - killed elsewhere - is brought back, as cld join
+	// brings it back: the lookup finds its entry in cld's record, and once the list has handed the
+	// terminal over, claude resumes the session's conversation - here by the session's name, as the
+	// entry has no ID.
 	t.Run("ended", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3816,32 +3973,21 @@ func TestListJoin(t *testing.T) {
 			t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 		}
 		term.Keys("Down", "Enter")
-		waitLines(t, term,
-			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
-			"  a     detached  now          "+s.Work,
-			"> b     ended     -            "+s.Work,
-			"  c     detached  now          "+s.Work,
-			"",
-			"session 'b' has ended")
-		if clients := s.Clients(); len(clients) != 0 {
-			t.Errorf("clients attached to %q, want none", clients)
+		waitScreen(t, term, "probe --name cld-b")
+		waitClients(t, s, 1)
+		resumed := []string{"--name", "cld-b", "--settings", sessionSettings(s, "cld-b", s.Work), "--resume", "cld-b"}
+		if !slices.ContainsFunc(s.Probes(), func(p *sandbox.Probe) bool { return slices.Equal(p.Argv, resumed) }) {
+			t.Errorf("no claude started with %q", resumed)
 		}
-		list.checkRaw(t)
-		term.Keys("Up")
-		waitLines(t, term,
-			"  NAME  STATE     LAST ACTIVE  DIRECTORY",
-			"> a     detached  now          "+s.Work,
-			"  b     ended     -            "+s.Work,
-			"  c     detached  now          "+s.Work,
-			"",
-			listHints)
-		if list.exited() {
-			t.Error("the list closed")
+		term.Keys("C-q", "d")
+		if code := list.code(t); code != "0" {
+			t.Errorf("exit %s, want 0", code)
 		}
 	})
 
-	// A session gone when Enter is pressed - killed elsewhere, and forgotten - stays unjoined too,
-	// and the list selects the row that took its place.
+	// A session gone when Enter is pressed - killed elsewhere, and forgotten - stays unjoined: the
+	// footer says so, and the list, still in raw mode, reads the sessions again and selects the row
+	// that took its place.
 	t.Run("gone", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
@@ -3956,6 +4102,7 @@ func TestListJoin(t *testing.T) {
 		if result := s.RunCld(nil, "kill", "-s", "b"); result.Code != 0 {
 			t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 		}
+		forget(t, s, "b")
 		s.WriteFile(broken, "")
 		term.Keys("Down", "Enter")
 		waitLines(t, term,
@@ -3964,7 +4111,7 @@ func TestListJoin(t *testing.T) {
 			"> b     detached  now          "+s.Work,
 			"  c     detached  now          "+s.Work,
 			"",
-			"session 'b' has ended · lost the server")
+			"no session 'b' · lost the server")
 	})
 
 	// With its last row gone, the list shows that there are no sessions, under its header, and
@@ -4031,7 +4178,7 @@ func TestListJoin(t *testing.T) {
 		if err := os.Mkdir(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		startCldIn(t, s, "tmux", dir, nil, "new", "-s", "a")
+		startCldIn(t, s, "tmux", dir, nil, "join", "-s", "a")
 		s.WaitProbes(1)
 		waitClients(t, s, 1)
 		detachedSessions(t, s, "b")
@@ -4193,7 +4340,7 @@ func TestListJoin(t *testing.T) {
 	t.Run("own pane", func(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
-		startCld(t, s, "tmux", nil, "new", "-s", "a")
+		startCld(t, s, "tmux", nil, "join", "-s", "a")
 		s.WaitProbes(1)
 		waitClients(t, s, 1)
 		// A pane on session a's server; sh keeps it, with the TMUX tmux sets for it, for capture-pane.
@@ -4263,7 +4410,7 @@ func TestListKill(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		probes := detachedSessions(t, s, "a", "c")
-		other := startCld(t, s, "tmux", nil, "new", "-s", "b")
+		other := startCld(t, s, "tmux", nil, "join", "-s", "b")
 		waitClients(t, s, 1)
 		for _, probe := range s.WaitProbes(3) {
 			if probe.Argv[1] == "cld-b" {
@@ -4618,7 +4765,7 @@ func TestListKill(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a")
-		failed := startCld(t, s, "tmux", nil, "new", "-s", "b")
+		failed := startCld(t, s, "tmux", nil, "join", "-s", "b")
 		waitClients(t, s, 1)
 		for _, probe := range s.WaitProbes(2) {
 			if probe.Argv[1] == "cld-b" {
@@ -4961,7 +5108,7 @@ func TestListKill(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		detachedSessions(t, s, "a")
-		startCld(t, s, "tmux", nil, "new", "-s", "b")
+		startCld(t, s, "tmux", nil, "join", "-s", "b")
 		waitClients(t, s, 1)
 		s.WaitProbes(2)
 		term := terminal.New(t, "tmux", s)
@@ -4987,15 +5134,15 @@ func TestListKill(t *testing.T) {
 	})
 }
 
-// A session cld resume made is a session like any other in the interactive list: Enter joins it,
-// and Ctrl+X twice kills it with its server, which leaves it as one that has ended. After such a
-// kill - by mistake, say - cld resume -n NAME -s SUFFIX brings its conversation back in a new
+// A session cld join --resume made is a session like any other in the interactive list: Enter
+// joins it, and Ctrl+X twice kills it with its server, which leaves it as one that has ended. After
+// such a kill - by mistake, say - cld join -n NAME -s SUFFIX brings its conversation back in a new
 // session.
 func TestListResumedSession(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	detachedSessions(t, s, "a")
-	resumed := startCld(t, s, "tmux", nil, "resume", "-s", "b")
+	resumed := startCld(t, s, "tmux", nil, "join", "-s", "b", "--resume", "cld-b")
 	sandbox.WaitFor(t, 10*time.Second, "a terminal attached to cld-b", func() bool {
 		return slices.Contains(s.Clients(), "cld-b")
 	})
@@ -5056,7 +5203,7 @@ func TestListResumedSession(t *testing.T) {
 		t.Errorf("kill: exit %s, want 0", code)
 	}
 
-	startCld(t, s, "tmux", nil, "resume", "-s", "b")
+	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	sandbox.WaitFor(t, 10*time.Second, "claude b to resume again", func() bool { return claude(b) != nil })
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
 		t.Errorf("sessions %q, want [cld-a cld-b]", sessions)
@@ -5273,7 +5420,7 @@ func footerIn(hints string, columns int) string {
 func detachedSessions(t *testing.T, s *sandbox.Sandbox, names ...string) map[string]*sandbox.Probe {
 	t.Helper()
 	for _, name := range names {
-		term := startCld(t, s, "tmux", nil, "new", "-s", name)
+		term := startCld(t, s, "tmux", nil, "join", "-s", name)
 		sandbox.WaitFor(t, 10*time.Second, "a terminal attached to cld-"+name, func() bool {
 			return slices.Contains(s.Clients(), "cld-"+name)
 		})
@@ -5341,19 +5488,45 @@ type heldTmux struct {
 	env        map[string]string
 }
 
-// holdLookup holds the lookup of session cld-NAME that Enter, the kill and new make, from the
+// holdLookup holds the lookup of session cld-NAME that Enter, the kill and join make, from the
 // start. It tells the lookup from the read of the sessions, which asks server cld-NAME with the
 // same filter, by the one format that follows.
 func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldTmux {
 	t.Helper()
-	lookup := holdTmux(t, s, "the lookup of cld-"+name, "*'#{==:#{session_name},cld-"+name+"},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}\t#{@cld-home}'")
+	lookup := holdTmux(t, s, "the lookup of cld-"+name, lookupPattern(name))
 	lookup.start(t)
 	return lookup
+}
+
+// lookupPattern is the pattern of sh's case that the arguments of the lookup of session cld-NAME
+// match (see holdLookup).
+func lookupPattern(name string) string {
+	return "*'#{==:#{session_name},cld-" + name + "},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}\t#{@cld-home}'"
 }
 
 // holdTmux is ready to hold the tmux commands, described by what, whose arguments match pattern,
 // a pattern of sh's case, once the test calls start.
 func holdTmux(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
+	t.Helper()
+	return holding(t, s, what, pattern, "", "")
+}
+
+// holdTmuxOutput is holdTmux, but for commands that run first: what they write, on stdout and
+// without its last newlines, and their exit status are held back until the test releases them, as
+// if tmux took that long to answer.
+func holdTmuxOutput(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
+	t.Helper()
+	tmux, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return holding(t, s, what, pattern, "\tout=$('"+tmux+"' \"$@\" 2>&1); status=$?\n",
+		"\t[ -z \"$out\" ] || printf '%s\\n' \"$out\"\n\texit $status\n")
+}
+
+// holding is holdTmux, and holdTmuxOutput, with the lines of sh's run before the commands are held
+// and then after.
+func holding(t *testing.T, s *sandbox.Sandbox, what, pattern, run, then string) heldTmux {
 	t.Helper()
 	dir, err := os.MkdirTemp(s.Root, "hold.")
 	if err != nil {
@@ -5361,10 +5534,11 @@ func holdTmux(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
 	}
 	hold := filepath.Join(dir, "hold")
 	t.Cleanup(func() { _ = os.Remove(hold) })
-	return heldTmux{hold: hold, what: what, env: wrapTmux(t, s, "case \"$*\" in "+pattern+")\n"+
+	return heldTmux{hold: hold, what: what, env: wrapTmux(t, s, "case \"$*\" in "+pattern+")\n"+run+
 		"\techo $$ >>'"+hold+".begun'\n"+
 		"\tif [ -e '"+hold+"' ]; then echo $$ >'"+hold+".held'; fi\n"+
-		"\twhile [ -e '"+hold+"' ]; do sleep 0.05; done ;;\n"+
+		"\twhile [ -e '"+hold+"' ]; do sleep 0.05; done\n"+then+
+		"\t;;\n"+
 		"esac\n")}
 }
 

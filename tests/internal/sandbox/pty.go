@@ -12,9 +12,9 @@ import (
 )
 
 // Pty is a pseudo-terminal of the test's, for cld to run on where a test needs a terminal but no
-// terminal emulator: new, resume and join refuse to hand tmux anything else. What is written to
-// the terminal is read at its other end, the controller, from the start, as a terminal emulator
-// reads it, so that a program writing there is not held up; Output returns it.
+// terminal emulator: join refuses to hand tmux anything else. What is written to the terminal is
+// read at its other end, the controller, from the start, as a terminal emulator reads it, so that a
+// program writing there is not held up; Output returns it.
 type Pty struct {
 	t testing.TB
 	// Path names the terminal: /dev/pts/N on Linux, /dev/ttysN on macOS.

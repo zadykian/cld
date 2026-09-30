@@ -424,7 +424,7 @@ fi
 // bash with ble.sh (https://github.com/akinomyoga/ble.sh), which edits the command line in
 // readline's place and completes through the script setup completion bash wrote, completes cld as
 // bash does: a command, an option, the NAME of a session list shows and its SUFFIX. Where cld
-// offers nothing - new's and kill's arguments, setup telemetry's FILE, what follows a command
+// offers nothing - join's and kill's arguments, setup telemetry's FILE, what follows a command
 // cld does not have - it offers nothing either, where ble.sh would offer the file in the
 // directory (see bashScript in cmd/cld). Each line is typed into a new bash in a tmux pane, one
 // TAB after it; with more than one command, the first TAB lists them with their descriptions.
@@ -495,12 +495,12 @@ func TestSetupCompletionBashBleSh(t *testing.T) {
 	}
 	for i, test := range []struct{ typed, want string }{
 		{"cld jo", "cld join "},
-		{"cld new --wo", "cld new --worktree "},
+		{"cld join --wo", "cld join --worktree "},
 		{"cld join -n al", "cld join -n alpha "},
 		{"cld join -n alpha -s ", "cld join -n alpha -s 1 "},
 		{"cld det", "cld detach "},
 		{"cld detach -n al", "cld detach -n alpha "},
-		{"cld new f", "cld new f"},
+		{"cld join f", "cld join f"},
 		{"cld kill -s f", "cld kill -s f"},
 		{"cld setup telemetry --collector-config f", "cld setup telemetry --collector-config f"},
 		{"cld joni f", "cld joni f"},

@@ -15,12 +15,10 @@ Usage:
   cld [command]
 
 Available Commands:
-  new         create session NAME-SUFFIX in this directory and attach to it
-  resume      create session NAME-SUFFIX with claude resuming its conversation
-  join        attach to session NAME-SUFFIX
+  join        attach to session NAME-SUFFIX, creating or resuming it first
   detach      detach the terminals attached to session NAME-SUFFIX
   kill        end session NAME-SUFFIX and its tmux server
-  list        list cld's sessions; on a terminal, join, kill or resume one
+  list        list cld's sessions; on a terminal, join or kill one
   restore     bring back the sessions that ran when the machine stopped
   setup       set up claude in a project, telemetry, shell completion or restore
   update      update cld to the latest release

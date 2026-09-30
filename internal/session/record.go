@@ -4,44 +4,46 @@ package session
 // server: after a kill, a crash or a reboot. It is a directory, cld in $XDG_STATE_HOME or else in
 // ~/.local/state (see stateDir), holding
 //
-//   - sessions/NAME.json for each session cld-NAME new, resume or restore made, its entry (see
-//     entry): the name, the directory claude started in and the ID of claude's conversation, as
-//     one line of JSON; the file's time is the entry's. new and resume write it, with no ID but
-//     the one resume resumes, as they make the session (see Tmux.create); then claude's
-//     SessionStart hook writes it again with the ID claude gives the conversation - as it starts,
-//     and anew after /clear or /resume - and its Stop and SessionEnd hooks touch it as claude
-//     answers and as the conversation ends (see recordHooks);
+//   - sessions/NAME.json for each session cld-NAME join or restore made, its entry (see entry):
+//     the name, the directory claude started in and the ID of claude's conversation, as one line
+//     of JSON; the file's time is the entry's. join writes it, with no ID but the one it resumes,
+//     as it makes the session (see Tmux.create); then claude's SessionStart hook writes it again
+//     with the ID claude gives the conversation - as it starts, and anew after /clear or /resume -
+//     and its Stop and SessionEnd hooks touch it as claude answers and as the conversation ends
+//     (see recordHooks);
 //   - beside the entry, and gone with it (see write and Tmux.Forget): NAME.env, the claude the
 //     session started and the environment its server started with, which restore starts it with
 //     again (see started); NAME.run, the run mark, there while the session runs or ran when the
-//     machine stopped - the tmux of new and resume makes it once it has made the session (see
-//     setMarks), claude's UserPromptSubmit hook touches it, so that its time is when the session
-//     was last started or given a prompt, which restore goes by (see Tmux.Restore), and kill, the
+//     machine stopped - the tmux of join makes it once it has made the session (see setMarks),
+//     claude's UserPromptSubmit hook touches it, so that its time is when the session was last
+//     started or given a prompt, which restore goes by (see Tmux.Restore), and kill, the
 //     interactive list's Ctrl+X, the sweep of the idle sessions and claude's own exit with status
-//     0 remove it (see unmark and died); and NAME.busy, the busy mark, there while claude is in a
+//     0 remove it (see unmark and died); NAME.busy, the busy mark, there while claude is in a
 //     turn - its UserPromptSubmit hook makes it, Stop, StopFailure and an interrupt remove it (see
-//     recordHooks), and so does the tmux of new, resume and restore once it has made the session;
+//     recordHooks), and so does the tmux of join and restore once it has made the session; and
+//     NAME.start, the start mark, there while a join hands tmux the session to make: the ID of the
+//     process that becomes tmux, which another join waits for, and restore leaves the session to
+//     (see leaveStartMark and starting), and the tmux removes once it has made the session (see
+//     setMarks);
 //   - indexes.json, the highest index given each NAME of NAME-INDEX, and when (see given), so that
 //     an index is not given again once its entry is forgotten while claude keeps the conversation
 //     of that name (see Tmux.Next);
-//   - lock, which new and resume hold from naming a session until they make it, and restore while
-//     it brings a session back (see Lock).
+//   - lock, which join holds from its lookup of a session, or from naming it, until it makes it,
+//     and restore while it brings a session back (see Lock).
 //
-// An entry of a session whose server does not run is one that has ended: list shows it, and
-// resume brings its conversation back in the directory it ran in, by its ID (see Tmux.Resume);
-// restore does so for each one with a run mark, detached, as the user's systemd starts after a
-// reboot (see Tmux.Restore). cld forgets an entry once it is older than expiry - but not while its
-// session's server runs, whose hooks would make no entry again (see write) - and when the
-// interactive list's Ctrl+X twice forgets its session (see Tmux.Forget); kill leaves it. cld
-// reads none of claude's transcripts, whose format claude keeps to itself: the ID comes from the
-// hook.
+// An entry of a session whose server does not run is one that has ended: list shows it, and join
+// brings its conversation back in the directory it ran in, by its ID (see Tmux.Join); restore does
+// so for each one with a run mark, detached, as the user's systemd starts after a reboot (see
+// Tmux.Restore). cld forgets an entry once it is older than expiry - but not while its session's
+// server runs, whose hooks would make no entry again (see write) - and when the interactive list's
+// Ctrl+X twice forgets its session (see Tmux.Forget); kill leaves it. cld reads none of claude's
+// transcripts, whose format claude keeps to itself: the ID comes from the hook.
 //
-// The record serves the sessions, never the other way: where cld cannot write it, new and resume
-// warn and make their session all the same, and an entry or an index cld cannot read is none.
+// The record serves the sessions, never the other way: where cld cannot write it, join warns and
+// makes its session all the same, and an entry or an index cld cannot read is none.
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -65,7 +67,8 @@ import (
 // writes as the hooks touch it, as claude answers (see recordHooks).
 const expiry = 30 * 24 * time.Hour
 
-// lockWait is how long new and resume wait for the lock that another cld holds (see Lock).
+// lockWait is how long join waits for the lock that another cld holds (see Lock), and for a
+// session that another cld is starting (see starting).
 const lockWait = 10 * time.Second
 
 // Ended is the state of a session that has ended: one of cld's record whose server does not run
@@ -78,8 +81,8 @@ const Ended = "ended"
 type entry struct {
 	// Name is the session's NAME, without "cld-".
 	Name string `json:"name"`
-	// Directory is the directory claude started in: where new or resume ran, or for a resume of
-	// an entry, the entry's.
+	// Directory is the directory claude started in: where join ran, or where join resumed the
+	// session's conversation, the entry's.
 	Directory string `json:"directory"`
 	// Conversation is the ID of the conversation claude had last in the session, as its
 	// SessionStart hook wrote it, or "" before then.
@@ -87,7 +90,7 @@ type entry struct {
 }
 
 // conversationID matches the ID of a conversation as the SessionStart hook writes it, a UUID
-// (see recordHooks): an entry with another in its place has none, since resume hands the ID to
+// (see recordHooks): an entry with another in its place has none, since join hands the ID to
 // claude as an argument.
 var conversationID = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z-]*$`)
 
@@ -119,11 +122,12 @@ func entryFile(dir, suffix string) string {
 }
 
 // The files beside a session's entry, named as the entry is but for their extensions: its
-// environment, its run mark and its busy mark (see the top of this file).
+// environment, its run mark, its busy mark and its start mark (see the top of this file).
 const (
 	environment = ".env"
 	runMark     = ".run"
 	busyMark    = ".busy"
+	startMark   = ".start"
 )
 
 // companion is the file of session cld-SUFFIX beside its entry, with the extension ext, in the
@@ -136,7 +140,7 @@ func companion(dir, suffix, ext string) string {
 // session it belongs to and its extension: the entry's, .json, or a companion's; false for any
 // other, as a temporary file that a write cut short leaves.
 func sessionFile(name string) (suffix, ext string, ok bool) {
-	for _, ext := range []string{".json", environment, runMark, busyMark} {
+	for _, ext := range []string{".json", environment, runMark, busyMark, startMark} {
 		if suffix, found := strings.CutSuffix(name, ext); found && ValidName(suffix) {
 			return suffix, ext, true
 		}
@@ -144,26 +148,26 @@ func sessionFile(name string) (suffix, ext string, ok bool) {
 	return "", "", false
 }
 
-// started is what the server of a session started with, as NAME.env holds it: the claude that new
-// or resume checked, by its path, and the environment tmux started the server with, without the
-// variables that name the terminal (see withoutTerminal), so that restore starts the session again
-// as it was started (see Tmux.Restore). It is JSON, as a variable can hold any byte but NUL, and
-// readable by the user alone, as the environment can hold secrets; the words given to claude
-// after "--" are not kept.
+// started is what the server of a session started with, as NAME.env holds it: the claude that join
+// checked, by its path, and the environment tmux started the server with, without the variables
+// that name the terminal (see withoutTerminal), so that restore starts the session again as it was
+// started (see Tmux.Restore). It is JSON, as a variable can hold any byte but NUL, and readable by
+// the user alone, as the environment can hold secrets; the words given to claude after "--" are not
+// kept.
 type started struct {
 	Claude      string   `json:"claude"`
 	Environment []string `json:"environment"`
 }
 
-// Lock takes the record's lock, which new and resume hold from naming their session until tmux
-// has taken over, restore while it brings a session back (see Tmux.Restore), and the interactive
-// list's forget (see Tmux.Forget), and returns what lets it go: the lock goes with cld as it
-// becomes tmux, too.
-// Next reads the record under it and create writes the entry under it, so two new at once give
-// two indexes, where both would take the same and the second fail as tmux made its session. A
-// lock that another cld holds is waited for, up to lockWait; one cld cannot take - past that
-// wait, or where it cannot make the record's directory - is gone without, silently: the entry's
-// write says what is wrong.
+// Lock takes the record's lock, which join holds from its lookup of a session, or from naming it,
+// until tmux has taken over, restore while it brings a session back (see Tmux.Restore), and the
+// interactive list's forget (see Tmux.Forget), and returns what lets it go: the lock goes with cld
+// as it becomes tmux, too, before tmux has made the session, which the start mark covers (see
+// leaveStartMark). Next reads the record under it and create writes the entry under it, so two
+// joins at once give two indexes, where both would take the same and the second fail as tmux made
+// its session. A lock that another cld holds is waited for, up to lockWait; one cld cannot take -
+// past that wait, or where it cannot make the record's directory - is gone without, silently: the
+// entry's write says what is wrong.
 func Lock() (unlock func()) {
 	dir, err := stateDir()
 	if err != nil {
@@ -463,20 +467,60 @@ func marked(dir, suffix string) bool {
 	return err == nil
 }
 
+// leaveStartMark writes the start mark beside the entry in file of the session that cld, attached,
+// is about to have tmux make: cld's process ID, which the tmux client it becomes keeps. The lock of
+// the record goes with cld as it becomes tmux, before tmux has made the session, so another join
+// of the session, or restore, would find none there and make it too; the mark tells another join
+// to wait for it, and restore to leave the session to it (see starting). tmux removes it once it
+// has made the session (see setMarks). One cld cannot write is none: the record serves the
+// sessions.
+func leaveStartMark(file string) {
+	_ = replace(strings.TrimSuffix(file, ".json")+startMark, []byte(strconv.Itoa(os.Getpid())+"\n"))
+}
+
+// starting reports whether another cld is starting session cld-SUFFIX: its start mark is there
+// (see leaveStartMark), younger than lockWait, and names a process that runs - the tmux client
+// that cld became, until tmux has made the session, or has failed to. A mark whose process has
+// ended, or that is older - one tmux did not remove, as new-session failed and cut its command
+// short - is none: its process ID may name another process by now.
+func starting(suffix string) bool {
+	dir, err := stateDir()
+	if err != nil {
+		return false
+	}
+	file := companion(dir, suffix, startMark)
+	info, err := os.Stat(file)
+	if err != nil || time.Since(info.ModTime()) > lockWait {
+		return false
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return false
+	}
+	err = unix.Kill(pid, 0)
+	return err == nil || errors.Is(err, unix.EPERM)
+}
+
 // setMarks is the command, as tmux's words, that sets the marks beside the entry in file of a
 // session that tmux has just made, where it follows new-session in the same tmux command: it
-// removes the busy mark, as the claude it starts is in no turn yet, and makes the run mark, run,
-// anew, where run is not "" - restore passes none, keeping the mark's time (see Tmux.Restore).
-// tmux cuts its command short where new-session fails - a name taken, a terminal it cannot open
-// (see Findings in docs/design.md) - so a session that was never made gets no mark, and one that
-// restore could not bring back keeps both of its own. It is a run-shell, which tmux waits for,
-// some milliseconds, before what follows it, and before the command's client returns; claude,
-// which takes a good part of a second to start, has not exited by then, so the pane-died hook
-// removes the mark after it (see died). It prints nothing and exits 0 however rm and touch fare:
-// tmux would show what it printed, and "returned" with a status other than 0, on claude's pane,
-// or on the output of restore's tmux, which would then fail.
+// removes the busy mark, as the claude it starts is in no turn yet, and the start mark, as the
+// session is made (see starting), and makes the run mark, run, anew, where run is not "" - restore
+// passes none, keeping the mark's time (see Tmux.Restore). tmux cuts its command short where
+// new-session fails - a name taken, a terminal it cannot open (see Findings in docs/design.md) - so
+// a session that was never made gets no mark, and one that restore could not bring back keeps both
+// of its own; the start mark stays, naming the tmux client that has exited, which counts as none
+// (see starting). It is a run-shell, which tmux waits for, some milliseconds, before what follows
+// it, and before the command's client returns; claude, which takes a good part of a second to
+// start, has not exited by then, so the pane-died hook removes the mark after it (see died). It
+// prints nothing and exits 0 however rm and touch fare: tmux would show what it printed, and
+// "returned" with a status other than 0, on claude's pane, or on the output of restore's tmux,
+// which would then fail.
 func setMarks(file, run string) []string {
-	sh := `rm -f ` + shellWord(strings.TrimSuffix(file, ".json")+busyMark)
+	sh := `rm -f ` + shellWord(strings.TrimSuffix(file, ".json")+busyMark) + ` ` + shellWord(strings.TrimSuffix(file, ".json")+startMark)
 	if run != "" {
 		sh += `; touch ` + shellWord(run)
 	}
@@ -515,33 +559,26 @@ func readStarted(dir, suffix string) (started, error) {
 	return s, nil
 }
 
-// EnterRecorded makes the directory session cld-SUFFIX ran in, as its entry has it, the current
-// one, where resume without SESSION starts claude, as tmux will: PWD names it too, as a shell's
-// cd would. Without an entry it changes nothing, and resume goes by the session's name where it
-// runs. A directory that no longer exists, or cannot be entered, is refused, with the advice to
-// resume the conversation from the current directory by its ID, or else by its name - but a
-// session that runs, or whose server does, is refused as create refuses it (see occupied): the
-// advice would fail as taken.
-func (t *Tmux) EnterRecorded(suffix string) error {
-	r, ok := recorded(suffix)
-	if !ok {
-		return nil
+// enter makes the directory the session of entry r ran in the current one, where join starts
+// claude to resume the session's conversation, as tmux will: PWD names it too, as a shell's cd
+// would. A directory that no longer exists, or cannot be entered, is refused, with the advice to
+// resume the conversation from the current directory by its ID, or else by its name (see
+// enterError).
+func enter(r entry) error {
+	if err := enterable(r); err != nil {
+		return err
 	}
-	err := enterable(r)
-	if err == nil {
-		if err = os.Chdir(r.Directory); err == nil {
-			return os.Setenv("PWD", r.Directory)
-		}
-		err = enterError(r, err)
+	if err := os.Chdir(r.Directory); err != nil {
+		return enterError(r, err)
 	}
-	if refused := t.occupied(context.Background(), suffix); refused != nil {
-		return refused
+	if err := os.Setenv("PWD", r.Directory); err != nil {
+		return fail.Runtime(err.Error())
 	}
-	return err
+	return nil
 }
 
-// enterable is nil where the directory of entry r can be entered, and otherwise why resume refuses
-// it.
+// enterable is nil where the directory of entry r can be entered, and otherwise why join refuses
+// to resume the session's conversation there.
 func enterable(r entry) error {
 	if _, err := os.Stat(r.Directory); err != nil {
 		return enterError(r, err)
@@ -552,13 +589,15 @@ func enterable(r entry) error {
 	return nil
 }
 
-// enterError refuses the directory of entry r, which err says cannot be entered.
+// enterError refuses the directory of entry r, which err says cannot be entered, with the join
+// that resumes the conversation in the current directory instead: by the entry's ID, or else by
+// the session's name.
 func enterError(r entry, err error) error {
 	conversation := r.Conversation
 	if conversation == "" {
 		conversation = "cld-" + r.Name
 	}
-	advice := "; resume it from here with cld resume " + Options(r.Name) + " " + conversation
+	advice := "; resume it from here with cld join " + Options(r.Name) + " --resume " + conversation
 	if errors.Is(err, fs.ErrNotExist) {
 		return &fail.Error{Status: 1, Message: "session '" + r.Name + "' ran in " + r.Directory + ", which no longer exists", Advice: advice}
 	}

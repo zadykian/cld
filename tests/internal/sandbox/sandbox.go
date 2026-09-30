@@ -132,8 +132,8 @@ type Result struct {
 }
 
 // RunCld runs cld without a terminal, which is enough for everything cld does before tmux but
-// the handover itself: new, resume and join refuse without a terminal, once their other checks
-// pass (see RunCldOnTerminal). extra variables are added to the sandbox environment.
+// the handover itself: join refuses without a terminal, once its other checks pass (see
+// RunCldOnTerminal). extra variables are added to the sandbox environment.
 func (s *Sandbox) RunCld(extra map[string]string, args ...string) Result {
 	s.t.Helper()
 	return s.RunCldIn(s.Work, extra, args...)

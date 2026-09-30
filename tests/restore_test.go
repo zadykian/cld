@@ -22,9 +22,9 @@ import (
 // cld restore and cld setup restore: the run mark, the busy mark and the environment beside a
 // session's entry in cld's record; the sessions restore brings back, as a reboot leaves them -
 // their servers gone, killed here with kill-server, which runs no hook - and those it leaves
-// ended; what refuses a session, and the servers it leaves alone; two restores, a restore and a
-// resume, and a restore and the interactive list's forget, at once; and setup restore against the
-// fake systemctl and loginctl (see probe).
+// ended; what refuses a session, and the servers it leaves alone; two restores, and a restore and
+// a join, at once, and the interactive list's forget beside a restore or a join of the session; and
+// setup restore against the fake systemctl and loginctl (see probe).
 
 // continuePrompt is what restore gives the claude of a session that was in a turn.
 const continuePrompt = "The machine restarted while you were working; continue where you left off."
@@ -67,7 +67,7 @@ type recorded struct {
 }
 
 // writeRestorable writes session name's entry in s - claude started in dir, in the conversation
-// of that ID - with its run mark and the environment file naming claude and env, as new would
+// of that ID - with its run mark and the environment file naming claude and env, as join would
 // have left them for a session a reboot ended.
 func writeRestorable(t *testing.T, s *sandbox.Sandbox, name, dir, conversation, claude string, env []string) {
 	t.Helper()
@@ -146,20 +146,20 @@ func waitForLock(t *testing.T, s *sandbox.Sandbox, what string) {
 	})
 }
 
-// new and resume write the environment a session's server starts with beside its entry - the
-// claude they checked and their own environment without the variables that name the terminal,
-// readable by the user alone - and their tmux makes its run mark there, once it has made the
-// session. kill removes the run mark and keeps the entry, and so does claude's exit with status 0,
-// which the pane-died hook sees on a pane that tmux keeps, and closes; a claude that fails keeps
-// it, with its session. resume makes it again.
+// join writes the environment a session's server starts with beside its entry - the claude it
+// checked and its own environment without the variables that name the terminal, readable by the
+// user alone - and its tmux makes the run mark there, once it has made the session. kill removes
+// the run mark and keeps the entry, and so does claude's exit with status 0, which the pane-died
+// hook sees on a pane that tmux keeps, and closes; a claude that fails keeps it, with its session.
+// join makes it again as it brings the session back.
 func TestRunMark(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	extra := map[string]string{"CLD_TEST_ORIGIN": "new", "TERMINAL_EMULATOR": "JetBrains-JediTerm"}
-	term := startCld(t, s, "tmux", extra, "new", "-s", "a", "--", "--model", "opus")
+	extra := map[string]string{"CLD_TEST_ORIGIN": "join", "TERMINAL_EMULATOR": "JetBrains-JediTerm"}
+	term := startCld(t, s, "tmux", extra, "join", "-s", "a", "--", "--model", "opus")
 	a := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
-	checkMarks(t, s, "after new", map[string]bool{"a": true})
+	checkMarks(t, s, "after join", map[string]bool{"a": true})
 	info, err := os.Stat(companionFile(s, "a", ".env"))
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +175,7 @@ func TestRunMark(t *testing.T) {
 	if want := filepath.Join(sandbox.ProbeBin, "claude"); env.Claude != want {
 		t.Errorf("environment file names claude %q, want %q", env.Claude, want)
 	}
-	for _, variable := range []string{"CLD_TEST_ORIGIN=new", "CLD_PROBE_DIR=" + s.ProbeDir, "HOME=" + s.Home} {
+	for _, variable := range []string{"CLD_TEST_ORIGIN=join", "CLD_PROBE_DIR=" + s.ProbeDir, "HOME=" + s.Home} {
 		if !slices.Contains(env.Environment, variable) {
 			t.Errorf("environment file lacks %s:\n%q", variable, env.Environment)
 		}
@@ -183,8 +183,8 @@ func TestRunMark(t *testing.T) {
 	if slices.ContainsFunc(env.Environment, func(v string) bool { return strings.HasPrefix(v, "TERMINAL_EMULATOR=") }) {
 		t.Errorf("environment file keeps TERMINAL_EMULATOR:\n%q", env.Environment)
 	}
-	if origin := a.Env["CLD_TEST_ORIGIN"]; origin != "new" {
-		t.Errorf("claude got CLD_TEST_ORIGIN=%q, want new, as the environment file has it", origin)
+	if origin := a.Env["CLD_TEST_ORIGIN"]; origin != "join" {
+		t.Errorf("claude got CLD_TEST_ORIGIN=%q, want join, as the environment file has it", origin)
 	}
 
 	if result := s.RunCld(nil, "kill", "-s", "a"); result.Code != 0 {
@@ -196,10 +196,10 @@ func TestRunMark(t *testing.T) {
 		t.Error("kill removed the entry or the environment")
 	}
 
-	term = startCld(t, s, "tmux", nil, "resume", "-s", "a")
+	term = startCld(t, s, "tmux", nil, "join", "-s", "a")
 	resumed := s.WaitProbes(2)[1]
 	waitClients(t, s, 1)
-	checkMarks(t, s, "after resume", map[string]bool{"a": true})
+	checkMarks(t, s, "after join resumed a", map[string]bool{"a": true})
 	resumed.Send("exit 1")
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !resumed.Alive() })
 	waitScreen(t, term, "claude exited with status 1")
@@ -209,10 +209,10 @@ func TestRunMark(t *testing.T) {
 	}
 	sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
 
-	term = startCld(t, s, "tmux", nil, "resume", "-s", "a")
+	term = startCld(t, s, "tmux", nil, "join", "-s", "a")
 	again := s.WaitProbes(3)[2]
 	waitClients(t, s, 1)
-	checkMarks(t, s, "after resume", map[string]bool{"a": true})
+	checkMarks(t, s, "after join resumed a again", map[string]bool{"a": true})
 	again.Send("exit")
 	sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
 	checkMarks(t, s, "after claude exited with status 0", map[string]bool{"a": false})
@@ -228,7 +228,7 @@ func TestRunMark(t *testing.T) {
 func TestBusyMark(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	startCld(t, s, "tmux", nil, "new", "-s", "a")
+	startCld(t, s, "tmux", nil, "join", "-s", "a")
 	probe := s.WaitProbes(1)[0]
 	busy := companionFile(s, "a", ".busy")
 	for _, step := range []struct {
@@ -259,7 +259,7 @@ func TestBusyMark(t *testing.T) {
 }
 
 // After a reboot - here, each server killed with kill-server, which ends claude and runs no hook -
-// restore brings back the sessions with a run mark, detached, each as resume -n NAME -s SUFFIX
+// restore brings back the sessions with a run mark, detached, each as join -n NAME -s SUFFIX
 // would: claude resumes the recorded conversation in the directory the session ran in, from
 // wherever restore runs, with the environment the session started with rather than restore's, and
 // without the words given after --; a session whose claude was in a turn gets the prompt that
@@ -276,10 +276,10 @@ func TestRestore(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	extra := map[string]string{"CLD_TEST_ORIGIN": "new"}
+	extra := map[string]string{"CLD_TEST_ORIGIN": "join"}
 	claudes := map[string]*sandbox.Probe{}
 	for i, name := range []string{"a", "b", "c", "d"} {
-		term := startCldIn(t, s, "tmux", dir, extra, "new", "-s", name, "--", "--model", "opus")
+		term := startCldIn(t, s, "tmux", dir, extra, "join", "-s", name, "--", "--model", "opus")
 		claudes[name] = s.WaitProbes(i + 1)[i]
 		waitClients(t, s, 1)
 		term.Keys("C-q", "d")
@@ -331,8 +331,8 @@ func TestRestore(t *testing.T) {
 		if probe.Cwd != dir || probe.Env["PWD"] != dir {
 			t.Errorf("claude of %s runs in %s, PWD %q, want %s", name, probe.Cwd, probe.Env["PWD"], dir)
 		}
-		if origin := probe.Env["CLD_TEST_ORIGIN"]; origin != "new" {
-			t.Errorf("claude of %s got CLD_TEST_ORIGIN=%q, want the session's own, new", name, origin)
+		if origin := probe.Env["CLD_TEST_ORIGIN"]; origin != "join" {
+			t.Errorf("claude of %s got CLD_TEST_ORIGIN=%q, want the session's own, join", name, origin)
 		}
 	}
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
@@ -392,7 +392,7 @@ func TestUnmarkBeforeTheKill(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		rm := holdRm(t, s, "the kill's rm of x's run mark", companionFile(s, "x", ".run"))
-		term := startCld(t, s, "tmux", rm.env, "new", "-s", "x")
+		term := startCld(t, s, "tmux", rm.env, "join", "-s", "x")
 		s.WaitProbes(1)
 		waitClients(t, s, 1)
 		rm.start(t)
@@ -415,7 +415,7 @@ func TestUnmarkBeforeTheKill(t *testing.T) {
 		t.Parallel()
 		s := sandbox.New(t)
 		rm := holdRm(t, s, "the sweep's rm of x's run mark", companionFile(s, "x", ".run"))
-		term := startCld(t, s, "tmux", rm.env, "new", "-s", "x")
+		term := startCld(t, s, "tmux", rm.env, "join", "-s", "x")
 		s.WaitProbes(1)
 		waitClients(t, s, 1)
 		term.Keys("C-q", "d")
@@ -441,39 +441,39 @@ func TestUnmarkBeforeTheKill(t *testing.T) {
 	})
 }
 
-// A new or a resume that makes no session leaves no run mark, which the tmux that makes the
-// session makes: a new refused for want of a terminal writes nothing in cld's record, and one
-// whose tmux cannot open the terminal - a TERM that tmux does not know - leaves its entry, ended,
-// but no mark; so does a resume there of a session that kill ended, whose mark kill removed.
+// A join that makes no session leaves no run mark, which the tmux that makes the session makes: a
+// join refused for want of a terminal writes nothing in cld's record, and one whose tmux cannot
+// open the terminal - a TERM that tmux does not know - leaves its entry, ended, but no mark; so
+// does a join there that would bring back a session that kill ended, whose mark kill removed.
 // restore then brings none of them back.
 func TestNoSessionNoMark(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	if result := s.RunCld(nil, "new", "-s", "x"); result.Code != 1 {
-		t.Errorf("new without a terminal: exit %d, stderr %q, want exit 1", result.Code, result.Stderr)
+	if result := s.RunCld(nil, "join", "-s", "x"); result.Code != 1 {
+		t.Errorf("join without a terminal: exit %d, stderr %q, want exit 1", result.Code, result.Stderr)
 	}
-	for _, ext := range []string{".json", ".env", ".run"} {
+	for _, ext := range []string{".json", ".env", ".run", ".start"} {
 		if exists(companionFile(s, "x", ext)) {
-			t.Errorf("new without a terminal left x%s", ext)
+			t.Errorf("join without a terminal left x%s", ext)
 		}
 	}
 	unknown := map[string]string{"TERM": "cld-no-such-terminal"}
-	if result := s.RunCldOnTerminal(unknown, "new", "-s", "y"); result.Code == 0 {
-		t.Errorf("new with TERM unknown to tmux: exit 0, stderr %q, want tmux to fail", result.Stderr)
+	if result := s.RunCldOnTerminal(unknown, "join", "-s", "y"); result.Code == 0 {
+		t.Errorf("join with TERM unknown to tmux: exit 0, stderr %q, want tmux to fail", result.Stderr)
 	}
 	if got, want := readEntry(s, "y"), entry("y", s.Work, ""); got != want {
 		t.Errorf("y's entry %q, want %q", got, want)
 	}
-	startCld(t, s, "tmux", nil, "new", "-s", "z")
+	startCld(t, s, "tmux", nil, "join", "-s", "z")
 	z := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
-	checkMarks(t, s, "after new", map[string]bool{"z": true})
+	checkMarks(t, s, "after join", map[string]bool{"z": true})
 	if result := s.RunCld(nil, "kill", "-s", "z"); result.Code != 0 {
 		t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 	}
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !z.Alive() })
-	if result := s.RunCldOnTerminal(unknown, "resume", "-s", "z"); result.Code == 0 {
-		t.Errorf("resume with TERM unknown to tmux: exit 0, stderr %q, want tmux to fail", result.Stderr)
+	if result := s.RunCldOnTerminal(unknown, "join", "-s", "z"); result.Code == 0 {
+		t.Errorf("join of z with TERM unknown to tmux: exit 0, stderr %q, want tmux to fail", result.Stderr)
 	}
 	checkMarks(t, s, "after tmux failed", map[string]bool{"x": false, "y": false, "z": false})
 	if result := s.RunCld(nil, "restore"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
@@ -487,10 +487,11 @@ func TestNoSessionNoMark(t *testing.T) {
 	}
 }
 
-// A resume that cannot write the environment beside the session's entry - a directory in its
-// place here, where a full disk would do the same - makes no run mark of its own, but claude's exit
-// with status 0 still removes the one the session has: here the mark of a session a reboot ended,
-// which restore would otherwise bring back after the /exit that ended it on purpose.
+// A join that brings a session back and cannot write the environment beside its entry - a
+// directory in its place here, where a full disk would do the same - makes no run mark of its own,
+// but claude's exit with status 0 still removes the one the session has: here the mark of a
+// session a reboot ended, which restore would otherwise bring back after the /exit that ended it on
+// purpose.
 func TestRunMarkWithoutEnvironment(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -503,18 +504,18 @@ func TestRunMarkWithoutEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	age(t, time.Hour, companionFile(s, "a", ".run"))
-	term := startCld(t, s, "tmux", nil, "resume", "-s", "a")
+	term := startCld(t, s, "tmux", nil, "join", "-s", "a")
 	claude := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	if info, err := os.Stat(env); err != nil || !info.IsDir() {
-		t.Fatalf("resume wrote the environment in place of the directory: %v", err)
+		t.Fatalf("join wrote the environment in place of the directory: %v", err)
 	}
 	info, err := os.Stat(companionFile(s, "a", ".run"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if since := time.Since(info.ModTime()); since < 30*time.Minute {
-		t.Errorf("run mark made %v ago after resume, want it kept from an hour ago", since.Round(time.Second))
+		t.Errorf("run mark made %v ago after join, want it kept from an hour ago", since.Round(time.Second))
 	}
 	claude.Send("exit")
 	sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
@@ -529,7 +530,7 @@ func TestRunMarkWithoutEnvironment(t *testing.T) {
 
 // restore leaves ended a session idle for longer than CLD_IDLE_DAYS by its run mark - neither
 // started nor given a prompt since - saying so, and removes the mark, where the sweep of list and
-// new, which goes by tmux's times, would count it as used from the restore on; it brings back one
+// join, which goes by tmux's times, would count it as used from the restore on; it brings back one
 // used within the limit, and leaves its mark's time as it was, so that a session that only restore
 // starts ends in time all the same. claude's UserPromptSubmit hook touches the mark. A
 // CLD_IDLE_DAYS that is no number of days is refused before anything comes back.
@@ -579,9 +580,9 @@ func TestRestoreIdle(t *testing.T) {
 }
 
 // A session restore cannot bring back is a warning, and the others come back, with status 1: one
-// whose directory has gone, pointing at the resume that brings its conversation back from where
-// it runs; one without the environment its server started with; one whose claude is older than
-// cld runs, which restore checks where it starts it, as new and resume check theirs. A session
+// whose directory has gone, pointing at the join that brings its conversation back from where it
+// runs; one without the environment its server started with; one whose claude is older than cld
+// runs, which restore checks where it starts it, as join checks its own. A session
 // without a run mark stays ended.
 func TestRestoreFailures(t *testing.T) {
 	t.Parallel()
@@ -602,7 +603,7 @@ func TestRestoreFailures(t *testing.T) {
 
 	result := s.RunCld(nil, "restore")
 	wantStderr := "cld: warning: cannot restore session 'gone': session 'gone' ran in " + gone + ", which no longer exists; " +
-		"resume it from here with cld resume -s gone " + firstID + "\n" +
+		"resume it from here with cld join -s gone --resume " + firstID + "\n" +
 		"cld: warning: cannot restore session 'noenv': cld keeps no environment of it: " + companionFile(s, "noenv", ".env") + ": no such file or directory\n" +
 		"cld: warning: cannot restore session 'old': claude 2.1.232 or newer is required, found '2.1.231 (Claude Code)'\n"
 	if want := "Restored session 'ok' in " + s.Work + "\n"; result.Code != 1 || result.Stdout != want || result.Stderr != wantStderr {
@@ -695,11 +696,12 @@ func TestRestoreBesideServers(t *testing.T) {
 }
 
 // restore holds the record's lock for each session it brings back, from the lookup to tmux: a
-// second restore at once, or a resume of the session, waits, and then finds the session running.
-// The first restore's tmux is held as it is about to make the session, until the second cld waits
-// for the lock (see waitForLock); without the lock, the second restore would make it too, and one
-// of the two tmux commands fail with "duplicate session", and the resume would find no session and
-// go on, failing without a terminal.
+// second restore at once, or a join of the session, waits, and then finds the session running -
+// join to attach to it, which it refuses here for want of a terminal (see TestJoinRacingRestore
+// for one on a terminal). The first restore's tmux is held as it is about to make the session,
+// until the second cld waits for the lock (see waitForLock); without the lock, the second restore
+// would make it too, and one of the two tmux commands fail with "duplicate session", and the join
+// would find no session and go on to make it, failing without a terminal.
 func TestRestoreAtOnce(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -710,7 +712,7 @@ func TestRestoreAtOnce(t *testing.T) {
 		stdout, stderr string
 	}{
 		{"restore", []string{"restore"}, 0, "", ""},
-		{"resume", []string{"resume", "-s", "x"}, 1, "", "cld: session 'x' exists in %s; attach to it with cld join -s x\n"},
+		{"join", []string{"join", "-s", "x"}, 1, "", "cld: join needs a terminal, and its input is not one\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -743,6 +745,82 @@ func TestRestoreAtOnce(t *testing.T) {
 			}
 			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
 				t.Errorf("sessions %q, want [cld-x]", sessions)
+			}
+		})
+	}
+}
+
+// cld join of a session that has ended, on a terminal, racing cld restore of it makes one session,
+// which join ends attached to, whichever goes first. Where restore goes first, join waits for the
+// record's lock, which restore holds as its tmux, held here, is about to make the session, and
+// then finds the session and attaches to it. Where join goes first, its tmux, held here, is about
+// to make the session once cld has let the lock go as it became tmux: restore finds no server, but
+// the start mark that join left, naming the process that became tmux, which runs, and leaves the
+// session to join, saying nothing. Without the start mark, restore would make the session too, and
+// one of the two tmux commands fail with "duplicate session".
+func TestJoinRacingRestore(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		// held is what the tmux that makes cld-x runs, which the test holds
+		held string
+	}{
+		{"restore first", "*' new-session -d -s cld-x '*"},
+		{"join first", "*' new-session -s cld-x '*"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			writeRestorable(t, s, "x", s.Work, firstID, filepath.Join(sandbox.ProbeBin, "claude"), s.Environ(nil))
+			tmux := holdTmux(t, s, test.name+": the tmux making cld-x", test.held)
+			tmux.start(t)
+			var restore func() sandbox.Result
+			var term terminal.Terminal
+			if test.name == "restore first" {
+				restore = startCldAsync(t, s, s.Work, tmux.env, "restore")
+				tmux.held(t)
+				term = startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
+			} else {
+				term = startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
+				tmux.held(t)
+				if !exists(companionFile(s, "x", ".start")) {
+					t.Error("join left no start mark as it became tmux")
+				}
+				restore = startCldAsync(t, s, s.Work, tmux.env, "restore")
+			}
+			time.Sleep(time.Second)
+			tmux.release(t)
+			stdout := ""
+			if test.name == "restore first" {
+				stdout = "Restored session 'x' in " + s.Work + "\n"
+			}
+			if result := restore(); result.Code != 0 || result.Stdout != stdout || result.Stderr != "" {
+				t.Errorf("restore: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, stdout)
+			}
+			waitClients(t, s, 1)
+			if !term.Running() {
+				t.Errorf("join is not attached:\n%s", term.Screen())
+			}
+			if begun := tmux.begun(t); begun != 1 {
+				t.Errorf("%d tmux commands made cld-x, want 1", begun)
+			}
+			probe := s.WaitProbes(1)[0]
+			time.Sleep(500 * time.Millisecond)
+			if probes := s.Probes(); len(probes) != 1 {
+				t.Errorf("%d claudes started, want 1", len(probes))
+			}
+			// The hooks in the settings name the tmux that holds the test's commands.
+			held := filepath.Join(strings.Split(tmux.env["PATH"], string(os.PathListSeparator))[0], "tmux")
+			if want := []string{"--name", "cld-x", "--settings", settings(s, held, sandbox.RealGit, "cld-x", s.Work, false), "--resume", firstID}; !slices.Equal(probe.Argv, want) {
+				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
+			}
+			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
+				t.Errorf("sessions %q, want [cld-x]", sessions)
+			}
+			// The run-shell that makes the run mark has removed the start mark before.
+			checkMarks(t, s, "after the race", map[string]bool{"x": true})
+			if exists(companionFile(s, "x", ".start")) {
+				t.Error("the start mark is left once tmux has made the session")
 			}
 		})
 	}
@@ -782,6 +860,46 @@ func TestForgetRacingRestore(t *testing.T) {
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
 		t.Errorf("sessions %q, want [cld-x]", sessions)
 	}
+	term.Keys("Escape")
+	if code := list.code(t); code != "0" {
+		t.Errorf("list: exit %s, want 0", code)
+	}
+}
+
+// The interactive list's forget of a session that has ended, while a join of it on another
+// terminal is about to make it - its tmux held here, once cld has let the lock go as it became
+// tmux - finds no session, but the start mark the join left, naming the process that became tmux,
+// which runs, and forgets nothing: "session 'x' is starting". The join then attaches to the
+// session it made, whose entry, environment and run mark stay. Without the start mark's check, the
+// forget would remove them, and the start mark with them, as tmux made the session.
+func TestForgetRacingJoin(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	writeEntry(t, s, "x", s.Work, firstID)
+	tmux := holdTmux(t, s, "the join's tmux making cld-x", "*' new-session -s cld-x '*")
+	tmux.start(t)
+	join := startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
+	tmux.held(t)
+	term := terminal.New(t, "tmux", s)
+	list := startList(t, s, term, listScript, nil)
+	waitScreen(t, term, endedHints)
+	armThen(t, term, func() { waitScreen(t, term, forgetArmed) }, "C-x")
+	waitScreen(t, term, "session 'x' is starting")
+	if !exists(companionFile(s, "x", ".start")) || !exists(companionFile(s, "x", ".env")) {
+		t.Error("the forget took the start mark or the environment of the session the join is making")
+	}
+	tmux.release(t)
+	waitClients(t, s, 1)
+	if !join.Running() {
+		t.Errorf("join is not attached:\n%s", join.Screen())
+	}
+	if readEntry(s, "x") == "" {
+		t.Error("the forget took the entry of the session the join made")
+	}
+	if !exists(companionFile(s, "x", ".env")) {
+		t.Error("the forget took the environment of the session the join made")
+	}
+	checkMarks(t, s, "after the forget", map[string]bool{"x": true})
 	term.Keys("Escape")
 	if code := list.code(t); code != "0" {
 		t.Errorf("list: exit %s, want 0", code)

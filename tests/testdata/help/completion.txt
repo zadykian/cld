@@ -1,8 +1,8 @@
 print the completion script for a shell, one of the commands below. With it,
--n and -s of cld join and cld detach complete the sessions cld list shows that
-run, and of cld resume those that have ended. cld setup completion SHELL writes
-it where bash, zsh or fish reads it; the help of each command below says where
-the script goes by hand, and what it needs.
+-n and -s of cld join complete the sessions cld list shows, and of cld detach
+those that run. cld setup completion SHELL writes it where bash, zsh or fish
+reads it; the help of each command below says where the script goes by hand,
+and what it needs.
 
 Usage:
   cld completion [flags]
