@@ -27,7 +27,7 @@ what it checks, and for installing by hand. From a clone, `make install` builds 
 
 Requirements: tmux 3.5a or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
 for `cld new -w`, and to name sessions after their repository; Docker, on Linux, for
-`cld setup telemetry`.
+`cld setup telemetry`; systemd, on Linux, for `cld setup restore`.
 
 Debian 13 has tmux 3.5a and Ubuntu 26.04 3.6a; Debian 12 (3.3a, 3.5a in bookworm-backports),
 Ubuntu 24.04 (3.4) and RHEL 9 and 10 (3.2a, 3.3a) ship an older one. tmux 3.7 or newer is
@@ -79,9 +79,11 @@ another repository or directory of the same name made.
 | `cld detach [-n NAME] [-s SUFFIX]` | detach every terminal from the session; without `-n` and `-s`, as `! cld detach` in claude, the terminal used last, normally the one you typed it in |
 | `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
 | `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`), when each was last active and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
+| `cld restore` | bring back, detached, the sessions that ran when the machine stopped, each resuming its conversation where it ran |
 | `cld setup project [--mcp SERVER] [--permissions SET]` | set claude up in the project in the current directory |
 | `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
 | `cld setup completion SHELL` | set up completion in `bash`, `zsh` or `fish` |
+| `cld setup restore` | have your systemd run `cld restore` at login, or at boot; Linux |
 | `cld update` | update cld to the latest release, replacing the file it runs from, and the completion scripts |
 | `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish` |
 | `cld help [COMMAND]` | show the help of cld, or of a command; `-h` and `--help` do the same |
@@ -174,22 +176,43 @@ directory it ran in, and the ID of its conversation, which claude gives cld thro
 `cld list` shows such a session as `ended`, and `cld resume -n NAME -s SUFFIX` - `-s SUFFIX` alone
 where `NAME` is the repository's - resumes its conversation by that ID in a new session, in the
 directory it ran in, from wherever you run it, whatever the conversation is named by then; `Enter`
-in `cld list` does the same. After a reboot, `cld list` shows every session that ran as `ended`,
-ready to resume. Without a record, `cld resume` goes by the conversation's name,
-`cld-NAME-SUFFIX`, where you run it. `cld resume SESSION` resumes another conversation: a session
-ID, a name, or a search term for claude's picker. The conversation takes the session's name for
-good. By name, where several conversations have it - after `/clear`, or a `cld new -s SUFFIX`
-that gave an ended session's name again - claude opens its picker instead: pick one there, or
-resume it by its session ID, `cld resume -s SUFFIX ID`; `Ctrl+R`, once `Enter` has left the
-picker's search box, renames the one selected. `cld resume --fork SESSION` resumes a copy of
-`SESSION` under a new session ID, named after the session, and leaves `SESSION` as it was; it
+in `cld list` does the same. After a reboot, `cld list` shows every session that ran as `ended`, and
+`cld restore` brings them all back (below). Without a record, `cld resume` goes by the
+conversation's name, `cld-NAME-SUFFIX`, where you run it. `cld resume SESSION` resumes another
+conversation: a session ID, a name, or a search term for claude's picker. The conversation takes the
+session's name for good. By name, where several conversations have it - after `/clear`, or a
+`cld new -s SUFFIX` that gave an ended session's name again - claude opens its picker instead: pick
+one there, or resume it by its session ID, `cld resume -s SUFFIX ID`; `Ctrl+R`, once `Enter` has
+left the picker's search box, renames the one selected. `cld resume --fork SESSION` resumes a copy
+of `SESSION` under a new session ID, named after the session, and leaves `SESSION` as it was; it
 refuses a `SESSION` that is the session's own name, which the copy would take too. Do not resume a
 conversation that is open elsewhere without `--fork`: two claudes would write to one transcript,
-their messages interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions)
-say. claude refuses one that runs in its background sessions, naming `claude attach ID`, which
-opens it outside cld, and `claude stop ID`, after which `cld resume` brings it back - after
-`cld kill`, where the session stays; `--fork` resumes a copy of it all the same. See the
+their messages interleaved, as the [Claude Code docs](https://code.claude.com/docs/en/sessions) say.
+claude refuses one that runs in its background sessions, naming `claude attach ID`, which opens it
+outside cld, and `claude stop ID`, after which `cld resume` brings it back - after `cld kill`, where
+the session stays; `--fork` resumes a copy of it all the same. See the
 [guide](docs/guide.md#resuming-a-conversation) for more.
+
+### After a reboot
+
+A reboot ends every session, but not its conversation or cld's record of it. `cld restore` brings
+back each session that ran when the machine stopped - not those you ended, with `cld kill` or
+claude's `/exit`, nor those ended for being idle, or not given a prompt for longer than
+`CLD_IDLE_DAYS` days - as `cld resume` would, but detached: claude resumes the session's
+conversation in the directory it ran in, with the environment the session started with, and
+`cld join` attaches to it. A claude that was in the middle of a turn is told to continue it, asking
+for permissions as in any turn. On Linux, `cld setup restore` has your systemd run `cld restore` as
+it starts:
+
+```sh
+cld setup restore
+```
+
+It writes and enables the user unit `cld-restore.service`. Your systemd starts at your first login,
+and at your last logout ends what it started, the sessions `cld restore` brought back among them,
+unless lingering is on for you: `loginctl enable-linger` has it start at boot, and keep them. The
+words given to claude after `--`, and panes split in a session, do not come back. See the
+[guide](docs/guide.md#after-a-reboot).
 
 ### Worktrees
 

@@ -23,7 +23,8 @@ var (
 	// Cld is the cld binary under test; built by TestMain.
 	Cld string
 	// ProbeBin is the directory holding the probe installed as "claude", and as "docker", the
-	// fake docker (see DockerCalls); set by TestMain.
+	// fake docker (see DockerCalls), and "systemctl" and "loginctl", the fake systemd (see
+	// SystemdCalls); set by TestMain.
 	ProbeBin string
 	// FakeTmux is the probe installed as "tmux"; set by TestMain.
 	FakeTmux string
@@ -156,8 +157,8 @@ func (s *Sandbox) RunCldIn(dir string, extra map[string]string, args ...string) 
 }
 
 // Tools creates a directory holding only the named tools, for a PATH that lacks the others.
-// "tmux" is the fake tmux, "claude" the probe and "docker" the fake docker; any other name links
-// the real tool.
+// "tmux" is the fake tmux, "claude" the probe, "docker" the fake docker, and "systemctl" and
+// "loginctl" the fake systemd; any other name links the real tool.
 func (s *Sandbox) Tools(names ...string) string {
 	s.t.Helper()
 	dir, err := os.MkdirTemp(s.Root, "tools.")
@@ -167,7 +168,7 @@ func (s *Sandbox) Tools(names ...string) string {
 	for _, name := range names {
 		target := FakeTmux
 		switch name {
-		case "claude", "docker":
+		case "claude", "docker", "systemctl", "loginctl":
 			target = filepath.Join(ProbeBin, name)
 		case "tmux":
 		default:
@@ -362,6 +363,28 @@ func (s *Sandbox) DockerContainer() string {
 		s.t.Fatal(err)
 	}
 	return string(data)
+}
+
+// SystemdCalls are the calls of the fake systemctl and loginctl so far, oldest first, each the
+// program's name and its arguments.
+func (s *Sandbox) SystemdCalls() [][]string {
+	s.t.Helper()
+	data, err := os.ReadFile(filepath.Join(s.ProbeDir, "systemd.jsonl"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	var calls [][]string
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		var call []string
+		if err := json.Unmarshal([]byte(line), &call); err != nil {
+			s.t.Fatalf("systemd.jsonl: %v", err)
+		}
+		calls = append(calls, call)
+	}
+	return calls
 }
 
 // Probe is one run of the probe as claude, seen through the files it writes.

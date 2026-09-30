@@ -23,6 +23,7 @@ import (
 	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/picker"
 	"github.com/zadykian/cld/internal/project"
+	"github.com/zadykian/cld/internal/restore"
 	"github.com/zadykian/cld/internal/session"
 	"github.com/zadykian/cld/internal/telemetry"
 	"github.com/zadykian/cld/internal/update"
@@ -32,7 +33,7 @@ import (
 // completion, and the hidden commands through which cobra's completion scripts ask cld what to
 // offer, on every TAB.
 var commands = map[string]string{
-	"new": "new", "resume": "resume", "join": "join", "detach": "detach", "kill": "kill", "list": "list", "setup": "setup",
+	"new": "new", "resume": "resume", "join": "join", "detach": "detach", "kill": "kill", "list": "list", "restore": "restore", "setup": "setup",
 	"update": "update", "completion": "completion",
 	"help": "help", "-h": "help", "--help": "help",
 	"version": "version", "-V": "version", "--version": "version",
@@ -103,18 +104,19 @@ func noFiles(text string) string {
 }
 
 // setupCommand checks the argument after setup before cobra sees it, as run checks the first: it
-// names one of setup's commands, project, telemetry or completion, or is -h or --help, setup's
-// help. cobra would run telemetry for cld setup --local URL telemetry, taking --local for an
-// option of setup's. completion has commands of its own, one for each shell, and the argument
-// after it is checked the same way: cobra would run zsh's for setup completion --help=false zsh.
+// names one of setup's commands, project, telemetry, completion or restore, or is -h or
+// --help, setup's help. cobra would run telemetry for cld setup --local URL telemetry, taking
+// --local for an option of setup's. completion has commands of its own, one for each shell, and
+// the argument after it is checked the same way: cobra would run zsh's for setup completion
+// --help=false zsh.
 func setupCommand(args []string) error {
-	const hint = "cld setup project, cld setup telemetry or cld setup completion SHELL (see cld help)"
+	const hint = "cld setup project, cld setup telemetry, cld setup completion SHELL or cld setup restore (see cld help)"
 	switch {
 	case len(args) == 0 || args[0] == "":
 		return fail.Usage("setup: missing command: " + hint)
 	case args[0] == "completion":
 		return shellArgument(args[1:])
-	case args[0] == "project" || args[0] == "telemetry" || args[0] == "-h" || args[0] == "--help":
+	case args[0] == "project" || args[0] == "telemetry" || args[0] == "restore" || args[0] == "-h" || args[0] == "--help":
 		return nil
 	}
 	return fail.Usage(fmt.Sprintf("setup: unknown command '%s': %s", args[0], hint))
@@ -453,7 +455,7 @@ server running after claude has exited. claude runs its SessionEnd hooks with
 the reason "other", and may still run them when cld kill returns. Without -n,
 a session made in another repository or directory of the same name is refused.
 After a kill, cld list shows the session as ended, and cld resume brings its
-conversation back.`,
+conversation back; cld restore leaves it ended.`,
 	}
 	killNaming := addNaming(kill, "the session's `SUFFIX`, after NAME-")
 	kill.RunE = func(*cobra.Command, []string) error {
@@ -525,16 +527,75 @@ twice forgets it. cld list | cat prints the list only.`,
 		},
 	}
 
+	// restore checks tmux as every command does, CLD_IDLE_DAYS as list does, and the claude of
+	// each session it brings back as new and resume check theirs, in the session's directory (see
+	// session.Tmux.Restore). It holds the record's lock for one session at a time, from the lookup
+	// to tmux, so that another restore, or a resume of the session, at once makes no second one,
+	// and a new meanwhile waits for one session at most. A session idle for longer than the limit
+	// it leaves ended, with a note, as the sweep ends one. A session it cannot bring back is a
+	// warning, and the others come back: the status is then 1.
+	restoreCommand := &cobra.Command{
+		Use:   "restore",
+		Short: "bring back the sessions that ran when the machine stopped",
+		Long: `bring back the sessions that ran when the machine stopped: a reboot or a crash
+ends them, and cld list shows them as ended, beside those that cld kill, C-x in
+cld list, the idle sweep or claude's /exit ended, which stay ended. Each comes
+back as cld resume -n NAME -s SUFFIX brings it back, but without a terminal:
+claude resumes its conversation in the directory it ran in, with the
+environment the session started with and without the words given after --,
+and is told to continue the turn it was in, if any. A session not started or
+given a prompt for longer than $CLD_IDLE_DAYS days stays ended, with a note. A
+session that cannot come back is a warning, and the status 1. cld setup
+restore has your systemd run cld restore as it starts; cld join attaches to a
+session.`,
+		RunE: func(*cobra.Command, []string) error {
+			tmux, err := session.Check()
+			if err != nil {
+				return err
+			}
+			limit, err := idleLimit()
+			if err != nil {
+				return err
+			}
+			failed := false
+			for _, name := range session.Marked() {
+				unlock := session.Lock()
+				restored, err := tmux.Restore(name, limit)
+				unlock()
+				switch {
+				case err != nil:
+					failed = true
+					output.Warn(fmt.Sprintf("cannot restore session '%s': %v", name, err))
+				case restored != nil && restored.Idle > 0:
+					output.Note(fmt.Sprintf("left session '%s' ended, idle for %s", name, idleFor(restored.Idle)))
+				case restored != nil:
+					line := fmt.Sprintf("Restored session '%s' in %s", name, restored.Directory)
+					if restored.Busy {
+						line += ", continuing its turn"
+					}
+					if err := output.Print(line + "\n"); err != nil {
+						return err
+					}
+				}
+			}
+			if failed {
+				return fail.Status(1)
+			}
+			return nil
+		},
+	}
+
 	// setup runs nothing itself, so cobra's help shows its commands without a usage line of its
 	// own; run has made sure that one of them follows it, or -h or --help.
 	setup := &cobra.Command{
 		Use:   "setup",
-		Short: "set up claude in a project, its telemetry, or shell completion",
+		Short: "set up claude in a project, telemetry, shell completion or restore",
 	}
 	projectCommand := setupProject(typed + " project")
 	telemetryCommand := setupTelemetry(typed + " telemetry")
 	shellsCommand := setupCompletion(typed + " completion")
-	setup.AddCommand(projectCommand, telemetryCommand, shellsCommand)
+	setupRestoreCommand := setupRestore(typed + " restore")
+	setup.AddCommand(projectCommand, telemetryCommand, shellsCommand, setupRestoreCommand)
 
 	// update runs neither tmux nor claude, so it makes none of their checks: it needs the network
 	// and the directory cld is in, which internal/update checks as it goes.
@@ -588,8 +649,8 @@ cld setup completion wrote are written anew where the new cld prints others.`,
 		},
 	}
 
-	all := []*cobra.Command{root, newCommand, resume, join, detach, kill, list, setup, projectCommand, telemetryCommand, shellsCommand}
-	all = append(append(all, shellsCommand.Commands()...), updateCommand, help, versionCommand)
+	all := []*cobra.Command{root, newCommand, resume, join, detach, kill, list, restoreCommand, setup, projectCommand, telemetryCommand, shellsCommand}
+	all = append(append(all, shellsCommand.Commands()...), setupRestoreCommand, updateCommand, help, versionCommand)
 	for _, command := range all {
 		// cobra adds -h and --help only where a command has no "help" option of its own.
 		command.Flags().VarPF(new(helpOption), "help", "h", "help for "+command.Name()).NoOptDefVal = "true"
@@ -601,7 +662,7 @@ cld setup completion wrote are written anew where the new cld prints others.`,
 		}
 		command.Flags().SetInterspersed(false)
 	}
-	root.AddCommand(newCommand, resume, join, detach, kill, list, setup, updateCommand, versionCommand)
+	root.AddCommand(newCommand, resume, join, detach, kill, list, restoreCommand, setup, updateCommand, versionCommand)
 	root.SetHelpCommand(help)
 	completionCommand(root)
 
@@ -943,6 +1004,56 @@ starts: sessions running then keep theirs. Needs Docker; Linux only.`,
 	return command
 }
 
+// setupRestore is cld setup restore, named in its messages as typed. On a system other than
+// Linux it refuses to run before it looks at anything but -h and --help, as setup telemetry does
+// (see restore.Supported); its other checks, of systemd, are in its RunE, which completion never
+// runs.
+func setupRestore(typed string) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "restore",
+		Short: "have your systemd run cld restore at login, or at boot",
+		Long: `have your user's systemd run cld restore as it starts, which brings back the
+sessions that ran when the machine stopped: cld writes the unit
+~/.config/systemd/user/cld-restore.service, which runs this cld with the PATH,
+TMUX_TMPDIR, XDG_STATE_HOME and CLD_IDLE_DAYS it has now, and enables it. Your
+systemd starts at your first login, and at your last logout ends the sessions
+cld restore brought back, unless lingering is on for you (loginctl
+enable-linger): then it starts at boot, and keeps them. Run it again after
+moving cld, or to change those variables. Needs systemd; Linux only.`,
+		Args: func(c *cobra.Command, args []string) error {
+			if err := restore.Supported(); err != nil {
+				return err
+			}
+			return noArguments(typed)(c, args)
+		},
+		RunE: func(*cobra.Command, []string) error {
+			// The unit hands CLD_IDLE_DAYS on to cld restore, which would refuse a value that is
+			// no number of days at every start.
+			if _, err := idleLimit(); err != nil {
+				return err
+			}
+			// The file cld runs from, with its symbolic links resolved, as cld update replaces it.
+			cld, err := os.Executable()
+			if err != nil {
+				return fail.Runtime("cannot find the file cld runs from: " + err.Error())
+			}
+			report, err := restore.Setup(cld)
+			if err != nil {
+				return err
+			}
+			return output.Print(report)
+		},
+	}
+	command.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		err = flagError(typed)(c, err)
+		if unsupported := restore.Supported(); unsupported != nil && !errors.Is(err, pflag.ErrHelp) {
+			return unsupported
+		}
+		return err
+	})
+	return command
+}
+
 // sessionNames completes the NAME of -n, join's and detach's with ended false and resume's with
 // ended true: for the sessions list shows that run, or that have ended, what comes before the
 // last "-" of their names, where that and what follows it are both NAMEs - the split cld's own
@@ -1237,10 +1348,14 @@ func (l listSource) Resumable(ctx context.Context, name string) error {
 	return l.tmux.Resumable(ctx, name)
 }
 
+// Forget forgets the session under the record's lock, so that a restore bringing it back at once
+// is waited for, and its session found running (see session.Tmux.Forget).
 func (l listSource) Forget(ctx context.Context, name string) error {
 	if _, err := sessionName(name); err != nil {
 		return err
 	}
+	unlock := session.Lock()
+	defer unlock()
 	return l.tmux.Forget(ctx, name)
 }
 

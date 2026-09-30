@@ -45,6 +45,13 @@
 // directory, and new gives no index that names a conversation of that time. `cld list` resumes a
 // session that has ended with Enter, as resume does, and forgets it with Ctrl+X twice; join,
 // detach and kill refuse it, pointing at resume, and `cld resume -n` and `-s` complete its name.
+// Beside the entry the record keeps whether the session runs, or ran when the machine stopped, and
+// whether claude is in a turn, and what the session's server started with: `cld restore`, which
+// the user's systemd runs as it starts where `cld setup restore` set that up, brings back
+// detached, as resume would, the sessions a reboot ended, and has claude continue the turn it was
+// in - but not one that nobody started or gave a prompt for longer than CLD_IDLE_DAYS days, as its
+// run mark's time says: tmux's times, which the sweep below goes by, start again at a restore
+// (see Tmux.Restore).
 //
 // list shows how long each session has been idle - no terminal attached, and no key typed into
 // one - and first ends, as kill does, each session idle for longer than CLD_IDLE_DAYS days, 30 by
@@ -106,28 +113,30 @@
 //   - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
 //     C-q; detach is C-q d - or cld detach, where the terminal keeps C-q from tmux - and C-q C-q
 //     sends a C-q through
-//   - remain-on-exit failed: a claude that fails - at startup, say, for a worktree in a directory
-//     it does not trust - leaves its pane on screen with its message, instead of taking both
-//     away; /exit and claude's other ways out exit with status 0. An empty remain-on-exit-format
-//     keeps tmux from scrolling the pane for its own line, which would push a short error at the
-//     top out of sight; the pane-died hook says how claude exited, how to end the session and
-//     how to detach from it instead, on a line of the pane's border below it, and on the message
-//     line until a key is pressed. The border line - pane-border-status bottom on the window,
-//     pane-border-format on the dead pane, so that a pane beside it keeps tmux's own - takes the
-//     pane's last row, and stays through keys, detach and join. For that row tmux deletes the
-//     pane's last where the cursor is above it, whatever it holds - an empty one below a short
-//     error - and otherwise scrolls the top line into the history. Both lines say as much as fits
-//     whole (see ending), and name the session as cld kill and cld detach take it, -n and -s,
-//     written into the hook as the session is made: the hook's formats know the pane and its
-//     window, not the session. The hook shows the message only to
-//     a terminal on that window - of several, the one used last: tmux would show it on the
-//     terminal of another session on the server - one claude made - or with none attached keep it
-//     and show it in view-mode over the session a terminal attaches to next, which then takes no
-//     keys until q; join shows it instead. These go to claude's pane only, not its window or the
-//     server, so that the other panes of its window - a teammate's that claude splits off, one
-//     split by hand - and the sessions claude makes there close as tmux would close them, rather
-//     than stay on screen as a claude that exited (see Tmux.create). The border line's options,
-//     set once claude has died, reach no other window
+//   - remain-on-exit on: a claude that fails - at startup, say, for a worktree in a directory it
+//     does not trust - leaves its pane on screen with its message, instead of taking both away;
+//     /exit and claude's other ways out exit with status 0, and there the pane-died hook removes
+//     the session's run mark from cld's record and closes the pane, as tmux closes it with
+//     remain-on-exit failed: tmux runs no hook of a pane it has closed itself (see died). An empty
+//     remain-on-exit-format keeps tmux from scrolling the pane for its own line, which would push a
+//     short error at the top out of sight; for a claude that failed, the pane-died hook says how
+//     claude exited, how to end the session and how to detach from it instead, on a line of the
+//     pane's border below it, and on the message line until a key is pressed. The border line -
+//     pane-border-status bottom on the window, pane-border-format on the dead pane, so that a pane
+//     beside it keeps tmux's own - takes the pane's last row, and stays through keys, detach and
+//     join. For that row tmux deletes the pane's last where the cursor is above it, whatever it
+//     holds - an empty one below a short error - and otherwise scrolls the top line into the
+//     history. Both lines say as much as fits whole (see ending), and name the session as cld kill
+//     and cld detach take it, -n and -s, written into the hook as the session is made: the hook's
+//     formats know the pane and its window, not the session. The hook shows the message only to a
+//     terminal on that window - of several, the one used last: tmux would show it on the terminal
+//     of another session on the server - one claude made - or with none attached keep it and show
+//     it in view-mode over the session a terminal attaches to next, which then takes no keys until
+//     q; join shows it instead. These go to claude's pane only, not its window or the server, so
+//     that the other panes of its window - a teammate's that claude splits off, one split by hand -
+//     and the sessions claude makes there close as tmux would close them, rather than stay on
+//     screen as a claude that exited (see Tmux.create). The border line's options, set once claude
+//     has died, reach no other window
 //
 // The tab's title is the session's name after claude's marker, as claude's own title has it
 // outside tmux: ◐ and ◑ in turn while claude is busy, ✳ otherwise. Under tmux - TMUX set, which
@@ -359,12 +368,20 @@ func CheckClaude() (*Claude, error) {
 	if err != nil {
 		return nil, err
 	}
+	return checkClaude(path, dir, nil)
+}
+
+// checkClaude is CheckClaude's check of the claude at path, run in dir with the environment env,
+// or cld's own where env is nil: restore checks the claude a session started with, in its
+// directory and its environment (see Tmux.Restore).
+func checkClaude(path, dir string, env []string) (*Claude, error) {
 	var stdout, stderr bytes.Buffer
 	run := func(name string, args ...string) error {
 		stdout.Reset()
 		stderr.Reset()
 		cmd := exec.Command(name, args...)
 		cmd.Dir = dir
+		cmd.Env = env
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		// What claude printed is in once it has exited. A process it leaves in the background - a
 		// wrapper's update check, say - can hold its stdout and stderr open for as long as it
@@ -375,7 +392,7 @@ func CheckClaude() (*Claude, error) {
 		}
 		return nil
 	}
-	err = run(path, "--version")
+	err := run(path, "--version")
 	// tmux starts claude with execvp, which runs a file the system will not execute with /bin/sh,
 	// as a shell does (glibc's and macOS's); os/exec does not. That is how a script without #!
 	// runs. A binary - for another machine, or cut short - is no script, and a shell such as bash
@@ -520,12 +537,25 @@ func hint(suffix string) string {
 	return "display-message -d 0 '" + ending(suffix) + "'"
 }
 
-// died is the pane-died hook of claude's pane in session cld-SUFFIX: it keeps ending on a line
-// of the pane's border, below the pane, which no key clears, and shows the hint (see the package
-// comment). Its set has no -t: in the hook, set takes the pane that died and its window.
-func died(suffix string) string {
-	return "set -w pane-border-status bottom ; set -p pane-border-format ' " + ending(suffix) + " ' ; " +
-		"if -F '#{window_active_clients}' \"" + hint(suffix) + "\""
+// died is the pane-died hook of claude's pane in session cld-SUFFIX, which tmux keeps however
+// claude exits (remain-on-exit on). Where claude exited with status 0 - /exit, and claude's other
+// ways out - it removes the session's run mark, the file run, where cld could write the record,
+// and then closes the pane, as tmux closes it with remain-on-exit failed: restore leaves a
+// session ended so (see Tmux.Restore). tmux runs no hook of a pane once it has closed it, nor any
+// once the server's last session has gone with it, so a pane-exited hook would never run for
+// claude (tmux 3.5a, 3.7c; see Findings in docs/design.md). Otherwise it keeps ending on a line of
+// the pane's border, below the pane, which no key clears, and shows the hint (see the package
+// comment). Its commands have no -t: in the hook, they take the pane that died and its window.
+// The run mark's path goes through three readers: tmux's parser, which reads a word quoted as
+// sh's is, run-shell, which expands it as a format, where "##" is a "#", and sh.
+func died(suffix, run string) string {
+	exited := "kill-pane"
+	if run != "" {
+		exited = "run-shell " + shellWord(unexpanded("rm -f "+shellWord(run))) + " ; kill-pane"
+	}
+	return "if -F '#{==:#{pane_dead_status},0}' { " + exited + " } { " +
+		"set -w pane-border-status bottom ; set -p pane-border-format ' " + ending(suffix) + " ' ; " +
+		"if -F '#{window_active_clients}' \"" + hint(suffix) + "\" }"
 }
 
 // settings are what new and resume pass claude with --settings, as JSON in this field order.
@@ -651,7 +681,7 @@ func shellWord(text string) string {
 // claude gets args, the words given after "--", after cld's own arguments. It returns only when it
 // does not get as far.
 func (t *Tmux) New(c *Claude, suffix string, worktree bool, args []string) error {
-	return t.create(c, suffix, worktree, nil, "", args)
+	return t.create(c, suffix, launch{worktree: worktree, args: args})
 }
 
 // Resume creates session cld-SUFFIX as New does, without a worktree, with claude resuming a
@@ -663,32 +693,65 @@ func (t *Tmux) New(c *Claude, suffix string, worktree bool, args []string) error
 // transcripts, whose format claude keeps to itself. The caller has made the directory the entry
 // names the current one (see EnterRecorded). It returns only when it does not get as far.
 func (t *Tmux) Resume(c *Claude, suffix, conversation string, fork bool, args []string) error {
-	id := ""
+	l := launch{args: args}
 	if conversation == "" {
-		conversation = "cld-" + suffix
-		if r, ok := recorded(suffix); ok && r.Conversation != "" {
-			conversation, id = r.Conversation, r.Conversation
-		}
+		conversation, l.id = recordedConversation(suffix)
 	}
-	resume := []string{"--resume", conversation}
+	l.resume = []string{"--resume", conversation}
 	if fork {
-		resume = append(resume, "--fork-session")
+		l.resume = append(l.resume, "--fork-session")
 	}
-	return t.create(c, suffix, false, resume, id, args)
+	return t.create(c, suffix, l)
 }
 
-// create makes session cld-SUFFIX for New and Resume, which differ only in claude's arguments:
-// with worktree claude works in git worktree cld-SUFFIX, and with resume, claude's --resume and
-// what goes with it, it resumes a conversation, whose ID id is where Resume took it from the
-// session's entry. args come after cld's own arguments, so that no word of cld's is taken for the
-// value of an option among them, such as --add-dir, which takes the words that follow it; it
-// refuses those that would make tmux's command longer than tmux takes (see commandLimit). It
-// writes the session's entry as it goes (see remember), under the record's lock, which the caller
-// holds (see Lock).
-func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, id string, args []string) error {
-	kept, err := t.readyClient()
-	if err != nil {
+// recordedConversation is the conversation that resume without SESSION resumes in session
+// cld-SUFFIX, and its ID: the one of the session's entry in cld's record, by its ID, or else the
+// one named cld-SUFFIX, with no ID.
+func recordedConversation(suffix string) (conversation, id string) {
+	if r, ok := recorded(suffix); ok && r.Conversation != "" {
+		return r.Conversation, r.Conversation
+	}
+	return "cld-" + suffix, ""
+}
+
+// launch is how create makes a session, as New, Resume and Restore ask: with worktree, claude
+// works in git worktree cld-SUFFIX; with resume, claude's --resume and what goes with it, it
+// resumes a conversation, whose ID id is where it came from the session's entry; args come after
+// cld's own arguments; env is the environment tmux runs with, which its server, and so claude,
+// keeps - where it is nil, cld's own without the variables that name the terminal (see
+// withoutTerminal), once TMUX is emptied (see readyClient and emptyTMUX); with detached, the
+// session is made without a terminal, and cld waits for tmux instead of becoming its client; and
+// with restored, the session comes back as it ran, and its run mark keeps its time (see
+// setMarks).
+type launch struct {
+	worktree bool
+	resume   []string
+	id       string
+	args     []string
+	env      []string
+	detached bool
+	restored bool
+}
+
+// create makes session cld-SUFFIX for New, Resume and Restore, which differ only in claude's
+// arguments and in how cld hands over (see launch). args come after cld's own arguments, so that
+// no word of cld's is taken for the value of an option among them, such as --add-dir, which takes
+// the words that follow it; it refuses those that would make tmux's command longer than tmux takes
+// (see commandLimit). It writes the session's entry as it goes (see remember), with the server's
+// environment beside it, under the record's lock, which the caller holds (see Lock), and tmux
+// sets the session's marks there once it has made the session (see setMarks).
+func (t *Tmux) create(c *Claude, suffix string, l launch) error {
+	var kept []string
+	if !l.detached {
+		var err error
+		if kept, err = t.readyClient(); err != nil {
+			return err
+		}
+	} else if err := emptyTMUX(); err != nil {
 		return err
+	}
+	if l.env == nil {
+		l.env = withoutTerminal(os.Environ())
 	}
 	name := "cld-" + suffix
 	if err := t.occupied(context.Background(), suffix); err != nil {
@@ -701,7 +764,7 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, 
 	_, home := DefaultName()
 	// cld reports a missing repository in the terminal; claude would report it in a session left
 	// to kill.
-	if worktree && !inWorkTree() {
+	if l.worktree && !inWorkTree() {
 		return fail.Runtime("--worktree needs a git repository, and " + dir + " is not in one")
 	}
 	socket, err := filepath.Abs(filepath.Join(socketDir(), name))
@@ -709,12 +772,14 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, 
 		return fail.Runtime(err.Error())
 	}
 	command := "new"
-	if len(resume) > 0 {
+	if len(l.resume) > 0 {
 		command = "resume"
 	}
 	// build is tmux's command, whose claude gets the hooks that keep the session's entry in file
-	// where file is not empty, and its size as tmux counts it (see commandLimit).
-	build := func(file string) (argv []string, size int, err error) {
+	// where file is not empty, and which sets the marks beside it once the session is made - the
+	// run mark, run, where that is not empty - and whose pane-died hook removes the run mark, and
+	// its size as tmux counts it (see commandLimit).
+	build := func(file, run string) (argv []string, size int, err error) {
 		// Settings given on claude's command line override the user's and the project's, so they
 		// carry only what cld needs: the title's hooks, the record's, with -w the worktree's
 		// base, and agent view off. Remote Control is the user's to choose, with /config or
@@ -729,13 +794,18 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, 
 		// go again.
 		git, _ := tool.LookPath("git")
 		given := settings{DisableAgentView: true, Hooks: statusHooks(t.path, git, socket, suffix)}
+		var marks []string
 		if file != "" {
-			start, touch := recordHooks(file, suffix, dir)
-			given.Hooks["SessionStart"] = append(given.Hooks["SessionStart"], hook{Hooks: []hookCommand{{Type: "command", Command: start, Timeout: hookTimeout}}})
-			given.Hooks["Stop"] = append(given.Hooks["Stop"], hook{Hooks: []hookCommand{{Type: "command", Command: touch, Timeout: hookTimeout}}})
-			given.Hooks["SessionEnd"] = []hook{{Hooks: []hookCommand{{Type: "command", Command: touch}}}}
+			for event, hooks := range recordHooks(file, suffix, dir) {
+				given.Hooks[event] = append(given.Hooks[event], hooks...)
+			}
+			made := run
+			if l.restored {
+				made = ""
+			}
+			marks = append([]string{";"}, setMarks(file, made)...)
 		}
-		if worktree {
+		if l.worktree {
 			// claude branches a new worktree from the remote's default branch unless
 			// worktree.baseRef is "head".
 			given.Worktree.BaseRef = "head"
@@ -752,11 +822,11 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, 
 		// name, or a copy of it, takes the session's, so that the next resume finds it (decisions
 		// 16 and 45 in docs/design.md).
 		claude := []string{c.path, "--name", name, "--settings", strings.TrimSuffix(encoded.String(), "\n")}
-		if worktree {
+		if l.worktree {
 			claude = append(claude, "--worktree", name)
 		}
-		claude = append(claude, resume...)
-		claude = append(claude, args...)
+		claude = append(claude, l.resume...)
+		claude = append(claude, l.args...)
 		// claude and its arguments go to tmux as separate words: tmux then executes them directly
 		// instead of through sh -c, and each reaches claude as given, an empty one too, as the
 		// directory reaches tmux (see literal and unexpanded). claude goes by the path
@@ -771,10 +841,11 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, 
 		// reason (see titles), and so does its home, which join, detach and kill check (see
 		// foreign). The targets end in ":" because set takes a pane, which "=NAME" does not find:
 		// "=NAME:" is the active pane of the session's window, claude's, its only one yet. -u
-		// takes the terminal for UTF-8 whatever the locale (see the package comment). What the
-		// tmux cld runs in keeps from claude goes last, to the terminal new-session attached (see
+		// takes the terminal for UTF-8 whatever the locale (see the package comment). The marks
+		// of cld's record come next (see setMarks), once the session is made. What the tmux cld
+		// runs in keeps from claude goes last, to the terminal new-session attached (see
 		// showKept); the pane-died hook's hint, for a claude that exits however soon, comes after
-		// it.
+		// it. Detached, new-session -d attaches no terminal, and nothing is kept.
 		target := "=" + name + ":"
 		argv = []string{"tmux", "-u", "-L", name, "-f", "/dev/null"}
 		options := len(argv)
@@ -788,59 +859,93 @@ func (t *Tmux) create(c *Claude, suffix string, worktree bool, resume []string, 
 			"set", "-g", "allow-passthrough", "on", ";", "set", "-g", "status", "off", ";",
 			"set", "-g", "history-limit", "50000", ";",
 			"set", "-g", "prefix", "C-q", ";", "bind", "C-q", "send-prefix", ";",
-			"new-session", "-s", name, "-n", suffix, "-c", literal(unexpanded(dir)))
+			"new-session")
+		if l.detached {
+			argv = append(argv, "-d")
+		}
+		argv = append(argv, "-s", name, "-n", suffix, "-c", literal(unexpanded(dir)))
 		for _, word := range claude {
 			argv = append(argv, literal(word))
 		}
 		argv = append(argv, ";",
-			"set", "-p", "-t", target, "remain-on-exit", "failed", ";",
+			"set", "-p", "-t", target, "remain-on-exit", "on", ";",
 			"set", "-p", "-t", target, "remain-on-exit-format", "", ";",
-			"set-hook", "-p", "-t", target, "pane-died", died(suffix), ";",
+			"set-hook", "-p", "-t", target, "pane-died", died(suffix, run), ";",
 			"set", "-t", target, "@cld-tmux", literal(t.path), ";",
 			"set", "-t", target, "@cld-home", literal(home.Dir), ";",
 			"set", "-t", target, "@cld-busy", busyMarker, ";",
 			"set", "-t", target, "set-titles-string", titles(suffix), ";",
 			"set", "-t", target, "set-titles", "on")
+		argv = append(argv, marks...)
 		argv = append(argv, showKept(kept)...)
 		return argv, commandSize(argv[options:]), nil
 	}
-	// The entry goes once nothing is left to refuse the session, with the ID resume resumes, and
-	// claude gets the hooks that keep it where it could be written; the entries that have expired
-	// go with it, but for those of the sessions whose servers run. Before it, tmux's command is
-	// counted with the hooks for the file the entry goes to - where cld then cannot write it, the
-	// command goes without them, and is only shorter - so that a command too long leaves the
-	// record as it was: tmux would start its server before it failed on a longer one, saying no
-	// more than "command too long" or "failed to send command", and leave the server's socket once
-	// the server has ended.
-	planned := ""
+	// The entry goes once nothing is left to refuse the session - the terminal, which tmux would
+	// refuse, checked last (see checkTerminal) - with the ID resume resumes, and claude gets the
+	// hooks that keep it where it could be written; the entries that have expired go with it, but
+	// for those of the sessions whose servers run. Before it, tmux's command is counted with the
+	// hooks and the marks for the files the entry and its marks go to - where cld then cannot write
+	// them, the command goes without them, and is only shorter - so that a command too long leaves
+	// the record as it was: tmux would start its server before it failed on a longer one, saying
+	// no more than "command too long" or "failed to send command", and leave the server's socket
+	// once the server has ended.
+	plannedFile, plannedRun := "", ""
 	if state, err := stateDir(); err == nil {
-		planned = entryFile(state, suffix)
+		plannedFile, plannedRun = entryFile(state, suffix), companion(state, suffix, runMark)
 	}
-	argv, size, err := build(planned)
+	argv, size, err := build(plannedFile, plannedRun)
 	if err != nil {
 		return err
 	}
 	if size > commandLimit {
 		return fail.Usage(fmt.Sprintf("claude's arguments make tmux's command %d bytes, and tmux takes %d at most: give claude long text in a file, as with --append-system-prompt-file", size, commandLimit))
 	}
-	file := remember(entry{Name: suffix, Directory: dir, Conversation: id}, func(other string) bool {
-		server, _, _, _, err := t.lookup(context.Background(), other)
-		return server || err != nil
-	})
-	if file != planned {
-		if argv, _, err = build(file); err != nil {
+	if !l.detached {
+		if err := checkTerminal(command); err != nil {
 			return err
 		}
 	}
-	if err := checkTerminal(command); err != nil {
-		return err
+	env := l.env
+	if l.detached {
+		env = withTmuxTmpdir(env)
+	}
+	file, run := remember(entry{Name: suffix, Directory: dir, Conversation: l.id}, started{Claude: c.path, Environment: l.env}, func(other string) bool {
+		server, _, _, _, err := t.lookup(context.Background(), other)
+		return server || err != nil
+	})
+	if file != plannedFile || run != plannedRun {
+		if argv, _, err = build(file, run); err != nil {
+			return err
+		}
+	}
+	if l.detached {
+		// tmux's client returns once the server has run the command, the marks' run-shell
+		// included; the server leaves cld's output as it starts, so nothing holds the output cld
+		// reads.
+		cmd := exec.Command(t.path, argv[1:]...)
+		cmd.Args[0] = "tmux"
+		cmd.Env, cmd.Dir = env, dir
+		if out, err := combinedOutput(cmd); err != nil {
+			return fail.Runtime(out)
+		}
+		return nil
 	}
 	if err := printTitle(suffix); err != nil {
 		return err
 	}
 	// The server keeps the environment of the client that starts it, cld's (see the package
 	// comment).
-	return t.become(argv, withoutTerminal(os.Environ()))
+	return t.become(argv, env)
+}
+
+// withTmuxTmpdir is env with cld's own TMUX_TMPDIR, or none where cld has none, in place of its
+// own: the directory of the servers' sockets, which cld reads the sessions from.
+func withTmuxTmpdir(env []string) []string {
+	env = slices.DeleteFunc(slices.Clone(env), func(variable string) bool { return strings.HasPrefix(variable, "TMUX_TMPDIR=") })
+	if dir, set := os.LookupEnv("TMUX_TMPDIR"); set {
+		env = append(env, "TMUX_TMPDIR="+dir)
+	}
+	return env
 }
 
 // terminalVariables are the variables claude reads before TERM_PROGRAM, which tmux sets to "tmux"
@@ -904,12 +1009,13 @@ func withoutTerminal(environ []string) []string {
 // sends the words after its options, each followed by a NUL, behind their count, an int, as one
 // message of at most 16384 bytes, 16 of them the message's header (MAX_IMSGSIZE and
 // IMSG_HEADER_SIZE in tmux's compat/imsg.h), and fails otherwise with "command too long" or
-// "failed to send command". Of new's command, cld's own words take some 6 to 7 KB, most of it
-// claude's settings, whose hooks name tmux and the server's socket by their paths, and the file
-// of the session's entry in cld's record, some 1 KB the pane-died hook, which names the session
-// in each text it fits to the pane's width (see died), and inside a tmux that keeps keys from
-// claude some 180 bytes the line that names them (see showKept); the rest is for the words given
-// to claude, resume's SESSION among them.
+// "failed to send command". Of new's command, cld's own words take some 7 KB, most of it
+// claude's settings, whose hooks name tmux and the server's socket by their paths, and the files
+// of the session's entry and its marks in cld's record, some 1 KB the pane-died hook, which names
+// the session in each text it fits to the pane's width and the file of its run mark (see died),
+// some 60 bytes and two paths the run-shell that sets the marks (see setMarks), and inside a tmux
+// that keeps keys from claude some 180 bytes the line that names them (see showKept); the rest is
+// for the words given to claude, resume's SESSION among them.
 const commandLimit = 16384 - 16 - 4
 
 // commandSize is the size of command as a tmux client hands it to its server, without the count:
@@ -1151,19 +1257,29 @@ func (t *Tmux) Kill(suffix string, home Home) error {
 //
 // claude shuts down on the SIGHUP: it runs its SessionEnd hooks with the reason "other", and
 // exits. End does not wait for it: claude, orphaned, may still run its hooks when End returns,
-// and what it prints then is lost (see docs/design.md, decision 32).
+// and what it prints then is lost (see docs/design.md, decision 32). Before the kill-server, in
+// the same tmux command, End removes the session's run mark from cld's record, which keeps its
+// entry: the session was ended on purpose, and restore leaves it ended (see unmark).
 func (t *Tmux) End(ctx context.Context, suffix string, home Home, pids []string, stdout, stderr io.Writer) error {
 	server, exists, found, made, err := t.lookup(ctx, suffix)
 	if err != nil {
 		return err
 	}
+	rm := unmark(suffix)
 	command := []string{"kill-session", "-t", "=cld-" + suffix, ";", "kill-server"}
+	if rm != "" {
+		command = []string{"kill-session", "-t", "=cld-" + suffix, ";", "run-shell", rm, ";", "kill-server"}
+	}
 	switch {
 	case !exists && server:
 		if outlived, refused := t.lingering(ctx, suffix); !outlived {
 			return refused
 		}
-		command = []string{"if", "-F", outlives(suffix), "kill-server"}
+		kill := "kill-server"
+		if rm != "" {
+			kill = "run-shell " + shellWord(rm) + " ; kill-server"
+		}
+		command = []string{"if", "-F", outlives(suffix), kill}
 	case !exists || len(pids) > 0 && !slices.ContainsFunc(found, func(pid string) bool { return slices.Contains(pids, pid) }):
 		if !exists {
 			if err := ended(suffix); err != nil {
@@ -1199,11 +1315,15 @@ func (t *Tmux) Resumable(ctx context.Context, suffix string) error {
 }
 
 // Forget forgets session cld-SUFFIX, which has ended, for the interactive list's Ctrl+X on its
-// row: its entry in cld's record goes, and the list no longer shows it, but the index its name
-// may end in stays given (see Next), as claude keeps its conversation. A session that runs again
+// row: its entry in cld's record goes, with its environment and its marks beside it, and the list
+// no longer shows it, nor does restore bring it back, but the index its name may end in stays
+// given (see Next), as claude keeps its conversation. A session that runs again
 // under the name is not forgotten, and neither is a name without an entry: each is an error, with
 // the advice for the command line kept apart (fail.Error's Advice). Once ctx is done, its tmux is
-// killed.
+// killed. The caller holds the record's lock (see Lock), so that a restore of the session at once
+// is waited for, and the session it brings back runs again: without it, the forget would take
+// away the entry, the environment and the marks that restore had just written for tmux to start
+// the session with, leaving a session that runs with no environment kept.
 func (t *Tmux) Forget(ctx context.Context, suffix string) error {
 	_, exists, _, _, err := t.lookup(ctx, suffix)
 	if err != nil {
@@ -1216,8 +1336,10 @@ func (t *Tmux) Forget(ctx context.Context, suffix string) error {
 		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: " (see cld list)"}
 	}
 	dir, _ := stateDir() // recorded found the entry there
-	if err := os.Remove(entryFile(dir, suffix)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fail.Runtime("cannot forget session '" + suffix + "': " + reason(err).Error())
+	for _, file := range []string{entryFile(dir, suffix), companion(dir, suffix, runMark), companion(dir, suffix, busyMark), companion(dir, suffix, environment)} {
+		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fail.Runtime("cannot forget session '" + suffix + "': " + reason(err).Error())
+		}
 	}
 	return nil
 }
@@ -1435,7 +1557,8 @@ func idleSince(now time.Time, times []string) time.Duration {
 // session, as does a session made again under the name since, which is new; without the session,
 // if -F expands its format with none, and ends nothing. EndIdle reports whether it ended the
 // session: not where it was kept, nor where the server has gone, without an error. Another failure
-// is tmux's message. Once ctx is done, its tmux is killed.
+// is tmux's message. A session it ends loses its run mark, in the same command, as with kill:
+// restore leaves it ended (see unmark). Once ctx is done, its tmux is killed.
 func (t *Tmux) EndIdle(ctx context.Context, suffix string, limit time.Duration) (bool, error) {
 	// A session is idle for longer than limit where its seconds are before now less limit, and so
 	// before that time's next whole second, where it has a fraction: tmux compares whole numbers.
@@ -1449,15 +1572,21 @@ func (t *Tmux) EndIdle(ctx context.Context, suffix string, limit time.Duration) 
 	}
 	idle := "#{&&:#{==:#{session_attached},0},#{&&:" + before("session_activity") + "," + before("session_last_attached") + "}}"
 	name := "=cld-" + suffix
-	out, err := combinedOutput(t.serverContext(ctx, suffix, "if", "-F", "-t", name+":", idle,
-		"kill-session -t "+name+" ; kill-server", "display-message -p kept"))
+	kill := "kill-session -t " + name + " ; kill-server"
+	if rm := unmark(suffix); rm != "" {
+		kill = "kill-session -t " + name + " ; run-shell " + shellWord(rm) + " ; kill-server"
+	}
+	out, err := combinedOutput(t.serverContext(ctx, suffix, "if", "-F", "-t", name+":", idle, kill, "display-message -p kept"))
 	switch {
 	case err != nil && noServer(out):
 		return false, nil
 	case err != nil:
 		return false, fail.Runtime(out)
 	}
-	return out == "", nil
+	if out != "" {
+		return false, nil
+	}
+	return true, nil
 }
 
 // socketDir is the directory tmux keeps the sockets of -L in: tmux-UID in TMUX_TMPDIR, or in /tmp

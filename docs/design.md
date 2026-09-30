@@ -97,7 +97,7 @@ rows that name none were probed against tmux 3.6.
 | `claude --help` of 2.1.284 on its command line (run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`: it prints and exits, starting no conversation) | `Usage: claude [options] [command] [prompt]`, with commands such as `mcp`, `agents` and `attach`. Its short options are `-c, --continue`, `-d, --debug [filter]`, `-h, --help`, `-n, --name <name>`, `-p, --print` ("Print response and exit"), `-r, --resume [value]`, `-v, --version` and `-w, --worktree [name]`; `--bg` is also `--background` ("Start the session in the background and return immediately"); `--settings <file-or-json>`; `--tmux` "Create a tmux session for the worktree (requires --worktree)", `--tmux=classic` for plain tmux; `--teleport [session]` "Resume a teleport session"; `--from-pr [value]` "Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term"; `--bare` "Minimal mode: skip hooks (those defined in settings and by installed plugins; ...)", and `--safe-mode` starts with "hooks" among the customizations disabled. Hidden, in the bundle: `--init-only` "Run Setup and SessionStart:startup hooks, then exit", and `--rewind-files <user-message-id>` "Restore files to state at the specified user message and exit (requires --resume)" |
 | how `claude` 2.1.284 reads its command line (read from its bundle, not run) | commander, whose `.option()` calls the bundle holds, reads a word `-xyz` as `-x` with the value `yz` where `-x` takes a value, and else as `-x` followed by `-yz`, and `--x=VALUE` as `--x` with `VALUE`; an option given twice keeps the value given last, and `--settings`, `--name`, `--worktree` and `--resume` are such options - claude's own read of `--settings` from its raw arguments takes the last one too. claude also scans its raw arguments before commander: for `-p` and `--print` it stops at `--` and skips the values of the options that a table of its own names (`--model`, `--append-system-prompt`, `-n` and some 80 more; `--add-dir` and the other lists take each word up to one starting with `-`); for `--tmux` it looks at every word, after a `--` too, and where `-w` or `--worktree` is among them it goes to `execIntoTmuxWorktree` before anything else; for `--bg` and `--background` it looks at every word as well, and goes to its background sessions. `--from-pr` resumes as `--resume` does: claude's own check of whether it resumes names `-r`, `--resume` and `--from-pr` together. `--teleport` checks out the web session's branch in the current repository (`Switching to branch '...'`) and resumes the session there |
 | one of claude's commands after options (`claude --name cld-x --settings '{}' mcp --help` of 2.1.284, run with a scratch `HOME` and `CLAUDE_CONFIG_DIR`) | printed `Usage: claude mcp [options] [command]` and exited 0: the first word that is no option's value names a command, cld's options before it notwithstanding, and claude runs that command instead of a conversation |
-| the longest command a tmux client hands its server (tmux 3.7c, the snap's binary run with its libraries on a private socket, and 3.5a in the tests' image: `new-session -d -s s SCRIPT WORD`, `WORD` ever longer; tmux 3.7c's `client.c` and `compat/imsg.c` read) | the client sends the words after its options, each followed by a NUL, behind their count (4 bytes), in one message of at most 16384 bytes with a 16-byte header: at 16364 bytes of words the script got `WORD`; at 16365 to 16380 tmux printed `failed to send command`, and beyond that `command too long`, exit 1 both, having started its server, which then ended, leaving its socket. `cld new -s x -- WORD` with a 20000-byte `WORD` made a command of 25968 bytes, 5967 of them cld's own, with tmux at a path of 97 characters, claude at `/tmp/fake/claude`, git's `/usr/bin/git`, the socket in `/tmp/tmux-0`, the directory `/root/repository/cld` and the record in `/root/.local/state/cld`, and 5029 in the tests' sandbox (both in the tests' image, measured again once 39 had given the hooks `timeout` and `async`, 133 bytes more than before, and again once 40 had added the record's hooks, 647 bytes more at those paths; 42 then left out `"remoteControlAtStartup":true,`, 30 bytes fewer, counted, not measured, and #64 gave the `pane-died` hook its border line and its text fitted to the pane's width (5), 784 bytes more at those paths, counted, and 763 in the sandbox, where cld's own then measured 5762; 43 added the line naming the keys another tmux keeps, and the redraws after it, some 180 bytes more inside such a tmux, counted; 47 added `"disableAgentView":true,`, 24 bytes more, counted): the hooks in claude's settings name tmux and the server's socket by their paths, the record's hooks the entry's file and the directory, the session's home names the directory, and the `pane-died` hook the session, four times |
+| the longest command a tmux client hands its server (tmux 3.7c, the snap's binary run with its libraries on a private socket, and 3.5a in the tests' image: `new-session -d -s s SCRIPT WORD`, `WORD` ever longer; tmux 3.7c's `client.c` and `compat/imsg.c` read) | the client sends the words after its options, each followed by a NUL, behind their count (4 bytes), in one message of at most 16384 bytes with a 16-byte header: at 16364 bytes of words the script got `WORD`; at 16365 to 16380 tmux printed `failed to send command`, and beyond that `command too long`, exit 1 both, having started its server, which then ended, leaving its socket. `cld new -s x -- WORD` with a 20000-byte `WORD` made a command of 25968 bytes, 5967 of them cld's own, with tmux at a path of 97 characters, claude at `/tmp/fake/claude`, git's `/usr/bin/git`, the socket in `/tmp/tmux-0`, the directory `/root/repository/cld` and the record in `/root/.local/state/cld`, and 5029 in the tests' sandbox (both in the tests' image, measured again once 39 had given the hooks `timeout` and `async`, 133 bytes more than before, and again once 40 had added the record's hooks, 647 bytes more at those paths; 42 then left out `"remoteControlAtStartup":true,`, 30 bytes fewer, counted, not measured, and #64 gave the `pane-died` hook its border line and its text fitted to the pane's width (5), 784 bytes more at those paths, counted, and 763 in the sandbox, where cld's own then measured 5762; 43 added the line naming the keys another tmux keeps, and the redraws after it, some 180 bytes more inside such a tmux, counted; 47 added `"disableAgentView":true,`, 24 bytes more, counted; 48 the marks' `run-shell`, the busy mark's hooks and the `pane-died` hook's branch for status 0, 875 bytes more at those paths, counted): the hooks in claude's settings name tmux and the server's socket by their paths, the record's hooks the entry's file and the directory - since 48 the busy mark, five times, and the run mark too - the session's home names the directory, the `pane-died` hook the session, four times, and since 48 the run mark, and the marks' `run-shell` the busy and run marks |
 | what a resumed conversation keeps ([Claude Code's docs](https://code.claude.com/docs/en/sessions), read on 29 September 2026) | "Not every configuration flag from the original launch is restored. If the session depended on `--mcp-config`, `--settings`, `--plugin-dir`, `--fallback-model`, or directories added with `--add-dir`, pass them again when you resume"; the model is restored unless `--model` or an `ANTHROPIC_MODEL`-family variable picks one |
 | a `#` in `new-session`'s `-c` (tmux 3.3a, 3.4, 3.5a and 3.7c: plain tmux, and `cld new` and `cld resume` before and after the fix, by hand in Docker; `TestDirectoryTmuxWouldChange`) | tmux expands `-c` as a format, after splitting its command at `;`, and `#{session_path}` keeps the result: `/tmp/w/C#S` became `/tmp/w/C` (`#S` is empty then: the session does not exist yet), and `/tmp/w/x#(touch ran)` became `/tmp/w/x` while tmux ran `touch ran` through the shell in the client's directory (with `new-session -d`, 3.3a to 3.5a; with an attached client, as cld's, all four). A `-c` that names no directory starts the program in the home directory, and with 3.3a where the server started. So `cld new`, and `resume`, in such a directory started claude elsewhere, and in one named `x#(command)` ran command. `/tmp/w/C##S` gives `/tmp/w/C#S`: `##` is a `#` |
 | the environment the bash script handed tmux with `exec env -u TERMINAL_EMULATOR tmux ...` and `exec tmux ...` (bash 5.3.9 and 3.2.57, recorded by the fake tmux, and by `printenv` in its place under `set -euo pipefail`), and claude's in the pane of a server that `cld new` started (tmux 3.7c) | bash exported `PWD` set to the working directory, whatever `PWD` it got; `SHLVL=0` when it got none, and a `SHLVL` it got unchanged; and no `_`, not even one it got: once the script has run a command, bash no longer exports it. It dropped an exported `PS1` and `PS2`; `OLDPWD`, which an interactive bash exports after a `cd` - 3.2.57 always, 5.3.9 when it names no directory; and `RANDOM`, `PPID`, `COMP_WORDBREAKS`, `HISTCMD` and `BASH_VERSINFO`, with 5.3.9 also `SRANDOM`, `BASHPID` and `BASH_ARGV0`, and 3.2.57 `LINENO`. Its own variables that came in exported left with its values: `IFS` (space, tab, newline), `OPTIND=1`, `OPTERR=1`, `BASH`, `BASH_VERSION` and `SHELLOPTS`, with the script's `errexit`, `nounset` and `pipefail` added - a bash that reads it turns them on - and with 5.3.9 also `BASHOPTS`, `LINENO`, `PS4`, `EPOCHSECONDS` and `EPOCHREALTIME`; Debian's 5.2.15 dropped and rewrote the same variables as 5.3.9. Exported functions (`BASH_FUNC_NAME%%`) left in bash's own layout; any other variable passed as it came. The Go cld hands on the environment it got, apart from `TERMINAL_EMULATOR` (since 33, also the other variables that name the terminal to claude) and `TMUX`. tmux sets a pane's `PWD` from `-c`, so claude sees the same `PWD` either way; the rest comes from the server's environment, that of the cld that started the server: no `SHLVL` where claude saw `SHLVL=0`, that cld's `_` - a shell sets it to the path of the command it runs - where claude saw none, and each of the others as that cld got it |
@@ -221,6 +221,13 @@ rows that name none were probed against tmux 3.6.
 | the order a hook in the background lands in (claude 2.1.284's bundle, read, not run: the description of the `PostToolBatch` hook; and the hooks as `new` writes them against a private server, `PostToolUse`'s busy started in the background over a waiting, then after a gap `PermissionRequest`'s waiting through `sh -c`, the status read once both had ended: 20 runs a gap with tmux 3.7c from Ubuntu's snap under a load of 8 on 8 CPUs, and 40 built from source in the image `tests/Dockerfile` builds) | claude runs the tools of one answer with no call to the model between them: "PostToolUse fires per-tool", and `PostToolBatch` "once after every tool call in a batch has resolved, before the next model request". So the next tool's `PermissionRequest` can follow a tool's `PostToolUse` at once - two commands that each ask, the first answered - and an MCP server's second question its first `ElicitationResult`. A busy run in the background landed after the waiting, and left the status busy, with the snap in 10 of 20 runs at a gap of 0 ms, 8 at 5 ms, 7 at 10 ms, 5 at 20 ms, 2 at 30 ms and 1 at 50 ms; built from source in 4 of 40 at 0 ms, and in none from 5 ms on |
 | `detach-client` on a private server with two clients on session `cld-x`, each `tmux -L cld-x attach` in a pane of another server, and the commands run as claude runs a shell command: with the `TMUX` and `TMUX_PANE` of `cld-x`'s pane, input from `/dev/null`; then the pane asking for every motion of the mouse (`?1003h` and `?1006h`), as claude does, and a key typed in one client, A, before something else reached the other, B (tmux 3.7c, the snap on Ubuntu 26.04; `cmd-find.c`, `cmd-queue.c`, `cmd-detach-client.c`, `server-client.c` and `format.c` read; for the floor of #74, tmux 3.5a and 3.7c in the images `tests/Dockerfile` builds, with the commands cld runs, and 3.5a's `cmd-find.c` and `server-client.c` read) | `detach-client -s =cld-x` detaches both: each prints `[detached (from session cld-x)]` and exits 0. A bare `detach-client` detaches one, the client with the latest activity - whatever tmux reads from its terminal as a key, a mouse report or a focus event among them (`server_client_key_callback` sets `activity_time` for each), or else its attaching - on the session of the pane tmux finds by the command's tty, else by `TMUX_PANE`: of two, the one a key was typed in last, six times out of six, whichever attached first; from a shell in a pane, with a tty and without `TMUX_PANE`, the same. A mouse report with no button (`ESC[<35;10;5M`, the mouse moving) or a focus-in (`ESC[I`) sent to B after the key in A made B the one detached, once each; with nothing sent to B, A was. tmux shows a client's activity (`client_activity`, in seconds), but no format tells a key from the rest. With no client on that session, `cmd_find_best_client` takes the best client of any session on the server: with one attached to another session, `side`, the bare `detach-client` detached that one. With no client on the server at all, both fail with `no current client`, status 1: `detach-client` resolves its target client before it looks at `-s`. `if -F '#{session_attached}' detach-client` and `if -F -t =cld-x: '#{session_attached}' 'detach-client -s =cld-x'` do nothing and exit 0 in both cases, and detach as before where the session has a client. On a socket with no server tmux says `error connecting to PATH (No such file or directory)`, status 1. `display-message -p '#{||:#{@cld},#{==:#{prefix},C-q}}' ; if -F '#{&&:#{||:#{@cld},#{==:#{prefix},C-q}},#{session_attached}}' detach-client`, one tmux command run the same way (tmux 3.7c built from source, the image `tests/Dockerfile` builds, in `TestDetach` and `TestLeavesAForeignServerAlone`), detached as the bare `if` does on cld's servers, and on a server without `@cld` whose prefix is `C-b`, with a terminal attached to its session, printed `0` and detached nothing. tmux 3.5a did all of this as 3.7c did, the same run beside it: the terminal a key was typed in last detached, three times out of three, whichever had one first, and B after a mouse motion or a focus-in, three times each; both clients with `-s`; `no current client` and the `if`s doing nothing with no client on the server; the client of `side` detached by the bare `detach-client` alone; `0` and nothing detached on the server without the mark. Its `cmd_find_current_client`, `cmd_find_inside_pane` and `cmd_find_best_client` are 3.7c's, and its `server_client_key_callback` sets `activity_time` as 3.7c's does |
 | how `claude` 2.1.284 runs a shell command, `!` in its prompt and the Bash tool (read from its bundle, not run) | it quotes the command and adds `< /dev/null` - unless the command redirects its own input - and runs `eval 'COMMAND' < /dev/null` after sourcing its shell snapshot, with `&&`, then `pwd -P` into a file of its own; `!`'s output comes back as `bash-stdout` and `bash-stderr`. The command has no terminal on its input, so a `tty` there fails. Its environment is claude's with variables of claude's own added (`getEnvironmentOverrides`), which leave `TMUX` and `TMUX_PANE` alone |
+| the hook a pane's program exiting runs, where the pane has `remain-on-exit failed`: `pane-exited` and `pane-died` set on the pane (`-p`), on its window (`-w`) and globally (`-g`), each a `run-shell` that logs `#{hook_pane}`; the program exiting with status 0 or 1 a second after `new-session -d`, alone on its server and beside another session (tmux 3.5a and 3.7c, built from source in the images `tests/Dockerfile` builds) | `pane-died` runs for status 1 on the pane, the window and globally, and the pane stays. For status 0 neither the pane's `pane-exited` nor the window's ran, with or without another session: tmux closes the pane before it looks the hook up, and finds neither the pane nor, where it was the session's last, the session. The global one ran only while another session kept the server running, naming the pane (`%0`); alone, the server exited without running it, with `run-shell -b` too, and a global `session-closed` hook likewise |
+| `remain-on-exit on` on the pane, an empty `remain-on-exit-format`, and a `pane-died` hook `if -F '#{==:#{pane_dead_status},0}' { run-shell 'rm -f FILE' ; kill-pane } { set -w pane-border-status bottom ; set -p pane-border-format ... ; if -F '#{window_active_clients}' "display-message ..." }`, `FILE` a path with a `'` and a `#` in it, quoted for tmux's parser, `run-shell`'s format (`##`) and `sh`; the program exiting with status 0, 1 or on SIGTERM two seconds after `new-session -d`, alone, beside a pane split off in its window and beside another session, with a client attached through `script` (tmux 3.5a and 3.7c, in the images) | status 0 removes the file and closes the pane: alone, the session and the server end, and the client exits with status 0, printing `[exited]`, as when tmux closes the pane itself; beside the split pane, that pane stays with the client on it; beside another session, the client exits the same, as `detach-on-destroy` has it. Status 1 and signal 15 keep the file and the dead pane, and run the other branch, which sets `pane-border-status bottom` and the pane's border format. `show-hooks` prints the hook back with its braces. `kill-pane`, `kill-window` and `kill-session` of the pane's session, alone on its server, ran no `pane-died` hook, and the server ended |
+| the run mark made in the command that makes a session, and removed in the one that ends it (#115, tmux 3.5a and 3.7c, in the images): `new-session -d`, and `new-session` attached through `script`, followed in the same command by `run-shell "{ rm -f 'BUSY'; touch 'RUN'; } 2>/dev/null \|\| true"`; the same where `new-session` fails, for a name taken and for a `TERM` that terminfo does not know (`cld-no-such-terminal`); `kill-session -t =s \; run-shell "rm -f 'RUN' 2>/dev/null \|\| true" \; kill-server`, with no terminal and with one attached through `script`, and the same as the line of an `if -F`; a `run-shell` whose command fails, with and without `\|\| true`; a program that exits with status 0 at once, with the `pane-died` hook of 48.2 set before the `run-shell` that makes the file | the file is made and the busy one removed before the client returns, with status 0, and the attached client exits `[exited]` with status 0 when its program does. A name taken (`duplicate session: s`) and a terminal tmux cannot open (`missing or unsuitable terminal: cld-no-such-terminal`, status 1) cut the command short: no file is made, and no server stays. The kill removes the file and ends the server, and a client attached exits `[exited]` with status 0, as without the `run-shell`: the command's own client keeps the server running until the command is done. Meanwhile the server serves other clients, with no session: with `run-shell 'sleep 2'` in the `rm`'s place, another client's `ls` half a second in printed nothing, with status 0, `has-session -t =s` failed, and a `new-session -d -s s` made its session, which the `kill-server` then ended with the server. A command that fails prints `'touch /nonexistent/b' returned 1` and the client exits with status 1; with `2>/dev/null \|\| true` it prints nothing, and the status is 0. The program that exited at once left no file: the hook's `rm` ran after the `run-shell` |
+| `claude --resume ID PROMPT` (the linux-x64 bundles of 2.1.232, from npm, and 2.1.285, installed; read, not run) | `-r, --resume [value]` takes its value, the ID, and the word after it is the positional `[prompt]`. The interactive launch puts the prompt in the app's state as `initialMessage`, the restore of a resumed conversation keeps that state's `initialMessage` (2.1.285's `eVt`, 2.1.232's alike), and the REPL, once loaded, takes it and runs it as a turn after the resumed messages (2.1.285: `_takeLaunchPrompt`, `submitInitial`; 2.1.232: the effect that takes `initialMessage`). Both also have a hidden `--reply-on-resume`, which claude's own background respawns pass, and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN`, which resumes a turn cut off only for a conversation that ran in the background |
+| `SessionEnd`'s reason for claude's ways out (claude 2.1.285's bundle, read, not run) | `prompt_input_exit` for the ways out of claude's prompt, `/exit` among them, and for the way out of the exit dialog that moves the conversation to the background; a signal gives `other`, as a kill does (see the row on SIGHUP above) |
+| a tmux server that a transient oneshot unit starts, once the unit is stopped: `systemd-run --user --unit=cldprobe-restore-N -p Type=oneshot -p RemainAfterExit=yes -p KillMode=process` running `tmux -L NAME -f /dev/null new-session -d`, then `systemctl --user stop` (systemd 259 on Ubuntu 26.04, a user manager with lingering on; the snap's tmux 3.7c as `/snap/bin/tmux`, and its binary `/snap/tmux/current/usr/local/bin/tmux` run as it is; each unit and server removed afterwards) | through `/snap/bin`, the server ran in a scope of the snap's own, `snap.tmux.tmux-UUID.scope` under `app.slice`, outside the unit; run as it is, in the unit's own cgroup. Both outlived the stop, and the unit showed `inactive`. With the default `KillMode` the second was killed with the unit |
+| tmux-resurrect (master cff343c, 2023-03-06) and tmux-continuum (master 0698e8f, 2024-01-20), their scripts read | resurrect saves a pane's program as the command line of the process whose parent is the pane's own program (`save_command_strategies/ps.sh`, `pgrep.sh`) - what claude runs, not claude, which is the pane's own program in cld - and restores it by typing it into the pane's shell with `send-keys` and `C-m`. continuum saves from `status-right`, where it puts its interpolation, and only where no other tmux server runs: it counts the user's processes whose command starts with `tmux`, cld's servers among them (`helpers.sh`); it restores as tmux starts only where no other server runs either |
 
 ## Distribution
 
@@ -256,8 +263,8 @@ rows that name none were probed against tmux 3.6.
 2. **Behaviour against real tmux**: tmux is local and cheap, so it is not faked. Only `claude` is
    replaced, by a *probe* that behaves like claude towards the terminal (the modes above), logs
    its argv, cwd, environment and raw input bytes, and emits OSC sequences on request; and
-   `docker`, for `setup telemetry`, by the same probe, which records the calls and fakes their
-   results.
+   `docker`, for `setup telemetry`, and `systemctl` and `loginctl`, for `setup restore` (48), by
+   the same probe, which records the calls and fakes their results.
 3. **Terminal contract**: the same checks run against several *outer terminals* through drivers.
 
 Isolation needs no seams in the program: `TMUX_TMPDIR` moves cld's sockets (`-L cld-NAME`) into
@@ -380,9 +387,11 @@ comment `/fast-forward` from someone who can push; a pull request that changes
    the worktree: claude offers to remove it only when it exits on its own. The worktree is named
    after the session, also when that is the default `main`; since 24 by its whole name,
    `--worktree cld-NAME` (24.7).
-5. Failures stay on screen: with `remain-on-exit failed`, a claude that exits with an error or a
-   signal keeps its pane, so what it printed - a startup error above all, which would otherwise
-   vanish with the session - stays readable. The format is empty, so tmux does not scroll that out
+5. Failures stay on screen: with `remain-on-exit failed` - since 48 `on`, where the `pane-died`
+   hook closes the pane of a claude that exited with status 0, once it has removed the session's
+   run mark (48.2) - a claude that exits with an error or a signal keeps its pane, so what it
+   printed - a startup error above all, which would otherwise vanish with the session - stays
+   readable. The format is empty, so tmux does not scroll that out
    of sight; a `pane-died` hook shows how to end the session on the message line instead, naming it
    through the session's one window, named `NAME` (since 24, as `kill` takes it, `-n` and `-s`,
    written into the hook as the session is made). The hook shows it only to a terminal on that
@@ -412,7 +421,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
    starts Claude Code 2.1.232 or newer, the first release that does what cld passes and relies
    on. Both are checked at startup and raised by hand, and neither has an upper bound. The tmux
    check runs for every command but `help`, `version`, completion (17.4), `setup telemetry`,
-   `setup project`, `update` and `setup completion`, which run no tmux (18, 19, 21, 22), and
+   `setup project`, `update`, `setup completion` and `setup restore`, which run no tmux (18, 19,
+   21, 22, 48.9), and
    refuses an older tmux with `cld: tmux 3.5a or newer is required, found 'tmux 3.4'` and
    status 1.
    - It reads `tmux -V`: the major and minor version, after `next-` for a development build
@@ -465,7 +475,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
      instead - the tools, then `tmux -V` - so that cld runs claude only once those cheap checks
      pass, and a missing tool or a tmux too old is reported before a claude too old. `join`, `kill`,
      `list`, completion (17.4), `setup telemetry` (18) and `setup project` (19) never start claude
-     and do not check it.
+     and do not check it; `restore` (48.8) checks the claude of each session it brings back, in
+     that session's directory and environment.
      cld compares the `X.Y.Z` the output starts with as numbers (2.1.30 is older than 2.1.232) and
      refuses an older claude with `cld: claude 2.1.232 or newer is required, found
      '2.1.231 (Claude Code)'` and status 1. It does not say how to update, which depends on how
@@ -1100,7 +1111,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        offers what that tmux lists, and `join` then refuses the tmux. So a TAB costs what
        `cld list` costs but for that `tmux -V`: a read of the socket directory and one
        `list-sessions` a server (13.1, 38; see Findings). It never runs claude, `claude --version`
-       included, which `new` and `resume` alone run as they start claude: completing their
+       included, which `new` and `resume` alone run as they start claude, and since 48
+       `restore` (48.8): completing their
        arguments checks no claude either. It starts no server - `list-sessions` does not - and
        never opens the session list (14): it reads the sessions itself rather than run `list`,
        and a completion script runs it with stdout not a terminal anyway. With no server, no
@@ -1910,7 +1922,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        lookup (a session that exists or none, a lingering server), the directory, `-w`'s
        repository and, since 41, the length of tmux's command - just before the title, so that
        each of those says what it said without a terminal too. `Attach`, the rest of `join`,
-       which the list's Enter takes too, makes it there: where the list runs it passes;
+       which the list's Enter takes too, makes it there: where the list runs it passes. Since 48
+       it also comes before the session's entry is written (40.1), which refuses nothing, so that
+       a `new` or `resume` refused for want of a terminal leaves nothing in cld's record;
     3. the message says what is missing, and no more: most ways into it involve no ssh, so
        `ssh -t` is in the user guide's Troubleshooting instead;
     4. the title goes to stdout only where stdout is a terminal: tmux draws on stdin's terminal,
@@ -2258,7 +2272,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `mv`, without cld, jq or a lock; beside them `indexes.json`, the highest index given after
        each `NAME-`, and when, and `lock`. `new` and `resume` write the entry as they make the
        session, once nothing is left to refuse it, before tmux: with no ID, or the one `resume`
-       resumes;
+       resumes. Since 48 `restore` writes it too, and beside it go the run mark `S.run`, the busy
+       mark `S.busy` and the server's environment `S.env`, which go with it (48.1, 48.3, 48.4);
+       and the terminal is checked before it (31.2): a `new` without one wrote an entry, `ended`
+       in `list`, for a session that never ran;
     2. the ID comes from claude, not from its transcripts (16.4 stands): a `SessionStart` hook,
        given with `--settings` beside those of 25 and 26, takes `session_id` from its input - a
        line of JSON (see Findings) - with `sed`, where it has only letters, digits and `-`, and
@@ -2310,7 +2327,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     5. `join` and `kill` (since 44 `detach` too) refuse an `ended` session, `session 'S' has
        ended; resume it with cld resume -n NAME -s SUFFIX`. `kill` leaves the entry: the
        maintainer chose to forget one only at the expiry and with the list's Ctrl+X, so that a
-       kill by mistake is an Enter away. cld has no command of its own that forgets;
+       kill by mistake is an Enter away. cld has no command of its own that forgets. Since 48
+       `kill` removes the session's run mark, so that `restore` leaves it ended (48.1);
     6. `new` without `-s` gives the index above the highest of the sessions that run (24.1), of the
        entries, `ended` ones included, and of the index the record says was given after `NAME-`,
        which stays when its entry is forgotten; `-s`'s index counts as given too. It looks up only
@@ -2326,7 +2344,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `new -w` reopens an old worktree only then (24.7). `new` and `resume` hold `lock` (`flock`)
        from the name to tmux - it goes with cld's `exec` - so that two `new` at once take two
        names, where the second ended with `duplicate session` (24.1); a lock another cld holds is
-       waited for ten seconds, then gone without;
+       waited for ten seconds, then gone without. Since 48 `restore` holds it too, and the list's
+       forget (48.6);
     7. the record serves the sessions: where cld cannot write it, `new` and `resume` warn
        (`cld: warning: cannot record session 'S': ...`) and make the session all the same, without
        the hooks; an entry or an index cld cannot read is none, and so is an entry whose name is
@@ -2415,8 +2434,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        title, leaving the socket of the server it started. cld counts its command as tmux does
        (`commandLimit`) and refuses a longer one, with status 2, naming its size, before the
        check of the terminal (31.2) and the title: only the words for claude, or a long SESSION,
-       make it so, cld's own taking some 6 to 7 KB. It counts the command before the session's
-       entry is written (40.1), with the record's hooks for that entry (40.2), so that a command
+       make it so, cld's own taking some 7 KB. It counts the command before the session's
+       entry is written (40.1), with the record's hooks for that entry (40.2) - since 48 with the
+       marks' too (48.1) - so that a command
        refused leaves the record as it was; where cld then cannot write the entry, the command
        goes without those hooks (40.7), which only shortens it. The message and the guide say to
        give claude long text in a file (`--append-system-prompt-file` and the like);
@@ -2727,10 +2747,13 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        list's rows do not change under a key (14.6). `Sessions` reads both times in one field,
        `#{session_activity} #{session_last_attached}`, as the second is empty where no terminal has
        attached and the fields split at runs of tabs; a time that is no number counts as now, so
-       that nothing ends on a value cld cannot read;
-    6. the session's entry in cld's record stays, as after `kill` (40.5): `list` shows a session
-       it has ended as `ended` at once, from its entry (`session.EndedSession`), without reading
-       every server again - and not at all without one, as for a session of cld 0.9.0 or earlier -
+       that nothing ends on a value cld cannot read. Since 48 a session `restore` brought back
+       starts again from the restore, to tmux, for `LAST ACTIVE` and the sweep: `restore` itself
+       leaves ended one idle for longer by its run mark (48.8);
+    6. the session's entry in cld's record stays, as after `kill` (40.5) - since 48 without its run
+       mark, so that `restore` leaves the session ended (48.1): `list` shows a session it has
+       ended as `ended` at once, from its entry (`session.EndedSession`), without reading every
+       server again - and not at all without one, as for a session of cld 0.9.0 or earlier -
        and the list's Enter on its row, or `resume`, brings its conversation back by its ID, in
        its directory (40.3, 40.4). But claude's own cleanup removes a transcript last written
        longer ago than `cleanupPeriodDays`, 30 days by default (see Findings): the conversation of
@@ -2808,6 +2831,185 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     of claude needs the daemon (see Status). Out of scope: bridging the two - a command that moves
     a conversation between a session of cld's and a background session, or `list` showing
     background sessions.
+
+48. Sessions come back after a reboot (#115): `cld restore` brings back, detached, each session
+    that ran when the machine stopped, claude resuming its conversation where it ran, and has
+    claude continue a turn the stop cut off; `cld setup restore` has the user's systemd run it as
+    it starts. Before, a reboot ended every session, which `list` then showed as `ended` beside
+    those ended on purpose, with nothing to tell them apart, and each came back only through a
+    `cld resume` of its own, idle mid-task. Settled with it:
+    1. the run mark, `sessions/S.run` beside the entry (40.1): the tmux of `new` and `resume`
+       makes it, in the command that makes the session, once `new-session` has made it -
+       `run-shell` with `touch`, printing nothing and exiting 0 however it fares (`setMarks`) -
+       so that a session that was never made has none: tmux cuts its command short where
+       `new-session` fails, a name taken or a terminal it cannot open (see Findings), and cld,
+       refused before tmux - no terminal (31.2) - makes none. `kill` and the list's `Ctrl+X`
+       (`End`), and the sweep of the idle sessions (46.4), remove it in the tmux command that ends
+       the session, between `kill-session` and `kill-server`, so that a session made again under
+       the name, on a server that starts once this one has gone, keeps the mark its own tmux
+       makes; the `pane-died` hook removes it where claude exited with status 0 (48.2), and the
+       list's forget with the entry (40.3). tmux serves other clients while `sh` runs the kill's
+       `rm`, some milliseconds, with the server up and no session on it (see Findings): a `new` or
+       `resume` of the name just then finds a server of cld's without its session that has
+       outlived none (13), and refuses the name, where a moment later it would have made the
+       session. claude's `UserPromptSubmit` hook touches it (`touch -c`), so that its time is when
+       the session was last started or given a prompt (48.8). A reboot, a server that crashes or
+       `tmux kill-server` leaves it, and so do tmux's own keys that close claude's pane or its
+       window, `C-q x` and `C-q &`, and a `kill-session`: tmux runs no `pane-died` hook for a
+       pane it kills (see Findings), and the user guide says to end a session with `/exit` or
+       `kill` for it to stay ended. A session with the mark and no server is one that `restore`
+       brings back. `SessionEnd`'s reason does not tell: a kill
+       and a shutdown both give `other`, `prompt_input_exit` covers, where agent view is on (47),
+       the dialog that moves the conversation to the background too (see Findings), and a hook
+       that does not run - `disableAllHooks`, `--bare` - would leave the mark of every `/exit`;
+    2. the issue's per-pane `pane-exited` hook beside `pane-died` never runs: tmux looks a hook up
+       once it has closed the pane, and finds neither the pane nor, where claude's was the
+       session's last, the session; a global one runs only while another session keeps the server
+       running (tmux 3.5a, 3.7c; see Findings). So claude's pane has `remain-on-exit on`, where 5
+       had `failed`, and the `pane-died` hook tells the two apart: for status 0
+       (`#{pane_dead_status}`, empty after a signal) it removes the run mark with `run-shell`,
+       which tmux waits for, then closes the pane with `kill-pane`, as tmux closes it with
+       `failed` - the session and its server end, a terminal on it exits with status 0, and a
+       pane split off beside it stays (see Findings); for anything else it keeps the hint as 5
+       has it. The braces of `if -F` hold the two branches, and the mark's path goes quoted for
+       tmux's parser, with each `#` doubled for `run-shell`'s format, and quoted for `sh` within.
+       The hook grows by some 100 bytes and the path (41.5). Where cld cannot write the record
+       (40.7), the status-0 branch is `kill-pane` alone. A session an older cld made keeps
+       `failed`, and has no mark;
+    3. the busy mark, `sessions/S.busy`: claude's `UserPromptSubmit` hook makes it, where the
+       entry is there, and `Stop`, `StopFailure` and an interrupt remove it -
+       `PostToolUseFailure` with `is_interrupt`, and for an interrupt as claude writes, which no
+       event tells, `idle_prompt` a minute later, as for the title (25.2). Each is a `sh` with
+       `:`, `rm`, `touch` or `grep`, no tmux, given in `--settings` with the record's hooks
+       (40.2), and waited for with 39's timeout, since their order is the turn's; `Stop`'s `rm`
+       goes before its `touch`, in one command. The tmux of `new`, `resume` and `restore` removes
+       the mark in the `run-shell` that makes the run mark (48.1), once it has made the session,
+       as the claude it starts is in no turn yet: a `restore` whose tmux fails leaves it, and the
+       next one still has claude continue the turn;
+    4. `sessions/S.env`: the claude `new` or `resume` checked, by its path, and the environment
+       they start tmux with - after `withoutTerminal` (33), with `TMUX` emptied (2) - as JSON, as
+       a variable can hold any byte but NUL, and readable by the user alone, as the entry is: an
+       environment can hold secrets. It is written before tmux makes the session, and so before
+       the run mark, so that `restore` finds the environment of any session it finds marked;
+       where cld cannot write it, the session gets no mark, and a warning says why. It goes with
+       the entry: the list's forget and the expiry (40.6) remove it with the marks, and so does
+       `new`, `resume` or `restore` where an entry has gone. The words given to claude after `--`
+       are not kept, as for `resume` (41). What names the login the session started in - an ssh
+       agent's `SSH_AUTH_SOCK`, `DISPLAY` - comes back as it was, stale after a reboot, as after
+       a reconnection: the user guide's remedies for that hold (see Sessions there);
+    5. `cld restore`, for each entry with a run mark and no server, in the order of the names,
+       does what `resume -n NAME -s SUFFIX` does (40.4) - `--resume ID`, or else `cld-S`, and
+       the same `--settings`, agent view off among them (47), in the entry's directory, which is
+       where the session's home (37) comes from too - but detached: `new-session -d`, with no
+       check of a terminal (31), no title, and cld waiting for tmux instead of becoming it, `TMUX`
+       emptied as for the others (`create`, given a `launch`). The
+       server starts with the recorded environment, so claude gets the environment its session
+       started with rather than the unit's, but for `TMUX_TMPDIR`, which is `restore`'s own: the
+       socket is where cld and the title's hooks (25) look for it. A server that runs, with the
+       session or without it, or one cld did not start (13, 34), counts as one that runs:
+       `restore` leaves it. It prints a line for each session it brings back,
+       `Restored session 'S' in DIR`, with `, continuing its turn` where it was busy;
+    6. `restore` holds the record's lock (40.6) for one session at a time, from the lookup to tmux:
+       another `restore`, or a `resume` of the session, waits for it, then finds the session
+       running - one session, where both would make it and tmux fail the second with
+       `duplicate session` - and a `new` meanwhile waits for one session at most. The list's
+       forget (40.3) takes the lock too, and looks the session up under it: beside a `restore` of
+       the session it waits, then finds the session running, `session 'S' runs again`, where it
+       would have removed the entry, the environment and the run mark that `restore` had written
+       for tmux, leaving a session that runs without them, which every later `restore` would warn
+       of. A `resume` that went first is not covered: it lets the lock go with its `exec` (40.6),
+       before tmux has made the session, so a `restore` that takes the lock just then finds no
+       session and makes it too, and one of the two tmux commands fails, and a forget just then
+       finds no session and removes what the `resume` wrote. Out of the
+       lock, a `kill` of the session - which takes none - is not waited for: it removes the mark
+       in its own tmux command, before the server it ends has gone (48.1), so a session made
+       again under the name keeps its own;
+    7. a session that was busy gets `claude --resume ID "The machine restarted while you were
+       working; continue where you left off."`: claude submits a prompt given after `--resume ID`
+       as the first turn of the resumed conversation (claude 2.1.232 and 2.1.285, read; see
+       Findings). Its permission prompts still apply: the turn waits at the first one until
+       someone joins. Not taken: claude's hidden `--reply-on-resume` and
+       `CLAUDE_CODE_RESUME_INTERRUPTED_TURN`, internal to its background sessions;
+    8. `restore` starts claude, so it checks claude's version, as `new` and `resume` do (6): the
+       claude of `S.env`, by its path, in the entry's directory and the recorded environment,
+       where it starts - a version manager's shim picks the same claude there. What refuses a
+       session - no `S.env`, a directory gone or closed, with 40.4's command that resumes it from
+       where one stands, a claude too old or that cannot run, a name `new` would refuse, tmux's
+       own failure - is a warning, `cld: warning: cannot restore session 'S': ...`; the others
+       come back, and `restore` ends with status 1. Nothing to bring back is status 0, silently.
+       `restore` checks tmux as every command does, and runs no sweep of idle sessions (46), but
+       leaves ended, removing its mark, a session idle for longer than `CLD_IDLE_DAYS` (46.3,
+       refused as `list` refuses it) by its run mark - since `new` or `resume` made the session,
+       or claude last took a prompt (48.1) - with a note, `cld: left session 'S' ended, idle for
+       31 days`; `restore` keeps the mark's time. A reboot takes tmux's times with the server, and
+       the new server's count from the restore, so without this a session nobody used, on a
+       machine that restarts more often than the limit, would come back for good, holding what
+       46 frees. The mark's time is the record's nearest to 46.1's: the entry's is not, which
+       `restore` and `SessionStart` write, and a `SessionEnd` at shutdown may touch (see
+       Findings on SIGHUP). It misses an attach, or
+       keys typed without a prompt: a session only watched for that long stays ended, and
+       `resume` brings it back. The continue prompt (48.7) touches the mark, as a prompt;
+    9. `cld setup restore`, Linux with systemd only, refused elsewhere as `setup telemetry` is
+       (18), checks in its `Args` and `RunE`, which completion never runs (17.4, 18.8): systemctl
+       on the `PATH`, and `systemctl --user show-environment` answering, else nothing is written.
+       It writes `~/.config/systemd/user/cld-restore.service` through `internal/configfile`,
+       where it differs: `Type=oneshot` with `RemainAfterExit=yes`; `KillMode=process`, so that
+       stopping the unit ends no server that `restore` started, which stay in its cgroup - a
+       snap's tmux moves its server to a scope of its own - and the default would kill them (see
+       Findings); `WantedBy=default.target`; `ExecStart` naming this cld by the file it runs from,
+       which `update` replaces in place (21); and `Environment` for the `PATH` that `setup
+       restore` runs with, where `restore` finds tmux, and `TMUX_TMPDIR`, `XDG_STATE_HOME` and
+       `CLD_IDLE_DAYS` where set, which the user's systemd has none of - a `CLD_IDLE_DAYS` that
+       `restore` would refuse `setup restore` refuses first - each quoted as systemd reads it, C's
+       escapes, `%%` and, in `ExecStart`, `$$`. Always under `~/.config`: the user's systemd reads
+       `XDG_CONFIG_HOME` from its own environment, which the shell's does not tell. Then
+       `systemctl --user daemon-reload`, where the unit changed, and `enable`, which a second run
+       repeats harmlessly. Lingering it reads with `loginctl show-user UID --property=Linger
+       --value`: off, the user's systemd starts at the first login and, at the last logout, ends
+       what runs in its units, the sessions `restore` started among them; the report says so and
+       names `loginctl enable-linger`, which cld does not run, as logind may ask for a password.
+       The unit is started only by the user's systemd: `setup restore` restores nothing itself;
+    10. rejected: tmux-resurrect and tmux-continuum, which take the pane's child for its program
+        where claude is the pane's own, restore a program by typing its command into a shell, and
+        save from `status-right`, off in cld's servers, and only where one tmux server runs (see
+        Findings); the user guide says that continuum in the user's own tmux counts cld's servers
+        as others, which turns its autosave and its restore at startup off. Also rejected: the run
+        mark from `SessionEnd`'s reason (48.1), and claude wrapped in `sh -c` to see its status,
+        which 1 and 11 keep claude out of. Out of scope: panes split in a session, which do not
+        come back, and the words after `--` (48.4);
+    11. the help and completion: `restore` and `setup restore` take no argument and complete none;
+        the root's help lists `restore` after `list`, `setup`'s `restore` after `completion`,
+        `kill`'s help says that `restore` leaves a killed session ended, and `setup`'s `Short`
+        names restore;
+    12. the tests (`restore_test.go`): the run mark and the environment that `new` and `resume`
+        write, 0600, without the terminal's variables, which `kill` and claude's status-0 exit
+        remove and a failed claude keeps (`TestRunMark`); no mark from a `new` refused for want of
+        a terminal, nor from one or a `resume` whose tmux cannot open the terminal, and no restore
+        of them (`TestNoSessionNoMark`); the busy mark through each hook (`TestBusyMark`); a
+        session idle for longer than `CLD_IDLE_DAYS` by its mark left ended, one within it
+        brought back with the mark's time kept, the mark touched by a prompt, and a value that is
+        no number of days refused (`TestRestoreIdle`); `restore` of sessions whose servers
+        `kill-server` ended, run from
+        another directory with another environment - by ID, in their directory, with their
+        environment, without the words after `--`, the prompt for the busy one, detached - of
+        none that `kill` or claude's exit ended, and again of none (`TestRestore`); a directory
+        gone, no environment and a claude too old, each a warning with status 1 while another
+        comes back (`TestRestoreFailures`); two `restore` at once, and a `restore` racing a
+        `resume`, the first held as its tmux is about to make the session, which make one
+        session, and both fail without the lock (`TestRestoreAtOnce`); the list's forget while
+        `restore`'s tmux is held so, which forgets nothing, and would without the lock
+        (`TestForgetRacingRestore`); `setup restore` against the
+        fake `systemctl` and `loginctl` (probe), its unit word for word, a second run, a variable
+        changed, a `CLD_IDLE_DAYS` refused, lingering on, off and unknown, and its failures
+        (`TestSetupRestore`); its refusal off Linux; completion running neither.
+        `TestEndsIdleSessions` has the sweep remove the mark, `TestListEnded` the forget the
+        environment, `TestRecordWhileRunning` the expiry the files beside an old entry, but for a
+        session that runs, and those of an entry that has gone, `TestNewTmuxCommand` and
+        `TestServerOptions` the hook, the marks' `run-shell` and `remain-on-exit on`,
+        `TestNothingToPrintWritesNothing` and `TestIdleSessionsWithFakeTmux` the kill's, and the
+        settings (25.7) the busy mark's hooks.
+
+    Out of scope: a real reboot, which Status leaves to check.
 
 ## Implementation notes
 
@@ -3132,6 +3334,24 @@ Where the implementation departs from the plan above:
   returns what was written once no program has it open, when that read ends (with EIO on Linux).
   `RunCldOnTerminal` gives cld the terminal as a shell does: its stdin, stdout and
   controlling terminal, in a session of its own (`Setsid`, `Setctty`).
+- `restore` (decision 48) is `Tmux.Restore`, in `internal/session/restore.go`, over `create`, which
+  takes a `launch`: what `New`, `Resume` and `Restore` give claude, the environment tmux runs with -
+  where it is nil, cld's own without the terminal's variables, taken once `TMUX` is emptied -
+  whether it is detached, where cld runs `tmux ... new-session -d` and waits for it, with no
+  terminal and no keys kept (43), instead of becoming its client, and whether the session is
+  restored, whose run mark keeps its time. The companions of an entry (48.1, 48.3, 48.4) are named
+  after it (`companion`), and `write`'s expiry goes by the entry's time for each of them, removing
+  those of an entry that has gone; `setMarks` is the `run-shell` that follows `new-session`,
+  `unmark` the `rm` of the kill's; `Marked` lists the entries with a run mark, and `restore` locks,
+  looks up and makes one at a time. `setup restore` is `internal/restore`, which reads and writes
+  the unit through `internal/configfile` and runs `systemctl` and `loginctl` through
+  `internal/tool`, capturing what they print. The tests fake both with the probe, linked beside
+  `claude` as `docker` is, on every sandbox's `PATH`: it records each call in `systemd.jsonl`,
+  answers `loginctl show-user` with `CLD_FAKE_LINGER` (`no` unset), and fails a call with the
+  argument `CLD_FAKE_SYSTEMD_FAIL` names, so that no test reaches the user's systemd. A reboot, in
+  the tests, is `kill-server` on each session's server, which ends claude and runs no `pane-died`
+  hook; the races hold the first `restore`'s tmux as it is about to make the session, with a wrapper
+  first on the `PATH` (`holdTmux`), which holds a second `restore`'s the same where it gets as far.
 
 ## What the tests found
 
@@ -3293,6 +3513,14 @@ into Enter, see Findings and 43).
   whether `claude agents` outside cld still lists a session of cld's, were not run, as an
   interactive claude may connect to claude.ai: the maintainer runs or allows them. Until then the
   user guide says which of it is not checked.
+- `cld restore` and the marks (48) are tested on tmux 3.7c and 3.5a in the images, with sessions
+  whose servers `kill-server` ended in place of a reboot, and `setup restore` against a fake
+  `systemctl` and `loginctl`; a transient oneshot unit stood for the user's systemd running a tmux
+  server (see Findings). Not checked yet: a real reboot, with the unit run by the user's systemd at
+  boot and at login, lingering off at a real last logout, a real claude's `SessionEnd` at a
+  shutdown, and a real claude resumed with the prompt - read in the bundles of 2.1.232 and 2.1.285,
+  not run - asking a permission in the turn it continues. `setup restore` is refused on macOS, which
+  has no systemd; launchd is not looked into.
 - iTerm2 is not automated: every level beyond "launch only" needs permissions on the runner -
   controlling iTerm2 over AppleScript or its Python API (with authentication switched off), and
   posting synthetic key events (Accessibility). That is a decision for the maintainer, not

@@ -21,7 +21,8 @@ Available Commands:
   detach      detach the terminals attached to session NAME-SUFFIX
   kill        end session NAME-SUFFIX and its tmux server
   list        list cld's sessions; on a terminal, join, kill or resume one
-  setup       set up claude in a project, its telemetry, or shell completion
+  restore     bring back the sessions that ran when the machine stopped
+  setup       set up claude in a project, telemetry, shell completion or restore
   update      update cld to the latest release
   completion  print the completion script for a shell
   help        show this help, or the help of COMMAND

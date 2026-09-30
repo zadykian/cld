@@ -3,8 +3,9 @@
 // why, is in internal/session, the interactive list, cld list on a terminal, in internal/picker,
 // cld setup project, claude's settings for a project, in internal/project, cld setup telemetry,
 // a local OpenTelemetry collector for claude, in internal/telemetry, cld update, which replaces
-// cld with the latest release, in internal/update, and cld setup completion, which writes the
-// completion script where a shell reads it, in internal/completion.
+// cld with the latest release, in internal/update, cld setup completion, which writes the
+// completion script where a shell reads it, in internal/completion, and cld setup restore, which
+// has the user's systemd run cld restore as it starts, in internal/restore.
 // cld completion SHELL prints cobra's completion script for the shell - bash's with lines of
 // cld's for ble.sh - with which cld join -n completes the names cld list shows (see commandLine).
 package main

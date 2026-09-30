@@ -80,6 +80,12 @@
 //
 // $CLD_FAKE_DOCKER_FAIL=WORD[=STATUS] makes any call with the argument WORD fail instead, with
 // status STATUS (default 1), saying so.
+//
+// Invoked as "systemctl" or "loginctl", it fakes the calls of cld setup restore and appends each,
+// the program's name first, to $CLD_PROBE_DIR/systemd.jsonl, a line of JSON per call; it changes
+// nothing. loginctl show-user prints $CLD_FAKE_LINGER, "no" where that is unset, as for
+// --property=Linger --value, and any other call prints nothing. $CLD_FAKE_SYSTEMD_FAIL=WORD makes
+// any call with the argument WORD fail instead, with status 1, saying so on stderr.
 package main
 
 import (
@@ -124,6 +130,8 @@ func main() {
 		err = fakeTmux()
 	case "docker":
 		err = fakeDocker()
+	case "systemctl", "loginctl":
+		err = fakeSystemd()
 	case "receiver":
 		err = receiver()
 	default:
@@ -311,6 +319,37 @@ func fakeDocker() error {
 		return err
 	}
 	return out()
+}
+
+// fakeSystemd fakes systemctl and loginctl (see the package comment).
+func fakeSystemd() error {
+	call := append([]string{filepath.Base(os.Args[0])}, os.Args[1:]...)
+	data, err := json.Marshal(call)
+	if err != nil {
+		return err
+	}
+	calls, err := os.OpenFile(filepath.Join(os.Getenv("CLD_PROBE_DIR"), "systemd.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := calls.Write(append(data, '\n')); err != nil {
+		return err
+	}
+	if err := calls.Close(); err != nil {
+		return err
+	}
+	if fail := os.Getenv("CLD_FAKE_SYSTEMD_FAIL"); fail != "" && slices.Contains(call, fail) {
+		fmt.Fprintf(os.Stderr, "fake %s failed\n", strings.Join(call, " "))
+		os.Exit(1)
+	}
+	if call[0] == "loginctl" && slices.Contains(call, "show-user") {
+		linger, set := os.LookupEnv("CLD_FAKE_LINGER")
+		if !set {
+			linger = "no"
+		}
+		fmt.Println(linger)
+	}
+	return nil
 }
 
 // receiverFile is the file in $CLD_PROBE_DIR that holds the port of a receiver the fake docker

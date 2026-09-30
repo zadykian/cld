@@ -15,8 +15,10 @@ help texts, argument errors), `internal/session` the tmux side and cld's record 
 claude's settings pointed at it), `internal/configfile` edits the files the two write in place,
 `internal/update` `cld update` (cld replacing itself with the latest release),
 `internal/completion` `cld setup completion` (the completion script where bash, zsh or fish reads
-it, and `cld update` writing it anew), `internal/tool` finds the programs cld runs on the `PATH`
-(and ends cld as a shell would when one cannot run), `internal/fail` carries exit statuses up to
+it, and `cld update` writing it anew), `internal/restore` `cld setup restore` (a systemd user
+unit that runs `cld restore`, which is `internal/session`'s), `internal/tool` finds the programs
+cld runs on the `PATH` (and ends cld as a shell would when one cannot run), `internal/fail`
+carries exit statuses up to
 `main`, and `internal/output` prints cld's own output, a write that fails being one of those ends,
 and its warnings and notes. `install.sh`, published with each release,
 installs cld from a release. Everything else is its test harness (Go, under `tests/`),
@@ -68,10 +70,11 @@ not push such a change. Rebase onto `main` before either.
 - `new` and `resume` require **claude 2.1.232 or newer**, the first release that takes what cld
   passes and does what it relies on, `resume`'s documented behaviour included (the tests never
   run the real claude): they run `claude --version` before starting that claude, and so does the
-  list's Enter on a session that has ended, which resumes it; `join`, `detach`, `kill`, `list`
-  otherwise, `setup project`, `setup telemetry`, `setup completion`, `update` and completion do
-  not. Re-derive the minimum when cld starts to pass or rely on something newer (docs/design.md,
-  decision 6).
+  list's Enter on a session that has ended, which resumes it, and `restore` for each session it
+  brings back, with the claude, the directory and the environment the session started with;
+  `join`, `detach`, `kill`, `list` otherwise, `setup project`, `setup telemetry`,
+  `setup completion`, `setup restore`, `update` and completion do not. Re-derive the minimum
+  when cld starts to pass or rely on something newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
   `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `install.sh` and
   `tests/jediterm/fetch-deps`.
@@ -109,8 +112,8 @@ not push such a change. Rebase onto `main` before either.
   commands it takes, `setup project` and `setup telemetry` among them, `setup project --mcp` its
   MCP servers and `--permissions` its sets, nothing offers file names (`--collector-config`'s
   `FILE` neither), and completion
-  makes none of the startup checks, `setup telemetry`'s included, and never starts the
-  interactive list (decisions 17 to 19 in docs/design.md). The `Short`s are also what
+  makes none of the startup checks, `setup telemetry`'s and `setup restore`'s included, and never
+  starts the interactive list (decisions 17 to 19 in docs/design.md). The `Short`s are also what
   `cld <TAB>` shows.
 - `setup completion SHELL` (bash, zsh, fish) writes the script cobra generates (bash's with cld's
   lines), byte for byte what `completion SHELL` prints, where the shell reads it, following
@@ -141,22 +144,50 @@ not push such a change. Rebase onto `main` before either.
   `-n`, where NAME's default is not empty, refuse a session whose `@cld-home` is another directory
   (compared as files), and `join -s` and `detach -s` offer only the sessions they take
   (`session.Home`; decision 37).
-- cld keeps a **record of its sessions** in `$XDG_STATE_HOME/cld`, by default
-  `~/.local/state/cld` (`internal/session/record.go`; decision 40): `sessions/NAME.json`, a line
-  of JSON per session - its name, the directory claude started in and its conversation's ID -
-  whose file time is the entry's; `indexes.json`, the highest index given each `NAME-`; and
-  `lock`, which `new` and `resume` hold (`flock`) from the name to tmux. They write the entry
-  before tmux, and give claude a `SessionStart` hook that writes it again with `session_id` from
-  its input, and `Stop` and `SessionEnd` hooks that touch it - with decision 39's timeout, but
-  for `SessionEnd`'s, which claude ends at 1.5 s itself; cld reads none of claude's transcripts.
-  `list` shows an entry without its session as `ended`; `resume` without SESSION passes
-  `--resume ID` from the entry (or else the name), in the entry's directory; `join`, `detach` and
-  `kill` refuse an `ended` session, pointing at `resume`; `new`'s index counts the entries and
-  the indexes given. An entry or index older than 30 days (claude's default `cleanupPeriodDays`)
-  counts no more and goes, but for the entry of a session whose server runs; the list's Ctrl+X
-  twice on an `ended` row forgets its entry, and `kill` does not. Where cld cannot write the
-  record it warns and makes the session all the same. The tests' record is in the sandbox's
-  `HOME`.
+- cld keeps a **record of its sessions** in `$XDG_STATE_HOME/cld`, by default `~/.local/state/cld`
+  (`internal/session/record.go`; decision 40): `sessions/NAME.json`, a line of JSON per session -
+  its name, the directory claude started in and its conversation's ID - whose file time is the
+  entry's; beside it, and gone with it, `NAME.env`, the claude and the environment (after
+  `withoutTerminal`, 0600) the session's server started with, `NAME.run`, the run mark, and
+  `NAME.busy`, the busy mark; `indexes.json`, the highest index given each `NAME-`; and `lock`,
+  which `new` and `resume` hold (`flock`) from the name to tmux, `restore` for each session it
+  brings back, and the list's forget. They write the entry and the environment before
+  tmux - once the terminal is checked, so that a refusal there writes nothing - and
+  tmux, once `new-session` has made the
+  session, makes the run mark (but for `restore`, which keeps its time) and removes the busy mark,
+  in a `run-shell` after it in the same command, which a failed `new-session` cuts short; they
+  give claude a `SessionStart` hook that writes the entry again with `session_id` from its input,
+  `Stop` and `SessionEnd` hooks that touch it, and hooks that keep the busy mark -
+  `UserPromptSubmit` makes it and touches the run mark; `Stop`, `StopFailure`,
+  `PostToolUseFailure` with `is_interrupt` and `idle_prompt` remove it - with decision 39's
+  timeout, but for `SessionEnd`'s, which claude ends at 1.5 s itself; cld reads none of claude's
+  transcripts. `list` shows an entry without its session as `ended`; `resume` without SESSION
+  passes `--resume ID` from the entry (or else the name), in the entry's directory; `join`,
+  `detach` and `kill` refuse an `ended` session, pointing at `resume`; `new`'s index counts the
+  entries and the indexes given. An entry or index older than 30 days (claude's default
+  `cleanupPeriodDays`) counts no more and goes, but for the entry of a session whose server runs;
+  the list's Ctrl+X twice on an `ended` row forgets its entry, and `kill` does not. `kill`, the
+  list's Ctrl+X and the idle sweep remove the run mark in their tmux command, between
+  `kill-session` and `kill-server`, and the `pane-died` hook for claude's exit with status 0; a
+  reboot leaves it. Where cld cannot write the record it warns and makes the session all the same.
+  The tests' record is in the sandbox's `HOME`.
+- `restore` (decision 48) brings back each entry with a run mark and no server, as
+  `resume -n NAME -s SUFFIX` would but detached (`new-session -d`, no terminal check, no title,
+  no exec: `create` with `launch.detached`), in the entry's directory, with the claude and the
+  environment of `NAME.env` but cld's `TMUX_TMPDIR`, and for a busy one `ContinuePrompt` after
+  `--resume`; the words after `--` are not kept. A session whose run mark is older than
+  `CLD_IDLE_DAYS` (not started nor given a prompt since) it leaves ended, removing the mark, with
+  a note: tmux's idle times start again at a restore. A session it cannot bring back is a
+  warning, and status 1.
+  `setup restore`, Linux with systemd only (a refusal elsewhere; `systemctl --user
+  show-environment` must answer), writes `~/.config/systemd/user/cld-restore.service`
+  (`Type=oneshot`, `RemainAfterExit=yes`, `KillMode=process`, `WantedBy=default.target`,
+  `Environment` for `PATH`, and `TMUX_TMPDIR`, `XDG_STATE_HOME` and `CLD_IDLE_DAYS` where set,
+  refusing a `CLD_IDLE_DAYS` that `restore` would refuse) through
+  `internal/configfile`, runs `systemctl --user daemon-reload` where it changed and `enable`, and
+  names `loginctl enable-linger` where lingering is off. Outside the tests - whose fake
+  `systemctl` and `loginctl` come first on the `PATH` - run it only with `HOME` pointing at a
+  scratch directory, and never against the user's own systemd.
 - claude is passed to tmux as separate argv words so tmux execs it directly, not via `sh -c`,
   and by the path of the claude `new` or `resume` checked, so tmux does not look `claude` up in
   the `PATH`; a word of cld's ending in `;` (resume's SESSION, a word after `--`, the directory
@@ -221,7 +252,9 @@ not push such a change. Rebase onto `main` before either.
   never ends one, nor does the sweep end the session whose server cld runs on, the socket `TMUX`
   names (compared as a file: tmux resolves symbolic links in its path), lest a claude that runs
   cld end itself (decision 46).
-- Per-session settings (`remain-on-exit`, its empty format, the `pane-died` hook) go on claude's
+- Per-session settings (`remain-on-exit on`, its empty format, the `pane-died` hook, which for
+  claude's exit with status 0 removes the run mark and closes the pane, as `failed` would - a
+  pane's `pane-exited` hook never runs - and otherwise keeps the failure on screen) go on claude's
   pane (`set -p`, `set-hook -p`), and the tab's title (`set-titles`, `set-titles-string`,
   `@cld-busy`, `@cld-tmux`) on claude's session, not the window or the server, so the other panes
   of claude's window and the sessions claude makes on its server behave as plain tmux would.
@@ -290,25 +323,27 @@ not push such a change. Rebase onto `main` before either.
   files a project shares under `.claude` that git ignores (decisions 19 and 28).
 - `setup` has commands of its own: `run` checks the argument after it before cobra, as it checks
   the first, and after `setup completion` the shell, and `help` takes `setup project`,
-  `setup telemetry` and `setup completion SHELL`. Their checks (Linux, docker)
-  stay in their `Args` and `RunE`, never in a root hook, so completion (`__complete setup ...`),
-  which `run` lets through, runs none of them.
+  `setup telemetry`, `setup completion SHELL` and `setup restore`. Their checks (Linux, docker,
+  systemd) stay in their `Args` and `RunE`, never in a root hook, so completion
+  (`__complete setup ...`), which `run` lets through, runs none of them.
 
 The package comments of `internal/session`, `internal/telemetry`, `internal/project`,
-`internal/update` and `internal/completion` explain why each tmux option is set and each step of
-`setup telemetry`, `setup project`, `update` and `setup completion` is taken; keep them accurate
-when changing any of them.
+`internal/update`, `internal/completion` and `internal/restore` explain why each tmux option is
+set and each step of `setup telemetry`, `setup project`, `update`, `setup completion` and
+`setup restore` is taken; keep them accurate when changing any of them.
 
 ## Test architecture (`tests/`)
 
-Tests build cld (`cmd/cld`) and run it against real tmux; only `claude` is faked, and `docker`
-for `setup telemetry`. Read the package doc comments at the top of each file for details.
+Tests build cld (`cmd/cld`) and run it against real tmux; only `claude` is faked, `docker` for
+`setup telemetry`, and `systemctl` and `loginctl` for `setup restore`. Read the package doc
+comments at the top of each file for details.
 
 - `main_test.go` — `TestMain` unsets every `GIT_*` variable (git sets them for hooks and
   `rebase --exec`; `TestGitVariables` pins it), builds cld and `probe/` into a temp dir, the probe
   as `claude` (and symlinks it as a fake `tmux` for version/tool checks and the commands `new`,
-  `resume` and `join` exec, and as `docker` beside `claude`, so that no test reaches the real
-  Docker), and compiles the JediTerm driver when `CLD_TERMINALS` includes `jediterm`.
+  `resume` and `join` exec, and as `docker`, `systemctl` and `loginctl` beside `claude`, so that
+  no test reaches the real Docker or the user's systemd), and compiles the JediTerm driver when
+  `CLD_TERMINALS` includes `jediterm`.
   `forEachTerminal` runs a body as a parallel subtest per terminal.
 - `probe/` — stands in for claude: enters the same terminal modes claude does, logs argv/cwd/env
   (`PID.json`) and raw input bytes (`PID.in`) to `$CLD_PROBE_DIR`, and takes commands through a
@@ -327,7 +362,9 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   running (the probe again, as the collector's receiver, until `rm -f`; one that takes none still
   holds the port), and takes `CLD_FAKE_DOCKER_*` variables: the container before, the state one
   starts in and its restart count, whether it takes connections, the collector's log, a call that
-  fails, a file that `run -d` writes.
+  fails, a file that `run -d` writes. Invoked as `systemctl` or `loginctl`, it records each call
+  in `systemd.jsonl`, answers `loginctl show-user` with `CLD_FAKE_LINGER` (`no` unset), and fails
+  a call with the argument `CLD_FAKE_SYSTEMD_FAIL` names.
 - `internal/sandbox` — an isolated world per test: its own short `TMUX_TMPDIR` (socket paths hit
   the ~108-byte `sun_path` limit), `HOME`, `PATH` with the probe first, `TMUX` unset, and a work
   directory named `_`, of which nothing is left in a session's name, so that `-s x` names a
@@ -352,6 +389,12 @@ for `setup telemetry`. Read the package doc comments at the top of each file for
   same name, the hooks that keep claude's status and its worktree for the title, the names
   completion offers, the keys a tmux cld runs inside keeps from claude, and the idle sessions
   `list` and `new` end (`CLD_IDLE_DAYS` of a few seconds);
+  `restore_test.go` — the run mark, the busy mark and the environment beside an entry, no mark
+  where tmux made no session, `restore` of sessions whose servers `kill-server` ended (a reboot)
+  and of none ended on purpose or idle past `CLD_IDLE_DAYS` by the mark, its failures as warnings
+  with status 1, two `restore` at once and a `restore` racing a `resume`
+  (the record's lock), and `setup restore` against the fake `systemctl` and `loginctl`, its
+  refusal off Linux and completion running neither;
   `record_test.go` — cld's record of its sessions: the entry, the hooks that give it the
   conversation's ID, `ended` sessions in `list`, `join`, `kill` and the interactive list,
   `resume` by the ID (or the name) in the entry's directory, the copy's after `resume --fork`, the

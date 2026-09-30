@@ -41,12 +41,14 @@ func sessionSettings(s *sandbox.Sandbox, name, dir string) string {
 // would move the conversation out of it; with fromHead, new -w's worktree branched from HEAD;
 // then the hooks that keep claude's status and whether it is in a linked worktree on its
 // session, for the tab's title (see TestStatusHooks, TestWorktreeHooks and
-// TestHooksOutsideThePane), and the session's entry in cld's record (see TestRecordHooks). Each
-// of the first runs that tmux on the session's server, by the socket in the sandbox's directory,
-// and names the session; the others write or touch the entry, in the sandbox's home directory,
-// with the session's name and dir. That of CwdChanged runs in the background, the record's
-// SessionEnd one within claude's own bound, and the others with a timeout of 5 s. Nothing else:
-// no remoteControlAtStartup, which would override the user's own setting.
+// TestHooksOutsideThePane), and the session's entry in cld's record and its busy mark (see
+// TestRecordHooks and TestBusyMark). Each of the first runs that tmux on the session's server, by
+// the socket in the sandbox's directory, and names the session; the others write or touch the
+// entry, in the sandbox's home directory, with the session's name and dir, or make or remove the
+// busy mark beside it, and touch the run mark as claude takes a prompt (see TestRestoreIdle).
+// That of CwdChanged runs in the background, the record's SessionEnd one
+// within claude's own bound, and the others with a timeout of 5 s. Nothing else: no
+// remoteControlAtStartup, which would override the user's own setting.
 func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) string {
 	socket := filepath.Join(s.SocketDir(), name)
 	set := func(option, value string) string {
@@ -89,6 +91,11 @@ func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) st
 	record := escaped(`id=$(sed -n 's/.*"session_id" *: *"\([0-9A-Za-z-]*\)".*/\1/p' | head -n 1); ` +
 		`if [ -n "$id" ]; then printf '%s%s"}\n' '` + head + `' "$id" >` + temp + ` && mv -f ` + temp + ` '` + file + `'; fi`)
 	touch := escaped(`touch -c '` + file + `'`)
+	busy := `'` + strings.TrimSuffix(file, ".json") + `.busy'`
+	idle := escaped(`rm -f ` + busy)
+	busyMark := escaped(`[ ! -e '` + file + `' ] || : >` + busy + `; touch -c '` + strings.TrimSuffix(file, ".json") + `.run'`)
+	interrupted := escaped(`if grep -Eq '"is_interrupt": *true'; then rm -f ` + busy + `; fi`)
+	stop := escaped(`rm -f ` + busy + `; touch -c '` + file + `'`)
 	base := ""
 	if fromHead {
 		base = `"worktree":{"baseRef":"head"},`
@@ -97,15 +104,15 @@ func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) st
 		background("CwdChanged", worktree),
 		on("Elicitation", "", status("waiting")),
 		on("ElicitationResult", "", status("busy")),
-		on("Notification", "idle_prompt", status("idle")),
+		on("Notification", "idle_prompt", status("idle"), idle),
 		on("PermissionRequest", "", status("waiting")),
 		on("PostToolUse", "", status("busy")),
-		on("PostToolUseFailure", "", `if grep -Eq '\"is_interrupt\": *true'; then `+status("idle")+`; else `+status("busy")+`; fi`),
+		on("PostToolUseFailure", "", `if grep -Eq '\"is_interrupt\": *true'; then `+status("idle")+`; else `+status("busy")+`; fi`, interrupted),
 		hook("SessionEnd", group("", touch, "")),
 		on("SessionStart", "", worktree, record),
-		on("Stop", "", status("idle"), touch),
-		on("StopFailure", "", status("idle")),
-		on("UserPromptSubmit", "", status("busy")),
+		on("Stop", "", status("idle"), stop),
+		on("StopFailure", "", status("idle"), idle),
+		on("UserPromptSubmit", "", status("busy"), busyMark),
 	}, ",") + `}}`
 }
 
@@ -909,6 +916,8 @@ func TestEndsIdleSessions(t *testing.T) {
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b", "cld-c", "cld-d"}) {
 		t.Errorf("sessions %q, want [cld-b cld-c cld-d]", sessions)
 	}
+	// The sweep ends a as kill would: restore leaves it ended, and brings back the others.
+	checkMarks(t, s, "after the sweep", map[string]bool{"a": false, "b": true, "c": true, "d": true})
 }
 
 // new without -s ends the idle sessions as list does, and says so on stderr, once it has taken
@@ -2595,7 +2604,7 @@ func TestServerOptions(t *testing.T) {
 		args  []string
 		value string
 	}{
-		{[]string{"-pv", "-t", "=cld-0:", "remain-on-exit"}, "failed"},
+		{[]string{"-pv", "-t", "=cld-0:", "remain-on-exit"}, "on"},
 		{[]string{"-p", "-t", "=cld-0:", "remain-on-exit-format"}, "remain-on-exit-format ''"},
 		{[]string{"-w", "-t", "=cld-0:", "remain-on-exit"}, ""},
 		{[]string{"-w", "-t", "=cld-0:", "remain-on-exit-format"}, ""},

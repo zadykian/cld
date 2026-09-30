@@ -300,6 +300,11 @@ A claude holds some 0.2 to 0.5 GB of memory for as long as its session runs, use
   default, so the conversation of a session idle for 30 days can go soon after, and cld forgets
   the session about then. Raise `cleanupPeriodDays` in `~/.claude/settings.json`, or set
   `CLD_IDLE_DAYS` lower, to keep the conversations for longer than the sessions.
+- A session that `cld restore` brings back after a reboot is new to tmux: its `LAST ACTIVE`, and
+  the time it is idle from, start at the restore. So `cld restore` leaves ended a session not
+  started or given a prompt for longer than `CLD_IDLE_DAYS` days, saying so - it cannot tell
+  your keys and attaches before the reboot - which would otherwise come back at every reboot (see
+  [After a reboot](#after-a-reboot)).
 
 ## Notifications
 
@@ -395,7 +400,9 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
 - A reboot, or a server that crashes, ends the sessions and their claudes, but not the
   conversations, cld's record or a `cld new -w` worktree: `cld list` then shows the sessions as
   `ended`, with the directories they ran in, and `Enter` there, or `cld resume -n NAME -s SUFFIX`,
-  brings each back. So does `cld kill`, and claude's own `/exit`.
+  brings each back, as `cld restore` brings back all that ran (see
+  [After a reboot](#after-a-reboot)). So does `cld kill`, and claude's own `/exit`, whose sessions
+  `cld restore` leaves ended.
 - cld forgets a session 30 days after claude last started, answered in or ended its conversation
   there - claude's default `cleanupPeriodDays`: a `cleanupPeriodDays` of your own is not read -
   but not while its server runs, and when you forget it in `cld list`. `cld kill` does not forget
@@ -487,6 +494,78 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
   and leaves the background session running (not checked yet). In a session that keeps agent
   view, `/config`'s `← opens agents` turns off the key alone.
 
+## After a reboot
+
+A reboot, or a crash of the machine, ends every session and its claude, but not the conversations
+or cld's record of them, which also keeps whether each session runs. `cld restore` brings back each
+session that ran when the machine stopped, as `cld resume -n NAME -s SUFFIX` would, but detached:
+claude resumes the session's conversation, by its ID, in the directory it ran in, and `cld join`
+attaches to it. It prints a line for each session it brings back:
+
+```text
+Restored session 'api-0' in /work/api
+Restored session 'api-1' in /work/api, continuing its turn
+```
+
+- It leaves ended the sessions you ended - with `cld kill`, `Ctrl+X` in `cld list`, claude's
+  `/exit` or another of its ways out - and those ended for being idle. A session whose claude
+  failed, which stays until you end it, counts as one that ran. A session that an older cld
+  started is left too: `cld resume` brings it back.
+- Closing claude's pane or its session with tmux's own keys - `C-q x`, `C-q &` - or
+  `tmux kill-server` counts as a crash: `cld restore` brings the session back. End it with
+  claude's `/exit` or `cld kill` for it to stay ended.
+- It also leaves ended a session that nobody started or gave a prompt to for longer than
+  `CLD_IDLE_DAYS` days, 30 by default, with a note: `cld: left session 'api-2' ended, idle for
+  31 days`. Joining a session, or typing into it without a prompt, does not count here, where it
+  does for [Idle sessions](#idle-sessions); `cld resume` brings such a session back.
+- A claude that was in the middle of a turn - from a prompt to the end of its answer, or an
+  interrupt - resumes with the prompt `The machine restarted while you were working; continue where
+  you left off.`, and goes on. It asks for permissions as in any turn: a turn that needs one waits
+  until you join and answer.
+- Each claude gets the environment its session started with - that of the shell that ran
+  `cld new` or `cld resume`, without the variables that name the terminal (see
+  [Sessions](#sessions)) - which cld keeps beside the session's entry, readable by you alone, and
+  forgets with it. The words given to claude after `--` do not come back, as with `cld resume`,
+  nor do panes split in the session. What belonged to the login before the reboot comes back as
+  it was, stale: claude's `git push` finds no ssh agent at the old `SSH_AUTH_SOCK`. An agent
+  socket at a path that stays, or `cld kill` then `cld resume` from a new login, is the way
+  around it, as after a reconnect (see [Sessions](#sessions)).
+- cld checks each claude as `cld new` checks it, in the directory the session ran in. A session it
+  cannot bring back - its directory gone, a claude too old - is a warning, and the others come
+  back; `cld restore` then exits with status 1.
+- `cld restore` takes the sessions one at a time under the lock that `cld new` and `cld resume`
+  take, so that two at once make one session, and so does a `cld resume` of a session that
+  `cld restore` is bringing back: it waits, and finds the session running. A `cld resume` that
+  started first lets the lock go as it hands over to tmux, before tmux has made the session, and
+  a `cld restore` just then makes the session too: one of the two fails.
+
+On Linux, `cld setup restore` has your systemd run `cld restore` as it starts:
+
+```sh
+cld setup restore
+```
+
+- It writes `~/.config/systemd/user/cld-restore.service`, a unit that runs this `cld` as
+  `cld restore` with the `PATH` you run `cld setup restore` with, where it finds tmux, and your
+  `TMUX_TMPDIR`, `XDG_STATE_HOME` and `CLD_IDLE_DAYS` where you set them, which your systemd has
+  none of; then it enables the unit, `systemctl --user enable cld-restore.service`. Run it again
+  after moving cld, or when one of those changes. `journalctl --user -u cld-restore` shows what
+  `cld restore` said.
+- Your systemd starts at your first login, and at your last logout ends what it started, the
+  sessions `cld restore` brought back among them. With lingering on - `loginctl enable-linger`,
+  which `cld setup restore` names where it is off - it starts at boot, and runs on without you, and
+  so do the sessions.
+- It needs your systemd: where `systemctl --user` fails, as in most containers, it writes nothing.
+  It refuses to run on macOS. To turn it off, `systemctl --user disable cld-restore.service`, and
+  remove the unit.
+- Not checked yet: a real reboot. The tests end each session's server in its place, and a transient
+  unit stood for the one your systemd starts.
+
+Inside your own tmux, tmux-continuum takes cld's servers for other tmux servers of yours: while
+one runs, it saves nothing, and restores nothing as your tmux starts. tmux-resurrect would not
+bring back a session of cld's either: it saves the program that a pane's program runs, not claude,
+and restores it by typing it into a shell.
+
 ## Worktrees
 
 As with `claude --worktree`, gitignored files listed in `.worktreeinclude` are copied into a new
@@ -542,7 +621,7 @@ arguments: `--name cld-S` and `--settings`, then `--worktree cld-S` for `cld new
   then keeps its `✳` while claude works, and shows no ` [w]`; and cld's record gets neither the
   conversation's ID - `cld resume` then goes by the session's name, or by the ID it resumed - nor
   the times claude answers, so that cld forgets the session 30 days after it started.
-- tmux takes a command of 16364 bytes at most, of which cld's own words take some 6 to 7 KB, and
+- tmux takes a command of 16364 bytes at most, of which cld's own words take some 7 KB, and
   cld refuses words that would make it longer, saying so. Long text goes to claude in a file:
   `--append-system-prompt-file`, `--system-prompt-file`, or a prompt that names a file for claude
   to read.
@@ -716,7 +795,7 @@ say what changed since:
 | Coming back | claude as you left it, in the renderer you chose with `/tui`; in the classic one, the wheel scrolls the pane's history in tmux's copy mode | always fullscreen, whatever `/tui` chose; the terminal's scrollback and tmux's copy mode see only the screen |
 | Idle | claude keeps running, working or waiting, until you end it or the session has had no terminal attached and no key typed for 30 days: then the next `cld list`, or `cld new` without `-s`, ends it (see [Idle sessions](#idle-sessions)), and `cld resume` resumes the conversation | the supervisor stops claude once it is done, or waits for your next message, and has been unattached for about an hour, unless the session is pinned (`Ctrl+T` in agent view); attaching resumes the conversation |
 | claude crashes | the session stays, with claude's last screen and how it exited, `exited` in `cld list` | the supervisor starts claude again; `claude logs ID` shows its recent output |
-| Reboot | claude stops; `cld resume` resumes the conversation in a new session | claude stops; the session shows failed - stopped after 48 hours - and attaching resumes the conversation |
+| Reboot | claude stops; `cld restore`, which `cld setup restore` has your systemd run, resumes each conversation in a new session and continues a turn the reboot cut off | claude stops; the session shows failed - stopped after 48 hours - and attaching resumes the conversation |
 | Listing | `cld list`: name, state, when last active and directory; join or kill | `claude agents`: state, activity and age; attach, peek, reply, dispatch, stop |
 
 A cld session is not one of them, and agent view does not show it; nor does `cld list` show
@@ -730,9 +809,9 @@ move does to the session, and how to bring the conversation back into cld.
 
 ## Troubleshooting
 
-- **claude too old.** `cld new` and `cld resume` name the version they found. Update claude the way
-  you installed it: `claude update` for the native installer, or through Homebrew, npm or your
-  system's package manager.
+- **claude too old.** `cld new`, `cld resume` and `cld restore` name the version they found.
+  Update claude the way you installed it: `claude update` for the native installer, or through
+  Homebrew, npm or your system's package manager.
 - **`needs a terminal`.** `cld new`, `cld resume` and `cld join` attach the terminal their input
   comes from, and refuse without one - from cron, `ssh host cld new` or a script whose input is
   not the terminal - or with `TERM` unset, empty or `dumb`. Over ssh, `ssh -t host cld new` gives
@@ -754,8 +833,8 @@ move does to the session, and how to bring the conversation back into cld.
   They share one file of cld's record too, which holds the one that started last.
 - **`cannot record session`.** Where cld cannot write its record - `~/.local/state` read-only,
   say - `cld new` and `cld resume` warn and make the session all the same, without a record:
-  `cld list` will not show it once it has ended. Set `XDG_STATE_HOME` to a directory you can
-  write.
+  `cld list` will not show it once it has ended, and `cld restore` cannot bring it back. Set
+  `XDG_STATE_HOME` to a directory you can write.
 - **`File name too long`.** The server's socket, `$TMUX_TMPDIR/tmux-UID/cld-S` with its symlinks
   resolved (on macOS `/tmp` is `/private/tmp`), must stay within 103 bytes on macOS and 107 on
   Linux: under a long `TMUX_TMPDIR`, use a shorter name.
@@ -839,6 +918,10 @@ move does to the session, and how to bring the conversation back into cld.
   started before the upgrade keeps it until it ends: end it with `cld kill` and bring its
   conversation back with `cld resume` to have it off. A conversation moved out of such a session
   comes back into cld as [Resuming a conversation](#resuming-a-conversation) says.
+- **After a reboot.** `cld restore` brings back only the sessions that a cld with it started, which
+  record whether they run: one started before the upgrade ends at the next reboot, and
+  `cld resume` brings it back as before. On Linux, run `cld setup restore` once for your systemd
+  to run `cld restore` as it starts (see [After a reboot](#after-a-reboot)).
 - **tmux.** End the sessions started before the upgrade (`cld list`, then `cld kill`): each
   session's server keeps running the tmux that started it until the session ends.
 - **Ended sessions.** cld 0.9.0 and earlier kept no record of the sessions: a session they started

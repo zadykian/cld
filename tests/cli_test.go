@@ -32,8 +32,9 @@ var update = flag.Bool("update", false, "rewrite the help in testdata/help from 
 // helpTopics are what cld help takes, "" for none, in the order the help lists them: a command
 // of cld's, followed by the commands it has, "setup telemetry" for setup's telemetry, and theirs,
 // "setup completion zsh" for zsh's.
-var helpTopics = []string{"", "new", "resume", "join", "detach", "kill", "list", "setup", "setup project", "setup telemetry",
-	"setup completion", "setup completion bash", "setup completion zsh", "setup completion fish", "update", "completion", "help", "version"}
+var helpTopics = []string{"", "new", "resume", "join", "detach", "kill", "list", "restore", "setup", "setup project", "setup telemetry",
+	"setup completion", "setup completion bash", "setup completion zsh", "setup completion fish", "setup restore", "update", "completion",
+	"help", "version"}
 
 // goldenHelp is the file holding what cld help topic prints: testdata/help/cld.txt for cld help,
 // testdata/help/COMMAND.txt for cld help COMMAND, setup-telemetry.txt for cld help setup
@@ -321,14 +322,16 @@ func TestCompleteCommands(t *testing.T) {
 		"detach\tdetach the terminals attached to session NAME-SUFFIX\n" +
 		"kill\tend session NAME-SUFFIX and its tmux server\n" +
 		"list\tlist cld's sessions; on a terminal, join, kill or resume one\n" +
-		"setup\tset up claude in a project, its telemetry, or shell completion\n" +
+		"restore\tbring back the sessions that ran when the machine stopped\n" +
+		"setup\tset up claude in a project, telemetry, shell completion or restore\n" +
 		"update\tupdate cld to the latest release\n" +
 		"version\tshow the version\n" +
 		"completion\tprint the completion script for a shell\n" +
 		"help\tshow this help, or the help of COMMAND\n"
 	project := "project\tset claude up in the project in the current directory\n"
 	telemetry := "telemetry\tsend claude's telemetry through a local OpenTelemetry collector\n"
-	setupShells := "completion\tset up cld's completion in bash, zsh or fish\n"
+	setupShells := "completion\tset up cld's completion in bash, zsh or fish\n" +
+		"restore\thave your systemd run cld restore at login, or at boot\n"
 	shellSetups := "bash\tset up cld's completion in bash\n" +
 		"zsh\tset up cld's completion in zsh\n" +
 		"fish\tset up cld's completion in fish\n"
@@ -367,7 +370,10 @@ func TestCompleteCommands(t *testing.T) {
 		{[]string{"__complete", "completion", ""}, shells + ":4\n"},
 		{[]string{"__complete", "setup", ""}, project + telemetry + setupShells + ":4\n"},
 		{[]string{"__complete", "setup", "p"}, project + ":4\n"},
-		{[]string{"__complete", "setup", "c"}, setupShells + ":4\n"},
+		{[]string{"__complete", "setup", "c"}, "completion\tset up cld's completion in bash, zsh or fish\n:4\n"},
+		{[]string{"__complete", "setup", "r"}, "restore\thave your systemd run cld restore at login, or at boot\n:4\n"},
+		{[]string{"__complete", "setup", "restore", ""}, ":4\n"},
+		{[]string{"__complete", "restore", ""}, ":4\n"},
 		{[]string{"__complete", "setup", "completion", ""}, shellSetups + ":4\n"},
 		{[]string{"__complete", "setup", "completion", "f"}, "fish\tset up cld's completion in fish\n:4\n"},
 		{[]string{"__complete", "setup", "completion", "bash", ""}, ":4\n"},
@@ -975,7 +981,8 @@ func TestRefusesClaudeOptions(t *testing.T) {
 	}
 }
 
-// setup takes one of its commands, project, telemetry or completion, as its first argument, which
+// setup takes one of its commands, project, telemetry, completion or restore, as its first
+// argument, which
 // run checks as it checks cld's first: no option comes before it (cobra would run telemetry for
 // setup --local URL telemetry), and help can be asked for with -h or --help only, as for cld.
 // setup completion takes a shell the same way, bash, zsh or fish (cobra would run zsh's for setup
@@ -983,7 +990,7 @@ func TestRefusesClaudeOptions(t *testing.T) {
 func TestSetupRequiresCommand(t *testing.T) {
 	t.Parallel()
 	const (
-		telemetry = "cld setup project, cld setup telemetry or cld setup completion SHELL (see cld help)\n"
+		telemetry = "cld setup project, cld setup telemetry, cld setup completion SHELL or cld setup restore (see cld help)\n"
 		shells    = "bash, zsh or fish (see cld help)\n"
 	)
 	for _, test := range []struct {
@@ -1444,8 +1451,10 @@ func TestClaudeVersionLeavesAProcessBehind(t *testing.T) {
 	}
 }
 
-// new and resume run claude; join, detach, kill, list and setup telemetry never do, and neither
-// does completion - __complete and __completeNoDesc - which makes no check at all (see
+// new and resume run claude; join, detach, kill, list and setup telemetry never do, nor does
+// restore without a session to bring back - it checks the claude a session started with, in the
+// session's directory (see TestRestoreFailures) - and neither does completion - __complete and
+// __completeNoDesc - which makes no check at all (see
 // TestCompletionSkipsChecks), for new's, resume's and setup telemetry's arguments too and with a
 // tmux the check refuses: with a claude too old for new and resume, which records that it ran,
 // the others do as they do with any other - setup telemetry, which checks no tmux, looks for
@@ -1484,6 +1493,8 @@ func TestOnlyNewAndResumeRunClaude(t *testing.T) {
 		{[]string{"kill", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
 		{[]string{"detach", "-s", "main"}, "tmux 3.7c", "", 1, "", "cld: no session 'main' (see cld list)\n", false},
 		{[]string{"list"}, "tmux 3.7c", "", 0, "", "", false},
+		{[]string{"restore"}, "tmux 3.7c", "", 0, "", "", false},
+		{[]string{"restore"}, "tmux 3.4", "", 1, "", "cld: tmux 3.5a or newer is required, found 'tmux 3.4'\n", false},
 		{[]string{"__complete", "new", "-s", ""}, "tmux 3.4", "", 0, ":4\n",
 			"Completion ended with directive: ShellCompDirectiveNoFileComp\n", false},
 		{[]string{"__complete", "resume", "-s", ""}, "tmux 3.4", "", 0, ":4\n",
@@ -1654,11 +1665,35 @@ func endHint(options string) string {
 	return "display-message -d 0 '" + endText(options) + "'"
 }
 
-// endHook is the pane-died hook that new and resume set: it keeps endText on a line of the pane's
-// border, below the dead pane, and shows endHint to a terminal on claude's window.
-func endHook(options string) string {
-	return "set -w pane-border-status bottom ; set -p pane-border-format ' " + endText(options) + " ' ; " +
-		`if -F '#{window_active_clients}' "` + endHint(options) + `"`
+// marksCommand is the run-shell that new and resume have tmux run once it has made session name,
+// in its command: it removes the session's busy mark and makes its run mark, beside the entry in
+// cld's record in s, printing nothing and exiting 0 however they fare, with each "#" doubled for
+// run-shell's format.
+func marksCommand(s *sandbox.Sandbox, name string) []string {
+	quoted := func(path string) string { return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'" }
+	base := strings.TrimSuffix(entryFile(s, name), ".json")
+	sh := "{ rm -f " + quoted(base+".busy") + "; touch " + quoted(base+".run") + "; } 2>/dev/null || true"
+	return []string{"run-shell", strings.ReplaceAll(sh, "#", "##")}
+}
+
+// unmarkCommand is the command with which kill and the sweep of the idle sessions remove session
+// name's run mark from cld's record in s, as run-shell takes it.
+func unmarkCommand(s *sandbox.Sandbox, name string) string {
+	run := strings.TrimSuffix(entryFile(s, name), ".json") + ".run"
+	return strings.ReplaceAll("rm -f '"+strings.ReplaceAll(run, "'", `'\''`)+"' 2>/dev/null || true", "#", "##")
+}
+
+// endHook is the pane-died hook that new and resume set, on a pane that tmux keeps however claude
+// exits: for status 0 it removes the session's run mark, the file run, where its path goes quoted
+// for tmux, with each "#" doubled for run-shell's format, and quoted for sh within, and closes the
+// pane, as tmux would; otherwise it keeps endText on a line of the pane's border, below the dead
+// pane, and shows endHint to a terminal on claude's window.
+func endHook(options, run string) string {
+	sh := "rm -f '" + strings.ReplaceAll(run, "'", `'\''`) + "'"
+	tmux := "'" + strings.ReplaceAll(strings.ReplaceAll(sh, "#", "##"), "'", `'\''`) + "'"
+	return "if -F '#{==:#{pane_dead_status},0}' { run-shell " + tmux + " ; kill-pane } { " +
+		"set -w pane-border-status bottom ; set -p pane-border-format ' " + endText(options) + " ' ; " +
+		`if -F '#{window_active_clients}' "` + endHint(options) + `" }`
 }
 
 // busyMarker is the marker new and resume have tmux put before the session's name in the tab's
@@ -1766,14 +1801,15 @@ func TestNewTmuxCommand(t *testing.T) {
 			claude := settings(s, sandbox.FakeTmux, sandbox.RealGit, "cld-x", filepath.Join(s.Work, dir), slices.Contains(args, "-w"))
 			want = append(append(want, probe, "--name", "cld-x", "--settings", claude), after...)
 			want = append(want, ";",
-				"set", "-p", "-t", "=cld-x:", "remain-on-exit", "failed", ";",
+				"set", "-p", "-t", "=cld-x:", "remain-on-exit", "on", ";",
 				"set", "-p", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
-				"set-hook", "-p", "-t", "=cld-x:", "pane-died", endHook("-s x"), ";",
+				"set-hook", "-p", "-t", "=cld-x:", "pane-died", endHook("-s x", strings.TrimSuffix(entryFile(s, "x"), ".json")+".run"), ";",
 				"set", "-t", "=cld-x:", "@cld-tmux", sandbox.FakeTmux, ";",
 				"set", "-t", "=cld-x:", "@cld-home", filepath.Join(s.Work, home), ";",
 				"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",
 				"set", "-t", "=cld-x:", "set-titles-string", "#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-x#{?@cld-worktree, [w],}", ";",
-				"set", "-t", "=cld-x:", "set-titles", "on")
+				"set", "-t", "=cld-x:", "set-titles", "on", ";")
+			want = append(want, marksCommand(s, "x")...)
 			record := s.FakeTmuxRecord()
 			if !slices.Equal(record.Argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", record.Argv, want)
@@ -2193,7 +2229,8 @@ func TestIdleSessionsWithFakeTmux(t *testing.T) {
 				t.Fatalf("tmux arguments %q compare no activity", argv)
 			}
 			idle := "#{&&:#{==:#{session_attached},0},#{&&:#{e|<:#{session_activity}," + cutoff[1] + "},#{e|<:#{session_last_attached}," + cutoff[1] + "}}}"
-			if want := []string{"-L", "cld-a", "if", "-F", "-t", "=cld-a:", idle, "kill-session -t =cld-a ; kill-server", "display-message -p kept"}; !slices.Equal(argv, want) {
+			kill := "kill-session -t =cld-a ; run-shell '" + strings.ReplaceAll(unmarkCommand(s, "a"), "'", `'\''`) + "' ; kill-server"
+			if want := []string{"-L", "cld-a", "if", "-F", "-t", "=cld-a:", idle, kill, "display-message -p kept"}; !slices.Equal(argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", argv, want)
 			}
 			seconds, _ := strconv.ParseInt(cutoff[1], 10, 64)
@@ -2624,7 +2661,7 @@ func TestNothingToPrintWritesNothing(t *testing.T) {
 		// argv is what tmux gets
 		argv []string
 	}{
-		{[]string{"kill", "-s", "a"}, []string{"-L", "cld-a", "kill-session", "-t", "=cld-a", ";", "kill-server"}},
+		{[]string{"kill", "-s", "a"}, nil},
 		{[]string{"detach", "-s", "a"}, []string{"-L", "cld-a", "if", "-F", "-t", "=cld-a:", "#{session_attached}", "detach-client -s =cld-a"}},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
@@ -2649,8 +2686,12 @@ func TestNothingToPrintWritesNothing(t *testing.T) {
 			if code := cmd.ProcessState.ExitCode(); code != 0 || stderr.Len() != 0 {
 				t.Errorf("exit %d, stderr %q, want exit 0, no stderr", code, stderr.String())
 			}
-			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv, test.argv) {
-				t.Errorf("tmux arguments\n%q\nwant\n%q", argv, test.argv)
+			want := test.argv
+			if want == nil {
+				want = []string{"-L", "cld-a", "kill-session", "-t", "=cld-a", ";", "run-shell", unmarkCommand(s, "a"), ";", "kill-server"}
+			}
+			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv, want) {
+				t.Errorf("tmux arguments\n%q\nwant\n%q", argv, want)
 			}
 		})
 	}

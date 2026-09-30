@@ -241,27 +241,47 @@ func TestResumeWithoutConversation(t *testing.T) {
 	}
 }
 
-// The entry of a session whose server runs stays, however old: the next new, which removes the
-// entries older than 30 days, leaves it, so that claude's hooks touch it again once the session is
-// used - here Stop, as claude answers - and it shows as ended once the session has. An entry of
-// that age without its server goes.
+// The entry of a session whose server runs stays, however old, with the files beside it - its
+// environment and its marks: the next new, which removes the entries older than 30 days, leaves
+// them, so that claude's hooks touch the entry again once the session is used - here Stop, as
+// claude answers - and it shows as ended once the session has. An entry of that age without its
+// server goes, with the files beside it, and so do the files of an entry that has gone - a busy
+// mark a hook made as the entry was forgotten - however new.
 func TestRecordWhileRunning(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	startCld(t, s, "tmux", nil, "new", "-s", "a")
 	a := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
-	writeEntry(t, s, "c", s.Work, firstID)
+	checkMarks(t, s, "after new", map[string]bool{"a": true})
+	writeRestorable(t, s, "c", s.Work, firstID, filepath.Join(sandbox.ProbeBin, "claude"), nil)
+	s.WriteFile(companionFile(s, "c", ".busy"), "")
+	s.WriteFile(companionFile(s, "o", ".busy"), "")
 	month := 31 * 24 * time.Hour
-	age(t, month, entryFile(s, "a"), entryFile(s, "c"))
+	var old []string
+	for _, name := range []string{"a", "c"} {
+		for _, ext := range []string{".json", ".env", ".run", ".busy"} {
+			if exists(companionFile(s, name, ext)) {
+				old = append(old, companionFile(s, name, ext))
+			}
+		}
+	}
+	age(t, month, old...)
 	startCld(t, s, "tmux", nil, "new", "-s", "b")
 	s.WaitProbes(2)
 	waitClients(t, s, 2)
 	if readEntry(s, "a") != entry("a", s.Work, "") {
 		t.Errorf("a's entry %q after another new, want it kept", readEntry(s, "a"))
 	}
-	if _, err := os.Stat(entryFile(s, "c")); !os.IsNotExist(err) {
-		t.Errorf("c's entry: %v, want it removed", err)
+	for _, ext := range []string{".env", ".run"} {
+		if !exists(companionFile(s, "a", ext)) {
+			t.Errorf("a%s removed with a's server running, want it kept", ext)
+		}
+	}
+	for _, file := range []string{entryFile(s, "c"), companionFile(s, "c", ".env"), companionFile(s, "c", ".run"), companionFile(s, "c", ".busy"), companionFile(s, "o", ".busy")} {
+		if _, err := os.Stat(file); !os.IsNotExist(err) {
+			t.Errorf("%s: %v, want it removed", filepath.Base(file), err)
+		}
 	}
 	a.Hook("Stop", `{"session_id":"`+firstID+`"}`)
 	touched(t, s, "a", "Stop")
@@ -496,6 +516,9 @@ func TestListEnded(t *testing.T) {
 		waitLines(t, term, "  NAME  STATE     LAST ACTIVE  DIRECTORY", "> a     detached  now          "+s.Work, "", listHints)
 		if entry := readEntry(s, "b"); entry != "" {
 			t.Errorf("b's entry %q after the forget, want none", entry)
+		}
+		if exists(companionFile(s, "b", ".env")) {
+			t.Error("b's environment stays after the forget")
 		}
 		term.Keys("Escape")
 		if code := list.code(t); code != "0" {

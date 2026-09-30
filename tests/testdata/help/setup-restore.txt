@@ -1,0 +1,14 @@
+have your user's systemd run cld restore as it starts, which brings back the
+sessions that ran when the machine stopped: cld writes the unit
+~/.config/systemd/user/cld-restore.service, which runs this cld with the PATH,
+TMUX_TMPDIR, XDG_STATE_HOME and CLD_IDLE_DAYS it has now, and enables it. Your
+systemd starts at your first login, and at your last logout ends the sessions
+cld restore brought back, unless lingering is on for you (loginctl
+enable-linger): then it starts at boot, and keeps them. Run it again after
+moving cld, or to change those variables. Needs systemd; Linux only.
+
+Usage:
+  cld setup restore [flags]
+
+Flags:
+  -h, --help   help for restore
