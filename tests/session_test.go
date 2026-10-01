@@ -850,14 +850,17 @@ func TestList(t *testing.T) {
 // session (see TestStatusHooks): idle once a turn is done, busy, waiting while claude asks, and
 // nothing where no hook has set it, where the option holds anything else - here a tab, which
 // would split the line's fields if tmux wrote it - or once claude has exited - here in a turn,
-// which leaves the option busy. The rows keep the order of the names, the waiting session among
-// them, and STATE is as wide as the longest, in the table and in the interactive list, which
-// draws waiting in bold - on the selected row too, in inverse video - and nothing else. join -s
-// and detach -s describe each session so too.
+// which leaves the option busy. A pane split off in claude's window shows the status claude left,
+// as the active pane: the one selected beside claude's once claude has failed - f, waiting, not
+// exited - and the one that keeps the session once claude's /exit has closed its pane - g, idle.
+// The rows keep the order of the names, the waiting sessions among them, and STATE is as wide as
+// the longest, in the table and in the interactive list, which draws waiting in bold - on the
+// selected row too, in inverse video - and nothing else. join -s and detach -s describe each
+// session so too.
 func TestListShowsClaudesStatus(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	probes := detachedSessions(t, s, "a", "b", "c", "d", "e")
+	probes := detachedSessions(t, s, "a", "b", "c", "d", "e", "f", "g")
 	probes["a"].Hook("Stop", `{}`)
 	probes["b"].Hook("UserPromptSubmit", `{"prompt":"go"}`)
 	probes["c"].Hook("PermissionRequest", `{"tool_name":"Bash"}`)
@@ -868,10 +871,19 @@ func TestListShowsClaudesStatus(t *testing.T) {
 	if status := s.Format("cld-e", "#{@cld-status}"); status != "busy" {
 		t.Errorf("@cld-status of the session whose claude exited is %q, want busy", status)
 	}
+	probes["f"].Hook("PermissionRequest", `{"tool_name":"Bash"}`)
+	s.MustTmux("cld-f", "split-window", "-d", "-t", "=cld-f:", "-c", s.Work, "sleep", "600")
+	s.MustTmux("cld-f", "select-pane", "-t", "=cld-f:.1")
+	probes["f"].Send("exit 1")
+	sandbox.WaitFor(t, 10*time.Second, "claude f to exit", func() bool { return s.Format("cld-f", "#{pane_dead}") == "1\n0" })
+	probes["g"].Hook("Stop", `{}`)
+	s.MustTmux("cld-g", "split-window", "-d", "-t", "=cld-g:", "-c", s.Work, "sleep", "600")
+	probes["g"].Send("exit 0")
+	sandbox.WaitFor(t, 10*time.Second, "claude g's pane to close", func() bool { return s.Format("cld-g", "#{pane_dead}") == "0" })
 	startCld(t, s, "tmux", nil, "join", "-s", "b")
 	waitClients(t, s, 1)
 
-	states := [][2]string{{"a", "detached, idle"}, {"b", "attached, busy"}, {"c", "detached, waiting"}, {"d", "detached"}, {"e", "exited"}}
+	states := [][2]string{{"a", "detached, idle"}, {"b", "attached, busy"}, {"c", "detached, waiting"}, {"d", "detached"}, {"e", "exited"}, {"f", "detached, waiting"}, {"g", "detached, idle"}}
 	table := "NAME  STATE              LAST ACTIVE  DIRECTORY\n"
 	for _, row := range states {
 		table += fmt.Sprintf("%-4s  %-17s  now          %s\n", row[0], row[1], s.Work)
@@ -879,7 +891,7 @@ func TestListShowsClaudesStatus(t *testing.T) {
 	if result := s.RunCld(nil, "list"); result.Code != 0 || result.Stdout != table || result.Stderr != "" {
 		t.Errorf("exit %d, stderr %q, stdout\n%s\nwant\n%s", result.Code, result.Stderr, result.Stdout, table)
 	}
-	completions := "a\tdetached, idle\nb\tattached, busy\nc\tdetached, waiting\nd\tdetached\ne\texited\n:4\n"
+	completions := "a\tdetached, idle\nb\tattached, busy\nc\tdetached, waiting\nd\tdetached\ne\texited\nf\tdetached, waiting\ng\tdetached, idle\n:4\n"
 	for _, command := range []string{"join", "detach"} {
 		if result := s.RunCld(nil, "__complete", command, "-s", ""); result.Code != 0 || result.Stdout != completions {
 			t.Errorf("__complete %s -s: exit %d, stdout %q, want %q", command, result.Code, result.Stdout, completions)
