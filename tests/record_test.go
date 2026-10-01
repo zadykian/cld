@@ -408,33 +408,43 @@ func TestJoinNextAtOnce(t *testing.T) {
 // takes the lock, and finds no session either, but the start mark the first left, naming the
 // process that became tmux, which runs: it waits, and attaches once tmux has made the session.
 // Without the start mark, the second would make the session too, and its tmux fail with
-// "duplicate session". The same holds for a session that has ended, which the first brings back.
+// "duplicate session". The same holds for a session that has ended, which the first brings back,
+// and for a first join without -s, which makes the session under the next index, 0 here: the
+// second, join -s 0, finds the entry the first wrote, and would otherwise resume it.
 func TestJoinOneSessionAtOnce(t *testing.T) {
 	t.Parallel()
-	for _, ended := range []bool{false, true} {
-		name := "unknown"
-		if ended {
-			name = "ended"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		// ended has cld's record keep an entry of session x, ended, before the joins
+		ended bool
+		// first is the first join's arguments, which make session cld-SUFFIX
+		first  []string
+		suffix string
+	}{
+		{"unknown", false, []string{"join", "-s", "x"}, "x"},
+		{"ended", true, []string{"join", "-s", "x"}, "x"},
+		{"next", false, []string{"join"}, "0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			if ended {
-				writeEntry(t, s, "x", s.Work, firstID)
+			if test.ended {
+				writeEntry(t, s, test.suffix, s.Work, firstID)
 			}
-			tmux := holdTmux(t, s, "the first join's tmux making cld-x", "*' new-session -s cld-x '*")
+			session := "cld-" + test.suffix
+			tmux := holdTmux(t, s, "the first join's tmux making "+session, "*' new-session -s "+session+" '*")
 			tmux.start(t)
-			first := startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
+			first := startCld(t, s, "tmux", tmux.env, test.first...)
 			tmux.held(t)
-			second := startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
+			second := startCld(t, s, "tmux", tmux.env, "join", "-s", test.suffix)
 			time.Sleep(time.Second)
 			if begun := tmux.begun(t); begun != 1 {
-				t.Errorf("%d tmux commands began to make cld-x while the first was held, want 1", begun)
+				t.Errorf("%d tmux commands began to make %s while the first was held, want 1", begun, session)
 			}
 			tmux.release(t)
 			waitClients(t, s, 2)
-			if clients := s.Clients(); !slices.Equal(clients, []string{"cld-x", "cld-x"}) {
-				t.Errorf("clients attached to %q, want both to cld-x", clients)
+			if clients := s.Clients(); !slices.Equal(clients, []string{session, session}) {
+				t.Errorf("clients attached to %q, want both to %s", clients, session)
 			}
 			if !first.Running() || !second.Running() {
 				t.Errorf("first attached: %v, second attached: %v; want both", first.Running(), second.Running())
@@ -445,18 +455,18 @@ func TestJoinOneSessionAtOnce(t *testing.T) {
 				t.Errorf("%d claudes started, want 1", len(probes))
 			}
 			var resume []string
-			if ended {
+			if test.ended {
 				resume = []string{"--resume", firstID}
 			}
 			// The hooks in the settings name the tmux that holds the test's commands.
 			held := filepath.Join(strings.Split(tmux.env["PATH"], string(os.PathListSeparator))[0], "tmux")
-			if want := append([]string{"--name", "cld-x", "--settings", settings(s, held, sandbox.RealGit, "cld-x", s.Work, false)}, resume...); !slices.Equal(probe.Argv, want) {
+			if want := append([]string{"--name", session, "--settings", settings(s, held, sandbox.RealGit, session, s.Work, false)}, resume...); !slices.Equal(probe.Argv, want) {
 				t.Errorf("claude arguments %q, want %q", probe.Argv, want)
 			}
-			if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
-				t.Errorf("sessions %q, want [cld-x]", sessions)
+			if sessions := s.Sessions(); !slices.Equal(sessions, []string{session}) {
+				t.Errorf("sessions %q, want [%s]", sessions, session)
 			}
-			waitScreen(t, second, "probe --name cld-x")
+			waitScreen(t, second, "probe --name "+session)
 		})
 	}
 }

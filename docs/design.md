@@ -3292,11 +3292,13 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         `TestJoinOverAnEndedSession` `-w` refused on an ended one, and `--new`, `--new -w`,
         `--resume` and `--resume --fork` over it, and the entry they write; `TestNameOptions` the
         refusals of 50.2 that come before any tool; `TestRejectsUnknownCommands` `new`, `resume`
-        and a name as unknown commands; `TestJoinOneSessionAtOnce` two `join -s x` on two
-        terminals, of an unknown and of an ended session, the first held as its tmux is about to
-        make it: one session, one claude, both attached; `TestJoinRacingRestore` a `join -s x`
-        racing `restore`, either first, and the start mark gone once tmux has made the session.
-        Both fail without the start mark, but for `restore` first (see Findings).
+        and a name as unknown commands; `TestJoinOneSessionAtOnce` two joins of one session on
+        two terminals - `join -s x` twice, of an unknown and of an ended session, and a `join`
+        without `-s`, which takes index 0 and leaves its start mark as `join -s` does, with a
+        `join -s 0` - the first held as its tmux is about to make it: one session, one claude,
+        both attached; `TestJoinRacingRestore` a `join -s x` racing `restore`, either first, and
+        the start mark gone once tmux has made the session. Both fail without the start mark, but
+        for `restore` first (see Findings).
         `TestJoinAsTmuxMakesTheSession` a `join -s x` whose lookup reaches the server another
         cld's tmux has started, and answers once `cld-x` is made there and the start mark removed:
         it attaches, where it refused the name with the mark read after the lookup (see Findings);

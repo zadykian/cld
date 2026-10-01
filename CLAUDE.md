@@ -430,8 +430,8 @@ comments at the top of each file for details.
   conversation's ID, `ended` sessions in `list`, `join`, `kill` and the interactive list, `join`
   resuming by the ID (or the name) in the entry's directory, the copy's after
   `join --resume SESSION --fork`, the indexes, expiry, the lock of two `join` at once, and two
-  `join -s` of one session (the start mark, read before the lookup, and stale ones),
-  `XDG_STATE_HOME` and a record cld cannot write;
+  joins of one session, `join -s` twice or a `join` without `-s` and one with its index (the start
+  mark, read before the lookup, and stale ones), `XDG_STATE_HOME` and a record cld cannot write;
   `cli_test.go` — argument parsing, errors, tool/version checks, the help, compared byte for
   byte with `testdata/help`, the completion scripts, and `LAST ACTIVE`, claude's status, the kill
   of an idle session, the session cld runs in kept and `join`'s sweep that cannot read against the
