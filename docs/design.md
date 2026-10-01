@@ -3296,9 +3296,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         two terminals - `join -s x` twice, of an unknown and of an ended session, and a `join`
         without `-s`, which takes index 0 and leaves its start mark as `join -s` does, with a
         `join -s 0` - the first held as its tmux is about to make it: one session, one claude,
-        both attached; `TestJoinRacingRestore` a `join -s x` racing `restore`, either first, and
-        the start mark gone once tmux has made the session. Both fail without the start mark, but
-        for `restore` first (see Findings).
+        both attached; `TestJoinRacingRestore` a `join -s x` racing `restore`, either first, the
+        held tmux let go once the `join` waits for `restore`'s lock (`waitForLock`, 48.12) or
+        `restore` has returned, and the start mark gone once tmux has made the session. Both fail
+        without the start mark, but for `restore` first (see Findings).
         `TestJoinAsTmuxMakesTheSession` a `join -s x` whose lookup reaches the server another
         cld's tmux has started, and answers once `cld-x` is made there and the start mark removed:
         it attaches, where it refused the name with the mark read after the lookup (see Findings);

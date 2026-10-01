@@ -752,12 +752,13 @@ func TestRestoreAtOnce(t *testing.T) {
 
 // cld join of a session that has ended, on a terminal, racing cld restore of it makes one session,
 // which join ends attached to, whichever goes first. Where restore goes first, join waits for the
-// record's lock, which restore holds as its tmux, held here, is about to make the session, and
-// then finds the session and attaches to it. Where join goes first, its tmux, held here, is about
-// to make the session once cld has let the lock go as it became tmux: restore finds no server, but
-// the start mark that join left, naming the process that became tmux, which runs, and leaves the
-// session to join, saying nothing. Without the start mark, restore would make the session too, and
-// one of the two tmux commands fail with "duplicate session".
+// record's lock, which restore holds as its tmux, held here until join waits (see waitForLock), is
+// about to make the session, and then finds the session and attaches to it. Where join goes first,
+// its tmux, held here until restore has returned, is about to make the session once cld has let
+// the lock go as it became tmux: restore finds no server, but the start mark that join left,
+// naming the process that became tmux, which runs, and leaves the session to join, saying nothing.
+// Without the start mark, restore would make the session too, and one of the two tmux commands
+// fail with "duplicate session".
 func TestJoinRacingRestore(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -774,27 +775,29 @@ func TestJoinRacingRestore(t *testing.T) {
 			writeRestorable(t, s, "x", s.Work, firstID, filepath.Join(sandbox.ProbeBin, "claude"), s.Environ(nil))
 			tmux := holdTmux(t, s, test.name+": the tmux making cld-x", test.held)
 			tmux.start(t)
-			var restore func() sandbox.Result
+			var result sandbox.Result
 			var term terminal.Terminal
 			if test.name == "restore first" {
-				restore = startCldAsync(t, s, s.Work, tmux.env, "restore")
+				restore := startCldAsync(t, s, s.Work, tmux.env, "restore")
 				tmux.held(t)
 				term = startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
+				waitForLock(t, s, "join to wait for the record's lock")
+				tmux.release(t)
+				result = restore()
 			} else {
 				term = startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
 				tmux.held(t)
 				if !exists(companionFile(s, "x", ".start")) {
 					t.Error("join left no start mark as it became tmux")
 				}
-				restore = startCldAsync(t, s, s.Work, tmux.env, "restore")
+				result = startCldAsync(t, s, s.Work, tmux.env, "restore")()
+				tmux.release(t)
 			}
-			time.Sleep(time.Second)
-			tmux.release(t)
 			stdout := ""
 			if test.name == "restore first" {
 				stdout = "Restored session 'x' in " + s.Work + "\n"
 			}
-			if result := restore(); result.Code != 0 || result.Stdout != stdout || result.Stderr != "" {
+			if result.Code != 0 || result.Stdout != stdout || result.Stderr != "" {
 				t.Errorf("restore: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, stdout)
 			}
 			waitClients(t, s, 1)
