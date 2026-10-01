@@ -482,7 +482,9 @@ func leaveStartMark(file string) {
 // (see leaveStartMark), younger than lockWait, and names a process that runs - the tmux client
 // that cld became, until tmux has made the session, or has failed to. A mark whose process has
 // ended, or that is older - one tmux did not remove, as new-session failed and cut its command
-// short - is none: its process ID may name another process by now.
+// short - is none: its process ID may name another process by now. Any answer of kill but ESRCH
+// is a process that runs: EPERM, and EACCES, which AppArmor gives for a snap's tmux while
+// snap-confine starts it (see Findings in docs/design.md).
 func starting(suffix string) bool {
 	dir, err := stateDir()
 	if err != nil {
@@ -501,8 +503,7 @@ func starting(suffix string) bool {
 	if err != nil || pid <= 0 {
 		return false
 	}
-	err = unix.Kill(pid, 0)
-	return err == nil || errors.Is(err, unix.EPERM)
+	return !errors.Is(unix.Kill(pid, 0), unix.ESRCH)
 }
 
 // setMarks is the command, as tmux's words, that sets the marks beside the entry in file of a
