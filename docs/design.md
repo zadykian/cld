@@ -241,6 +241,7 @@ rows that name none were probed against tmux 3.6.
 | a word quoted for the user's shell (#112, fish 4.0.2, zsh 5.9, bash 5.2.37 and dash 0.5.12 in the image of tmux 3.7c that `tests/Dockerfile` builds): `fish -c "printf '[%s]' 'x\'\''; echo INJECTED #'"`, the word `x\'; echo INJECTED #` quoted as `sh` quotes it; then `printf '[%s]'` in each shell with the words `x\'`, `C:\`, `; echo INJECTED #`, `it's`, `a\\b`, `$HOME`, `~`, `*`, `{a,b}`, `!x`, `''`, an empty one, one of three lines, an indented one and one starting with `#`, `\`, `'`, `%s`, one with a tab, `=x` and `-n`, each bare where it has only letters, digits and `_@+:,./-` (and `=` but first), and otherwise in single quotes but for each `'` and `\`, which go outside them after a `\` | fish reads a `\` before a `\` or a `'` within single quotes as an escape, where `sh` reads a `\`: the first printed `[x'']` and ran `echo INJECTED`, as did the words `C:\` and `; echo INJECTED #` quoted so. Quoted with no `\` or `'` within the quotes, every word reached `printf` as it was, in dash, bash, zsh and fish alike |
 | a value of several lines within the command of an `if` (#112, tmux 3.5a and 3.7c, in the images): `if -F 1 "set -g @v '...'"`, the value's four lines `fix:`, `    indented`, `# heading` and `end` quoted as `sh` quotes them, then `show -gv @v` | the lines come back as `fix:`, `indented`, an empty one and `end`: within quotes, tmux's parser drops the spaces and tabs after each newline, and a line that starts with `#` as a comment. A command handed to tmux as a word of its own, not parsed, keeps them |
 | `display-message -p '#{default-shell}'` by the socket, with the `TMUX` and `TMUX_PANE` of a pane and input from `/dev/null`, on a server started with `SHELL=/usr/bin/fish`, then after `set -g default-shell /bin/sh` (#112, tmux 3.5a and 3.7c, in the images) | `/usr/bin/fish`, then `/bin/sh`: the format shows the option for the pane's session, which `detach-client -E` runs its command with (see the `detach-client -E` row) |
+| `display-message -c CLIENT -d 3000 'cld: ... /opt/50%done/nu ... ##x'` on a client attached through `script`, then the same with `-l` and `#x`, then `show-messages` (#112, tmux 3.5a and 3.7c, in the images) | without `-l`, `/opt/5001one/nu ... #x` on the 1st of the month: tmux expands the text as a format with the time (`format_expand_time` in `cmd-display-message.c`), which hands it to `strftime` before it reads `#`, so that `%d` names the day; with `-l`, `/opt/50%done/nu ... #x`, as given. `display-message -p` alike |
 
 ## Distribution
 
@@ -3379,9 +3380,12 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        terminal, where tmux would show it over claude's pane (48.1), and the popup takes what its
        program printed away as it closes: `list --switch` says what goes wrong on the terminal's
        message line, `cld: MESSAGE` for three seconds or until a key, which reaches claude, as tmux
-       shows its own (`display-message -c CLIENT -d 3000`, `Tmux.Tell`), as well as on stderr - from
-       tmux's checks on, where it knows the terminal and a tmux, by the tmux it found where the
-       checks refuse it.
+       shows its own (`display-message -l -c CLIENT -d 3000`, `Tmux.Tell`), as well as on stderr -
+       from tmux's checks on, where it knows the terminal and a tmux, by the tmux it found where the
+       checks refuse it. `-l` shows MESSAGE as it is, as 43's line: as a format, a `#` in it would
+       start one, and tmux would hand it to `strftime` first, where a `%` - of a path in it, or of
+       tmux's own error - names the time, `/opt/50%done/nu` coming out as `/opt/5001one/nu` (see
+       Findings).
        With `-C` from tmux 3.6, as 43's line: without it tmux draws nothing more of claude's pane
        until the message goes (see Findings), and `-d 0`, as the `pane-died` hint (5) has it, held
        claude's screen until the key, which then reached claude - `Esc` interrupting a turn; 3.5,
@@ -3535,7 +3539,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `sh` quotes them - `x\'`, `C:\` before `; echo moved #`, one of four lines, one indented and
        one starting with `#` - which claude gets as given, in that directory;
        `TestMoveNeedsAKnownShell` a `default-shell` named `nu` refused for `C-q )` on the message
-       line and for `! cld join`, the terminal staying; `TestJoinMoveKeepsTheSessionItLeft` a move
+       line and for `! cld join`, the terminal staying, in a directory named `50%done #x`, which the
+       message line shows as it is; `TestJoinMoveKeepsTheSessionItLeft` a move
        without `-s` from a session idle past `CLD_IDLE_DAYS`, whose sweep ends another idle session
        and keeps that one; `TestPopupEndsNoSession` `C-q s` over a session whose server started
        with a `CLD_IDLE_DAYS` another session is idle past, which the popup leaves running;

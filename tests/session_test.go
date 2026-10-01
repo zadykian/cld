@@ -2677,14 +2677,19 @@ func TestSwitchQuoting(t *testing.T) {
 // tmux runs the command a terminal runs as it moves with the session's default-shell, and cld
 // writes it for sh, bash, zsh, fish, ksh and csh: with another - nu, say, where the words would
 // not be read as cld means them - the terminal stays on its session, and cld says why, on the
-// message line for a key, and to claude for ! cld join.
+// message line for a key, and to claude for ! cld join. The message line shows the message as it
+// is: here the shell is in a directory named "50%done #x", whose "%d" tmux would replace with the
+// day of the month, and whose "#" it would read as a format's.
 func TestMoveNeedsAKnownShell(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	detachedSessions(t, s, "a")
 	term := startCld(t, s, "tmux", nil, "join", "-s", "b")
 	waitScreen(t, term, "probe --name cld-b")
-	nu := filepath.Join(s.Root, "nu")
+	nu := filepath.Join(s.Root, "50%done #x", "nu")
+	if err := os.Mkdir(filepath.Dir(nu), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink("/bin/sh", nu); err != nil {
 		t.Fatal(err)
 	}

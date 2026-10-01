@@ -294,18 +294,21 @@ func (t *Tmux) Step(ctx context.Context, sw *Switch, to string) error {
 // until a key, which then reaches claude, as tmux shows its own messages: for C-q (, C-q ) and C-q
 // L where there is no session to move to, and for what goes wrong in cld list --switch, whose
 // output the popup takes away as it closes, and tmux would show over claude's pane from the keys'
-// run-shell (see switchKeys). -C keeps claude's pane drawn meanwhile, where tmux would draw nothing
-// more of it until the message goes (see showKept): tmux 3.5, which has no -C, holds it back for
-// those three seconds at most. A message tmux cannot show is lost.
+// run-shell (see switchKeys). -l shows text as it is, as showKept's line: as a format, a "#" in it
+// would start one, and tmux would hand it to strftime first, where a "%" - of a path in it, say,
+// or of tmux's own error - names the time (see Findings in docs/design.md). -C keeps claude's pane
+// drawn meanwhile, where tmux would draw nothing more of it until the message goes (see showKept):
+// tmux 3.5, which has no -C, holds it back for those three seconds at most. A message tmux cannot
+// show is lost.
 func (t *Tmux) Tell(sw *Switch, text string) {
 	if sw.client == "" {
 		return
 	}
-	args := []string{"-S", sw.socket, "display-message", "-c", sw.client, "-d", "3000"}
+	args := []string{"-S", sw.socket, "display-message", "-l", "-c", sw.client, "-d", "3000"}
 	if !t.older(version{3, 6, 0}) {
 		args = append(args, "-C")
 	}
-	tell := t.command(append(args, unexpanded("cld: "+text))...)
+	tell := t.command(append(args, "cld: "+text)...)
 	tell.Stdout, tell.Stderr = nil, nil
 	_ = tell.Run()
 }

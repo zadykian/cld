@@ -263,8 +263,8 @@ not push such a change. Rebase onto `main` before either.
   --switch CLIENT --to previous|next|last` - the tmux cld checked, and cld by the file it runs from,
   symbolic links resolved (`self`), each ending in `>/dev/null 2>&1 || true`, the keys counted in
   `commandLimit`; `list --switch` ends no idle session (it runs with the server's environment,
-  not the terminal's) and says what goes wrong, from tmux's checks on, with `display-message -c
-  CLIENT -d 3000`, `-C` from tmux 3.6 (`Tell`). Where cld runs in a pane of one of cld's
+  not the terminal's) and says what goes wrong, from tmux's checks on, with `display-message -l
+  -c CLIENT -d 3000`, `-C` from tmux 3.6 (`Tell`). Where cld runs in a pane of one of cld's
   servers - a live pane with cld's mark where
   its stdin is a terminal, else a server `TMUX` names that has the mark (`! cld join`) - `join`
   and the list's `Enter` move the terminal on that session, found as a bare `detach` finds it,
