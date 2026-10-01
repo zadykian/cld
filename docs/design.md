@@ -3567,15 +3567,18 @@ Where the implementation departs from the plan above:
   the cursor, the title and the question reach the terminal in that order, in one piece, from its
   output log. The same held lookup lets the tests signal cld, or press Esc or Ctrl+C, while the
   lookup runs, and check that its tmux is gone by the time cld has exited.
-- `join` (decision 50) is `Tmux.Join` for `-s`, `Tmux.Create` without it and `Tmux.JoinPicked`
-  for the list's Enter, over one function, `join`, which takes the lock and looks the session up
-  (`settled`, which waits for a start mark), attaches (`attach`) or makes the session with
-  `create`, as `new` and `resume` did before it (decision 16): what they asked of claude is a
-  `Joining` - `DetachOthers`, `Worktree`, `New`, `Conversation`, `Fork`, `Args`, and `Home` for
-  the check of 37 - whose `launch` gives `create` claude's words and whose `lost` refuses what
-  would be lost (50.2); `resumed` gives the words for an ended session's conversation, the
-  entry's ID or else its name, and `enter` changes to the entry's directory, for `join` and
-  `restore` alike. `launch.looked` has `create` skip its own lookup after `join`'s, and
+- `join` (decision 50) is `Tmux.Join` for `-s` and `Tmux.JoinPicked` for the list's Enter, over
+  one function, `join`, which takes the lock and looks the session up (`settled`, which waits for
+  a start mark), attaches (`attach`) or makes the session with `create`, as `new` and `resume` did
+  before it (decision 16), and `Tmux.Create` without `-s`, which calls `create` alone: `cmd/cld`
+  takes the lock before `Tmux.Next` gives the index, and `create` looks the session up itself
+  (`occupied`) and reads no start mark, as the index is above that of every entry of the NAME, so
+  of any session another cld is starting, whose entry comes before its mark. What they asked of
+  claude is a `Joining` - `DetachOthers`, `Worktree`, `New`, `Conversation`, `Fork`, `Args`, and
+  `Home` for the check of 37 - whose `launch` gives `create` claude's words and whose `lost`
+  refuses what would be lost (50.2); `resumed` gives the words for an ended session's
+  conversation, the entry's ID or else its name, and `enter` changes to the entry's directory, for
+  `join` and `restore` alike. `launch.looked` has `create` skip its own lookup after `join`'s, and
   `launch.kept` carries what `ReadyClient` read of the tmux cld runs in. The contract tests
   (C1-C10) run through `join`. `ownName` in `cmd/cld` refuses a `--fork` SESSION that is the
   session's own name (45.1): before any tool is looked for where `-n` and `-s` make the name
