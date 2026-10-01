@@ -105,6 +105,47 @@ func startCldAsync(t *testing.T, s *sandbox.Sandbox, dir string, extra map[strin
 	}
 }
 
+// waitForLock waits, as what says, for a second cld to wait for the lock of cld's record in s,
+// which a first holds: on Linux, for two cld processes to have the lock file open, as Lock opens
+// it before it tries for the lock - every 20 ms - and keeps it open while it waits, as while it
+// holds it, so that a cld that takes no lock fails the test, rather than passing where it is too
+// slow to get there before the first is let go. Elsewhere, with no /proc to tell, it gives the
+// second cld a second.
+func waitForLock(t *testing.T, s *sandbox.Sandbox, what string) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		time.Sleep(time.Second)
+		return
+	}
+	cld, err := filepath.EvalSymlinks(sandbox.Cld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := filepath.EvalSymlinks(s.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(home, ".local", "state", "cld", "lock")
+	sandbox.WaitFor(t, 10*time.Second, what, func() bool {
+		procs, _ := os.ReadDir("/proc")
+		opened := 0
+		for _, proc := range procs {
+			dir := filepath.Join("/proc", proc.Name())
+			if exe, err := os.Readlink(filepath.Join(dir, "exe")); err != nil || exe != cld {
+				continue
+			}
+			fds, _ := os.ReadDir(filepath.Join(dir, "fd"))
+			if slices.ContainsFunc(fds, func(fd os.DirEntry) bool {
+				target, err := os.Readlink(filepath.Join(dir, "fd", fd.Name()))
+				return err == nil && target == lock
+			}) {
+				opened++
+			}
+		}
+		return opened >= 2
+	})
+}
+
 // new and resume write the environment a session's server starts with beside its entry - the
 // claude they checked and their own environment without the variables that name the terminal,
 // readable by the user alone - and their tmux makes its run mark there, once it has made the
@@ -570,9 +611,10 @@ func TestRestoreBesideServers(t *testing.T) {
 
 // restore holds the record's lock for each session it brings back, from the lookup to tmux: a
 // second restore at once, or a resume of the session, waits, and then finds the session running.
-// The first restore's tmux is held as it is about to make the session; without the lock, the
-// second restore would make it too, and one of the two tmux commands fail with "duplicate
-// session", and the resume would find no session and go on, failing without a terminal.
+// The first restore's tmux is held as it is about to make the session, until the second cld waits
+// for the lock (see waitForLock); without the lock, the second restore would make it too, and one
+// of the two tmux commands fail with "duplicate session", and the resume would find no session and
+// go on, failing without a terminal.
 func TestRestoreAtOnce(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -594,7 +636,7 @@ func TestRestoreAtOnce(t *testing.T) {
 			first := startCldAsync(t, s, s.Work, tmux.env, "restore")
 			tmux.held(t)
 			second := startCldAsync(t, s, s.Work, tmux.env, test.args...)
-			time.Sleep(time.Second)
+			waitForLock(t, s, "the second "+test.name+" to wait for the record's lock")
 			tmux.release(t)
 			if result, want := first(), "Restored session 'x' in "+s.Work+"\n"; result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 				t.Errorf("first restore: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, want)
@@ -622,10 +664,11 @@ func TestRestoreAtOnce(t *testing.T) {
 }
 
 // The interactive list's forget of a session that restore is bringing back waits for the record's
-// lock, which restore holds as its tmux, held here, is about to make the session, then finds the
-// session running and forgets nothing: its entry, its environment and its run mark stay. Without
-// the lock, the forget would find no session and remove them as tmux made it, leaving a session
-// that runs with no environment kept, which every restore after a reboot would warn of.
+// lock, which restore holds as its tmux, held here until the forget waits (see waitForLock), is
+// about to make the session, then finds the session running and forgets nothing: its entry, its
+// environment and its run mark stay. Without the lock, the forget would find no session and remove
+// them as tmux made it, leaving a session that runs with no environment kept, which every restore
+// after a reboot would warn of.
 func TestForgetRacingRestore(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -638,7 +681,7 @@ func TestForgetRacingRestore(t *testing.T) {
 	list := startList(t, s, term, listScript, nil)
 	waitScreen(t, term, endedHints)
 	armThen(t, term, func() { waitScreen(t, term, forgetArmed) }, "C-x")
-	time.Sleep(time.Second)
+	waitForLock(t, s, "the list's forget to wait for the record's lock")
 	tmux.release(t)
 	if result, want := restore(), "Restored session 'x' in "+s.Work+"\n"; result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("restore: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, want)

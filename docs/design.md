@@ -3008,7 +3008,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         `resume`, the first held as its tmux is about to make the session, which make one
         session, and both fail without the lock (`TestRestoreAtOnce`); the list's forget while
         `restore`'s tmux is held so, which forgets nothing, and would without the lock
-        (`TestForgetRacingRestore`); `setup restore` against the
+        (`TestForgetRacingRestore`) - each lets the first go once the second waits for the lock,
+        on Linux once two cld processes have the lock file open (`/proc`), as `Lock` keeps it
+        while it waits, so that a cld that takes no lock fails them however slow it is, and a
+        second later elsewhere; `setup restore` against the
         fake `systemctl` and `loginctl` (probe), its unit word for word, a second run, a variable
         changed, a `CLD_IDLE_DAYS` refused, lingering on, off and unknown, and its failures
         (`TestSetupRestore`); its refusal off Linux; completion running neither.
