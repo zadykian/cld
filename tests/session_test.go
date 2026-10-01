@@ -4713,7 +4713,7 @@ func TestListKill(t *testing.T) {
 		detachedSessions(t, s, "a", "b")
 		exiting := filepath.Join(s.Root, "exiting")
 		env := wrapTmux(t, s, "if [ -e '"+exiting+"' ]; then case \"$*\" in\n"+
-			"\t*'-L cld-a kill-session '*) exit 0 ;;\n"+
+			"\t*'-L cld-a '*' kill-session -t =cld-a '*) exit 0 ;;\n"+
 			"\t*'-L cld-a list-sessions '*'#{?pane_dead,exited'*) rm '"+exiting+"'; echo 'server exited unexpectedly' >&2; exit 1 ;;\n"+
 			"esac; fi\n")
 		term := startCld(t, s, "tmux", env, "list")

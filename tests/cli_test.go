@@ -2229,7 +2229,7 @@ func TestIdleSessionsWithFakeTmux(t *testing.T) {
 				t.Fatalf("tmux arguments %q compare no activity", argv)
 			}
 			idle := "#{&&:#{==:#{session_attached},0},#{&&:#{e|<:#{session_activity}," + cutoff[1] + "},#{e|<:#{session_last_attached}," + cutoff[1] + "}}}"
-			kill := "kill-session -t =cld-a ; run-shell '" + strings.ReplaceAll(unmarkCommand(s, "a"), "'", `'\''`) + "' ; kill-server"
+			kill := "run-shell '" + strings.ReplaceAll(unmarkCommand(s, "a"), "'", `'\''`) + "' ; if -F -t =cld-a: '" + idle + "' 'kill-session -t =cld-a ; kill-server' 'display-message -p kept'"
 			if want := []string{"-L", "cld-a", "if", "-F", "-t", "=cld-a:", idle, kill, "display-message -p kept"}; !slices.Equal(argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", argv, want)
 			}
@@ -2688,7 +2688,7 @@ func TestNothingToPrintWritesNothing(t *testing.T) {
 			}
 			want := test.argv
 			if want == nil {
-				want = []string{"-L", "cld-a", "kill-session", "-t", "=cld-a", ";", "run-shell", unmarkCommand(s, "a"), ";", "kill-server"}
+				want = []string{"-L", "cld-a", "run-shell", unmarkCommand(s, "a"), ";", "kill-session", "-t", "=cld-a", ";", "kill-server"}
 			}
 			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv, want) {
 				t.Errorf("tmux arguments\n%q\nwant\n%q", argv, want)

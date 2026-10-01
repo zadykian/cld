@@ -356,6 +356,91 @@ func TestRestore(t *testing.T) {
 	}
 }
 
+// holdRm puts an rm first on the PATH of the environment it returns, for the servers that cld
+// starts with it, and so for their run-shell: one that holds the removal of the file mark - a run
+// mark - from start on, until release, and then runs the rm the tests run (see holdTmux).
+func holdRm(t *testing.T, s *sandbox.Sandbox, what, mark string) heldTmux {
+	t.Helper()
+	rm, err := exec.LookPath("rm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp(s.Root, "hold.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hold := filepath.Join(dir, "hold")
+	t.Cleanup(func() { _ = os.Remove(hold) })
+	s.WriteProgram(filepath.Join(dir, "rm"), "#!/bin/sh\ncase \"$*\" in *'"+mark+"'*)\n"+
+		"\techo $$ >>'"+hold+".begun'\n"+
+		"\tif [ -e '"+hold+"' ]; then echo $$ >'"+hold+".held'; fi\n"+
+		"\twhile [ -e '"+hold+"' ]; do sleep 0.05; done ;;\n"+
+		"esac\nexec '"+rm+"' \"$@\"\n", 0o755)
+	return heldTmux{hold: hold, what: what, env: map[string]string{"PATH": dir + string(os.PathListSeparator) + s.Env["PATH"]}}
+}
+
+// kill removes the session's run mark before its kill-session, in the one tmux command that ends
+// the session, which tmux runs while it serves other clients: the session holds its name while sh
+// removes the mark, held here, so that a session of the name that another cld's tmux makes just
+// then - tmux itself here - is refused, duplicate session, where it would be made on the server
+// that the kill-server then ends, and keep a run mark that restore would act on. The sweep of the
+// idle sessions removes the mark so too, then checks again that the session is idle: a terminal
+// that attaches while sh removes the mark keeps the session, without its mark.
+func TestUnmarkBeforeTheKill(t *testing.T) {
+	t.Parallel()
+	t.Run("kill", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		rm := holdRm(t, s, "the kill's rm of x's run mark", companionFile(s, "x", ".run"))
+		term := startCld(t, s, "tmux", rm.env, "new", "-s", "x")
+		s.WaitProbes(1)
+		waitClients(t, s, 1)
+		rm.start(t)
+		kill := startCldAsync(t, s, s.Work, nil, "kill", "-s", "x")
+		rm.held(t)
+		if _, err := s.Tmux("cld-x", "new-session", "-d", "-s", "cld-x"); err == nil || !strings.Contains(err.Error(), "duplicate session: cld-x") {
+			t.Errorf("new-session of cld-x as the kill removed its run mark: %v, want duplicate session", err)
+		}
+		rm.release(t)
+		if result := kill(); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
+			t.Errorf("kill: exit %d, stdout %q, stderr %q, want exit 0 and nothing", result.Code, result.Stdout, result.Stderr)
+		}
+		sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
+		if sessions := s.Sessions(); len(sessions) != 0 {
+			t.Errorf("sessions %q after the kill, want none", sessions)
+		}
+		checkMarks(t, s, "after the kill", map[string]bool{"x": false})
+	})
+	t.Run("idle", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		rm := holdRm(t, s, "the sweep's rm of x's run mark", companionFile(s, "x", ".run"))
+		term := startCld(t, s, "tmux", rm.env, "new", "-s", "x")
+		s.WaitProbes(1)
+		waitClients(t, s, 1)
+		term.Keys("C-q", "d")
+		sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !term.Running() })
+		// CLD_IDLE_DAYS 0.00001 is 0.864 s.
+		time.Sleep(2 * time.Second)
+		rm.start(t)
+		list := startCldAsync(t, s, s.Work, map[string]string{"CLD_IDLE_DAYS": "0.00001"}, "list")
+		rm.held(t)
+		joined := startCld(t, s, "tmux", nil, "join", "-s", "x")
+		waitClients(t, s, 1)
+		rm.release(t)
+		if result := list(); result.Code != 0 || result.Stderr != "" {
+			t.Errorf("list: exit %d, stderr %q, want exit 0, no stderr", result.Code, result.Stderr)
+		}
+		if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-x"}) {
+			t.Errorf("sessions %q after the sweep, want [cld-x]", sessions)
+		}
+		if !joined.Running() {
+			t.Errorf("join is not attached:\n%s", joined.Screen())
+		}
+		checkMarks(t, s, "after the sweep kept x", map[string]bool{"x": false})
+	})
+}
+
 // A new or a resume that makes no session leaves no run mark, which the tmux that makes the
 // session makes: a new refused for want of a terminal writes nothing in cld's record, and one
 // whose tmux cannot open the terminal - a TERM that tmux does not know - leaves its entry, ended,

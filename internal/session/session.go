@@ -1263,9 +1263,10 @@ func (t *Tmux) Kill(suffix string, home Home) error {
 //
 // claude shuts down on the SIGHUP: it runs its SessionEnd hooks with the reason "other", and
 // exits. End does not wait for it: claude, orphaned, may still run its hooks when End returns,
-// and what it prints then is lost (see docs/design.md, decision 32). Before the kill-server, in
+// and what it prints then is lost (see docs/design.md, decision 32). Before the kill-session, in
 // the same tmux command, End removes the session's run mark from cld's record, which keeps its
-// entry: the session was ended on purpose, and restore leaves it ended (see unmark).
+// entry: the session was ended on purpose, and restore leaves it ended (see unmark). The session
+// holds its name meanwhile, so that no session of the name is made on the server about to end.
 func (t *Tmux) End(ctx context.Context, suffix string, home Home, pids []string, stdout, stderr io.Writer) error {
 	server, exists, found, made, err := t.lookup(ctx, suffix)
 	if err != nil {
@@ -1274,7 +1275,7 @@ func (t *Tmux) End(ctx context.Context, suffix string, home Home, pids []string,
 	rm := unmark(suffix)
 	command := []string{"kill-session", "-t", "=cld-" + suffix, ";", "kill-server"}
 	if rm != "" {
-		command = []string{"kill-session", "-t", "=cld-" + suffix, ";", "run-shell", rm, ";", "kill-server"}
+		command = []string{"run-shell", rm, ";", "kill-session", "-t", "=cld-" + suffix, ";", "kill-server"}
 	}
 	switch {
 	case !exists && server:
@@ -1564,7 +1565,9 @@ func idleSince(now time.Time, times []string) time.Duration {
 // if -F expands its format with none, and ends nothing. EndIdle reports whether it ended the
 // session: not where it was kept, nor where the server has gone, without an error. Another failure
 // is tmux's message. A session it ends loses its run mark, in the same command, as with kill:
-// restore leaves it ended (see unmark). Once ctx is done, its tmux is killed.
+// restore leaves it ended (see unmark). The mark goes before the kill-session, and tmux checks
+// again after it, so that a terminal that attaches while sh removes the mark keeps the session,
+// though not its mark. Once ctx is done, its tmux is killed.
 func (t *Tmux) EndIdle(ctx context.Context, suffix string, limit time.Duration) (bool, error) {
 	// A session is idle for longer than limit where its seconds are before now less limit, and so
 	// before that time's next whole second, where it has a fraction: tmux compares whole numbers.
@@ -1580,7 +1583,8 @@ func (t *Tmux) EndIdle(ctx context.Context, suffix string, limit time.Duration) 
 	name := "=cld-" + suffix
 	kill := "kill-session -t " + name + " ; kill-server"
 	if rm := unmark(suffix); rm != "" {
-		kill = "kill-session -t " + name + " ; run-shell " + shellWord(rm) + " ; kill-server"
+		kill = "run-shell " + shellWord(rm) + " ; if -F -t " + name + ": " + shellWord(idle) + " " +
+			shellWord(kill) + " 'display-message -p kept'"
 	}
 	out, err := combinedOutput(t.serverContext(ctx, suffix, "if", "-F", "-t", name+":", idle, kill, "display-message -p kept"))
 	switch {

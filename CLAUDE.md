@@ -167,10 +167,10 @@ not push such a change. Rebase onto `main` before either.
   entries and the indexes given. An entry or index older than 30 days (claude's default
   `cleanupPeriodDays`) counts no more and goes, but for the entry of a session whose server runs;
   the list's Ctrl+X twice on an `ended` row forgets its entry, and `kill` does not. `kill`, the
-  list's Ctrl+X and the idle sweep remove the run mark in their tmux command, between
-  `kill-session` and `kill-server`, and the `pane-died` hook for claude's exit with status 0; a
-  reboot leaves it. Where cld cannot write the record it warns and makes the session all the same.
-  The tests' record is in the sandbox's `HOME`.
+  list's Ctrl+X and the idle sweep remove the run mark in their tmux command, before
+  `kill-session`, while the session holds its name, and the `pane-died` hook for claude's exit
+  with status 0; a reboot leaves it. Where cld cannot write the record it warns and makes the
+  session all the same. The tests' record is in the sandbox's `HOME`.
 - `restore` (decision 48) brings back each entry with a run mark and no server, as
   `resume -n NAME -s SUFFIX` would but detached (`new-session -d`, no terminal check, no title,
   no exec: `create` with `launch.detached`), in the entry's directory, with the claude and the
@@ -245,13 +245,13 @@ not push such a change. Rebase onto `main` before either.
   `CLD_IDLE_DAYS` days (decimal, 30 when unset or empty, `0` none; anything else refused): no
   terminal attached, and the later of `#{session_activity}` and `#{session_last_attached}`, which
   only an attach and a terminal's keys move, older than that. The kill is one tmux command,
-  `if -F` with that check again, then `kill-session` and `kill-server`, so that a terminal
-  attaching meanwhile keeps the session, and a note (`output.Note`) on stderr names each session
-  ended, which `list` then shows as `ended` where the record keeps its entry. `LAST ACTIVE` in
-  `list` and its interactive list is the same time, `-` for a session that has ended. Completion
-  never ends one, nor does the sweep end the session whose server cld runs on, the socket `TMUX`
-  names (compared as a file: tmux resolves symbolic links in its path), lest a claude that runs
-  cld end itself (decision 46).
+  `if -F` with that check again, then the run mark's `rm` and the check once more, then
+  `kill-session` and `kill-server`, so that a terminal attaching meanwhile keeps the session, and
+  a note (`output.Note`) on stderr names each session ended, which `list` then shows as `ended`
+  where the record keeps its entry. `LAST ACTIVE` in `list` and its interactive list is the same
+  time, `-` for a session that has ended. Completion never ends one, nor does the sweep end the
+  session whose server cld runs on, the socket `TMUX` names (compared as a file: tmux resolves
+  symbolic links in its path), lest a claude that runs cld end itself (decision 46).
 - Per-session settings (`remain-on-exit on`, its empty format, the `pane-died` hook, which for
   claude's exit with status 0 removes the run mark and closes the pane, as `failed` would - a
   pane's `pane-exited` hook never runs - and otherwise keeps the failure on screen) go on claude's
@@ -390,7 +390,8 @@ comments at the top of each file for details.
   completion offers, the keys a tmux cld runs inside keeps from claude, and the idle sessions
   `list` and `new` end (`CLD_IDLE_DAYS` of a few seconds);
   `restore_test.go` — the run mark, the busy mark and the environment beside an entry, no mark
-  where tmux made no session, `restore` of sessions whose servers `kill-server` ended (a reboot)
+  where tmux made no session, the kill's and the idle sweep's `rm` of the mark held while the
+  session holds its name, `restore` of sessions whose servers `kill-server` ended (a reboot)
   and of none ended on purpose or idle past `CLD_IDLE_DAYS` by the mark, its failures as warnings
   with status 1 (a failed tmux keeping the busy mark), the servers without their session or not
   cld's that it leaves alone, two `restore` at once and a `restore` racing a `resume`

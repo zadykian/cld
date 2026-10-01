@@ -485,12 +485,14 @@ func setMarks(file, run string) []string {
 
 // unmark is the sh command that removes the run mark of session cld-SUFFIX, which kill, the list's
 // Ctrl+X and the sweep of the idle sessions run with tmux's run-shell in the tmux command that ends
-// the session, between its kill-session and its kill-server: restore then leaves the session
-// ended, and a session made again under the name - on a server that starts only once this one
-// has gone - keeps the mark its own tmux makes, where a removal after the kill could take it. It
-// prints nothing and exits 0 however rm fares: a mark cld cannot remove stays, silently, as the
-// session ends all the same. "" where cld has no record's directory. It goes as run-shell's
-// argument, a format, with every "#" doubled (see unexpanded).
+// the session, before its kill-session: restore then leaves the session ended. tmux serves other
+// clients while sh runs, and the session holds its name meanwhile, so that none of the name is
+// made on the server that the kill-server then ends, where its own mark would outlive it; and a
+// session made again under the name - on a server that starts only once this one has gone - keeps
+// the mark its own tmux makes, where a removal after the kill could take it. It prints nothing and
+// exits 0 however rm fares: a mark cld cannot remove stays, silently, as the session ends all the
+// same. "" where cld has no record's directory. It goes as run-shell's argument, a format, with
+// every "#" doubled (see unexpanded).
 func unmark(suffix string) string {
 	dir, err := stateDir()
 	if err != nil {

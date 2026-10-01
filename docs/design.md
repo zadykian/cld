@@ -224,6 +224,7 @@ rows that name none were probed against tmux 3.6.
 | the hook a pane's program exiting runs, where the pane has `remain-on-exit failed`: `pane-exited` and `pane-died` set on the pane (`-p`), on its window (`-w`) and globally (`-g`), each a `run-shell` that logs `#{hook_pane}`; the program exiting with status 0 or 1 a second after `new-session -d`, alone on its server and beside another session (tmux 3.5a and 3.7c, built from source in the images `tests/Dockerfile` builds) | `pane-died` runs for status 1 on the pane, the window and globally, and the pane stays. For status 0 neither the pane's `pane-exited` nor the window's ran, with or without another session: tmux closes the pane before it looks the hook up, and finds neither the pane nor, where it was the session's last, the session. The global one ran only while another session kept the server running, naming the pane (`%0`); alone, the server exited without running it, with `run-shell -b` too, and a global `session-closed` hook likewise |
 | `remain-on-exit on` on the pane, an empty `remain-on-exit-format`, and a `pane-died` hook `if -F '#{==:#{pane_dead_status},0}' { run-shell 'rm -f FILE' ; kill-pane } { set -w pane-border-status bottom ; set -p pane-border-format ... ; if -F '#{window_active_clients}' "display-message ..." }`, `FILE` a path with a `'` and a `#` in it, quoted for tmux's parser, `run-shell`'s format (`##`) and `sh`; the program exiting with status 0, 1 or on SIGTERM two seconds after `new-session -d`, alone, beside a pane split off in its window and beside another session, with a client attached through `script` (tmux 3.5a and 3.7c, in the images) | status 0 removes the file and closes the pane: alone, the session and the server end, and the client exits with status 0, printing `[exited]`, as when tmux closes the pane itself; beside the split pane, that pane stays with the client on it; beside another session, the client exits the same, as `detach-on-destroy` has it. Status 1 and signal 15 keep the file and the dead pane, and run the other branch, which sets `pane-border-status bottom` and the pane's border format. `show-hooks` prints the hook back with its braces. `kill-pane`, `kill-window` and `kill-session` of the pane's session, alone on its server, ran no `pane-died` hook, and the server ended |
 | the run mark made in the command that makes a session, and removed in the one that ends it (#115, tmux 3.5a and 3.7c, in the images): `new-session -d`, and `new-session` attached through `script`, followed in the same command by `run-shell "{ rm -f 'BUSY'; touch 'RUN'; } 2>/dev/null \|\| true"`; the same where `new-session` fails, for a name taken and for a `TERM` that terminfo does not know (`cld-no-such-terminal`); `kill-session -t =s \; run-shell "rm -f 'RUN' 2>/dev/null \|\| true" \; kill-server`, with no terminal and with one attached through `script`, and the same as the line of an `if -F`; a `run-shell` whose command fails, with and without `\|\| true`; a program that exits with status 0 at once, with the `pane-died` hook of 48.2 set before the `run-shell` that makes the file | the file is made and the busy one removed before the client returns, with status 0, and the attached client exits `[exited]` with status 0 when its program does. A name taken (`duplicate session: s`) and a terminal tmux cannot open (`missing or unsuitable terminal: cld-no-such-terminal`, status 1) cut the command short: no file is made, and no server stays. The kill removes the file and ends the server, and a client attached exits `[exited]` with status 0, as without the `run-shell`: the command's own client keeps the server running until the command is done. Meanwhile the server serves other clients, with no session: with `run-shell 'sleep 2'` in the `rm`'s place, another client's `ls` half a second in printed nothing, with status 0, `has-session -t =s` failed, and a `new-session -d -s s` made its session, which the `kill-server` then ended with the server. A command that fails prints `'touch /nonexistent/b' returned 1` and the client exits with status 1; with `2>/dev/null \|\| true` it prints nothing, and the status is 0. The program that exited at once left no file: the hook's `rm` ran after the `run-shell` |
+| the run mark removed before the kill (#115, tmux 3.5a and 3.7c, in the images): `run-shell 'sleep 2' \; kill-session -t =s \; kill-server` with a `new-session -d -s s` from another client half a second in; and the idle sweep's `if -F -t =s: IDLE "run-shell 'sleep 1' ; if -F -t =s: 'IDLE' 'kill-session -t =s ; kill-server' 'display-message -p kept'" 'display-message -p kept'`, IDLE `#{==:#{session_attached},0}`, with no client and with one attached through `script` half a second in | the session held its name while `sh` ran: `ls` listed it, and the `new-session` failed with `duplicate session: s`, status 1; then the kill ended the session and the server, with status 0. With no client, the sweep printed nothing and the server ended. With the client attached meanwhile, the second check failed: the sweep printed `kept`, and the session stayed, attached |
 | `claude --resume ID PROMPT` (the linux-x64 bundles of 2.1.232, from npm, and 2.1.285, installed; read, not run) | `-r, --resume [value]` takes its value, the ID, and the word after it is the positional `[prompt]`. The interactive launch puts the prompt in the app's state as `initialMessage`, the restore of a resumed conversation keeps that state's `initialMessage` (2.1.285's `eVt`, 2.1.232's alike), and the REPL, once loaded, takes it and runs it as a turn after the resumed messages (2.1.285: `_takeLaunchPrompt`, `submitInitial`; 2.1.232: the effect that takes `initialMessage`). Both also have a hidden `--reply-on-resume`, which claude's own background respawns pass, and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN`, which resumes a turn cut off only for a conversation that ran in the background |
 | `SessionEnd`'s reason for claude's ways out (claude 2.1.285's bundle, read, not run) | `prompt_input_exit` for the ways out of claude's prompt, `/exit` among them, and for the way out of the exit dialog that moves the conversation to the background; a signal gives `other`, as a kill does (see the row on SIGHUP above) |
 | a tmux server that a transient oneshot unit starts, once the unit is stopped: `systemd-run --user --unit=cldprobe-restore-N -p Type=oneshot -p RemainAfterExit=yes -p KillMode=process` running `tmux -L NAME -f /dev/null new-session -d`, then `systemctl --user stop` (systemd 259 on Ubuntu 26.04, a user manager with lingering on; the snap's tmux 3.7c as `/snap/bin/tmux`, and its binary `/snap/tmux/current/usr/local/bin/tmux` run as it is; each unit and server removed afterwards) | through `/snap/bin`, the server ran in a scope of the snap's own, `snap.tmux.tmux-UUID.scope` under `app.slice`, outside the unit; run as it is, in the unit's own cgroup. Both outlived the stop, and the unit showed `inactive`. With the default `KillMode` the second was killed with the unit |
@@ -2845,15 +2846,27 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        `new-session` fails, a name taken or a terminal it cannot open (see Findings), and cld,
        refused before tmux - no terminal (31.2) - makes none. `kill` and the list's `Ctrl+X`
        (`End`), and the sweep of the idle sessions (46.4), remove it in the tmux command that ends
-       the session, between `kill-session` and `kill-server`, so that a session made again under
-       the name, on a server that starts once this one has gone, keeps the mark its own tmux
-       makes; the `pane-died` hook removes it where claude exited with status 0 (48.2), and the
-       list's forget with the entry (40.3). tmux serves other clients while `sh` runs the kill's
-       `rm`, some milliseconds, with the server up and no session on it (see Findings): a `new` or
-       `resume` of the name just then finds a server of cld's without its session that has
-       outlived none (13), and refuses the name, where a moment later it would have made the
-       session. claude's `UserPromptSubmit` hook touches it (`touch -c`), so that its time is when
-       the session was last started or given a prompt (48.8). A reboot, a server that crashes or
+       the session, before `kill-session`, so that a session made again under the name, on a
+       server that starts once this one has gone, keeps the mark its own tmux makes; the
+       `pane-died` hook removes it where claude exited with status 0 (48.2), and the list's forget
+       with the entry (40.3). tmux serves other clients while `sh` runs the kill's `rm`, some
+       milliseconds, and the session holds its name meanwhile (see Findings): a `new` or `resume`
+       of the name just then finds the session and refuses the name, and a `new-session` of it
+       that a tmux sends just then - of a cld that looked the name up before the server ran at
+       all, as another `new` or `resume` started it - fails with `duplicate session`. With the
+       `rm` between `kill-session` and `kill-server`, as first made, the server served them with
+       no session on it: that `new-session` made the session, which the `kill-server` then ended,
+       and the run mark its tmux touched after the kill's `rm` stayed, for the next `restore` to
+       bring the session back. The sweep checks again after the `rm` that the session is idle, an
+       `if -F` in its `if -F`: a terminal that attaches while `sh` runs keeps the session, as
+       46.4 has it, but not its mark, which only a `new`, `resume` or `restore` of the session
+       makes again, so that a reboot then leaves the session ended. The `kill` of a server that
+       has outlived its session (13) keeps the gap: its `rm` runs before its `kill-server`, under
+       `if -F`, with no session to hold the name, so a `new-session` of the name sent just then,
+       of a cld that looked the name up before that server ran, is made there and ended with the
+       server, and keeps its mark; a cld that looks the name up then refuses it (13). claude's
+       `UserPromptSubmit` hook touches it (`touch -c`), so that its time is when the session was
+       last started or given a prompt (48.8). A reboot, a server that crashes or
        `tmux kill-server` leaves it, and so do tmux's own keys that close claude's pane or its
        window, `C-q x` and `C-q &`, and a `kill-session`: tmux runs no `pane-died` hook for a
        pane it kills (see Findings), and the user guide says to end a session with `/exit` or
@@ -2926,7 +2939,7 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        session and makes it too, and one of the two tmux commands fails, and a forget just then
        finds no session and removes what the `resume` wrote. Out of the
        lock, a `kill` of the session - which takes none - is not waited for: it removes the mark
-       in its own tmux command, before the server it ends has gone (48.1), so a session made
+       in its own tmux command, before the session it ends has gone (48.1), so a session made
        again under the name keeps its own;
     7. a session that was busy gets `claude --resume ID "The machine restarted while you were
        working; continue where you left off."`: claude submits a prompt given after `--resume ID`
@@ -2991,7 +3004,11 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         write `S.env` and made no mark, removing the one from before
         (`TestRunMarkWithoutEnvironment`); no mark from a `new` refused for want of
         a terminal, nor from one or a `resume` whose tmux cannot open the terminal, and no restore
-        of them (`TestNoSessionNoMark`); the busy mark through each hook (`TestBusyMark`); a
+        of them (`TestNoSessionNoMark`); the kill's `rm`, held by an `rm` first on the server's
+        `PATH`, while the session holds its name - a `new-session` of it refused with `duplicate
+        session` - and the sweep's, through which a terminal that attaches keeps the session,
+        without its mark; both fail with the `rm` after `kill-session`, and the sweep's without
+        its second check (`TestUnmarkBeforeTheKill`); the busy mark through each hook (`TestBusyMark`); a
         session idle for longer than `CLD_IDLE_DAYS` by its mark left ended, one within it
         brought back with the mark's time kept, the mark touched by a prompt, and a value that is
         no number of days refused (`TestRestoreIdle`); `restore` of sessions whose servers
