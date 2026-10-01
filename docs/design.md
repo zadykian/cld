@@ -2738,10 +2738,11 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        attached and that both times are before the cutoff, now less the limit, rounded up to a
        whole second: a terminal that attaches between the read and the kill, or a key typed,
        keeps the session - and a session made again under the name since is new - where the
-       pids' check of 15 would miss both. Nested `&&`s, as tmux 3.5a's takes two arguments. A
-       kept session goes unmentioned and stays in the table as read; a kill that fails is a
-       warning (`output.Warn`), not the command's end. The note goes through `output.Note`,
-       `cld: NOTE` on stderr, away from the table that scripts read;
+       pids' check of 15 would miss both. Since 48.1 the run mark's `rm` comes first, inside the
+       `if -F`, and CONDITION is checked once more after it. Nested `&&`s, as tmux 3.5a's takes
+       two arguments. A kept session goes unmentioned and stays in the table as read; a kill that
+       fails is a warning (`output.Warn`), not the command's end. The note goes through
+       `output.Note`, `cld: NOTE` on stderr, away from the table that scripts read;
     5. `LAST ACTIVE` is `now` under a minute and while a terminal is attached, then whole minutes,
        hours or days: `5m`, `2h`, `31d`; `-` for an `ended` session (40.3), of which tmux knows
        nothing: when a session last ran stays out of scope (40). It is as of the read, so the
