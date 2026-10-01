@@ -392,7 +392,8 @@ comments at the top of each file for details.
   `restore_test.go` — the run mark, the busy mark and the environment beside an entry, no mark
   where tmux made no session, `restore` of sessions whose servers `kill-server` ended (a reboot)
   and of none ended on purpose or idle past `CLD_IDLE_DAYS` by the mark, its failures as warnings
-  with status 1, two `restore` at once and a `restore` racing a `resume`
+  with status 1 (a failed tmux keeping the busy mark), the servers without their session or not
+  cld's that it leaves alone, two `restore` at once and a `restore` racing a `resume`
   (the record's lock), and `setup restore` against the fake `systemctl` and `loginctl`, its
   refusal off Linux and completion running neither;
   `record_test.go` — cld's record of its sessions: the entry, the hooks that give it the

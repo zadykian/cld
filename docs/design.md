@@ -3000,7 +3000,11 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         environment, without the words after `--`, the prompt for the busy one, detached - of
         none that `kill` or claude's exit ended, and again of none (`TestRestore`); a directory
         gone, no environment and a claude too old, each a warning with status 1 while another
-        comes back (`TestRestoreFailures`); two `restore` at once, and a `restore` racing a
+        comes back (`TestRestoreFailures`); a server of cld's that the session outlived and the
+        user's own `tmux -L cld-NAME` left alone, silently, with the marks, and a `restore` whose
+        `new-session` fails, `duplicate session` from a server started as its tmux was held, a
+        warning that keeps both marks, so that the next `restore` continues the turn
+        (`TestRestoreBesideServers`); two `restore` at once, and a `restore` racing a
         `resume`, the first held as its tmux is about to make the session, which make one
         session, and both fail without the lock (`TestRestoreAtOnce`); the list's forget while
         `restore`'s tmux is held so, which forgets nothing, and would without the lock

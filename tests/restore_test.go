@@ -22,9 +22,9 @@ import (
 // cld restore and cld setup restore: the run mark, the busy mark and the environment beside a
 // session's entry in cld's record; the sessions restore brings back, as a reboot leaves them -
 // their servers gone, killed here with kill-server, which runs no hook - and those it leaves
-// ended; what refuses a session; two restores, a restore and a resume, and a restore and the
-// interactive list's forget, at once; and setup restore against the fake systemctl and loginctl
-// (see probe).
+// ended; what refuses a session, and the servers it leaves alone; two restores, a restore and a
+// resume, and a restore and the interactive list's forget, at once; and setup restore against the
+// fake systemctl and loginctl (see probe).
 
 // continuePrompt is what restore gives the claude of a session that was in a turn.
 const continuePrompt = "The machine restarted while you were working; continue where you left off."
@@ -495,6 +495,76 @@ func TestRestoreFailures(t *testing.T) {
 	}
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-ok"}) {
 		t.Errorf("sessions %q, want [cld-ok]", sessions)
+	}
+}
+
+// restore leaves alone, silently, a session whose server runs without it, as one that runs: a
+// server of cld's that the session has outlived, or one cld did not start - the user's own tmux
+// -L cld-NAME, whatever its sessions are called. No claude starts there, the session keeps its run
+// and busy marks, and the server its sessions. A server that starts as restore's tmux is about to
+// make a session - the user's own here, whose session takes the name - fails tmux's new-session:
+// a warning, with status 1, and the session keeps both marks, as tmux cuts its command short
+// before the run-shell that sets them, so that the next restore still has claude continue the
+// turn.
+func TestRestoreBesideServers(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	probe := filepath.Join(sandbox.ProbeBin, "claude")
+	for _, name := range []string{"foreign", "lingering", "x"} {
+		writeRestorable(t, s, name, s.Work, firstID, probe, s.Environ(nil))
+		s.WriteFile(companionFile(s, name, ".busy"), "")
+	}
+	s.MustTmux("cld-foreign", "-f", "/dev/null", "new-session", "-d", "-s", "cld-foreign")
+	s.MustTmux("cld-lingering", "-f", "/dev/null", "new-session", "-d", "-s", "other", ";", "set", "-s", "@cld", "1")
+	checkLeft := func(when string) {
+		t.Helper()
+		for server, sessions := range map[string]string{"cld-foreign": "cld-foreign", "cld-lingering": "other"} {
+			if got, err := s.Tmux(server, "list-sessions", "-F", "#{session_name}"); err != nil || got != sessions {
+				t.Errorf("%s: sessions of server %s %q, %v, want %q", when, server, got, err, sessions)
+			}
+		}
+		for _, name := range []string{"foreign", "lingering"} {
+			if !exists(companionFile(s, name, ".run")) || !exists(companionFile(s, name, ".busy")) {
+				t.Errorf("%s: %s lost its run mark or its busy mark", when, name)
+			}
+		}
+	}
+
+	tmux := holdTmux(t, s, "restore's tmux making cld-x", "*' new-session -d -s cld-x '*")
+	tmux.start(t)
+	first := startCldAsync(t, s, s.Work, tmux.env, "restore")
+	tmux.held(t)
+	s.MustTmux("cld-x", "-f", "/dev/null", "new-session", "-d", "-s", "cld-x")
+	tmux.release(t)
+	if result, want := first(), "cld: warning: cannot restore session 'x': duplicate session: cld-x\n"; result.Code != 1 || result.Stdout != "" || result.Stderr != want {
+		t.Errorf("restore: exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+	}
+	if !exists(companionFile(s, "x", ".run")) || !exists(companionFile(s, "x", ".busy")) {
+		t.Error("x lost its run mark or its busy mark as restore's tmux failed")
+	}
+	checkLeft("after restore")
+	if probes := s.Probes(); len(probes) != 0 {
+		t.Errorf("%d claudes started, want none", len(probes))
+	}
+
+	s.MustTmux("cld-x", "kill-server")
+	sandbox.WaitFor(t, 10*time.Second, "server cld-x to exit", func() bool {
+		_, err := s.Tmux("cld-x", "list-sessions")
+		return err != nil
+	})
+	if result, want := s.RunCld(nil, "restore"), "Restored session 'x' in "+s.Work+", continuing its turn\n"; result.Code != 0 || result.Stdout != want || result.Stderr != "" {
+		t.Errorf("restore again: exit %d, stdout %q, stderr %q, want exit 0, stdout %q", result.Code, result.Stdout, result.Stderr, want)
+	}
+	claude := s.WaitProbes(1)[0]
+	if want := []string{"--name", "cld-x", "--settings", sessionSettings(s, "cld-x", s.Work), "--resume", firstID, continuePrompt}; !slices.Equal(claude.Argv, want) {
+		t.Errorf("claude arguments %q, want %q", claude.Argv, want)
+	}
+	if exists(companionFile(s, "x", ".busy")) {
+		t.Error("x's busy mark is left as restore brought it back")
+	}
+	checkLeft("after restore again")
+	if probes := s.Probes(); len(probes) != 1 {
+		t.Errorf("%d claudes started, want x's alone", len(probes))
 	}
 }
 
