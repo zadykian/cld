@@ -539,15 +539,17 @@ func hint(suffix string) string {
 
 // died is the pane-died hook of claude's pane in session cld-SUFFIX, which tmux keeps however
 // claude exits (remain-on-exit on). Where claude exited with status 0 - /exit, and claude's other
-// ways out - it removes the session's run mark, the file run, where cld could write the record,
-// and then closes the pane, as tmux closes it with remain-on-exit failed: restore leaves a
-// session ended so (see Tmux.Restore). tmux runs no hook of a pane once it has closed it, nor any
-// once the server's last session has gone with it, so a pane-exited hook would never run for
-// claude (tmux 3.5a, 3.7c; see Findings in docs/design.md). Otherwise it keeps ending on a line of
-// the pane's border, below the pane, which no key clears, and shows the hint (see the package
-// comment). Its commands have no -t: in the hook, they take the pane that died and its window.
-// The run mark's path goes through three readers: tmux's parser, which reads a word quoted as
-// sh's is, run-shell, which expands it as a format, where "##" is a "#", and sh.
+// ways out - it removes the session's run mark, the file run, where cld has a record's directory -
+// the mark tmux made, or, where cld could not write the environment and tmux made none, one the
+// session had from before, a reboot's - and then closes the pane, as tmux closes it with
+// remain-on-exit failed: restore leaves a session ended so (see Tmux.Restore). tmux runs no hook
+// of a pane once it has closed it, nor any once the server's last session has gone with it, so a
+// pane-exited hook would never run for claude (tmux 3.5a, 3.7c; see Findings in docs/design.md).
+// Otherwise it keeps ending on a line of the pane's border, below the pane, which no key clears,
+// and shows the hint (see the package comment). Its commands have no -t: in the hook, they take
+// the pane that died and its window. The run mark's path goes through three readers: tmux's
+// parser, which reads a word quoted as sh's is, run-shell, which expands it as a format, where
+// "##" is a "#", and sh.
 func died(suffix, run string) string {
 	exited := "kill-pane"
 	if run != "" {
@@ -775,10 +777,18 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 	if len(l.resume) > 0 {
 		command = "resume"
 	}
+	// The files of the session's entry and its run mark, where cld has a record's directory. The
+	// pane-died hook removes the mark there however the record is written: tmux makes none where
+	// cld cannot write the environment, but the session can have one from before - a reboot's -
+	// that claude's exit with status 0 ends all the same (see died).
+	plannedFile, plannedRun := "", ""
+	if state, err := stateDir(); err == nil {
+		plannedFile, plannedRun = entryFile(state, suffix), companion(state, suffix, runMark)
+	}
 	// build is tmux's command, whose claude gets the hooks that keep the session's entry in file
 	// where file is not empty, and which sets the marks beside it once the session is made - the
-	// run mark, run, where that is not empty - and whose pane-died hook removes the run mark, and
-	// its size as tmux counts it (see commandLimit).
+	// run mark, run, where that is not empty - and whose pane-died hook removes the run mark,
+	// plannedRun, and its size as tmux counts it (see commandLimit).
 	build := func(file, run string) (argv []string, size int, err error) {
 		// Settings given on claude's command line override the user's and the project's, so they
 		// carry only what cld needs: the title's hooks, the record's, with -w the worktree's
@@ -870,7 +880,7 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 		argv = append(argv, ";",
 			"set", "-p", "-t", target, "remain-on-exit", "on", ";",
 			"set", "-p", "-t", target, "remain-on-exit-format", "", ";",
-			"set-hook", "-p", "-t", target, "pane-died", died(suffix, run), ";",
+			"set-hook", "-p", "-t", target, "pane-died", died(suffix, plannedRun), ";",
 			"set", "-t", target, "@cld-tmux", literal(t.path), ";",
 			"set", "-t", target, "@cld-home", literal(home.Dir), ";",
 			"set", "-t", target, "@cld-busy", busyMarker, ";",
@@ -889,10 +899,6 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 	// the record as it was: tmux would start its server before it failed on a longer one, saying
 	// no more than "command too long" or "failed to send command", and leave the server's socket
 	// once the server has ended.
-	plannedFile, plannedRun := "", ""
-	if state, err := stateDir(); err == nil {
-		plannedFile, plannedRun = entryFile(state, suffix), companion(state, suffix, runMark)
-	}
 	argv, size, err := build(plannedFile, plannedRun)
 	if err != nil {
 		return err

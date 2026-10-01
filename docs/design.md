@@ -2873,8 +2873,10 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        pane split off beside it stays (see Findings); for anything else it keeps the hint as 5
        has it. The braces of `if -F` hold the two branches, and the mark's path goes quoted for
        tmux's parser, with each `#` doubled for `run-shell`'s format, and quoted for `sh` within.
-       The hook grows by some 100 bytes and the path (41.5). Where cld cannot write the record
-       (40.7), the status-0 branch is `kill-pane` alone. A session an older cld made keeps
+       The hook grows by some 100 bytes and the path (41.5). Where cld has no record's directory
+       (40.7), the status-0 branch is `kill-pane` alone; where it has one, the hook removes the
+       mark there however the entry and `S.env` were written, since a session that gets no mark
+       of its own (48.4) can have one from before, a reboot's. A session an older cld made keeps
        `failed`, and has no mark;
     3. the busy mark, `sessions/S.busy`: claude's `UserPromptSubmit` hook makes it, where the
        entry is there, and `Stop`, `StopFailure` and an interrupt remove it -
@@ -2891,7 +2893,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        a variable can hold any byte but NUL, and readable by the user alone, as the entry is: an
        environment can hold secrets. It is written before tmux makes the session, and so before
        the run mark, so that `restore` finds the environment of any session it finds marked;
-       where cld cannot write it, the session gets no mark, and a warning says why. It goes with
+       where cld cannot write it, tmux makes no mark, and a warning says why; a mark the session
+       has from before, a reboot's, stays beside the `S.env` from before until claude's exit with
+       status 0 removes it (48.2). It goes with
        the entry: the list's forget and the expiry (40.6) remove it with the marks, and so does
        `new`, `resume` or `restore` where an entry has gone. The words given to claude after `--`
        are not kept, as for `resume` (41). What names the login the session started in - an ssh
@@ -2983,7 +2987,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
         names restore;
     12. the tests (`restore_test.go`): the run mark and the environment that `new` and `resume`
         write, 0600, without the terminal's variables, which `kill` and claude's status-0 exit
-        remove and a failed claude keeps (`TestRunMark`); no mark from a `new` refused for want of
+        remove and a failed claude keeps (`TestRunMark`), the exit even where a `resume` could not
+        write `S.env` and made no mark, removing the one from before
+        (`TestRunMarkWithoutEnvironment`); no mark from a `new` refused for want of
         a terminal, nor from one or a `resume` whose tmux cannot open the terminal, and no restore
         of them (`TestNoSessionNoMark`); the busy mark through each hook (`TestBusyMark`); a
         session idle for longer than `CLD_IDLE_DAYS` by its mark left ended, one within it

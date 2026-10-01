@@ -361,6 +361,46 @@ func TestNoSessionNoMark(t *testing.T) {
 	}
 }
 
+// A resume that cannot write the environment beside the session's entry - a directory in its
+// place here, where a full disk would do the same - makes no run mark of its own, but claude's exit
+// with status 0 still removes the one the session has: here the mark of a session a reboot ended,
+// which restore would otherwise bring back after the /exit that ended it on purpose.
+func TestRunMarkWithoutEnvironment(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	writeRestorable(t, s, "a", s.Work, firstID, filepath.Join(sandbox.ProbeBin, "claude"), s.Environ(nil))
+	env := companionFile(s, "a", ".env")
+	if err := os.Remove(env); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(env, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	age(t, time.Hour, companionFile(s, "a", ".run"))
+	term := startCld(t, s, "tmux", nil, "resume", "-s", "a")
+	claude := s.WaitProbes(1)[0]
+	waitClients(t, s, 1)
+	if info, err := os.Stat(env); err != nil || !info.IsDir() {
+		t.Fatalf("resume wrote the environment in place of the directory: %v", err)
+	}
+	info, err := os.Stat(companionFile(s, "a", ".run"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if since := time.Since(info.ModTime()); since < 30*time.Minute {
+		t.Errorf("run mark made %v ago after resume, want it kept from an hour ago", since.Round(time.Second))
+	}
+	claude.Send("exit")
+	sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
+	checkMarks(t, s, "after claude exited with status 0", map[string]bool{"a": false})
+	if result := s.RunCld(nil, "restore"); result.Code != 0 || result.Stdout != "" || result.Stderr != "" {
+		t.Errorf("restore: exit %d, stdout %q, stderr %q, want exit 0 and nothing", result.Code, result.Stdout, result.Stderr)
+	}
+	if probes := s.Probes(); len(probes) != 1 {
+		t.Errorf("%d claudes started, want the resumed one alone", len(probes))
+	}
+}
+
 // restore leaves ended a session idle for longer than CLD_IDLE_DAYS by its run mark - neither
 // started nor given a prompt since - saying so, and removes the mark, where the sweep of list and
 // new, which goes by tmux's times, would count it as used from the restore on; it brings back one

@@ -285,7 +285,8 @@ func indexOf(name string) (prefix string, index int, ok bool) {
 // sessions whose servers run, as runs says - and returns the file that holds r and the session's
 // run mark, which the tmux that makes the session makes (see setMarks). What it cannot write is a
 // warning, since the session goes on without it: where that is r, it returns "" for both, and
-// where it is the environment, "" for the mark, as restore could not start the session again.
+// where it is the environment, "" for the mark, as restore could not start the session again -
+// tmux then makes none, but the pane-died hook still removes one the session had (see died).
 func remember(r entry, s started, runs func(suffix string) bool) (file, run string) {
 	file, run, err := write(r, s, runs)
 	if err != nil {
