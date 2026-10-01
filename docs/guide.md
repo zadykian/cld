@@ -469,8 +469,8 @@ has become - after `/rename`, also from claude.ai or the app - and whichever oth
   `claude agents` lists the background sessions. While the copy runs,
   `cld resume -n NAME -s SUFFIX` finds it by the name, and claude refuses it and exits with an
   error, which leaves the session `exited` - agent view off in the new session changes none of
-  that (read in claude's code, not run). claude 2.1.285 says what follows, where 2.1.284 and
-  earlier began `Session UUID is running as a background session (ID).`:
+  that (read in claude's code, not run). claude 2.1.285 says what follows, where 2.1.283 and
+  2.1.284 began `Session UUID is running as a background session (ID).`:
 
   ```text
   "cld-S" is running in the background (ID). Run `claude attach ID` to open it, or `claude stop ID` first to resume it here. Add --fork-session to branch off a copy instead.
