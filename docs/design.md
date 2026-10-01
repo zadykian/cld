@@ -3407,8 +3407,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        (5) - in the order of their names, going round as tmux's keys do, or to the session the
        server's own recorded (4 below); where there is none - no other session runs, none was
        recorded, the one recorded has ended or gone - it says so on the message line, `cld: no other
-       session runs`, `cld: no session to go back to`, `cld: session 'S' has ended`, and the
-       terminal stays. Without `--to` it is the interactive list, in the popup, which sweeps none
+       session runs`, `cld: no session to go back to`, `cld: session 'S' has ended`, `cld: no
+       session 'S'`, and the terminal stays. Without `--to` it is the interactive list, in the
+       popup, which sweeps none
        either: tmux runs a key's `run-shell`, and the popup, with the environment of the session's
        server - that of the `cld join` that started it, or the one `restore` recorded (48.4) - not
        the terminal's (see Findings), so the sweep would go by a `CLD_IDLE_DAYS` the terminal no
@@ -3532,7 +3533,8 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        terminal and JediTerm's emulator; `TestSwitchKeys` `C-q (`, `C-q )` and `C-q L` over three
        sessions, going round, `@cld-last`, a session ended passed over, and the messages - `C-q L`
        with no session to go back to first, claude's pane drawn while the message shows, which with
-       `-d 0` and no `-C` it was not until a key; `TestSwitchQuoting`, under `sh`, bash, zsh and
+       `-d 0` and no `-C` it was not until a key, then to a session ended and to the same once its
+       entry is forgotten; `TestSwitchQuoting`, under `sh`, bash, zsh and
        fish as `default-shell`, each where it is installed, `C-q s` and `Enter`, `C-q )` and `C-q L`
        by a copy of cld named `cld;` in a directory named `' #\;`, and `cld join -s c` run as claude
        runs `!` there, with words after `--` that fish or tmux's parser read otherwise quoted as
@@ -3560,7 +3562,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        session; `TestCreateTmuxCommand`, `TestJoinTmuxCommand` and `TestServerOptions` the keys and
        `@cld-last`; `TestNameOptions` the hidden options' refusals, `--moved` with other words, a
        value that is no base64 or names no absolute directory, and one whose words `join` refuses as
-       typed.
+       typed; `TestMovedToARemovedDirectory` the terminal's `join --moved` in a directory removed
+       since, status 1; `TestJoinMoveCommandLimit` words of `! cld join` that make the move's
+       command longer than tmux takes, refused in the pane, status 2, the terminal staying.
 
 ## Implementation notes
 

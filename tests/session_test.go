@@ -2534,9 +2534,10 @@ func TestJoinMovesToOneSessionAtOnce(t *testing.T) {
 // C-q ( and C-q ) move the terminal to the previous and the next of the sessions that run, in the
 // order of their names, going round, and C-q L back to the session it came from, which the session
 // it moved to records; the session it leaves runs on, detached. A session that has ended is passed
-// over, and where C-q L has no session to go back to, or it has ended, or no other session runs,
-// the message line says so and the terminal stays. The message goes after three seconds, or a key,
-// and claude's pane is drawn meanwhile: tmux 3.5, which cannot, draws it once the message has gone.
+// over, and where C-q L has no session to go back to, or it has ended, or gone - its entry
+// forgotten - or no other session runs, the message line says so and the terminal stays. The
+// message goes after three seconds, or a key, and claude's pane is drawn meanwhile: tmux 3.5,
+// which cannot, draws it once the message has gone.
 func TestSwitchKeys(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -2579,6 +2580,9 @@ func TestSwitchKeys(t *testing.T) {
 	s.RunCld(nil, "kill", "-s", "c")
 	term.Keys("C-q", "L")
 	told("C-q L to c, which has ended", "cld: session 'c' has ended")
+	forget(t, s, "c")
+	term.Keys("C-q", "L")
+	told("C-q L to c, whose entry is forgotten", "cld: no session 'c'")
 	on(")", "a")
 	on(")", "b")
 	s.RunCld(nil, "kill", "-s", "a")
@@ -2705,6 +2709,33 @@ func TestMoveNeedsAKnownShell(t *testing.T) {
 	}
 	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b"}) {
 		t.Errorf("clients attached to %q, want [cld-b]", clients)
+	}
+}
+
+// The words given to a join in a pane go to the terminal's cld join encoded, a third longer (see
+// TestJoinMovesTheTerminal), in the tmux command that moves the terminal: where they make it longer
+// than the 16364 bytes tmux takes (see TestCommandLimit), join refuses them in the pane, as claude
+// runs !, with status 2, naming the command's size, and the terminal stays on its session, no
+// server started for the session named.
+func TestJoinMoveCommandLimit(t *testing.T) {
+	t.Parallel()
+	const limit = 16364
+	s := sandbox.New(t)
+	term := startCld(t, s, "tmux", nil, "join", "-s", "b")
+	waitScreen(t, term, "probe --name cld-b")
+	result := s.RunCld(paneOf(t, s, "b"), "join", "-s", "x", "--", strings.Repeat("a", 13000))
+	var size int
+	fmt.Sscanf(result.Stderr, "cld: join's words make tmux's command %d bytes", &size)
+	want := fmt.Sprintf("cld: join's words make tmux's command %d bytes, and tmux takes %d at most: "+
+		"give claude long text in a file, as with --append-system-prompt-file\n", size, limit)
+	if result.Code != 2 || result.Stdout != "" || size <= limit || result.Stderr != want {
+		t.Errorf("join -s x in b's pane: exit %d, stdout %q, stderr %q, want exit 2, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+	}
+	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b"}) || !term.Running() {
+		t.Errorf("clients attached to %q, want the terminal on cld-b", clients)
+	}
+	if _, err := os.Lstat(filepath.Join(s.SocketDir(), "cld-x")); err == nil {
+		t.Errorf("a socket cld-x is left")
 	}
 }
 

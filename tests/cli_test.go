@@ -660,6 +660,26 @@ func moved(dir string, words ...string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(append([]string{dir}, words...), "\x00")))
 }
 
+// The terminal that a join in a pane moved runs join --moved, which enters the directory that join
+// ran in: where it has been removed since, the terminal's join refuses, status 1, naming it, before
+// any tool is looked for - the PATH has none here - the terminal having left its session.
+func TestMovedToARemovedDirectory(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	dir := filepath.Join(s.Work, "removed")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	result := s.RunCld(map[string]string{"PATH": s.Tools()}, "join", "--switched-from", "a", "--moved="+moved(dir, "-s", "x"))
+	want := "cld: cannot enter " + dir + ", where cld join ran: no such file or directory\n"
+	if result.Code != 1 || result.Stdout != "" || result.Stderr != want {
+		t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q", result.Code, result.Stdout, result.Stderr, want)
+	}
+}
+
 // A session's name that the name of the repository, or outside one of the directory, or join's
 // index makes with -n or -s has at most 64 characters too: past them it is refused, with exit
 // status 1 - that name or the index decides it, not the command line alone - pointing at -n and
