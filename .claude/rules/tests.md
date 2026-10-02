@@ -43,7 +43,11 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   They cover claude's exit and status, completion, the keys another tmux keeps, the idle sweep and
   the interactive list (`session_list_*`). The helpers that only these files use stay among them,
   such as `session_cells_test.go` for the screen's attributes.
-- `record_test.go`: the record's entries, indexes, expiry and lock, and `ended` sessions.
+- `record_test.go`: the record's entries, their hooks and place, and the helpers the `record_*`
+  files share; `record_ended_test.go` and `record_list_test.go`: `ended` sessions, in `join` and
+  the interactive list.
+- `record_expiry_test.go`: the record's indexes and expiry; `record_lock_test.go`: its lock and
+  the start mark.
 - `restore_test.go`: `restore` after a reboot, and the helpers the `restore_*` files share;
   `restore_marks_test.go` and `restore_unmark_test.go`: the run and busy marks;
   `restore_failures_test.go`: what `restore` leaves or cannot bring back; `restore_race_test.go`
