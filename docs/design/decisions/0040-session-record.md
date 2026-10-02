@@ -104,8 +104,10 @@ alone. A hook that runs cld, which would tie the session to cld's path. Forgetti
 
 ### 40.10 Tests
 
-`record_test.go` covers the entry, its hooks, ended sessions, the indexes, expiry, the lock and a
-record cld cannot write ([testing](../testing.md)).
+`record_test.go` covers the entry, its hooks, the record's place and a record cld cannot write.
+`record_ended_test.go` and `record_list_test.go` cover ended sessions, `record_expiry_test.go` the
+indexes and expiry, and `record_lock_test.go` the lock and the start mark
+([testing](../testing.md)).
 
 ## Consequences
 
