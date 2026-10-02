@@ -19,6 +19,5 @@ tests/contract_test.go lines=442 comments=1
 tests/install_test.go lines=461 comments=1
 tests/internal/sandbox/sandbox.go lines=479
 tests/internal/terminal/tmux.go lines=303 comments=1
-tests/probe/main.go lines=729 comments=1 package=88
 tests/record_test.go lines=676 comments=8
 tests/update_test.go lines=503 comments=2
