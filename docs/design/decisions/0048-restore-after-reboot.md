@@ -150,12 +150,13 @@ leaves a killed session ended.
 
 ### 48.12 Tests
 
-`restore_test.go` covers the marks and `S.env`, and no mark where tmux made no session. It holds the
-kill's `rm` while the session holds its name. It brings sessions back after `kill-server`, from
-elsewhere, and its failures as warnings. It races two `restore`, a `restore` and a `join`, and the
-forget, which fail without the lock. On Linux the held cld goes once two have the lock file open,
-elsewhere a second later. `setup restore` runs against a fake `systemctl`
-([testing](../testing.md)).
+`restore_marks_test.go` covers the marks and `S.env`, and no mark where tmux made no session.
+`restore_unmark_test.go` holds the kill's `rm` while the session holds its name. `restore_test.go`
+brings sessions back after `kill-server`, from elsewhere, and `restore_failures_test.go` has its
+failures as warnings. `restore_race_test.go` and `restore_forget_test.go` race two `restore`, a
+`restore` and a `join`, and the forget, which fail without the lock. On Linux the held cld goes
+once two have the lock file open, elsewhere a second later. `restore_setup_test.go` runs
+`setup restore` against a fake `systemctl` ([testing](../testing.md)).
 
 ## Consequences
 
