@@ -2,7 +2,6 @@
 # lines: the file's lines (cap 300). comments: Go comment blocks over 4 lines (cap 0).
 # package: the package comment's lines (cap 15).
 # go run ./tools/sizecheck -update lowers the ceilings and drops stale entries.
-CLAUDE.md lines=516
 README.md lines=349
 cmd/cld/commands.go lines=1779 comments=22
 docs/design.md lines=4152

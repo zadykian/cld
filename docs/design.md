@@ -1889,9 +1889,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        (see Findings); with `none`, nothing. An entry for a tool a server lacks allows nothing,
        and a tool it adds later is asked for until cld's list has it;
     6. this repository's `.claude/settings.json` and `.mcp.json` are what `cld setup project --mcp
-       goland --permissions cld` writes, byte for byte, which the tests check (19.1); its
-       `.gitignore` was changed by hand to the new lines. The README and the guide say what the
-       command writes, and to review it before committing;
+       goland --permissions cld` writes, byte for byte but for the settings' `hooks`, which the
+       tests check (19.1); its `.gitignore` was changed by hand to the new lines. The README and the
+       guide say what the command writes, and to review it before committing;
     7. the tests: each set, with servers and without, where there is nothing; a file with the keys
        already, other values in them, a key given twice, `none` beside a `permissions` that is no
        object, a `permissions.deny` with entries or no array; the new lines as git reads them, with

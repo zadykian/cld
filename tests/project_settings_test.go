@@ -12,7 +12,8 @@ import (
 )
 
 // What setup project writes in .claude/settings.json: the permission rules of each set and MCP
-// server. With --mcp goland --permissions cld, that is the repository's own file.
+// server. With --mcp goland --permissions cld, that is the repository's own file, but for its
+// hooks.
 
 // readOnlyAllow is permissions.allow with --permissions read-only, the default, before the
 // servers' entries; serverAllow are the entries each MCP server adds with read-only and with cld.
@@ -60,6 +61,17 @@ func ideTools(name string) []string {
 	return entries
 }
 
+// repoSettings is the repository's .claude/settings.json without its last key, hooks, which setup
+// project does not write.
+func repoSettings(t *testing.T) string {
+	t.Helper()
+	settings := repoFile(t, ".claude/settings.json")
+	if before, _, found := strings.Cut(settings, ",\n  \"hooks\": {\n"); found {
+		return before + "\n}\n"
+	}
+	return settings
+}
+
 // cldRules are permissions.allow and permissions.deny with --permissions cld and no MCP server:
 // the repository's own, without goland's entry.
 func cldRules(t *testing.T) (allow, deny []string) {
@@ -67,7 +79,7 @@ func cldRules(t *testing.T) (allow, deny []string) {
 	var settings struct {
 		Permissions struct{ Allow, Deny []string }
 	}
-	if err := json.Unmarshal([]byte(repoFile(t, ".claude/settings.json")), &settings); err != nil {
+	if err := json.Unmarshal([]byte(repoSettings(t)), &settings); err != nil {
 		t.Fatal(err)
 	}
 	allow = slices.DeleteFunc(settings.Permissions.Allow,
@@ -103,11 +115,11 @@ func denied(t *testing.T, set string) []string {
 }
 
 // projectSettings is the .claude/settings.json setup project writes where there is none, with
-// --permissions set and the MCP servers named, in cld's order: the repository's own, with the
+// --permissions set and the MCP servers named, in cld's order. That is repoSettings, with the
 // set's and the servers' permissions in place of cld's and goland's, and none where they are empty.
 func projectSettings(t *testing.T, set string, servers ...string) string {
 	t.Helper()
-	settings := repoFile(t, ".claude/settings.json")
+	settings := repoSettings(t)
 	start, end := "  \"permissions\": {\n", "\n    ]\n  },\n"
 	from, to := strings.Index(settings, start), strings.Index(settings, end)
 	if from < 0 || to < from {

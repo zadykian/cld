@@ -1,0 +1,52 @@
+---
+paths:
+  - "tests/**"
+---
+
+# tests
+
+The invariants a change to the tests keeps. Decision numbers, the terminal contract and the layers
+of the tests are in [docs/design.md](../../docs/design.md#testing); each helper's doc comment says
+how it works.
+
+## What runs
+
+- Tests build cld and run it against real tmux. The probe, `tests/probe`, stands in for claude,
+  and for docker, systemctl and loginctl.
+- No test reaches the real Docker, the user's systemd or the user's own cld sessions: each runs
+  in a sandbox of its own (`internal/sandbox`), in parallel.
+- The sandbox's `TMUX_TMPDIR` stays short, as socket paths hit the `sun_path` limit of about
+  108 bytes (decision 13).
+- The sandbox's work directory is `_`, of which nothing is left in a name: there `-s x` names the
+  session `x`.
+- `TestMain` unsets every `GIT_*` variable, which git sets for hooks and `rebase --exec`;
+  `TestGitVariables` pins that.
+- The probe enters the terminal modes claude enters; it changes with any behaviour of claude's
+  that cld comes to rely on.
+- The probe answers `claude --version` with `99.0.0 (Claude Code)` by default, so that raising
+  the oldest claude leaves the tests alone (decision 6).
+
+## Terminals
+
+- The terminal contract, C1 to C10, runs per terminal: a difference between terminals is an
+  expectation, not a skip.
+- A terminal that cannot do something skips with a reason.
+- JediTerm emulates on a thread of its own: wait with `waitModes` for modes that change while
+  cld runs. Once `Running` is false, what the terminal shows is final.
+- The completion tests skip a shell that is not installed; `CLD_BLESH` makes the ble.sh test fail
+  where it would skip, as `make docker-blesh-check` runs it.
+
+## Where a test goes
+
+- `contract_test.go`: the terminal contract.
+- `session_test.go`: sessions and servers, `join`, `detach`, moves, names, the title's hooks,
+  claude's status, the keys another tmux keeps, and the idle sweep.
+- `record_test.go`: the record's entries, indexes, expiry and lock, and `ended` sessions.
+- `restore_test.go`: the run and busy marks, `restore` and `setup restore`.
+- `cli_test.go`: arguments, errors, tool and version checks, the help and the completion scripts.
+- `completion_test.go`: `setup completion`, and bash, zsh and fish loading its scripts.
+- `project_test.go`: `setup project` against the real git; `project_settings_test.go`: the
+  permission rules it writes, read from the repository's own `.claude/settings.json`.
+- `telemetry_test.go`: `setup telemetry` against the fake docker.
+- `install_test.go` and `update_test.go`: `install.sh` and `cld update`, against releases that an
+  HTTP server of the test's serves.

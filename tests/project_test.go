@@ -17,9 +17,9 @@ import (
 
 // cld setup project in the sandbox's work directory, a git work tree unless a test says otherwise,
 // against the real git, which checks the .gitignore cld writes. What cld writes where there was
-// nothing is this repository's own .claude/settings.json and .mcp.json with --mcp goland
-// --permissions cld, which the tests read from the repository (they run in its tests directory):
-// a change to either shows here, and goes with a change to cld.
+// nothing is this repository's own .claude/settings.json, but for its hooks, and .mcp.json with
+// --mcp goland --permissions cld. The tests read both from the repository (they run in its tests
+// directory): a change to either shows here, and goes with a change to cld.
 
 const (
 	// localSettings is the .claude/settings.local.json setup project writes where there is none.
@@ -150,7 +150,7 @@ func TestSetupProject(t *testing.T) {
 	if want, got := repoFile(t, ".mcp.json"), mcpFile("goland"); got != want {
 		t.Fatalf("the repository's .mcp.json\n%s\nwant, as the tests expect of --mcp goland\n%s", want, got)
 	}
-	if got := projectSettings(t, "cld", "goland"); got != repoFile(t, ".claude/settings.json") {
+	if got := projectSettings(t, "cld", "goland"); got != repoSettings(t) {
 		t.Fatalf("the settings the tests expect of --mcp goland --permissions cld\n%s\nare not the repository's", got)
 	}
 	for _, test := range []struct {
