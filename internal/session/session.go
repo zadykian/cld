@@ -75,76 +75,9 @@
 // its session - claude exited, and the tmux sessions it made keep the server running - rather
 // than start claude there with that server's environment, and detach refuses it the same way,
 // each pointing at kill, which ends such a server (see lingering). A private server
-// (-f /dev/null: no ~/.tmux.conf) keeps these options away from any other tmux use:
-//
-//   - @cld 1: marks the server as cld's: a server named cld-NAME without it - the user's own
-//     tmux -L cld-NAME, say - is none of cld's, whatever its sessions are called (see mark)
-//   - extended-keys on: tmux answers no kitty keyboard query, so claude falls back to
-//     modifyOtherKeys, which tmux forwards only when this is on (Shift+Enter and friends)
-//   - the extkeys terminal feature for xterm*: tmux asks the terminal for modified keys only when
-//     it knows the terminal supports them, and it does not recognise every terminal that does;
-//     Claude Code's docs recommend this for tmux. It goes to a fixed index past tmux's defaults:
-//     set -a would add another copy every time cld sets it on a server that has it, as two
-//     cld join for one NAME at once did before the record's lock
-//   - the hyperlinks terminal feature for xterm*, wezterm and alacritty, at fixed indexes too:
-//     claude marks file paths and URLs as OSC 8 links under tmux, and tmux writes them to a
-//     terminal only with this feature, which it gives by XTVERSION to iTerm2 and tmux alone,
-//     and from 3.7 to foot. wezterm is WezTerm's TERM where set, alacritty Alacritty's where its
-//     terminfo is installed, and both take links; a terminal that takes none ignores them
-//   - mouse on, focus-events on: claude probes both and hints when they are off. With the mouse
-//     on, the wheel over a program that draws in the main screen without the mouse - claude
-//     outside fullscreen, a shell - scrolls the pane's history; claude's fullscreen transcript
-//     gets the wheel either way, as tmux passes claude's own mouse reporting on to the terminal
-//   - C-MouseDown1Pane and M-MouseDown3Pane unbound: of tmux's mouse bindings on a pane, only
-//     these two - swap-pane, the pane menu - take the press without asking whether the program
-//     there takes the mouse, so claude got a Ctrl+click, with which it opens a link, as a release
-//     alone. tmux hands a mouse key it has no binding for to the pane. The session has one pane
-//     unless claude splits it, as its agent teams do for teammates in tmux panes, and key tables
-//     are the server's, so the panes and sessions claude makes there lose the two as well: C-q {
-//     and C-q } still swap panes, C-q > opens the pane menu, and so does a right-click over a
-//     program that does not take the mouse
-//   - history-limit 50000: while a terminal is attached it shows tmux in its alternate screen,
-//     and its own scrollback gets nothing; what claude's classic renderer would leave there, the
-//     whole conversation, goes to the pane's history, which tmux cuts at 2000 lines by default.
-//     It goes before new-session: tmux 3.7 gives existing panes a new limit too, but earlier
-//     releases only the panes made after it
-//   - allow-passthrough on: claude wraps its notifications (but the bell, which tmux's default
-//     bell-action passes on) and OSC 52 copies in tmux passthrough. It sends notifications only
-//     on the channel its setting preferredNotifChannel names: its default, auto, goes by
-//     TERM_PROGRAM, which tmux sets to tmux, and sends none. cld leaves the setting to the user:
-//     in --settings it would override theirs, for whichever terminal joins later
-//   - status off: claude keeps the whole tab
-//   - prefix C-q: claude binds C-b (background a task) and nearly every other Ctrl key, but not
-//     C-q; detach is C-q d - or cld detach, where the terminal keeps C-q from tmux - and C-q C-q
-//     sends a C-q through
-//   - C-q s, C-q (, C-q ) and C-q L bound to cld: where tmux's own keys show and switch the
-//     sessions of one server, and each session of cld's has a server of its own, cld's list shows
-//     them all in a popup, and the keys move the terminal from one server to another (see
-//     switch.go)
-//   - remain-on-exit on: a claude that fails - at startup, say, for a worktree in a directory it
-//     does not trust - leaves its pane on screen with its message, instead of taking both away;
-//     /exit and claude's other ways out exit with status 0, and there the pane-died hook removes
-//     the session's run mark from cld's record and closes the pane, as tmux closes it with
-//     remain-on-exit failed: tmux runs no hook of a pane it has closed itself (see died). An empty
-//     remain-on-exit-format keeps tmux from scrolling the pane for its own line, which would push a
-//     short error at the top out of sight; for a claude that failed, the pane-died hook says how
-//     claude exited, how to end the session and how to detach from it instead, on a line of the
-//     pane's border below it, and on the message line until a key is pressed. The border line -
-//     pane-border-status bottom on the window, pane-border-format on the dead pane, so that a pane
-//     beside it keeps tmux's own - takes the pane's last row, and stays through keys, detach and
-//     join. For that row tmux deletes the pane's last where the cursor is above it, whatever it
-//     holds - an empty one below a short error - and otherwise scrolls the top line into the
-//     history. Both lines say as much as fits whole (see ending), and name the session as cld kill
-//     and cld detach take it, -n and -s, written into the hook as the session is made: the hook's
-//     formats know the pane and its window, not the session. The hook shows the message only to a
-//     terminal on that window - of several, the one used last: tmux would show it on the terminal
-//     of another session on the server - one claude made - or with none attached keep it and show
-//     it in view-mode over the session a terminal attaches to next, which then takes no keys until
-//     q; join shows it instead. These go to claude's pane only, not its window or the server, so
-//     that the other panes of its window - a teammate's that claude splits off, one split by hand -
-//     and the sessions claude makes there close as tmux would close them, rather than stay on
-//     screen as a claude that exited (see Tmux.create). The border line's options, set once claude
-//     has died, reach no other window
+// (-f /dev/null: no ~/.tmux.conf) keeps its options away from any other tmux use. Tmux.create sets
+// them; docs/design/overview.md#the-servers-options gives each and why. Those that concern claude
+// alone, the failure's (see died) and the title's, go on claude's pane or session.
 //
 // The tab's title is the session's name after claude's marker, as claude's own title has it outside
 // tmux: ◐ and ◑ in turn while claude is busy, ✳ otherwise. Under tmux - TMUX set, which claude
@@ -247,7 +180,7 @@ type Tmux struct {
 // letter a third number (see tmuxVersion): 3.5 wrote keys with Shift wrongly with extended keys,
 // and ran #() jobs, the title's among them, with the user's shell instead of /bin/sh. claude's is
 // the first release that takes everything join passes it and does what cld relies on.
-// Both are raised by hand (see docs/design.md, decision 6).
+// Both are raised by hand (see docs/design/decisions/0006-versions.md).
 var (
 	minTmux   = version{3, 5, 1}
 	minClaude = version{2, 1, 232}
@@ -539,8 +472,9 @@ func fits(text, instead string) string {
 	return "#{?#{e|<:#{pane_width}," + strconv.Itoa(width) + "}," + instead + "," + text + "}"
 }
 
-// hint shows ending on the message line until a key is pressed (see the package comment): the
-// pane-died hook shows it to a terminal attached then, join to one attaching later.
+// hint shows ending on the message line until a key is pressed (see
+// docs/design/decisions/0005-failures-stay-on-screen.md): the pane-died hook shows it to a
+// terminal attached then, join to one attaching later.
 func hint(suffix string) string {
 	return "display-message -d 0 '" + ending(suffix) + "'"
 }
@@ -552,12 +486,12 @@ func hint(suffix string) string {
 // session had from before, a reboot's - and then closes the pane, as tmux closes it with
 // remain-on-exit failed: restore leaves a session ended so (see Tmux.Restore). tmux runs no hook
 // of a pane once it has closed it, nor any once the server's last session has gone with it, so a
-// pane-exited hook would never run for claude (tmux 3.5a, 3.7c; see Findings in docs/design.md).
-// Otherwise it keeps ending on a line of the pane's border, below the pane, which no key clears,
-// and shows the hint (see the package comment). Its commands have no -t: in the hook, they take
-// the pane that died and its window. The run mark's path goes through three readers: tmux's
-// parser, which reads a word quoted as sh's is, run-shell, which expands it as a format, where
-// "##" is a "#", and sh.
+// pane-exited hook would never run for claude (tmux 3.5a, 3.7c; see
+// docs/design/findings/tmux-sessions.md). Otherwise it keeps ending on a line of the pane's border,
+// below the pane, which no key clears, and shows the hint (see hint). Its commands have no -t: in
+// the hook, they take the pane that died and its window. The run mark's path goes through three
+// readers: tmux's parser, which reads a word quoted as sh's is, run-shell, which expands it as a
+// format, where "##" is a "#", and sh.
 func died(suffix, run string) string {
 	exited := "kill-pane"
 	if run != "" {
@@ -970,13 +904,13 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 		// base, and agent view off. Remote Control is the user's to choose, with /config or
 		// remoteControlAtStartup in their settings, as for a claude started without cld: a true
 		// here would override their false, and claude stores the transcript of a session
-		// connected to claude.ai on Anthropic's servers (decision 42 in docs/design.md). Agent
-		// view is not: with it, /bg, "Move to background and exit" in /exit's dialog and ← on an
-		// empty prompt hand the conversation to claude's daemon, which runs it on as a copy, out
-		// of the session, while the session ends or keeps claude in agent view, and the copy
-		// keeps the hooks, which name this session (decision 47). A claude started without cld
-		// keeps it. A resumed conversation does not keep the settings it was started with: they
-		// go again.
+		// connected to claude.ai on Anthropic's servers
+		// (docs/design/decisions/0042-remote-control-is-claudes.md). Agent view is not: with it, /bg,
+		// "Move to background and exit" in /exit's dialog and ← on an empty prompt hand the conversation
+		// to claude's daemon, which runs it on as a copy, out of the session, while the session ends or
+		// keeps claude in agent view, and the copy keeps the hooks, which name this session (decision
+		// 47). A claude started without cld keeps it. A resumed conversation does not keep the settings
+		// it was started with: they go again.
 		git, _ := tool.LookPath("git") //nolint:errcheck // none leaves out the worktree's hooks
 		given := settings{DisableAgentView: true, Hooks: statusHooks(t.path, git, socket, suffix)}
 		var marks []string
@@ -1005,7 +939,7 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 		}
 		// claude gets the session's name when it resumes too: a conversation resumed by another
 		// name, or a copy of it, takes the session's, so that the next join that resumes it finds
-		// it (decisions 16 and 45 in docs/design.md).
+		// it (decisions 16 and 45 in docs/design/decisions).
 		claude := []string{c.path, "--name", name, "--settings", strings.TrimSuffix(encoded.String(), "\n")}
 		if l.worktree {
 			claude = append(claude, "--worktree", name)
@@ -1346,10 +1280,10 @@ func (t *Tmux) attach(suffix string, j Joining, kept []string) error {
 // running. With a home, it detaches only from a session made there, or one that has none (see
 // foreign). With no terminal on the session there is nothing to detach: the if keeps
 // detach-client, which fails with "no current client" where no terminal is attached to the server
-// at all, from running (see Findings in docs/design.md). No session is an error, with the advice
-// for the command line kept apart (fail.Error's Advice) - for one that has ended, of cld's record,
-// pointing at join (see ended) - and so is a server that runs without it (see lingering); a
-// detach that fails is its exit status, after tmux's message.
+// at all, from running (see docs/design/findings/tmux-terminal.md). No session is an error, with
+// the advice for the command line kept apart (fail.Error's Advice) - for one that has ended, of
+// cld's record, pointing at join (see ended) - and so is a server that runs without it (see
+// lingering); a detach that fails is its exit status, after tmux's message.
 func (t *Tmux) Detach(suffix string, home Home) error {
 	server, exists, _, made, err := t.lookup(context.Background(), suffix)
 	if err != nil {
@@ -1381,13 +1315,13 @@ func (t *Tmux) Detach(suffix string, home Home) error {
 // session, leaving the others attached: normally the one the command was typed in, but a mouse
 // report or a focus event counts as a key does - the mouse moving over another terminal of the
 // session too, as claude has tmux ask for every motion - and tmux shows no client's last key to go
-// by instead (see Findings in docs/design.md). join, which acts there too, moves the terminal it
-// finds the same way (see switchTerminal). With no terminal on the session there is nothing to
-// detach: a bare detach-client would detach the terminal of another session on the server - one
-// claude made - where any is attached (see Findings in docs/design.md). A server that cld did not
-// start (see mark) is not cld's to act on: the if runs nothing there either, and the mark, which
-// the same tmux command prints first, refuses it. A detach that fails - on a server that has
-// exited, say - is its exit status, after tmux's message.
+// by instead (see docs/design/findings/tmux-terminal.md). join, which acts there too, moves the
+// terminal it finds the same way (see switchTerminal). With no terminal on the session there is
+// nothing to detach: a bare detach-client would detach the terminal of another session on the
+// server - one claude made - where any is attached (see docs/design/findings/tmux-terminal.md). A
+// server that cld did not start (see mark) is not cld's to act on: the if runs nothing there
+// either, and the mark, which the same tmux command prints first, refuses it. A detach that fails -
+// on a server that has exited, say - is its exit status, after tmux's message.
 func (t *Tmux) DetachTerminal() error {
 	socket, suffix, _ := ownServer()
 	detach := t.command("-S", socket, "display-message", "-p", mark, ";",
@@ -1431,10 +1365,10 @@ func (t *Tmux) Kill(suffix string, home Home) error {
 //
 // claude shuts down on the SIGHUP: it runs its SessionEnd hooks with the reason "other", and
 // exits. End does not wait for it: claude, orphaned, may still run its hooks when End returns,
-// and what it prints then is lost (see docs/design.md, decision 32). Before the kill-session, in
-// the same tmux command, End removes the session's run mark from cld's record, which keeps its
-// entry: the session was ended on purpose, and restore leaves it ended (see unmark). The session
-// holds its name meanwhile, so that no session of the name is made on the server about to end.
+// and what it prints then is lost (docs/design/decisions/0032-what-a-kill-does.md). Before the
+// kill-session, in the same tmux command, End removes the session's run mark from cld's record,
+// which keeps its entry: ended on purpose, the session stays ended at a restore (see unmark). The
+// session holds its name meanwhile, so that none of that name is made on the server about to end.
 func (t *Tmux) End(ctx context.Context, suffix string, home Home, pids []string, stdout, stderr io.Writer) error {
 	server, exists, found, made, err := t.lookup(ctx, suffix)
 	if err != nil {
@@ -1532,8 +1466,8 @@ type Session struct {
 	// what claude tells them nothing of: an interrupt as claude writes, and a prompt that a hook
 	// of the user's blocks, leave busy; the answer to a permission leaves waiting until the tool
 	// has run; a conversation moved to the background from a session that keeps agent view - one
-	// of cld 0.10.0 or earlier - sets the status of a session of its name that runs (see
-	// docs/design.md, decisions 16, 47 and 49).
+	// of cld 0.10.0 or earlier - sets the status of a session of its name that runs (see decisions 16,
+	// 47 and 49 in docs/design/decisions).
 	Status string
 	// PIDs are the process ids of the programs in the session's panes, tmux's #{pane_pid}: claude's,
 	// and those of panes made by hand in its session - a window split, say. A pane keeps its pid
@@ -1677,7 +1611,7 @@ func EndedSession(suffix string) (Session, bool) {
 
 // asks is how many servers Sessions asks at once. Through Ubuntu's snap, where a tmux took
 // 100-180 ms to start on 8 CPUs at a load of about 4, 10 servers took 1.2-1.5 s one after another,
-// 0.24-0.26 s eight at a time and 0.21-0.24 s all at once (see docs/design.md, Findings).
+// 0.24-0.26 s eight at a time and 0.21-0.24 s all at once (docs/design/findings/tmux-sessions.md).
 const asks = 8
 
 // session asks the server of socket cld-SUFFIX for its session cld-SUFFIX, for Sessions: nil
@@ -1823,12 +1757,12 @@ func tmuxDir() string {
 
 // serverless reports whether no server runs on socket cld-SUFFIX in dir, tmuxDir's, found as
 // tmux finds it, without running tmux: a tmux takes 6-20 ms to start, and one from Ubuntu's snap
-// 100-200 ms, where a connection takes microseconds (see docs/design.md, Findings). tmux's client
-// first connects to the socket, and takes a refused connection (ECONNREFUSED: a socket whose
-// server has gone) or no socket (ENOENT) for no server - "no server running on" and "error
-// connecting to ... (No such file or directory)", which noServer takes. serverless makes that
-// connection, and closes it at once: a server that takes it loses a client, as it does after each
-// tmux command. Anything else leaves it to tmux, which says what is wrong: a server takes the
+// 100-200 ms, where a connection takes microseconds (see docs/design/findings/tmux-sessions.md).
+// tmux's client first connects to the socket, and takes a refused connection (ECONNREFUSED: a
+// socket whose server has gone) or no socket (ENOENT) for no server - "no server running on" and
+// "error connecting to ... (No such file or directory)", which noServer takes. serverless makes
+// that connection, and closes it at once: a server that takes it loses a client, as it does after
+// each tmux command. Anything else leaves it to tmux, which says what is wrong: a server takes the
 // connection, dir is "", the path is too long for sun_path and its NUL - which tmux checks before
 // it connects - or the connection fails otherwise.
 func serverless(ctx context.Context, dir, suffix string) bool {
@@ -1883,9 +1817,9 @@ func only(suffix string) string {
 // mark is, as a format, 1 on a server that cld started and 0 on any other: a tmux server named
 // cld-NAME that cld did not start - the user's own tmux -L cld-NAME, say - is none of cld's
 // business, whatever its sessions are called. create sets the server option @cld, which a format
-// finds before any other option of that name (see docs/design.md, Findings). The servers that cld
-// 0.8.2 and earlier started have none: their prefix, C-q, marks them instead, as tmux's default,
-// C-b, marks no other.
+// finds before any other option of that name (see docs/design/findings/tmux-sessions.md). The
+// servers that cld 0.8.2 and earlier started have none: their prefix, C-q, marks them instead, as
+// tmux's default, C-b, marks no other.
 const mark = "#{||:#{@cld},#{==:#{prefix},C-q}}"
 
 // panePIDs are the pids of the programs in a session's panes, each followed by a space:
@@ -2076,13 +2010,13 @@ func (t *Tmux) OwnPane() (string, bool) {
 // with always, and with on only where cld's client asks for them, which the client does where
 // cld's tmux takes that tmux for a terminal that sends them: from tmux 3.7, which recognises a
 // tmux as one; before, under the TERM a tmux gives its panes, it asks for none, and only always
-// passes them on (see docs/design.md, Findings). keptKeys asks that tmux, through the socket TMUX
-// names, for the options of the pane whose tty is this terminal - tmux finds the pane by the tty
-// of the client asking, as for its own nested check - and of that pane's session, and for the
-// features of the client it formats for that session, the one most recently active: none where no
-// client is attached, or where that tmux predates the format, and then Shift+Enter counts as
-// kept. A tmux that does not answer, or finds another pane, keeps nothing that cld knows of. What
-// else it keeps - clipboard copies, focus events, links, claude's notifications but the bell -
+// passes them on (see docs/design/findings/tmux-terminal.md). keptKeys asks that tmux, through the
+// socket TMUX names, for the options of the pane whose tty is this terminal - tmux finds the pane
+// by the tty of the client asking, as for its own nested check - and of that pane's session, and
+// for the features of the client it formats for that session, the one most recently active: none
+// where no client is attached, or where that tmux predates the format, and then Shift+Enter counts
+// as kept. A tmux that does not answer, or finds another pane, keeps nothing that cld knows of.
+// What else it keeps - clipboard copies, focus events, links, claude's notifications but the bell -
 // takes no key, and no warning: the user guide says, as it says what restores what.
 func (t *Tmux) keptKeys() []string {
 	socket, _, _ := strings.Cut(os.Getenv("TMUX"), ",")
@@ -2162,7 +2096,7 @@ func showKept(kept []string) []string {
 // they hand on, names the socket of server cld-NAME. Whether cld started that server (see mark)
 // DetachTerminal asks tmux, in the command that detaches. Unlike OwnPane it does not look at the
 // terminal: claude runs a shell command, ! cld detach among them, without one, its input from
-// /dev/null (claude 2.1.284; see Findings in docs/design.md).
+// /dev/null (claude 2.1.284; see docs/design/findings/claude.md).
 func Inside() bool {
 	_, _, found := ownServer()
 	return found

@@ -12,14 +12,14 @@
 //     Type=oneshot, with RemainAfterExit=yes: the unit is done once cld restore returns, and
 //     stays active. KillMode=process: stopping the unit ends cld restore, if it still runs, and
 //     not the tmux servers it started, which stay in the unit's cgroup - a snap's tmux moves its
-//     server to a scope of its own (see Findings in docs/design.md). WantedBy=default.target, which
-//     the user's systemd starts as it starts: at boot where lingering is on, and otherwise at the
-//     first login. ExecStart names this cld by the file it runs from, which cld update replaces in
-//     place, and Environment gives cld restore what the user's systemd has none of: the PATH cld
-//     runs with now, where cld restore finds tmux, and TMUX_TMPDIR and XDG_STATE_HOME where set,
-//     where the sessions' sockets and cld's record are, and CLD_IDLE_DAYS where set, past which
-//     cld restore leaves a session ended. Each goes quoted, as systemd reads C's escapes,
-//     specifiers (%) and, in ExecStart, variables ($)
+//     server to a scope of its own (see docs/design/findings/environment.md).
+//     WantedBy=default.target, which the user's systemd starts as it starts: at boot where
+//     lingering is on, and otherwise at the first login. ExecStart names this cld by the file it
+//     runs from, which cld update replaces in place, and Environment gives cld restore what the
+//     user's systemd has none of: the PATH cld runs with now, where cld restore finds tmux, and
+//     TMUX_TMPDIR and XDG_STATE_HOME where set, where the sessions' sockets and cld's record are,
+//     and CLD_IDLE_DAYS where set, past which cld restore leaves a session ended. Each goes quoted,
+//     as systemd reads C's escapes, specifiers (%) and, in ExecStart, variables ($)
 //   - enable: systemctl --user daemon-reload where the unit changed, so that the user's systemd
 //     reads it, then systemctl --user enable cld-restore.service, which links it into
 //     default.target.wants: once more changes nothing

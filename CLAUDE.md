@@ -21,7 +21,8 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
 - `internal/fail`: carries exit statuses up to `main`.
 - `internal/output`: prints cld's output, warnings and notes; a failed write is an exit.
 - `tests/`: the test harness, in Go. `tools/`: the lint gates' tools.
-- `docs/design.md`: findings, decisions and notes. `docs/guide.md`: the user's details.
+- `docs/design.md`: the index of `docs/design/`, the overview, testing, the findings and a record
+  per decision. `docs/guide.md`: the index of the user guide, a page per topic in `docs/guide/`.
 
 ## Commands
 
@@ -62,32 +63,43 @@ a release: a binary per platform, `cld.sha256` and `install.sh`.
 
 ## Hard rules
 
-Decision numbers are those of [docs/design.md](docs/design.md#decisions).
+Each rule links the decision record in `docs/design/decisions/` that gives its reasons.
 
-- tmux 3.5a or newer, checked at startup; raising it changes `linux-oldest`'s pin, the check and
-  the docs together (decision 6).
+- tmux 3.5a or newer, checked at startup; raising it changes `linux-oldest`'s pin, the check and the
+  docs together ([decision 6](docs/design/decisions/0006-versions.md)).
 - claude 2.1.232 or newer, checked only where cld starts claude; re-derive it when cld passes or
-  relies on something newer (decision 6).
+  relies on something newer ([decision 6](docs/design/decisions/0006-versions.md)).
 - cld builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64, so it runs `tty`
-  where C would call `ttyname` (Distribution).
-- Only `main` exits: every error carries its status up through `internal/fail` (decision 11).
-- Session names are validated, never sanitised, and 64 characters at most (decision 1).
+  where C would call `ttyname` ([overview](docs/design/overview.md#distribution)).
+- Only `main` exits: every error carries its status up through `internal/fail`
+  ([decision 11](docs/design/decisions/0011-go-and-cobra.md)).
+- Session names are validated, never sanitised, and 64 characters at most
+  ([decision 1](docs/design/decisions/0001-naming.md)).
 - Address a session as `=cld-NAME`: a bare target prefix-matches, `cld-rev` finding `cld-review`
-  (decision 3).
-- One tmux server per session, marked as cld's; an unmarked server `cld-NAME` is the user's, and
-  cld never ends it (decisions 13 and 34).
+  ([decision 3](docs/design/decisions/0003-commands.md)).
+- One tmux server per session, marked as cld's; an unmarked server `cld-NAME` is the user's, and cld
+  never ends it (decisions [13](docs/design/decisions/0013-a-server-per-session.md) and
+  [34](docs/design/decisions/0034-servers-are-marked.md)).
 - `--settings` carries only cld's hooks, `disableAgentView` and `worktree.baseRef`: what is the
-  user's to choose stays claude's own setting (decisions 42 and 47).
+  user's to choose stays claude's own setting (decisions
+  [42](docs/design/decisions/0042-remote-control-is-claudes.md) and
+  [47](docs/design/decisions/0047-agent-view-off.md)).
 - `make dist`'s names `cld-OS-ARCH` and `cld.sha256` change together with `install.sh` and
-  `internal/update`, which rely on them (decisions 20 and 21).
+  `internal/update`, which rely on them (decisions
+  [20](docs/design/decisions/0020-install-script.md) and
+  [21](docs/design/decisions/0021-self-update.md)).
 - `setup project --mcp goland --permissions cld` writes this repository's `.mcp.json` and
   `.claude/settings.json` byte for byte, but for the hooks, which stay the settings' last key.
-  Change them with `internal/project` (decisions 19 and 28).
-- Run `setup telemetry`, `setup completion` and `setup restore` only with `HOME` and the
-  variables they follow pointing at a scratch directory, and `setup restore` never against the
-  user's own systemd (decisions 18, 22 and 48).
+  Change them with `internal/project` (decisions
+  [19](docs/design/decisions/0019-project-settings.md) and
+  [28](docs/design/decisions/0028-shared-project-settings.md)).
+- Run `setup telemetry`, `setup completion` and `setup restore` only with `HOME` and the variables
+  they follow pointing at a scratch directory, and `setup restore` never against the user's own
+  systemd (decisions [18](docs/design/decisions/0018-telemetry.md),
+  [22](docs/design/decisions/0022-setting-completion-up.md) and
+  [48](docs/design/decisions/0048-restore-after-reboot.md)).
 - `make lint` fails on any finding, warnings included; golangci-lint checks the lines that differ
-  from `origin/main` (Testing; #121).
+  from `origin/main` ([testing](docs/design/testing.md#layers); #121).
 - Fix a finding, or justify it in place (`//nolint:LINTER // reason`); never lower a severity or
   add an exclusion.
 - The baselines, `tools/sizecheck/baseline.txt` and `tools/valecheck.txt`, only shrink; a new file
@@ -109,7 +121,8 @@ Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org
 
 ## Where else to look
 
-- `.claude/rules/`: each area's invariants, and the writing policy in
+- `.claude/rules/`: each area's invariants, what each document holds in
+  [docs.md](.claude/rules/docs.md), and the writing policy in
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
 - Skills in `.claude/skills/`: `adr`, `split-file`, `trim`, `issue`, and `land`, run by hand only.
 - Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing, and `doc-editor`.

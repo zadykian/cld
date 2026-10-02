@@ -1630,8 +1630,8 @@ func TestLingeringServer(t *testing.T) {
 // claude has exited and a session it made keeps the server running. list shows a once. Where the
 // sandbox's socket directory ignores case, as on macOS, the name cld-A finds a's socket already
 // and the test runs against the real thing; elsewhere a symlink cld-A to a's socket plays such a
-// directory, as a casefold tmpfs does on Linux (see docs/design.md, Findings).
-// detach refuses A as join does.
+// directory, as a casefold tmpfs does on Linux (see docs/design/findings/tmux-sessions.md). detach
+// refuses A as join does.
 func TestNamesDifferingInCase(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -4590,7 +4590,7 @@ func TestListJoin(t *testing.T) {
 		}
 		forget(t, s, "a")
 		// cld kill ends the server, which takes a moment to exit: waiting for it keeps Enter's lookup
-		// from reaching it as it goes (see Findings in docs/design.md).
+		// from reaching it as it goes (see docs/design/findings/tmux-sessions.md).
 		sandbox.WaitFor(t, 10*time.Second, "a's server to exit", func() bool {
 			_, err := s.Tmux("cld-a", "list-sessions")
 			return err != nil && strings.Contains(err.Error(), "no server running")
@@ -5428,10 +5428,10 @@ func TestListKill(t *testing.T) {
 	})
 
 	// The killed session's server exits after the kill, and a read of the sessions that meets it
-	// exiting is told now and then that the server exited unexpectedly (see Findings in
-	// docs/design.md): the list passes over that server, as cld list does. A tmux first on the PATH
-	// leaves the killed session's server running, taking connections as an exiting one still does
-	// for a moment - where it has gone, the list runs no tmux there (see
+	// exiting is told now and then that the server exited unexpectedly (see
+	// docs/design/findings/tmux-sessions.md): the list passes over that server, as cld list does. A
+	// tmux first on the PATH leaves the killed session's server running, taking connections as an
+	// exiting one still does for a moment - where it has gone, the list runs no tmux there (see
 	// TestStaleSocketsRunNoTmux) - and fails the first read of it after the kill as tmux does then.
 	t.Run("server exiting", func(t *testing.T) {
 		t.Parallel()

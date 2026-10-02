@@ -32,9 +32,9 @@ jobs:
           cache-to: type=gha,scope=linux,mode=max
       - run: make docker-test IMAGE=cld-test:ci
 
-  # The same checks on the oldest tmux cld runs on, raised with its minimum (docs/design.md,
-  # decision 6), as `make docker-check TMUX_VERSION=3.5a` runs them. Advisory: the ruleset does
-  # not require it.
+  # The same checks on the oldest tmux cld runs on, raised with its minimum
+  # (docs/design/decisions/0006-versions.md), as `make docker-check TMUX_VERSION=3.5a` runs them.
+  # Advisory: the ruleset does not require it.
   linux-oldest:
     runs-on: ubuntu-latest
     timeout-minutes: 20

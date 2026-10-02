@@ -11,12 +11,12 @@
 //     zshLines at the end of $ZDOTDIR/.zshrc, by default ~/.zshrc, which put that directory first
 //     on $fpath and register _cld for cld with compdef. zsh has no directory it reads for every
 //     user as bash-completion and fish do: the one it has, the first of $fpath, belongs to root
-//     (see Findings in docs/design.md). The lines run compinit, which defines compdef, only where
-//     nothing before them has, since a second compinit drops what compdef registered after the
-//     first; with -i, which leaves out insecure directories instead of asking at every start, as
-//     compinit does where Homebrew's are group-writable. A compinit after them still finds _cld
-//     on $fpath, by the #compdef line the script starts with. They do nothing where the script is
-//     missing, as when a .zshrc shared between machines comes to one where cld set nothing up;
+//     (see docs/design/findings/environment.md). The lines run compinit, which defines compdef,
+//     only where nothing before them has, since a second compinit drops what compdef registered
+//     after the first; with -i, which leaves out insecure directories rather than ask at each
+//     start, as compinit does where Homebrew's are group-writable. A compinit after them still
+//     finds _cld on $fpath, by the #compdef line the script starts with. They do nothing where the
+//     script is missing, as on a machine where cld set nothing up that shares the .zshrc;
 //   - fish: $XDG_CONFIG_HOME/fish/completions/cld.fish, by default under ~/.config: fish's own
 //     directory of completions, the first it looks in, and where cobra's help and cld's docs had
 //     users write the script by hand, so that cld replaces such a script rather than hide behind

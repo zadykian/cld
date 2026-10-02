@@ -19,8 +19,8 @@ import (
 
 // ContinuePrompt is the prompt restore gives the claude of a session whose busy mark says it was
 // in a turn when the machine stopped: claude resumes the conversation and submits the prompt as
-// its first turn there (claude 2.1.232 and 2.1.285, read; see Findings in docs/design.md). claude
-// asks the permissions it asks for as in any turn.
+// its first turn there (claude 2.1.232 and 2.1.285, read; see docs/design/findings/claude.md).
+// claude asks the permissions it asks for as in any turn.
 const ContinuePrompt = "The machine restarted while you were working; continue where you left off."
 
 // Marked are the NAMEs of the sessions of cld's record that have a run mark, in the order of their

@@ -501,8 +501,8 @@ func TestRejectsInvalidNames(t *testing.T) {
 }
 
 // Names are ASCII whatever the locale: under en_US.UTF-8, glibc's bash took é, ß or ① for a
-// letter or a digit in [A-Za-z0-9], and cld's shell script took names with them (see Findings in
-// docs/design.md).
+// letter or a digit in [A-Za-z0-9], and cld's shell script took names with them (see
+// docs/design/findings/environment.md).
 func TestNamesAreASCII(t *testing.T) {
 	t.Parallel()
 	locale := map[string]string{"LC_ALL": "en_US.UTF-8"}
@@ -1789,7 +1789,7 @@ const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 // server running for the session, records the command, and the environment it gets: cld's own,
 // without the variables that name the terminal to claude (see TestVSCodeGit for VS Code's) and
 // with an empty TMUX where TMUX was set, which join's client needs (see TestNestsOnADeadPanesPty);
-// a PS1, which the script's bash dropped, passes too (decision 11 in docs/design.md).
+// a PS1, which the script's bash dropped, passes too (docs/design/decisions/0011-go-and-cobra.md).
 func TestCreateTmuxCommand(t *testing.T) {
 	t.Parallel()
 	probe := filepath.Join(sandbox.ProbeBin, "claude")
