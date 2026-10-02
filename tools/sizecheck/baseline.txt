@@ -17,7 +17,6 @@ internal/telemetry/settings.go comments=1
 internal/telemetry/telemetry.go lines=671 comments=6 package=43
 internal/tool/tool.go comments=1
 internal/update/update.go lines=334 package=21
-tests/cli_test.go lines=2972 comments=33
 tests/completion_test.go lines=573 comments=3
 tests/contract_test.go lines=442 comments=1
 tests/install_test.go lines=461 comments=1
