@@ -33,14 +33,6 @@ const (
 	remoteURL     = "https://otel.example.com:4317"
 )
 
-// linuxOnly skips a test of what setup telemetry does on a system where it does not run.
-func linuxOnly(t *testing.T) {
-	t.Helper()
-	if runtime.GOOS != "linux" {
-		t.Skip("setup telemetry works on Linux only; TestSetupTelemetryLinuxOnly checks the refusal")
-	}
-}
-
 // On any system but Linux setup telemetry refuses to run, whatever it is given: before any
 // other check, reading nothing, running no docker. -h still shows its help.
 func TestSetupTelemetryLinuxOnly(t *testing.T) {
@@ -170,64 +162,6 @@ func settingsFor(port int, local bool) string {
 			"    \"CLAUDE_CODE_ENHANCED_TELEMETRY_BETA\": \"1\",\n    \"OTEL_LOG_TOOL_DETAILS\": \"1\""
 	}
 	return settings + "\n  }\n}\n"
-}
-
-// settingsPath is claude's settings file in the sandbox's HOME.
-func settingsPath(s *sandbox.Sandbox) string {
-	return filepath.Join(s.Home, ".claude", "settings.json")
-}
-
-// writeSettings writes claude's settings file in the sandbox's HOME and returns its path.
-func writeSettings(t *testing.T, s *sandbox.Sandbox, content string) string {
-	t.Helper()
-	path := settingsPath(s)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	s.WriteFile(path, content)
-	return path
-}
-
-// checkSettings reports a settings file at path that does not hold want.
-func checkSettings(t *testing.T, path, want string) {
-	t.Helper()
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != want {
-		t.Errorf("%s\n%s\nwant\n%s", path, got, want)
-	}
-}
-
-// checkMode reports a file at path whose permissions are not want.
-func checkMode(t *testing.T, path string, want os.FileMode) {
-	t.Helper()
-	if info, err := os.Stat(path); err != nil {
-		t.Error(err)
-	} else if info.Mode().Perm() != want {
-		t.Errorf("%s: mode %04o, want %04o", path, info.Mode().Perm(), want)
-	}
-}
-
-// umask is the file mode creation mask of the tests, and of the cld they run, as Linux has it.
-func umask(t *testing.T) os.FileMode {
-	t.Helper()
-	status, err := os.ReadFile("/proc/self/status")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for line := range strings.Lines(string(status)) {
-		if value, found := strings.CutPrefix(line, "Umask:"); found {
-			mask, err := strconv.ParseUint(strings.TrimSpace(value), 8, 32)
-			if err != nil {
-				t.Fatalf("/proc/self/status: %q", line)
-			}
-			return os.FileMode(mask)
-		}
-	}
-	t.Fatal("/proc/self/status gives no umask")
-	return 0
 }
 
 // freePort is a port nothing listens on, on 127.0.0.1, and nothing is to take before cld

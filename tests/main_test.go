@@ -12,7 +12,6 @@ package tests
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,8 +22,6 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
-
-var terminals = strings.Split(envOr("CLD_TERMINALS", "tmux"), ",")
 
 func TestMain(m *testing.M) {
 	// git runs hooks and the commands of rebase --exec with GIT_* variables set, in a linked
@@ -103,22 +100,6 @@ func setup(dir string) error {
 	return nil
 }
 
-func run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %w", strings.Join(cmd.Args, " "), err)
-	}
-	return nil
-}
-
-func envOr(name, fallback string) string {
-	if value := os.Getenv(name); value != "" {
-		return value
-	}
-	return fallback
-}
-
 // The tests run nothing with a GIT_* variable they inherit, and gitInit makes the work directory a
 // repository even with GIT_DIR set, leaving the repository it names alone: git init DIR would
 // initialise that one again instead, and take it for a bare one. Not parallel, for t.Setenv.
@@ -149,31 +130,4 @@ func TestGitVariables(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.Work, ".git", "HEAD")); err != nil {
 		t.Errorf("git init made no repository of the work directory: %v", err)
 	}
-}
-
-// forEachTerminal runs body as a subtest per terminal in CLD_TERMINALS.
-func forEachTerminal(t *testing.T, body func(t *testing.T, name string)) {
-	for _, name := range terminals {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			body(t, name)
-		})
-	}
-}
-
-// startCld runs cld with args in a new terminal of the given kind; extra variables are added to
-// the sandbox environment.
-func startCld(t *testing.T, s *sandbox.Sandbox, name string, extra map[string]string, args ...string) terminal.Terminal {
-	t.Helper()
-	return startCldIn(t, s, name, s.Work, extra, args...)
-}
-
-func startCldIn(t *testing.T, s *sandbox.Sandbox, name, dir string, extra map[string]string, args ...string) terminal.Terminal {
-	t.Helper()
-	term := terminal.New(t, name, s)
-	env := map[string]string{}
-	maps.Copy(env, s.Env)
-	maps.Copy(env, extra)
-	term.Start(s.CldArgv(args...), env, dir)
-	return term
 }
