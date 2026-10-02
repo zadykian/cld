@@ -9,7 +9,6 @@ internal/session/record.go
 internal/session/restore.go
 internal/session/switch.go
 internal/update/update.go
-tests/completion_test.go
 tests/contract_test.go
 tests/internal/sandbox/pty.go
 tests/internal/sandbox/sandbox.go
