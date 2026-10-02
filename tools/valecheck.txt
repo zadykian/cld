@@ -3,7 +3,6 @@ internal/completion/completion.go
 internal/fail/fail.go
 internal/output/output.go
 internal/restore/restore.go
-internal/session/record.go
 internal/session/restore.go
 internal/session/switch.go
 tests/internal/sandbox/pty.go
