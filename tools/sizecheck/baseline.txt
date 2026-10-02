@@ -4,7 +4,6 @@
 # go run ./tools/sizecheck -update lowers the ceilings and drops stale entries.
 README.md lines=349
 cmd/cld/commands.go lines=1779 comments=22
-docs/guide.md lines=1085
 internal/completion/completion.go package=36
 internal/configfile/configfile.go lines=340
 internal/output/output.go comments=1
