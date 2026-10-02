@@ -1,6 +1,5 @@
 # The files that fail Vale (tools/valecheck): the list may only shrink.
 internal/completion/completion.go
-internal/configfile/configfile.go
 internal/fail/fail.go
 internal/output/output.go
 internal/restore/restore.go
