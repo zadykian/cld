@@ -27,7 +27,7 @@ up to 0.3.0, a bash script that ended in `exec tmux`.
   5.3.9, and with dash 0.5.12 as well. Apple's bash notices a stopped job only when interactive, so
   a script waits on for it and never runs the rest. bash 3.2.57 also reports a background job's end
   on stderr while job control is on. So the list's stop cases run under `sh -i` (`startJob` in
-  [session_test.go](../../../tests/session_test.go)).
+  [session_jobs_test.go](../../../tests/session_jobs_test.go)).
 - **A word quoted for the user's shell** (#112). Checked in the test image of tmux 3.7c, with fish
   4.0.2, zsh 5.9, bash 5.2.37 and dash 0.5.12 alike. Within single quotes fish reads `\\` and `\'`
   as escapes, so `x\'; echo INJECTED #`, quoted as `sh` quotes it, ran `echo INJECTED` in fish. A
