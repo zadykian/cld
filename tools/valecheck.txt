@@ -2,7 +2,6 @@
 README.md
 cmd/cld/commands.go
 cmd/cld/main.go
-docs/design.md
 docs/guide.md
 internal/completion/completion.go
 internal/configfile/configfile.go
