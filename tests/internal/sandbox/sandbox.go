@@ -414,7 +414,7 @@ func (p *Probe) WaitInput(mark int, want string) {
 	})
 }
 
-// Send hands the probe a command (see tests/probe).
+// Send hands the probe a command (see controls in tests/probe/control.go).
 func (p *Probe) Send(command string) {
 	p.t.Helper()
 	fifo, err := os.OpenFile(p.base+".ctl", os.O_WRONLY, 0)
@@ -428,8 +428,8 @@ func (p *Probe) Send(command string) {
 }
 
 // Hook runs the hooks claude's settings give event, as claude would, with input - JSON, {} where
-// empty - as their input (see tests/probe), and waits until they have run. A hook that fails, or
-// prints anything, fails the test.
+// empty - as their input (see tests/probe/hooks.go), and waits until they have run. A hook that
+// fails, or prints anything, fails the test.
 func (p *Probe) Hook(event, input string) {
 	p.t.Helper()
 	// The lines the probe has ended: what follows the last newline is being written.
