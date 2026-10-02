@@ -44,7 +44,10 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   the interactive list (`session_list_*`). The helpers that only these files use stay among them,
   such as `session_cells_test.go` for the screen's attributes.
 - `record_test.go`: the record's entries, indexes, expiry and lock, and `ended` sessions.
-- `restore_test.go`: the run and busy marks, `restore` and `setup restore`.
+- `restore_test.go`: `restore` after a reboot, and the helpers the `restore_*` files share;
+  `restore_marks_test.go` and `restore_unmark_test.go`: the run and busy marks;
+  `restore_failures_test.go`: what `restore` leaves or cannot bring back; `restore_race_test.go`
+  and `restore_forget_test.go`: the races; `restore_setup_test.go`: `setup restore`.
 - `cli_TOPIC_test.go`: arguments, errors, tool and version checks, the help and the completion
   scripts, a file per topic; `cli_fake_tmux_test.go` has the helpers they share.
 - `completion_test.go`: `setup completion`, and bash, zsh and fish loading its scripts.
