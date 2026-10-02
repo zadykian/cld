@@ -44,7 +44,7 @@ func CheckClaude() (*Claude, error) {
 }
 
 // checkClaude is CheckClaude's check of the claude at path, run in dir with the environment env,
-// or cld's own where env is nil: restore checks the claude a session started with, in its
+// or cld's own where env is nil. restore checks the claude a session started with, in its
 // directory and its environment (see Tmux.Restore).
 func checkClaude(path, dir string, env []string) (*Claude, error) {
 	var stdout, stderr bytes.Buffer
@@ -99,8 +99,9 @@ func versionFailed(required string, exit *exec.ExitError, printed string) error 
 }
 
 // binary reports whether the file at path is a binary rather than a script, as bash's
-// check_binary_file tells them apart: ELF's magic number, or a NUL in the first line (two lines
-// after #!) within 80 bytes. A file cld cannot read passes for a script: /bin/sh then says why.
+// check_binary_file tells them apart. A binary has ELF's magic number, or a NUL in the first line
+// (two lines after #!) within 80 bytes. A file cld cannot read passes for a script: /bin/sh then
+// says why.
 func binary(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {

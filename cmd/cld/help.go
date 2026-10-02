@@ -58,8 +58,8 @@ func helpArguments(typed string) cobra.PositionalArgs {
 }
 
 // helpTopic is the command whose help is shown for args: the root for none, else the one they
-// name, one of cld's, then one of its own commands, as in help setup telemetry. Errors name help
-// as typed.
+// name. They name one of cld's commands, then one of its own, as in help setup telemetry. Errors
+// name help as typed.
 func helpTopic(root *cobra.Command, typed string, args []string) (*cobra.Command, error) {
 	command := root
 	for i, name := range args {

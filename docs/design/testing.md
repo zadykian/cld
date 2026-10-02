@@ -7,7 +7,8 @@ probe stands in for claude, and for the programs that would reach outside the sa
 ## Layers
 
 1. **Static.** `make vet` runs gofmt, go vet, ShellCheck and shfmt. `make lint`, CI's `lint` job,
-   adds golangci-lint, the size caps, Vale, govulncheck, the workflow linters and lychee.
+   adds golangci-lint, the size caps, Vale, govulncheck, the workflow linters and lychee. Each
+   checks every file, and any finding fails it, warnings included.
 2. **Behaviour against real tmux.** The probe replaces claude, `tmux -V` for the version check,
    docker for `setup telemetry` ([decision 18](decisions/0018-telemetry.md)), and `systemctl`
    and `loginctl` for `setup restore` ([decision 48](decisions/0048-restore-after-reboot.md)).
@@ -19,6 +20,14 @@ Isolation needs no seams in cld. `TMUX_TMPDIR` moves the sockets into a sandbox,
 temporary directory, `TMUX` is unset, and the probe comes first on the `PATH`. `cld join`
 attaches, so it needs a pty: a driver's, or the sandbox's own where a test hands over to the fake
 tmux ([decision 31.6](decisions/0031-a-terminal-to-attach-from.md)).
+
+Vale checks Go comments in Markdown mirrors that `tools/valemirror` writes, line for line. Vale
+3.23.0 reads Go itself through tree-sitter, but masks the name a doc comment starts with, and drops
+the alerts anchored there. A first sentence of 40 words passed `Microsoft.SentenceLength` that way,
+while a second sentence of 40 words failed. The mirrors mask the name alone, and its sentence
+still counts it. Vale 3.23.0 also skips the text between two `$` of a Markdown paragraph, across
+lines too: a sentence of 40 words between `$A` and `($)` passed. The mirrors write `¤` for `$`,
+which Vale counts alike.
 
 ## The terminal contract
 

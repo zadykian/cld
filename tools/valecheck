@@ -3,6 +3,9 @@
 #
 #   tools/valecheck [-update] [FILE...]
 #
+# A Go file goes to Vale as the Markdown mirror of its comments that tools/valemirror writes, and
+# its alerts come back with the Go file's lines.
+#
 # tools/valecheck.txt lists the files that failed when the check came in, and may only shrink. A
 # failing file it does not list fails the check, and so does a listed file that passes or is gone.
 # With -update, the list drops those files instead. Run it from the repository's root.
@@ -37,17 +40,43 @@ files() {
     LC_ALL=C sort -u "$tmp/given" >"$tmp/files"
 }
 
-# alerts writes Vale's alerts to $tmp/alerts, a line each, and the files they are in to $tmp/failing.
-alerts() {
+# mirrors writes the mirrors of the Go files into $tmp/mirrors, and lists them in $tmp/mirrored.
+mirrors() {
     set --
     while IFS= read -r file; do
-        set -- "$@" "$file"
+        case $file in
+        *.go) set -- "$@" "$file" ;;
+        esac
     done <"$tmp/files"
+    : >"$tmp/mirrored"
+    [ $# -gt 0 ] || return 0
+    go build -o "$tmp/valemirror" ./tools/valemirror || die "cannot build tools/valemirror"
+    "$tmp/valemirror" "$tmp/mirrors" "$@" >"$tmp/mirrored" || die "tools/valemirror failed"
+}
+
+# alerts writes Vale's alerts to $tmp/alerts, a line each, and the files they are in to $tmp/failing.
+alerts() {
+    mirrors
+    set --
+    while IFS= read -r file; do
+        case $file in
+        *.md) set -- "$@" "$file" ;;
+        esac
+    done <"$tmp/files"
+    while IFS= read -r file; do
+        set -- "$@" "$file"
+    done <"$tmp/mirrored"
     # Vale reads stdin when given no file.
     if [ $# -gt 0 ]; then
-        tools/run vale --no-exit --output=line "$@" >"$tmp/alerts" || die "Vale failed"
+        tools/run vale --no-exit --output=line "$@" >"$tmp/vale" || die "Vale failed"
     else
-        : >"$tmp/alerts"
+        : >"$tmp/vale"
+    fi
+    if [ -s "$tmp/mirrored" ]; then
+        "$tmp/valemirror" -alerts "$tmp/mirrors" <"$tmp/vale" >"$tmp/alerts" ||
+            die "tools/valemirror failed"
+    else
+        cp "$tmp/vale" "$tmp/alerts"
     fi
     cut -d : -f 1 "$tmp/alerts" | LC_ALL=C sort -u >"$tmp/failing"
 }

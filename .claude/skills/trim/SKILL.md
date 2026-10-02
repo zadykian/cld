@@ -46,6 +46,4 @@ help. Where it lives nowhere else, keep it, or move it to where it belongs.
 - `make vale FILES='PATHS'`, `make sizecheck FILES='PATHS'`, `make lychee`.
 - For Go files, also `gofmt -l .` and `make golangci-lint`: a changed comment line must fit in
   100 columns.
-- Lower the baselines for your files: `tools/valecheck -update` and
-  `go run ./tools/sizecheck -update`, then keep only your files' lines in `git diff tools/`.
 - Commit as `docs(scope): ...` for docs, or `refactor(scope): ...` for comments.

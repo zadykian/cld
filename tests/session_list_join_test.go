@@ -106,7 +106,7 @@ func listJoinEnter(t *testing.T) {
 }
 
 // listJoinBusyTerminal checks that a terminal too busy to answer at once, over a slow link say,
-// holds the join back until it answers, and its answer does not reach claude as keys. The terminal
+// holds the join back until it answers. Its answer does not reach claude as keys. The terminal
 // freezes as the lookup ends, and thaws a second and a half later.
 func listJoinBusyTerminal(t *testing.T) {
 	t.Parallel()
@@ -201,8 +201,9 @@ func listJoinOwnPane(t *testing.T) {
 	}
 }
 
-// listJoinNotATerminal checks that output to a pipe, input that is not the terminal, a terminal
-// that cannot move the cursor and a job in the background get the plain table (decision 14.1).
+// listJoinNotATerminal checks where list prints the plain table (decision 14.1). Output to a pipe
+// gets it, as do input that is not the terminal, a terminal that cannot move the cursor and a job
+// in the background.
 func listJoinNotATerminal(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

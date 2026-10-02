@@ -120,7 +120,7 @@ func checkStatusList(t *testing.T, s *sandbox.Sandbox, table string) {
 }
 
 // statusShown is the list of statusRows in work with the session selected, in a terminal columns
-// wide, as text and styled as cells has it: waiting in bold as far as the line holds it.
+// wide, as text and styled as cells has it. Styled, waiting is in bold as far as the line holds it.
 func statusShown(work, selected string, columns int) (text, styled []string) {
 	header := strings.TrimRight(
 		cutTo("  NAME  STATE              LAST ACTIVE  DIRECTORY", columns), " ")

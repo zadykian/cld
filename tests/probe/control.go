@@ -81,7 +81,7 @@ func obey(control *os.File, c *controller) {
 }
 
 // loadBuffer is "loadbuffer TEXT": it copies TEXT as claude does inside tmux, with tmux
-// load-buffer -w. tmux keeps it in a buffer and hands it to the terminal as OSC 52.
+// load-buffer -w. That tmux keeps it in a buffer and hands it to the terminal as OSC 52.
 func (*controller) loadBuffer(text string) {
 	load := exec.Command("tmux", "load-buffer", "-w", "-")
 	load.Stdin = strings.NewReader(text)

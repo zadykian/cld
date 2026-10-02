@@ -11,8 +11,9 @@ import (
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
 
-// listJoinSignals checks that SIGTERM, SIGHUP, SIGINT and SIGQUIT end the list as they end cld,
-// with 128 and the signal's number, once the terminal is as before (decision 14, Signals).
+// listJoinSignals checks that SIGTERM, SIGHUP, SIGINT and SIGQUIT end the list as they end cld.
+// The list ends with 128 and the signal's number, once the terminal is as before (decision 14,
+// Signals).
 func listJoinSignals(t *testing.T) {
 	t.Helper()
 	for _, sig := range []syscall.Signal{

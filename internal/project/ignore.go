@@ -14,7 +14,7 @@ import (
 	"github.com/zadykian/cld/internal/tool"
 )
 
-// ignoreLines are the lines .gitignore needs, each with the other form git reads the same: a
+// ignoreLines are the lines .gitignore needs, each with the other form git reads the same. A
 // pattern with a slash before its end is anchored to the .gitignore's directory either way.
 var ignoreLines = [][]string{
 	{"/.claude/settings.local.json", ".claude/settings.local.json"},
@@ -81,7 +81,7 @@ func editIgnore(data []byte) ([]byte, []string) {
 }
 
 // match is a path of shared that git ignores, as git was asked about it, and the pattern that
-// ignores it, as git check-ignore names it: "PATTERN (FILE, line LINE)".
+// ignores it. The pattern is as git check-ignore names it: "PATTERN (FILE, line LINE)".
 type match struct {
 	path, by string
 }

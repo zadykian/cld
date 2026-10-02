@@ -73,13 +73,13 @@ words after `--` are not kept ([41](0041-claude-options.md)). What names the log
 
 ### 48.5 `cld restore`
 
-For each entry with a run mark and no server, in the order of the names, `restore` does what `join`
-does for an ended session ([50.9](0050-one-command-join.md)). But the session starts detached: no
-terminal check ([31](0031-a-terminal-to-attach-from.md)), no title, and cld waits for tmux. The
-server starts with the recorded environment, but for `TMUX_TMPDIR`, where cld and the title's hooks
-([25](0025-title-follows-status.md)) look for the socket. A server that runs, with or without the
-session, or one cld did not start ([34](0034-servers-are-marked.md)), it leaves alone. It prints a
-line per session.
+For each entry with a run mark and no server, in the order of the entries' file names, `restore`
+does what `join` does for an ended session ([50.9](0050-one-command-join.md)). But the session
+starts detached: no terminal check ([31](0031-a-terminal-to-attach-from.md)), no title, and cld
+waits for tmux. The server starts with the recorded environment, but for `TMUX_TMPDIR`, where cld
+and the title's hooks ([25](0025-title-follows-status.md)) look for the socket. A server that runs,
+with or without the session, or one cld did not start ([34](0034-servers-are-marked.md)), it leaves
+alone. It prints a line per session.
 
 ### 48.6 The lock
 

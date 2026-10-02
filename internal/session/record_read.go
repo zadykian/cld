@@ -42,7 +42,7 @@ func readEntry(file, suffix string) (entry, bool) {
 	return r, true
 }
 
-// entries are the entries of the record that have not expired, in the order of their names.
+// entries are the entries of the record that have not expired, in the order of their file names.
 func entries() []entry {
 	dir, err := stateDir()
 	if err != nil {
@@ -65,8 +65,8 @@ func entries() []entry {
 	return found
 }
 
-// indexes are the highest indexes given, by the start of the names they follow - "NAME-", or ""
-// for the names that are an index alone - less those given longer ago than expiry.
+// indexes are the highest indexes given, by the start of the names they follow: "NAME-", or ""
+// for the names that are an index alone. Those given longer ago than expiry are left out.
 func indexes(dir string) map[string]given {
 	data, err := os.ReadFile(filepath.Join(dir, "indexes.json"))
 	if err != nil {

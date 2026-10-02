@@ -12,8 +12,8 @@ import (
 )
 
 // scalarSettings are the settings' keys after permissions, with their values as JSON, as this
-// repository's own .claude/settings.json has them: where claude keeps its plans, which .gitignore
-// keeps out of git.
+// repository's own .claude/settings.json has them. They say where claude keeps its plans, which
+// .gitignore keeps out of git.
 var scalarSettings = []configfile.Member{
 	{Key: "plansDirectory", Value: json.RawMessage(`".claude/plans"`)},
 }

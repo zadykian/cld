@@ -19,7 +19,7 @@ func sessionSettings(s *sandbox.Sandbox, name, dir string) string {
 }
 
 // settings is the --settings the claude of session name, cld-NAME, started in dir, gets in s from
-// a cld that found tmux and git at those paths; with fromHead, join -w's worktree branches from
+// a cld that found tmux and git at those paths. With fromHead, join -w's worktree branches from
 // HEAD. Nothing else: no remoteControlAtStartup, which is the user's own (decision 42).
 func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) string {
 	set := tmuxSetter(tmux, filepath.Join(s.SocketDir(), name), name)
@@ -49,8 +49,8 @@ func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) st
 	}, ",") + `}}`
 }
 
-// tmuxSetter is what gives the hooks' command that sets option to value on session name, by the
-// server's socket, only where the option holds another value; as the settings' JSON has it.
+// tmuxSetter gives the hooks' command that sets option to value on session name, as the settings'
+// JSON has it. It goes by the server's socket, only where the option holds another value.
 func tmuxSetter(tmux, socket, name string) func(option, value string) string {
 	return func(option, value string) string {
 		return `'` + tmux + `' -S '` + socket + `' if -F -t '=` + name + `:' \"#{!=:#{` + option +

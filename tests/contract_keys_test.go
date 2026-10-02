@@ -70,7 +70,7 @@ func TestContractPaste(t *testing.T) {
 }
 
 // modifiedKeysOn reports whether the last modifyOtherKeys sequence in a terminal's output turns
-// modified keys on (CSI > 4 ; 1 m or CSI > 4 ; 2 m) rather than off (CSI > 4 m).
+// modified keys on rather than off. On is CSI > 4 ; 1 m or CSI > 4 ; 2 m, and off CSI > 4 m.
 func modifiedKeysOn(output []byte) bool {
 	on := max(bytes.LastIndex(output, []byte("\x1b[>4;1m")),
 		bytes.LastIndex(output, []byte("\x1b[>4;2m")))

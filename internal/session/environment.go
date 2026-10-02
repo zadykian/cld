@@ -8,7 +8,7 @@ import (
 )
 
 // withTmuxTmpdir is env with cld's own TMUX_TMPDIR, or none where cld has none, in place of its
-// own: the directory of the servers' sockets, which cld reads the sessions from.
+// own. TMUX_TMPDIR holds the servers' sockets, which cld reads the sessions from.
 func withTmuxTmpdir(env []string) []string {
 	env = slices.DeleteFunc(slices.Clone(env), func(variable string) bool {
 		return strings.HasPrefix(variable, "TMUX_TMPDIR=")
@@ -27,16 +27,16 @@ var terminalVariables = []string{
 }
 
 // vsCodeGit are the helpers a terminal of VS Code, or of a fork, gives git: the askpass and the
-// editor, scripts named by the variable git beside the file prefix+MAIN names. They ask the window
-// through VSCODE_GIT_IPC_HANDLE, and fail at once without it (decision 33.2).
+// editor. Each is a script named by the variable git, beside the file prefix+MAIN names. They ask
+// the window through VSCODE_GIT_IPC_HANDLE, and fail at once without it (decision 33.2).
 var vsCodeGit = []struct{ git, prefix string }{
 	{"GIT_ASKPASS", "VSCODE_GIT_ASKPASS_"},
 	{"GIT_EDITOR", "VSCODE_GIT_EDITOR_"},
 }
 
-// withoutTerminal is environ without terminalVariables and VS Code's helpers for git, each helper
-// as a unit: its prefix's variables, VSCODE_GIT_IPC_HANDLE, and its git variable where that names a
-// script beside its MAIN (decision 33.2). A GIT_ASKPASS or GIT_EDITOR elsewhere stays.
+// withoutTerminal is environ without terminalVariables and VS Code's helpers for git. A helper
+// goes as a unit: its prefix's variables, VSCODE_GIT_IPC_HANDLE, and its git variable where that
+// names a script beside its MAIN (decision 33.2). A GIT_ASKPASS or GIT_EDITOR elsewhere stays.
 func withoutTerminal(environ []string) []string {
 	scripts := helperScripts(environ)
 	return slices.DeleteFunc(environ, func(variable string) bool {
@@ -61,8 +61,8 @@ func helperScripts(environ []string) map[string]string {
 	return scripts
 }
 
-// vsCodeHelper reports whether the variable name, of value, belongs to a helper of vsCodeGit: one
-// of its prefix, or its git variable naming a script in the directory scripts has for it.
+// vsCodeHelper reports whether the variable name, of value, belongs to a helper of vsCodeGit. Those
+// of its prefix do, and its git variable where it names a script in the directory scripts has.
 func vsCodeHelper(name, value string, scripts map[string]string) bool {
 	for _, helper := range vsCodeGit {
 		if strings.HasPrefix(name, helper.prefix) {

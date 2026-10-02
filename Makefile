@@ -46,16 +46,16 @@ vet:
 	@test -z "$$(gofmt -l .)" || { gofmt -d .; exit 1; }
 	go vet ./...
 
-# Only the lines that differ from origin/main: .golangci.yml's new-from-merge-base.
+# Every line of every package, as .golangci.yml sets the linters.
 golangci-lint:
 	tools/run golangci-lint run ./...
 
-# The size caps, against the overages tools/sizecheck/baseline.txt lists.
+# The size caps. tools/sizecheck/baseline.txt is empty: no file may exceed them.
 sizecheck:
 	go test -count=1 ./tools/...
 	go run ./tools/sizecheck $(FILES)
 
-# The files that fail today are in tools/valecheck.txt, which may only shrink.
+# Vale. tools/valecheck.txt is empty: no file may fail it.
 vale:
 	tools/valecheck $(FILES)
 

@@ -23,8 +23,8 @@ func gitInit(t *testing.T, s *sandbox.Sandbox) {
 	runGit(t, s, s.Root, "init", "-q", s.Work)
 }
 
-// runGit runs git with args in dir, in the sandbox's environment (see gitInit), as an author and
-// committer of its own, where the sandbox's home has no git configuration.
+// runGit runs git with args in dir, in the sandbox's environment (see gitInit). It gives git an
+// author and committer of its own, since the sandbox's home has no git configuration.
 func runGit(t *testing.T, s *sandbox.Sandbox, dir string, args ...string) {
 	t.Helper()
 	identity := []string{"-c", "user.name=cld", "-c", "user.email=cld@example.com"}
@@ -37,8 +37,8 @@ func runGit(t *testing.T, s *sandbox.Sandbox, dir string, args ...string) {
 }
 
 // gitWorktree makes the linked worktree .claude/worktrees/NAME of the work directory's
-// repository, which gitInit made, on a commit of its own, as claude's --worktree NAME makes one,
-// and returns its path.
+// repository, which gitInit made, on a commit of its own. It makes it as claude's --worktree NAME
+// does, and returns its path.
 func gitWorktree(t *testing.T, s *sandbox.Sandbox, name string) string {
 	t.Helper()
 	path := filepath.Join(s.Work, ".claude", "worktrees", name)

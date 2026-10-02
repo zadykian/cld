@@ -92,8 +92,8 @@ func (p *Probe) Send(command string) {
 	}
 }
 
-// Hook runs the hooks claude's settings give event, as claude would, with input - JSON, {} where
-// empty - as their input (see tests/probe/hooks.go), and waits until they have run. A hook that
+// Hook runs the hooks claude's settings give event, as claude would, with input as their input:
+// JSON, {} where empty (see tests/probe/hooks.go). It waits until they have run. A hook that
 // fails, or prints anything, fails the test.
 func (p *Probe) Hook(event, input string) {
 	p.t.Helper()

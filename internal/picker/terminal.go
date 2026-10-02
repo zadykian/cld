@@ -13,7 +13,7 @@ import (
 )
 
 // answerWait is how long Enter waits for the terminal's answer before it hands the terminal over
-// all the same: long enough for the round trip of a slow link (decision 14).
+// all the same. It allows the round trip of a slow link (decision 14).
 const answerWait = 5 * time.Second
 
 // What the list writes to the terminal besides text and styles.
@@ -70,8 +70,8 @@ func (t *terminal) restore() {
 	}
 }
 
-// takeBack takes the terminal again once cld goes on after a stop, raw mode and the alternate
-// screen, and reads its size, which may have changed meanwhile, for the list to draw it all.
+// takeBack takes the terminal again once cld goes on after a stop: raw mode and the alternate
+// screen. It reads the size anew, which may have changed meanwhile, for the list to draw it all.
 func (l *list) takeBack(tty *terminal) error {
 	if err := tty.makeRaw(); err != nil {
 		return err

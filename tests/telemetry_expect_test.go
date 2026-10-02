@@ -39,7 +39,8 @@ func localExporterFor(address string) string {
 }
 
 // collectorConfig is the collector config cld passes for a collector on port, with an exporter
-// for each of local and remote given ("" for none): URL, then the exporter's own lines.
+// for each of local and remote given ("" for none). Each gives the URL, then the exporter's own
+// lines.
 func collectorConfig(port int, local, remote string) string {
 	config := "receivers:\n  otlp:\n    protocols:\n      grpc:\n" +
 		fmt.Sprintf("        endpoint: \"127.0.0.1:%d\"\n", port) + "exporters:\n"
@@ -94,7 +95,7 @@ func settingsFor(port int, local bool) string {
 	return settings + "\n  }\n}\n"
 }
 
-// setupReport is what a setup prints for a collector on port, with --local if local: signals are
+// setupReport is what a setup prints for a collector on port, with --local if local. signals are
 // the report's lines for the signals, and path the settings, which had none of its keys.
 func setupReport(port int, path, signals string, local bool) string {
 	changes := "  CLAUDE_CODE_ENABLE_TELEMETRY=1\n  OTEL_METRICS_EXPORTER=otlp\n" +

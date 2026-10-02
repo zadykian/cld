@@ -12,9 +12,9 @@ import (
 )
 
 // sessionNames completes the NAME of -n, join's with all and detach's without, from the sessions
-// list shows: with all, those that have ended too (decisions 24.8 and 50.7). Each NAME, split at
-// the last "-" as cld's messages split a name, comes once, in list's order, described by the
-// number of its sessions.
+// list shows. With all, those that have ended count too (decisions 24.8 and 50.7). Each NAME,
+// split at the last "-" as cld's messages split a name, comes once, in list's order, described by
+// the number of its sessions.
 func sessionNames(all bool) cobra.CompletionFunc {
 	return func(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion,
 		cobra.ShellCompDirective) {
@@ -52,9 +52,9 @@ func splitName(whole string) (string, bool) {
 }
 
 // sessionSuffixes completes the SUFFIX of -s, join's with all and detach's without, from the
-// sessions list shows under the NAME the command takes, each described by its state as list shows
-// it, or "ended in" its directory. Without -n, a running session made elsewhere is not offered
-// (decision 37.5).
+// sessions list shows under the NAME the command takes. Each is described by its state as list
+// shows it, or "ended in" its directory. Without -n, a running session made elsewhere is not
+// offered (decision 37.5).
 func sessionSuffixes(all bool) cobra.CompletionFunc {
 	return func(c *cobra.Command, _ []string, typed string) ([]cobra.Completion,
 		cobra.ShellCompDirective) {

@@ -167,7 +167,7 @@ func ownPaneJoins(moved string) []ownPaneJoin {
 }
 
 // checkOwnPaneJoin runs the join in a pane on session a's server, on its own pty, with the TMUX
-// tmux sets for it, and checks that it fails with the refusal.
+// tmux sets for it. It checks that the join fails with the refusal.
 func checkOwnPaneJoin(t *testing.T, s *sandbox.Sandbox, index string, test ownPaneJoin) {
 	t.Helper()
 	out := filepath.Join(s.Root, index)

@@ -1,6 +1,6 @@
 // Package tests holds cld's tests. They build cld and run it against real tmux servers, one
-// private world per test (see internal/sandbox), with a probe in claude's place, and in docker's,
-// systemctl's and loginctl's (see probe).
+// private world per test (see internal/sandbox). A probe stands in for claude, docker, systemctl
+// and loginctl (see probe).
 //
 // CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"):
 // tmux, jediterm (needs a JDK and CLD_JEDITERM_LIB, see jediterm/fetch-deps).
@@ -25,15 +25,14 @@ import (
 
 func TestMain(m *testing.M) {
 	// git runs hooks and the commands of rebase --exec with GIT_* variables set, in a linked
-	// worktree GIT_DIR among them; git init DIR, as the tests run it, would then initialise that
-	// repository again instead of DIR, and take it for a bare one (see
+	// worktree GIT_DIR among them. git init DIR, as the tests run it, would then initialise that
+	// repository again, not DIR, and take it for a bare one (see
 	// docs/design/findings/environment.md). Nothing the tests run inherits any of them.
-	for _, variable := range os.Environ() {
-		if name, _, _ := strings.Cut(variable, "="); strings.HasPrefix(name, "GIT_") {
-			_ = os.Unsetenv(name)
-		}
+	err := unsetGit()
+	dir := ""
+	if err == nil {
+		dir, err = os.MkdirTemp("", "cld-tests.")
 	}
-	dir, err := os.MkdirTemp("", "cld-tests.")
 	if err == nil {
 		err = setup(dir)
 	}
@@ -42,8 +41,22 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	code := m.Run()
-	_ = os.RemoveAll(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		fmt.Fprintln(os.Stderr, "cleanup:", err)
+	}
 	os.Exit(code)
+}
+
+// unsetGit unsets every GIT_* variable of the tests' environment.
+func unsetGit() error {
+	for _, variable := range os.Environ() {
+		if name, _, _ := strings.Cut(variable, "="); strings.HasPrefix(name, "GIT_") {
+			if err := os.Unsetenv(name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func setup(dir string) error {
@@ -51,7 +64,41 @@ func setup(dir string) error {
 	if err := os.Chmod(dir, 0o755); err != nil {
 		return err
 	}
-	// cld skips the relative entries of the PATH (see tool.LookPath in internal/tool).
+	if err := findTools(); err != nil {
+		return err
+	}
+	sandbox.Cld = filepath.Join(dir, "cld")
+	if err := run("go", "build", "-o", sandbox.Cld, "github.com/zadykian/cld/cmd/cld"); err != nil {
+		return err
+	}
+	sandbox.ProbeBin = filepath.Join(dir, "probe")
+	probe := filepath.Join(sandbox.ProbeBin, "claude")
+	if err := run("go", "build", "-o", probe, "./probe"); err != nil {
+		return err
+	}
+	// The fake docker and the fake systemd are on every sandbox's PATH, before the real ones: no
+	// test reaches Docker, or the user's systemd.
+	for _, name := range []string{"docker", "systemctl", "loginctl"} {
+		if err := os.Symlink("claude", filepath.Join(sandbox.ProbeBin, name)); err != nil {
+			return err
+		}
+	}
+	sandbox.FakeTmux = filepath.Join(dir, "fake", "tmux")
+	if err := os.Mkdir(filepath.Dir(sandbox.FakeTmux), 0o755); err != nil {
+		return err
+	}
+	if err := os.Symlink(probe, sandbox.FakeTmux); err != nil {
+		return err
+	}
+	if slices.Contains(terminals, "jediterm") {
+		return buildJediTerm(dir)
+	}
+	return nil
+}
+
+// findTools sets sandbox.RealTmux and sandbox.RealGit to the first tmux and git in the PATH's
+// absolute entries. cld skips the relative ones (see tool.LookPath in internal/tool).
+func findTools() error {
 	for _, tool := range []struct {
 		name string
 		path *string
@@ -67,41 +114,23 @@ func setup(dir string) error {
 			return errors.New(tool.name + " is not installed")
 		}
 	}
-	sandbox.Cld = filepath.Join(dir, "cld")
-	if err := run("go", "build", "-o", sandbox.Cld, "github.com/zadykian/cld/cmd/cld"); err != nil {
-		return err
-	}
-	sandbox.ProbeBin = filepath.Join(dir, "probe")
-	if err := run("go", "build", "-o", filepath.Join(sandbox.ProbeBin, "claude"), "./probe"); err != nil {
-		return err
-	}
-	// The fake docker and the fake systemd are on every sandbox's PATH, before the real ones: no
-	// test reaches Docker, or the user's systemd.
-	for _, name := range []string{"docker", "systemctl", "loginctl"} {
-		if err := os.Symlink("claude", filepath.Join(sandbox.ProbeBin, name)); err != nil {
-			return err
-		}
-	}
-	sandbox.FakeTmux = filepath.Join(dir, "fake", "tmux")
-	if err := os.Mkdir(filepath.Dir(sandbox.FakeTmux), 0o755); err != nil {
-		return err
-	}
-	if err := os.Symlink(filepath.Join(sandbox.ProbeBin, "claude"), sandbox.FakeTmux); err != nil {
-		return err
-	}
-	if slices.Contains(terminals, "jediterm") {
-		libraries := filepath.Join(envOr("CLD_JEDITERM_LIB", filepath.Join("jediterm", "lib")), "*")
-		classes := filepath.Join(dir, "jediterm")
-		if err := run("javac", "-cp", libraries, "-d", classes, filepath.Join("jediterm", "JediTermDriver.java")); err != nil {
-			return err
-		}
-		terminal.JediTermClasspath = classes + string(os.PathListSeparator) + libraries
-	}
 	return nil
 }
 
-// The tests run nothing with a GIT_* variable they inherit, and gitInit makes the work directory a
-// repository even with GIT_DIR set, leaving the repository it names alone: git init DIR would
+// buildJediTerm compiles the JediTerm driver into dir, for the terminal contract.
+func buildJediTerm(dir string) error {
+	libraries := filepath.Join(envOr("CLD_JEDITERM_LIB", filepath.Join("jediterm", "lib")), "*")
+	classes := filepath.Join(dir, "jediterm")
+	driver := filepath.Join("jediterm", "JediTermDriver.java")
+	if err := run("javac", "-cp", libraries, "-d", classes, driver); err != nil {
+		return err
+	}
+	terminal.JediTermClasspath = classes + string(os.PathListSeparator) + libraries
+	return nil
+}
+
+// The tests run nothing with a GIT_* variable they inherit. gitInit makes the work directory a
+// repository even with GIT_DIR set, leaving the repository it names alone. git init DIR would
 // initialise that one again instead, and take it for a bare one. Not parallel, for t.Setenv.
 func TestGitVariables(t *testing.T) {
 	for _, variable := range os.Environ() {
@@ -124,8 +153,13 @@ func TestGitVariables(t *testing.T) {
 	}
 	t.Setenv("GIT_DIR", gitDir)
 	gitInit(t, s)
-	if after, _ := os.ReadFile(config); string(after) != string(before) {
-		t.Errorf("git init changed the config of the repository GIT_DIR names:\n%s\nwas\n%s", after, before)
+	after, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("git init changed the config of the repository GIT_DIR names:\n%s\nwas\n%s",
+			after, before)
 	}
 	if _, err := os.Stat(filepath.Join(s.Work, ".git", "HEAD")); err != nil {
 		t.Errorf("git init made no repository of the work directory: %v", err)

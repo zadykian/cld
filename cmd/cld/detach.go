@@ -15,9 +15,9 @@ moved over another since, or another took the focus. Elsewhere, -s is needed.
 With -s and without -n, a session made in another repository or directory of
 the same name is refused.`
 
-// newDetach is cld detach, C-q d for a terminal that keeps C-q from tmux (decision 44): with -s
-// it detaches every terminal on the session, and without -n and -s, in one of cld's servers, the
-// terminal on that session used last (see session.Inside).
+// newDetach is cld detach, C-q d for a terminal that keeps C-q from tmux (decision 44). With -s
+// it detaches every terminal on the session. Without -n and -s, in one of cld's servers, it
+// detaches the terminal on that session used last (see session.Inside).
 func newDetach(typed string) *cobra.Command {
 	detach := &cobra.Command{
 		Use:   "detach [-n NAME] [-s SUFFIX]",

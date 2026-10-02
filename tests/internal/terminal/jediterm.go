@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"os"
@@ -30,8 +31,9 @@ type jediTerm struct {
 	stdout  *bufio.Reader
 }
 
-func newJediTerm(t testing.TB, s *sandbox.Sandbox) *jediTerm {
-	return &jediTerm{unsupported: unsupported{t: t, name: "jediterm"}, sandbox: s}
+func newJediTerm(tb testing.TB, s *sandbox.Sandbox) *jediTerm {
+	tb.Helper()
+	return &jediTerm{unsupported: unsupported{t: tb, name: "jediterm"}, sandbox: s}
 }
 
 type jediTermReply struct {
@@ -64,7 +66,10 @@ func (j *jediTerm) call(fields ...string) json.RawMessage {
 }
 
 func (j *jediTerm) log() string {
-	data, _ := os.ReadFile(filepath.Join(j.sandbox.Root, "jediterm.log"))
+	data, err := os.ReadFile(filepath.Join(j.sandbox.Root, "jediterm.log"))
+	if err != nil {
+		return err.Error()
+	}
 	return strings.TrimSpace(string(data))
 }
 
@@ -80,7 +85,12 @@ func (j *jediTerm) Start(argv []string, env map[string]string, dir string) {
 	if err != nil {
 		j.t.Fatal(err)
 	}
-	defer logFile.Close()
+	// The driver writes to a copy of its own once started.
+	defer func() {
+		if err := logFile.Close(); err != nil {
+			j.t.Error(err)
+		}
+	}()
 	j.cmd = exec.Command("java", "-cp", JediTermClasspath, "JediTermDriver")
 	j.cmd.Env = j.sandbox.Environ(extra)
 	j.cmd.Stderr = logFile
@@ -112,19 +122,18 @@ func (j *jediTerm) Paste(text string) {
 	j.call("paste", base64.StdEncoding.EncodeToString([]byte(text)))
 }
 
-// WheelUp waits for mouse reporting to scroll: JediTerm sends the wheel only while it is on, and
-// may not have taken in yet what turned it on. tmux turns every mouse mode off and on again when
-// a client attaches, and when the modes of claude's pane change.
+// WheelUp waits for mouse reporting to scroll: JediTerm sends the wheel only while reporting is
+// on, and may not have taken in yet what turned it on. tmux turns every mouse mode off and on
+// again when a client attaches, and when the modes of claude's pane change.
 func (j *jediTerm) WheelUp() {
 	j.t.Helper()
-	sandbox.WaitFor(j.t, 10*time.Second, "mouse reporting to scroll the wheel in jediterm", func() bool {
-		return string(j.call("wheel-up")) == "true"
-	})
+	sandbox.WaitFor(j.t, 10*time.Second, "mouse reporting to scroll the wheel in jediterm",
+		func() bool { return string(j.call("wheel-up")) == "true" })
 }
 
-// Click waits for mouse reporting, as WheelUp does: the driver's click sends nothing while it is
-// off, or the press alone where it goes off in between, which the next try follows with a whole
-// click.
+// Click waits for mouse reporting, as WheelUp does. The driver's click sends nothing while
+// reporting is off, or the press alone where it goes off between press and release. The next try
+// follows that press with a whole click.
 func (j *jediTerm) Click(key string) {
 	j.t.Helper()
 	button := mouseButton(j.t, key)
@@ -186,16 +195,21 @@ func (j *jediTerm) Close() {
 	if j.cmd == nil || j.cmd.Process == nil {
 		return
 	}
-	_ = j.stdin.Close() // the driver kills its pty and exits at end of input
+	// The driver kills its pty and exits at end of input.
+	if err := j.stdin.Close(); err != nil {
+		j.t.Error(err)
+	}
 	done := make(chan struct{})
 	go func() {
-		_ = j.cmd.Wait()
+		j.cmd.Wait() //nolint:errcheck // Close waits for the driver to go, killed or not
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		_ = j.cmd.Process.Kill()
+		if err := j.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			j.t.Error(err)
+		}
 		<-done
 	}
 }

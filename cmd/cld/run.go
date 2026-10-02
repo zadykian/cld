@@ -11,8 +11,9 @@ import (
 	"github.com/zadykian/cld/internal/output"
 )
 
-// commands maps each command, and each alias of one, to the command it runs: cld's, cobra's
-// completion, and the hidden commands through which the completion scripts ask what to offer.
+// commands maps each command, and each alias of one, to the command it runs. They are cld's,
+// cobra's completion, and the hidden commands through which the completion scripts ask what to
+// offer.
 var commands = map[string]string{
 	"join": "join", "detach": "detach", "kill": "kill", "list": "list", "restore": "restore",
 	"setup": "setup", "update": "update", "completion": "completion",
@@ -65,7 +66,7 @@ func run(args []string) error {
 	return output.Print(text)
 }
 
-// noFiles turns cobra's answer to __complete, text, into one that offers no file names: cobra
+// noFiles turns cobra's answer to __complete, text, into one that offers no file names. cobra
 // answers ":0", on which shells offer them, where it cannot read the line (see
 // docs/design/findings/environment.md, "Completion"). No argument of cld's is a file.
 func noFiles(text string) string {

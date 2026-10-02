@@ -18,8 +18,8 @@ import (
 var days = regexp.MustCompile(`^([0-9]+\.?[0-9]*|\.[0-9]+)$`)
 
 // idleLimit is how long a session may stay idle before the sweep ends it: CLD_IDLE_DAYS days, 30
-// where unset or empty, and 0, no limit, for 0 or one longer than a time.Duration holds. Anything
-// else is refused rather than read as another limit (decision 46.3).
+// where unset or empty. A CLD_IDLE_DAYS of 0, or one longer than a time.Duration holds, gives 0,
+// no limit. Anything else is refused rather than read as another limit (decision 46.3).
 func idleLimit() (time.Duration, error) {
 	value := os.Getenv("CLD_IDLE_DAYS")
 	if value == "" {
@@ -37,10 +37,10 @@ func idleLimit() (time.Duration, error) {
 	return time.Duration(limit), nil
 }
 
-// sweep ends each of sessions idle for longer than limit, none where limit is 0 (decision 46),
-// and returns the sessions as list then shows them, those it ended as ended where the record
-// keeps them. It keeps the session whose server cld runs on, and left, the one a move has just
-// left (decisions 46.2 and 51.5).
+// sweep ends each of sessions idle for longer than limit, none where limit is 0 (decision 46).
+// It returns the sessions as list then shows them, those it ended as ended where the record keeps
+// them. It keeps the session whose server cld runs on, and left, the one a move has just left
+// (decisions 46.2 and 51.5).
 func sweep(tmux *session.Tmux, sessions []session.Session, limit time.Duration,
 	left string) []session.Session {
 	if limit == 0 {

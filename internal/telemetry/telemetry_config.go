@@ -33,9 +33,9 @@ func extraConfig(path string) (string, error) {
 }
 
 // collectorConfig is cld's collector config: an OTLP/gRPC receiver on 127.0.0.1:port and an
-// exporter per endpoint, otlp_grpc/local and otlp_grpc/remote, which --collector-config can refer
-// to by name. The local one gives up after 30 s, and the collector's own metrics are off
-// (decisions 18 and 18.7).
+// exporter per endpoint, otlp_grpc/local and otlp_grpc/remote. The file --collector-config gives
+// can refer to them by name. The local one gives up after 30 s, and the collector's own metrics
+// are off (decisions 18 and 18.7).
 func collectorConfig(port int, local, remote *Endpoint) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: %s\n",

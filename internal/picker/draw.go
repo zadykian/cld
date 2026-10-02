@@ -47,8 +47,8 @@ func (l *list) frame() string {
 	return out.String()
 }
 
-// lines are the lines the list shows, styled: the header, the rows in view with the selected one
-// marked and in inverse video, or "no sessions", then a blank line and the footer. A terminal too
+// lines are the lines the list shows, styled: the header, the rows in view or "no sessions", then
+// a blank line and the footer. The selected row is marked and in inverse video. A terminal too
 // short for them all loses the blank line, then the header, then the footer.
 func (l *list) lines() []string {
 	nameWidth, stateWidth := 4, 8
@@ -98,8 +98,8 @@ func (l *list) lines() []string {
 }
 
 // waiting is line, the row of session s cut at the terminal's width, with the word waiting in bold
-// as far as line holds it, where claude waits for an answer (decision 49). The word follows the
-// marker, the name nameWidth wide and the state, in cells.
+// where claude waits for an answer (decision 49). The bold goes as far as line holds the word,
+// which follows the marker, the name nameWidth wide and the state, in cells.
 func waiting(line string, s session.Session, nameWidth int) string {
 	if s.Status != "waiting" {
 		return line
@@ -158,7 +158,7 @@ func (l *list) footer() string {
 }
 
 // cells is the number of terminal cells text takes: two for a wide character, none for a
-// combining one, and one for any other, ambiguous ones such as ↑, · or é included (decision 14.7).
+// combining one, and one for any other. Ambiguous ones such as ↑, · or é take one (decision 14.7).
 func cells(text string) int {
 	count := 0
 	for _, r := range text {

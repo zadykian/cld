@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// Detach detaches every terminal attached to session cld-SUFFIX, for cld detach -s, as C-q d in
-// each would, for a terminal that keeps C-q from tmux (decision 44.1). It refuses what kill
-// refuses. With no terminal on the session, the if keeps detach-client from failing. A detach that
+// Detach is cld detach -s, for a terminal that keeps C-q from tmux (decision 44.1). It detaches
+// every terminal on session cld-SUFFIX, as C-q d in each would, and refuses what kill refuses.
+// With no terminal on the session, the if keeps detach-client from failing. A detach that
 // fails is its exit status, after tmux's message.
 func (t *Tmux) Detach(suffix string, home Home) error {
 	server, exists, _, made, err := t.lookup(context.Background(), suffix)
@@ -55,7 +55,7 @@ func (t *Tmux) DetachTerminal() error {
 }
 
 // Inside reports whether cld runs inside one of cld's servers, as TMUX names the socket of server
-// cld-NAME: there cld detach without -n and -s detaches the terminal (see DetachTerminal). Unlike
+// cld-NAME. There cld detach without -n and -s detaches the terminal (see DetachTerminal). Unlike
 // OwnPane it needs no terminal, as claude runs ! cld detach without one (decision 44.2).
 func Inside() bool {
 	_, _, found := ownServer()

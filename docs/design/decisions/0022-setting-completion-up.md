@@ -37,7 +37,8 @@ directory of cld's, which lines in `.zshrc` load.
 
 The lines put that directory first on `$fpath` and register the script. They run `compinit -i` only
 where nothing has, since a second one drops what the first set up. `-i` skips insecure directories,
-such as Homebrew's, instead of asking. The lines do nothing without the script, and run no cld. They
+such as Homebrew's, instead of asking. A `compinit` after them still finds the script on
+`$fpath`, by its `#compdef` line. The lines do nothing without the script, and run no cld. They
 name the directory by zsh's variables, to hold on every machine, and go in once.
 
 ### 22.4 Writing the files
@@ -51,10 +52,10 @@ bash-completion there is Debian's and Ubuntu's default, and on macOS the user's 
 Once cld is replaced ([decision 21.3](0021-self-update.md)), the new release prints each script,
 which its cobra may have changed, and cld writes those that differ. Every release has
 `completion SHELL`, and running `setup completion` instead would bring back lines a user removed. A
-file that does not start as cobra's script does is left alone. A failure to write is a warning, as
-the maintainer asked. The refresh runs after update's handling of signals
-([decision 21.4](0021-self-update.md)). A signal then ends cld as it ends other commands, and can
-leave configfile's temporary file beside the script.
+file that does not start as cobra's script does is left alone, and one without descriptions is
+printed anew without them. A failure to write is a warning, as the maintainer asked. The refresh
+runs after update's handling of signals ([decision 21.4](0021-self-update.md)). A signal then ends
+cld as it ends other commands, and can leave configfile's temporary file beside the script.
 
 ### 22.6 Cobra's last line of help
 

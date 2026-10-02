@@ -44,7 +44,7 @@ func systemdQuoted(value string, command bool) string {
 	return `"` + value + `"`
 }
 
-// restoreUnit is the unit setup restore writes, where cld runs with the environment env: it runs
+// restoreUnit is the unit setup restore writes, where cld runs with the environment env. It runs
 // cld, by the file it runs from, as cld restore, with the PATH, and the TMUX_TMPDIR,
 // XDG_STATE_HOME and CLD_IDLE_DAYS that env sets.
 func restoreUnit(t *testing.T, env map[string]string) string {

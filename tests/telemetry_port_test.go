@@ -79,8 +79,8 @@ func telemetryPortStoppedEndpoint(t *testing.T) {
 }
 
 // telemetryPortChoice is a collector before a setup, {port} in container for the port the test
-// holds if held or leaves free, passed with --port if given, and whether the collector keeps
-// that port.
+// holds if held or leaves free. The port is passed with --port if given, and kept is whether the
+// collector keeps it.
 type telemetryPortChoice struct {
 	name              string
 	container         string

@@ -29,8 +29,8 @@ func yourTmuxLines(before37 bool) string {
 }
 
 // tmuxOlder reports whether the tmux the tests run - cld's, and the tmux cld runs in - is older
-// than major.minor, from its tmux -V: "tmux 3.5a" is 3.5, and a development build's
-// "tmux next-3.8" 3.8. One without a version, "tmux master", is not older.
+// than major.minor. It reads tmux -V, where one without a version, "tmux master", is not older.
+// Of the others, "tmux 3.5a" is 3.5, and a development build's "tmux next-3.8" 3.8.
 func tmuxOlder(t *testing.T, major, minor int) bool {
 	t.Helper()
 	out, err := exec.Command(sandbox.RealTmux, "-V").Output()

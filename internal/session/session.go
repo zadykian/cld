@@ -14,18 +14,18 @@ type Session struct {
 	State string
 	// Attached is whether a terminal is attached, claude exited or not.
 	Attached bool
-	// Status is what claude is doing, as statusHooks keep it: "busy", "waiting" or "idle", or ""
-	// where no hook has set it, once claude has exited and for a session that has ended. It goes
-	// by the active pane, and has the hooks' limits (decisions 49.1 and 49.5).
+	// Status is what claude is doing, as statusHooks keep it: "busy", "waiting" or "idle". Status
+	// is "" where no hook has set it, once claude has exited, and for a session that has ended. It
+	// goes by the active pane, and has the hooks' limits (decisions 49.1 and 49.5).
 	Status string
 	// PIDs are the process ids of the programs in the session's panes, claude's among them. A pane
 	// keeps its pid once its program has exited, and a session made again has others (see End).
 	PIDs []string
-	// Directory is the directory claude is in now, or once it has exited the one its session
-	// started in, and for a session that has ended the one its entry names.
+	// Directory is the directory claude is in now, or once claude has exited, the one its session
+	// started in. A session that has ended has the one its entry names.
 	Directory string
-	// Home is where join made the session, as @cld-home has it (see Home); "" for a session of a
-	// cld that recorded none, 0.8.2 or earlier, and for one that has ended.
+	// Home is where join made the session, as @cld-home has it (see Home). A session that has ended
+	// has "", as does one of a cld that recorded none, 0.8.2 or earlier.
 	Home string
 	// Idle is how long the session had been idle when Sessions read it, 0 while a terminal is
 	// attached (decision 46.1). A time tmux does not give as a number, or a time to come, counts
@@ -43,7 +43,7 @@ func (s Session) ShownState() string {
 }
 
 // LastActive is Idle as list shows it: "now" under a minute, and otherwise in whole minutes, hours
-// or days, the largest that fits; "-" for a session that has ended (decision 46.5).
+// or days, the largest that fits. A session that has ended shows "-" (decision 46.5).
 func (s Session) LastActive() string {
 	switch {
 	case s.State == Ended:
@@ -64,8 +64,8 @@ func endedSession(r entry) Session {
 }
 
 // EndedSession is session cld-SUFFIX as Sessions would read it now that the idle sweep has ended
-// it, without reading every server again, and whether there is one: none where cld's record keeps
-// no entry of it.
+// it, without reading every server again. The bool says whether there is one: none where cld's
+// record keeps no entry of it.
 func EndedSession(suffix string) (Session, bool) {
 	r, ok := recorded(suffix)
 	if !ok {

@@ -158,7 +158,8 @@ func (r *detachRig) bySession(t *testing.T, third statusTerminal) {
 }
 
 // withoutTerminal runs detach with no terminal on the server, then with one only on a session
-// claude made there, which tmux's detach-client would fail on or detach (decision 44.2).
+// claude made there. tmux's detach-client would fail on the first, and detach that terminal on the
+// second (decision 44.2).
 func (r *detachRig) withoutTerminal(t *testing.T) {
 	t.Helper()
 	r.quiet(t, "detach -s a with no terminal", nil, "detach", "-s", "a")
@@ -173,7 +174,7 @@ func (r *detachRig) withoutTerminal(t *testing.T) {
 	r.clients(t, "with a terminal on side", "side")
 }
 
-// inShell runs detach in a shell on a's server, in a window of its own, without TMUX_PANE: tmux
+// inShell runs detach in a shell on a's server, in a window of its own, without TMUX_PANE. tmux
 // finds its pane by its terminal, and not the session used last, side, which a terminal attaches
 // to after one attaches to a.
 func (r *detachRig) inShell(t *testing.T) {
