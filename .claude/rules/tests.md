@@ -66,6 +66,7 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   collector's port. `telemetry_expect_test.go` holds what a setup does, and
   `telemetry_listen_test.go` the ports the tests take.
 - `install_test.go` and `update_test.go`: `install.sh` and `cld update`, against releases that an
-  HTTP server of the test's serves.
+  HTTP server of the test's serves; `install_release_test.go`: the release and binary `install.sh`
+  picks; `install_refusals_test.go`: what it refuses.
 - `helpers_TOPIC_test.go`: the helpers that more than one test file uses, a file per topic, such
   as `helpers_list_test.go` for the interactive list. A helper of one file's tests stays there.
