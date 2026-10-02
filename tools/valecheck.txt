@@ -1,6 +1,4 @@
 # The files that fail Vale (tools/valecheck): the list may only shrink.
-cmd/cld/commands.go
-cmd/cld/main.go
 internal/completion/completion.go
 internal/configfile/configfile.go
 internal/fail/fail.go

@@ -10,6 +10,12 @@ The invariants a change to the command line keeps, each linking the decision tha
 reasons. The [overview](../../docs/design/overview.md#the-command-line-on-cobra) lists how cld
 overrides cobra.
 
+## The packages
+
+- Package `main` in `cmd/cld` holds `main`, the root command and a file per command.
+- What the commands share goes in a package of `cmd/cld/internal`, which exports only what a
+  command uses. The [overview](../../docs/design/overview.md#the-packages) says what each holds.
+
 ## The command line
 
 - Keep cobra's defaults overridden: the first argument and the one after `setup` checked before
@@ -30,7 +36,7 @@ overrides cobra.
   [31](../../docs/design/decisions/0031-a-terminal-to-attach-from.md) and
   [50](../../docs/design/decisions/0050-one-command-join.md)).
 - `join` refuses a word after `--` that cld gives claude itself, that resumes a conversation, or
-  with which claude leaves the session (`claudeOptions`;
+  with which claude leaves the session (`claudeOptions` in `cmdline`;
   [decision 41](../../docs/design/decisions/0041-claude-options.md)).
 - The default NAME, from the repository or the directory, is the one name cld changes. Messages name
   a session back as `-n NAME -s SUFFIX`

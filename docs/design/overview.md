@@ -67,8 +67,13 @@ makes on its server, then behave as plain tmux.
 
 ## The packages
 
-- `cmd/cld`: the command line on cobra, the commands' help texts, argument errors, and which
-  checks run in which order.
+- `cmd/cld`: the command line on cobra, a file per command with its help text, and which checks
+  run in which order. What the commands share is in `cmd/cld/internal`:
+  - `cmdline`: the checks of arguments and options, cld's messages for pflag's errors, `-h` and
+    `--help`, the words `join` gives claude, and the `setup` commands that run on Linux alone.
+  - `naming`: `-n` and `-s`, the session's name they make, and their completion.
+  - `idle`: `CLD_IDLE_DAYS` and the sweep that ends idle sessions
+    ([decision 46](decisions/0046-idle-sessions.md)).
 - `internal/session`: the tmux side, and cld's record of its sessions. `switch.go` moves a
   terminal between servers, `record.go` keeps the record and `restore.go` is `cld restore`.
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
@@ -103,8 +108,8 @@ apart from its message: the list's footer shows the message alone.
 ### The command line on cobra
 
 cld overrides cobra's defaults (cobra 1.10.2, pflag 1.0.9) where they would change its command
-line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cld` give each
-reason.
+line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cld` and
+`cmd/cld/internal/cmdline` give each reason.
 
 - cld checks the first argument before cobra, which takes an unknown command for an argument of
   the root and runs `cld -n x join` as `join -n x`.
