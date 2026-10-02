@@ -10,8 +10,6 @@ internal/restore/restore.go package=31
 internal/session/record.go lines=609 comments=11
 internal/session/restore.go comments=2
 internal/session/switch.go lines=523 comments=13
-internal/telemetry/settings.go comments=1
-internal/telemetry/telemetry.go lines=671 comments=6 package=43
 internal/tool/tool.go comments=1
 internal/update/update.go lines=334 package=21
 tests/completion_test.go lines=573 comments=3

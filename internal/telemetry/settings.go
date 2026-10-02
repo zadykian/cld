@@ -2,19 +2,18 @@ package telemetry
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/zadykian/cld/internal/configfile"
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// Claude Code's user settings, whose env Setup edits. The edit keeps what cld does not manage (see
-// internal/configfile): the members of the top-level object and of env are written back in the
-// file's order, their values as the file has them, byte for byte, in the file's indentation. A
-// key cld sets keeps its place, a new one goes at the end of env. The file is replaced
-// atomically, a symbolic link keeps pointing at it, and a missing file and its directory are
-// created, as Claude Code would.
+// Claude Code's user settings, whose env Setup edits as internal/configfile edits a file: what cld
+// does not manage stays byte for byte, in the file's order. A key cld sets keeps its place, and a
+// new one goes at the end of env.
 
 // setting is an env key Setup manages: set to value, or removed.
 type setting struct {
@@ -100,8 +99,8 @@ func (s *settings) apply(wanted []setting) []string {
 	return changes
 }
 
-// write replaces the settings file with the settings: every member as it was, env as apply left
-// it.
+// write replaces the settings file with the settings: every other member unchanged, and env as
+// apply left it.
 func (s *settings) write() error {
 	members, at := append([]configfile.Member(nil), s.Members...), s.envAt
 	if at < 0 {
@@ -109,5 +108,37 @@ func (s *settings) write() error {
 	}
 	members[at].Value = s.Object(s.env, 1)
 	s.Members, s.envAt = members, at
-	return s.JSON.Write()
+	return s.Write()
+}
+
+// envSettings are the env keys Setup manages, in the order it adds them, for a collector on port
+// (decision 18.6). A signal's own endpoint, which would bypass the collector, is removed.
+func envSettings(port int, local bool) []setting {
+	settings := []setting{
+		{key: "CLAUDE_CODE_ENABLE_TELEMETRY", value: "1"},
+		{key: "OTEL_METRICS_EXPORTER", value: "otlp"},
+		{key: "OTEL_EXPORTER_OTLP_PROTOCOL", value: "grpc"},
+		{
+			key:   "OTEL_EXPORTER_OTLP_ENDPOINT",
+			value: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
+		},
+	}
+	// For --local alone: the beta turns claude's traces on, and the tool details put Bash
+	// commands and MCP server and tool names on events and spans.
+	for _, s := range []setting{
+		{key: "OTEL_TRACES_EXPORTER", value: "otlp"},
+		{key: "OTEL_LOGS_EXPORTER", value: "otlp"},
+		{key: "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA", value: "1"},
+		{key: "OTEL_LOG_TOOL_DETAILS", value: "1"},
+	} {
+		s.remove = !local
+		settings = append(settings, s)
+	}
+	for _, signal := range []string{"TRACES", "METRICS", "LOGS"} {
+		for _, what := range []string{"ENDPOINT", "PROTOCOL"} {
+			key := "OTEL_EXPORTER_OTLP_" + signal + "_" + what
+			settings = append(settings, setting{key: key, remove: true})
+		}
+	}
+	return settings
 }
