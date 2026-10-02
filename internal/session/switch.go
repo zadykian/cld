@@ -4,12 +4,12 @@ package session
 // the session, and Enter there moves the terminal to the session picked; C-q ( and C-q ) move it to
 // the previous and the next session that runs, in the list's order, and C-q L back to the session
 // it came from; and cld join, run in a pane of the session - ! cld join in claude - moves it to the
-// session it names (decision 51 in docs/design.md). tmux moves a client between the sessions of one
-// server (switch-client), and each session of cld's has a server of its own: what moves the
-// terminal is detach-client -E, which has the terminal's tmux client run a shell command in its own
+// session it names (docs/design/decisions/0051-moving-between-sessions.md). tmux moves a client
+// between the sessions of one server (switch-client), and each session of cld's has a server of
+// its own: detach-client -E moves the terminal, having its tmux client run a shell command in its
 // place, as if the terminal had run it after a detach - with the terminal's environment and
-// directory, not the pane's (see Findings in docs/design.md). The command runs cld join, which
-// attaches to the session, brings it back or creates it, as it would in the terminal.
+// directory, not the pane's (see docs/design/findings/tmux-terminal.md). The command runs cld join,
+// which attaches to the session, brings it back or creates it, as it would in the terminal.
 //
 // tmux runs the command with the session's default-shell, the user's shell - SHELL, or else the
 // user's login shell, as the server started - which it also puts in the command's SHELL. So the
@@ -74,9 +74,9 @@ type Switch struct {
 // has to be one of that server's live panes, and the server one that cld started (see OwnPane) - a
 // shell in a window of the session, claude's external editor; where it is none, as for claude's !
 // and Bash tool, which run a command with the pane's TMUX and TMUX_PANE and no terminal (see
-// Findings in docs/design.md), the server has to have cld's mark, which tmux says (see mark). In a
-// pane of any other tmux, and in a terminal that is no pane of the server TMUX names, cld attaches
-// the terminal there, as in any other (see keptKeys).
+// docs/design/findings/claude.md), the server has to have cld's mark, which tmux says (see mark).
+// In a pane of any other tmux, and in a terminal that is no pane of the server TMUX names, cld
+// attaches the terminal there, as in any other (see keptKeys).
 func (t *Tmux) Switching() *Switch {
 	socket, suffix, found := ownServer()
 	if !found {
@@ -99,7 +99,7 @@ func (t *Tmux) Switching() *Switch {
 
 // SwitchClient is the terminal of tmux client client on the server TMUX names, which the session's
 // keys name to cld list --switch (see switchKeys): the popup of C-q s, and the run-shell of C-q (,
-// C-q ) and C-q L, have TMUX, and no TMUX_PANE (see Findings in docs/design.md).
+// C-q ) and C-q L, have TMUX, and no TMUX_PANE (see docs/design/findings/tmux-terminal.md).
 func SwitchClient(client string) (*Switch, error) {
 	socket, suffix, found := ownServer()
 	if !found {
@@ -295,10 +295,10 @@ func (t *Tmux) Step(ctx context.Context, sw *Switch, to string) error {
 // output the popup takes away as it closes, and tmux would show over claude's pane from the keys'
 // run-shell (see switchKeys). -l shows text as it is, as showKept's line: as a format, a "#" in it
 // would start one, and tmux would hand it to strftime first, where a "%" - of a path in it, say,
-// or of tmux's own error - names the time (see Findings in docs/design.md). -C keeps claude's pane
-// drawn meanwhile, where tmux would draw nothing more of it until the message goes (see showKept):
-// tmux 3.5, which has no -C, holds it back for those three seconds at most. A message tmux cannot
-// show is lost.
+// or of tmux's own error - names the time (see docs/design/findings/tmux-terminal.md). -C keeps
+// claude's pane drawn meanwhile, where tmux would draw nothing more of it until the message goes
+// (see showKept): tmux 3.5, which has no -C, holds it back for those three seconds at most. A
+// message tmux cannot show is lost.
 func (t *Tmux) Tell(sw *Switch, text string) {
 	if sw.client == "" {
 		return
@@ -329,16 +329,16 @@ func (t *Tmux) last(ctx context.Context, suffix string) (string, error) {
 // switchTerminal has the terminal of sw run cld join with words in its tmux client's place (see
 // moving), once it has checked the shell that tmux runs it with (see checkShell). A terminal a key
 // named goes by its client, which detach-client -t takes; the popup it runs in closes with the
-// detach, and tmux ends the list in it, before or after this tmux command returns (see Findings in
-// docs/design.md), so nothing follows. Otherwise tmux finds the terminal as a bare cld detach does
-// (see DetachTerminal), by cld's stdin, handed to it, and else by TMUX_PANE, and runs
-// detach-client only where a terminal is on the pane's session - a bare one would take a terminal
-// of another session of the server, one claude made - and the server has cld's mark: without
-// either, cld refuses, since there is no terminal to move. The mark and the count of terminals come
-// first, in the same tmux command, and the command goes quoted for tmux's parser, which reads a
-// word quoted as sh's is, within the if's command. The words join was given in a pane go encoded,
-// a third longer (see encodeMove), and where they make tmux's command longer than tmux takes (see
-// commandLimit), join refuses them, as it would where it made the session.
+// detach, and tmux ends the list in it, before or after this tmux command returns (see
+// docs/design/findings/tmux-terminal.md), so nothing follows. Otherwise tmux finds the terminal as
+// a bare cld detach does (see DetachTerminal), by cld's stdin, handed to it, and else by TMUX_PANE,
+// and runs detach-client only where a terminal is on the pane's session - a bare one would take a
+// terminal of another session of the server, one claude made - and the server has cld's mark:
+// without either, cld refuses, since there is no terminal to move. The mark and the count of
+// terminals come first, in the same tmux command, and the command goes quoted for tmux's parser,
+// which reads a word quoted as sh's is, within the if's command. The words join was given in a pane
+// go encoded, a third longer (see encodeMove), and where they make tmux's command longer than tmux
+// takes (see commandLimit), join refuses them, as it would where it made the session.
 func (t *Tmux) switchTerminal(sw *Switch, words ...string) error {
 	cld, err := self()
 	if err != nil {
@@ -423,9 +423,9 @@ var plain = regexp.MustCompile(`^[A-Za-z0-9_@+:,./-][A-Za-z0-9_@+=:,./-]*$`)
 // shellArgument is word as one word of the command a terminal runs in its client's place (see
 // moving): as it is where it is plain, and otherwise within single quotes, but for each "'" and
 // "\", which go outside them with a "\" before them. sh, bash, zsh, fish, ksh and csh read that
-// alike (see Findings in docs/design.md), where fish reads a "\" before a "\" or a "'" within
-// single quotes as an escape, and sh as a "\": quoted as sh quotes it (see shellWord), a word would
-// end its quotes early in fish, and what follows run as a command of its own.
+// alike (see docs/design/findings/environment.md), where fish reads a "\" before a "\" or a "'"
+// within single quotes as an escape, and sh as a "\": quoted as sh quotes it (see shellWord), a
+// word would end its quotes early in fish, and what follows run as a command of its own.
 func shellArgument(word string) string {
 	if plain.MatchString(word) {
 		return word
@@ -460,9 +460,9 @@ func shellArgument(word string) string {
 // run cld list --switch --to previous, next or last. Each is a run-shell -b of sh, whose command
 // run-shell expands as a format: #{q:client_name} is the terminal's client, quoted for sh, and
 // each "#" of the paths is doubled, as "##" expands to "#". tmux hands the words of the popup's
-// command to the program as they are, with no shell (see Findings in docs/design.md), but reads
-// cld's path as it reads each word of a command, where one ending in ";" would end it (see
-// literal). The keys print nothing and exit 0 whatever happens: cld list --switch says on the
+// command to the program as they are, with no shell (see docs/design/findings/tmux-terminal.md),
+// but reads cld's path as it reads each word of a command, where one ending in ";" would end it
+// (see literal). The keys print nothing and exit 0 whatever happens: cld list --switch says on the
 // message line what goes wrong (see Tell). None where cld cannot find the file it runs from, cld
 // "": tmux's own keys stay.
 func switchKeys(tmux, socket, cld string) []string {

@@ -29,8 +29,8 @@ var terminals = strings.Split(envOr("CLD_TERMINALS", "tmux"), ",")
 func TestMain(m *testing.M) {
 	// git runs hooks and the commands of rebase --exec with GIT_* variables set, in a linked
 	// worktree GIT_DIR among them; git init DIR, as the tests run it, would then initialise that
-	// repository again instead of DIR, and take it for a bare one (see Findings in
-	// docs/design.md). Nothing the tests run inherits any of them.
+	// repository again instead of DIR, and take it for a bare one (see
+	// docs/design/findings/environment.md). Nothing the tests run inherits any of them.
 	for _, variable := range os.Environ() {
 		if name, _, _ := strings.Cut(variable, "="); strings.HasPrefix(name, "GIT_") {
 			_ = os.Unsetenv(name)

@@ -3,13 +3,11 @@
 [![ci](https://github.com/zadykian/cld/actions/workflows/ci.yml/badge.svg)](https://github.com/zadykian/cld/actions/workflows/ci.yml)
 
 Run [Claude Code](https://code.claude.com) in named sessions, each on a private tmux server of its
-own: detach, close the terminal, and reattach later - from the same terminal or another one -
-without losing the conversation. The server ignores your `~/.tmux.conf` and is set up for claude:
-Shift+Enter, the mouse wheel, focus events, links and clipboard copies work, and the prefix is
-`C-q`, which claude leaves free. claude's notifications reach the terminal too, once its setting
-`preferredNotifChannel` names a channel your terminal takes: see [Notifications](#notifications).
-Inside your own tmux, only what that tmux lets through works: see the
-[guide](docs/guide.md#inside-your-own-tmux).
+own. Detach, close the terminal, and join again later, from that terminal or another, with the
+conversation as you left it. The server ignores your `~/.tmux.conf` and is set up for claude:
+Shift+Enter, the mouse wheel, focus events, links and clipboard copies work, with
+[gaps in JetBrains IDEs](docs/guide/terminal.md#jetbrains-ides). Its prefix is `C-q`, which claude
+leaves free.
 
 ## Install
 
@@ -17,332 +15,122 @@ Inside your own tmux, only what that tmux lets through works: see the
 curl -fsSL https://github.com/zadykian/cld/releases/latest/download/install.sh | sh
 ```
 
-The script downloads cld for your system - Linux or macOS, on amd64 or arm64 - from the latest
-release, checks it against the release's `cld.sha256` and installs it as `~/.local/bin/cld`, which
-has to be on your `PATH`; `cld update` upgrades it later. `CLD_INSTALL_DIR` installs cld
-elsewhere, and `CLD_VERSION` another release, 0.4.0 or later:
-`... | CLD_INSTALL_DIR=~/bin CLD_VERSION=0.4.0 sh`. See the [guide](docs/guide.md#installing) for
-what it checks, and for installing by hand. From a clone, `make install` builds cld into
-`~/.local/bin` (`PREFIX=/usr/local` for another prefix); it needs Go 1.26 or newer.
+The script installs cld for Linux or macOS, on amd64 or arm64, as `~/.local/bin/cld`, which has to
+be on your `PATH`. It checks the download against the release's `cld.sha256` first.
+`CLD_INSTALL_DIR` installs cld elsewhere, and `CLD_VERSION` another release, 0.4.0 or later:
+`... | CLD_INSTALL_DIR=~/bin CLD_VERSION=0.4.0 sh`. From a clone, `make install` builds cld into
+`~/.local/bin`, or under another `PREFIX`, with Go 1.26 or newer. `cld update` upgrades cld later.
+The guide covers [installing](docs/guide/install-and-upgrade.md) and
+[upgrading](docs/guide.md#upgrading).
 
-Requirements: tmux 3.5a or newer, and Claude Code 2.1.232 or newer as `claude` on the `PATH`; git
-for `cld join -w`, and to name sessions after their repository; Docker, on Linux, for
-`cld setup telemetry`; systemd, on Linux, for `cld setup restore`.
+cld needs:
 
-Debian 13 has tmux 3.5a and Ubuntu 26.04 3.6a; Debian 12 (3.3a, 3.5a in bookworm-backports),
-Ubuntu 24.04 (3.4) and RHEL 9 and 10 (3.2a, 3.3a) ship an older one. tmux 3.7 or newer is
-recommended: only there does claude draw with synchronized output, which flickers less.
-[Homebrew](https://formulae.brew.sh/formula/tmux) has it on macOS and Linux, as do Debian testing
-and unstable; or build a [tmux release](https://github.com/tmux/tmux/releases) from source. cld
-0.3.0 still runs on tmux 3.3 and 3.4: see [Upgrading](docs/guide.md#upgrading), which also covers
-upgrading tmux and cld.
-
-### Shell completion
-
-`cld setup completion SHELL` sets up completion in bash, zsh or fish: TAB then completes the
-commands and their options, the sessions of `-n` and `-s` - for `cld join` those that run and
-those that have ended, for `cld detach` those that run - and the servers of
-`cld setup project --mcp`.
-Run it once, then start a new shell:
-
-```sh
-cld setup completion zsh   # or bash, or fish
-```
-
-It writes the script that `cld completion SHELL` prints where the shell reads it - for zsh, with
-the lines that load it at the end of `~/.zshrc` - and `cld update` writes the script anew when a
-new release prints another. bash needs bash-completion 2, which Debian's and Ubuntu's `~/.bashrc`
-load, and completes with [ble.sh](https://github.com/akinomyoga/ble.sh) too. The
-[guide](docs/guide.md#shell-completion) says where each script goes, and how to set it up by hand,
-for macOS's bash 3.2 among others.
+- tmux 3.5a or newer. Debian 13 has 3.5a and Ubuntu 26.04 has 3.6a. Debian 12 ships 3.3a, with
+  3.5a in bookworm-backports. Ubuntu 24.04 (3.4) and RHEL 9 and 10 (3.2a, 3.3a) ship older ones.
+  [Homebrew](https://formulae.brew.sh/formula/tmux) has a newer one on macOS and Linux, as do
+  Debian testing and unstable. Or build a [tmux release](https://github.com/tmux/tmux/releases).
+  tmux 3.7 or newer is best: only there does claude draw with synchronized output, which flickers
+  less. cld 0.3.0 still runs on tmux 3.3 and 3.4 (see [upgrading](docs/guide.md#upgrading)).
+- Claude Code 2.1.232 or newer, as `claude` on the `PATH`.
+- git, for `cld join -w` and to name sessions after their repository.
+- On Linux, Docker for `cld setup telemetry`, and systemd for `cld setup restore`.
 
 ## Usage
 
-A session is named `NAME-SUFFIX`: it is the tmux session `cld-NAME-SUFFIX` on a tmux server of its
-own, `tmux -L cld-NAME-SUFFIX`, running `claude --name cld-NAME-SUFFIX`.
+A session is named `NAME-SUFFIX`, which `-n NAME` and `-s SUFFIX` give. `NAME` is by default the
+name of the git repository you are in, or else of the current directory, and `SUFFIX` the next
+index, for a new session. In a repository `api`, `cld join` twice makes the sessions `api-0` and
+`api-1`, and `cld join -s 1` attaches to the second again.
 
-`cld join` is the one command for a session: it attaches to the session where it runs, brings it
-back where it has ended, and creates it otherwise. `-n NAME` gives `NAME`, by default the name of
-the git repository you are in or, outside one, of the current directory; `-s SUFFIX` gives
-`SUFFIX`, which `cld join` otherwise makes an index, for a new session: `0`, or where sessions
-`NAME-INDEX` run or have ended within 30 days, the index above the highest of them. In a repository
-`api`, `cld join` twice, `cld join -s fix` and `cld join -n web` make the sessions `cld-api-0`,
-`cld-api-1`, `cld-api-fix` and `cld-web-0`, which `cld join -s 1` and `cld kill -n web -s 0` then
-reach; in `/root`, outside any repository, `cld join` makes `cld-root-0`. `cld kill` needs `-s`, as
-`cld detach` does outside claude. Repositories of one name share `NAME`: without `-n`, `cld join`,
-`cld detach` and `cld kill` refuse a running session that another repository or directory of the
-same name made.
-
-| Command | Action |
+| Command | What it does |
 |---|---|
-| `cld join [-n NAME] [-s SUFFIX] [-w] [--new] [--resume SESSION [--fork]] [--detach-others] [-- ARGS...]` | attach to the session, beside any other terminal on it (`--detach-others` detaches those); where it has ended, first resume its conversation where it ran; where there is none, or without `-s`, first create it in the current directory, with `-w` claude working in the git worktree `cld-NAME-SUFFIX`; `--new` and `--resume` create it over one that has ended too, claude starting a new conversation, or resuming `SESSION` - with `--fork` a copy of it; `ARGS` go to claude |
-| `cld detach [-n NAME] [-s SUFFIX]` | detach every terminal from the session; without `-n` and `-s`, as `! cld detach` in claude, the terminal used last, normally the one you typed it in |
-| `cld kill [-n NAME] -s SUFFIX` | end the session, its claude and its tmux server |
-| `cld list` | list the sessions: name, state (`attached`, `detached`, `exited` or `ended`) and claude's status (`busy`, `waiting` for you or `idle`), as in `detached, waiting`, when each was last active and claude's directory; on a terminal, join or kill one, or resume or forget one that has ended |
-| `cld restore` | bring back, detached, the sessions that ran when the machine stopped, each resuming its conversation where it ran |
-| `cld setup project [--mcp SERVER] [--permissions SET]` | set claude up in the project in the current directory |
-| `cld setup telemetry [--local URL] [--remote URL]` | send claude's telemetry through a local OpenTelemetry collector |
-| `cld setup completion SHELL` | set up completion in `bash`, `zsh` or `fish` |
-| `cld setup restore` | have your systemd run `cld restore` at login, or at boot; Linux |
-| `cld update` | update cld to the latest release, replacing the file it runs from, and the completion scripts |
-| `cld completion SHELL` | print the completion script for `bash`, `zsh` or `fish` |
-| `cld help [COMMAND]` | show the help of cld, or of a command; `-h` and `--help` do the same |
-| `cld version` | show the version |
+| `cld join` | attach to a session, bringing it back where it has ended, or creating it |
+| `cld detach` | detach the terminals from a session |
+| `cld kill` | end a session, its claude and its tmux server |
+| `cld list` | list the sessions and claude's status in each; on a terminal, join or kill one |
+| `cld restore` | bring back the sessions that ran when the machine stopped |
+| `cld setup` | set claude up in a project, telemetry, shell completion, or a restore at login |
+| `cld update` | update cld to the latest release |
 
-| Keys | Action |
-|---|---|
-| `C-q d` | detach; claude keeps running. Where the terminal keeps `Ctrl+Q` to itself, as VS Code and Rider can, `! cld detach` in claude does the same (see the [guide](docs/guide.md#terminals-that-take-c-q)) |
-| `C-q C-q` | send `C-q` to claude |
-| `C-q s` | show `cld list` over the session: `Enter` moves the terminal to the session picked, bringing it back where it has ended, and `Esc` closes the list |
-| `C-q (`, `C-q )` | move the terminal to the previous or the next session that runs, in the list's order |
-| `C-q L` | move the terminal back to the session it came from |
+`cld help COMMAND` gives each command's options. In a session, `C-q d` detaches, and `C-q s` shows
+the session list over it, to move the terminal to another session. `cld help` names the other
+keys. Where the terminal keeps `Ctrl+Q`, as VS Code and Rider can, `! cld detach` in claude
+detaches it (see [terminals that keep C-q](docs/guide/terminal.md#terminals-that-keep-c-q)).
 
-| Keys in `cld list` | Action |
-|---|---|
-| `↑` / `↓` | select a session |
-| `Enter` | join it, or resume one that has ended |
-| `Ctrl+X` twice within two seconds | kill it, or forget one that has ended; `Esc` after the first keeps it |
-| `Esc`, `Ctrl+C` | leave, printing the table; over a session (`C-q s`), close the list |
+## Features
 
-In a session, `! cld join` in claude moves the terminal to the session it names - `! cld join -s 1`,
-or `! cld join -w` for a new one in a worktree - creating it or bringing it back as `cld join`
-would in the terminal, with the terminal's environment, in claude's directory; `C-q s` and the
-keys above move it too. The session the terminal leaves runs on. See the
-[guide](docs/guide.md#moving-between-sessions).
+- **Sessions.** Repositories of one name share `NAME`: without `-n`, cld refuses a running session
+  that another of them made. claude keeps the environment of the shell that started its session.
+  See [sessions](docs/guide/sessions.md).
+- **Ending.** Leaving claude, with `/exit`, ends its session. A claude that fails keeps its
+  session, with its message on screen and a line saying how to end it, until `cld kill`. See
+  [ending a session](docs/guide/sessions.md#ending-a-session).
+- **The tab's title** names the session, and its mark turns while claude works. `cld list` shows
+  whether claude is busy, waiting for you or idle. See [in the terminal](docs/guide/terminal.md).
+- **Scrollback.** The terminal shows tmux, and its own scrollback sees nothing of the session. In
+  claude's classic renderer, tmux keeps the last 50000 lines, which the wheel or `C-q [` opens in
+  copy mode. See [scrollback and screen readers](docs/guide/terminal.md#scrollback).
+- **Notifications** reach every terminal on the session, once claude's setting
+  `preferredNotifChannel` names your terminal's channel: its default sends none under tmux. See
+  [notifications](docs/guide/terminal.md#notifications).
+- **Inside your own tmux**, claude gets only what that tmux lets through, and the session's last
+  line names the keys it keeps. See [inside your own tmux](docs/guide/inside-your-own-tmux.md).
+- **Moving between sessions.** `C-q s`, `C-q (`, `C-q )` and `C-q L` move the terminal, and so does
+  `! cld join` in claude. The session left runs on. See
+  [the session list](docs/guide/session-list.md#moving-between-sessions).
+- **Idle sessions.** A session with no terminal attached and no key typed for over 30 days ends at
+  the next `cld list`, or `cld join` without `-s`. `CLD_IDLE_DAYS` sets the days. See
+  [idle sessions](docs/guide/idle-sessions.md).
+- **Resuming.** cld keeps a record of each session for 30 days. `cld join` brings an ended session
+  back, its conversation resumed in the directory it ran in. `--resume` takes another
+  conversation, and `--fork` a copy. See [resuming a conversation](docs/guide/resuming.md).
+- **After a reboot**, `cld restore` brings back the sessions that ran, detached, and continues a
+  turn the reboot cut off. On Linux, `cld setup restore` has your systemd run it. See
+  [after a reboot](docs/guide/after-a-reboot.md).
+- **claude's options.** The words after `--` go to claude, as in
+  `cld join -- --model opus "review the diff"`. `cld join -w` has claude work in a git worktree
+  named after the session. See [claude's options and worktrees](docs/guide/claude-options.md).
+- **Project settings.** `cld setup project` shares through git what claude may do without asking,
+  and adds the IDE's MCP server. See [project settings](docs/guide/project-settings.md).
+- **Telemetry.** `cld setup telemetry` sends claude's
+  [telemetry](https://code.claude.com/docs/en/monitoring-usage) through an OpenTelemetry Collector
+  in Docker. See [telemetry](docs/guide/telemetry.md).
+- **Shell completion.** `cld setup completion SHELL` has bash, zsh or fish complete the commands,
+  their options and the sessions' names. See [shell completion](docs/guide/shell-completion.md).
+- **Remote Control** is claude's own setting, as without cld. While connected, the session's
+  transcript is stored on Anthropic's servers, as
+  [Claude Code's docs](https://code.claude.com/docs/en/remote-control) say. See
+  [Remote Control and agent view](docs/guide/sessions.md#remote-control-and-agent-view).
 
-Leaving claude (`/exit`, `Ctrl+C` twice) ends its session, which `cld list` then shows as
-`ended`. If claude exits with an error, the session stays, as `exited` in `cld list`, with its
-message on screen and a line below it that says how to end the session, until `cld kill` ends it
-or it has been idle for longer than 30 days (below).
-The [guide](docs/guide.md) has more on sessions, the list and what to do when cld refuses a name.
-
-Claude Code's [agent view](https://code.claude.com/docs/en/agent-view) is off in a session:
-`/background` (`/bg`), "Move to background and exit" in `/exit`'s dialog and `←` on an empty
-prompt would move the conversation to claude's background sessions, out of cld, ending the
-session or leaving claude there in agent view. A claude you start without cld keeps agent view;
-see [below](#cld-and-claude-codes-background-sessions) for choosing between the two.
-
-A session idle for longer than 30 days - no terminal attached, and no key typed into one - ends at
-the next `cld list`, or `cld join` without `-s`, as `cld kill` would end it, with a line on stderr:
-`cld: ended session 'api-0', idle for 31 days`. `cld list` shows it as `ended`, and `cld join`
-brings it back (below). `CLD_IDLE_DAYS` sets the days, and `0` ends none; see the
-[guide](docs/guide.md#idle-sessions).
-
-The terminal's tab shows the session, `✳ cld-NAME-SUFFIX`, and while claude works `◐` and `◑` in
-turn in place of the `✳`, as claude's own title does outside tmux; while claude works in a linked
-git worktree, the name ends in ` [w]`. claude tells tmux through hooks that cld gives it, which
-`cld list` reads too, to show whether claude is busy, waiting for you or idle; the
-[guide](docs/guide.md#sessions) says what they miss. Each hook starts a tmux client, and while the
-title turns so does each terminal on the session, every second: a tmux slow to start, such as
-Ubuntu's snap, holds claude up a moment as it starts, after each tool and as each turn starts and
-ends, and costs CPU for as long as the title turns.
-
-While attached, the terminal shows tmux, and its own scrollback and search see nothing of the
-session. In claude's classic renderer, which draws in the terminal's main screen, what scrolls off
-goes to tmux's history instead, the last 50000 lines, which the mouse wheel or `C-q [` opens in
-tmux's copy mode; claude's fullscreen renderer (`/tui fullscreen`) takes the wheel itself and
-scrolls its own transcript. See the [guide](docs/guide.md#scrollback), for screen readers too.
-
-[Remote Control](https://code.claude.com/docs/en/remote-control), with which you can also continue
-a session from claude.ai or the Claude app, is claude's own setting, as without cld: `/config`'s
-"Enable Remote Control for all sessions" connects every session as it starts, and
-`/remote-control` connects one. While it is connected, the session's transcript - your messages,
-claude's responses, tool activity - is stored on Anthropic's servers, as
-[Claude Code's docs](https://code.claude.com/docs/en/remote-control#connection-and-security) say.
-
-### Notifications
-
-claude notifies you when it finishes a task or waits for a permission while you are away - under
-tmux, only on the channel its setting `preferredNotifChannel` names. Its default, `"auto"`, goes by
-the terminal claude runs in, which in a session is tmux, and sends nothing. Name your terminal's
-channel in `~/.claude/settings.json` - `"iterm2"`, `"kitty"` or `"ghostty"`, or elsewhere
-`"terminal_bell"`, the bell - or in `/config`, as "Local notifications":
-
-```json
-{
-  "preferredNotifChannel": "iterm2"
-}
-```
-
-cld's server passes them on to every terminal on the session. See the
-[guide](docs/guide.md#notifications).
-
-### claude's options
-
-The words after `--` go to claude after cld's own arguments, where `cld join` starts claude: its
-options and a prompt to start with, as in
-`cld join -- --model opus --permission-mode plan "review the diff"`. Where the session runs, its
-claude has started, and `cld join` refuses them. A resumed conversation does not keep
-`--mcp-config`, `--plugin-dir`, `--add-dir` and `--fallback-model`: give them again to the
-`cld join` that resumes it. cld refuses the options it gives claude itself - `--name`, `--worktree`
-(`cld join -w` gives it), `--settings` - those that resume a conversation, such as `--resume` and
-`--continue` (`cld join` resumes, and `cld join --resume SESSION`), and those with which claude
-would not stay in the session, such as `-p` and `--bg`. claude reports the rest, and a claude that
-fails to start stays on screen with its message. See the [guide](docs/guide.md#claudes-options).
-
-### Resuming a conversation
-
-A session's conversation outlives it: after `cld kill`, a reboot or a crash it stays in Claude
-Code's history, and cld keeps a record of the session for 30 days, in `~/.local/state/cld`: the
-directory it ran in, and the ID of its conversation, which claude gives cld through a hook.
-`cld list` shows such a session as `ended`, and `cld join -n NAME -s SUFFIX` - `-s SUFFIX` alone
-where `NAME` is the repository's - brings it back: claude resumes its conversation by that ID in a
-new session, in the directory it ran in, from wherever you run it, whatever the conversation is
-named by then. `Enter` in `cld list` does the same, and `cld join --new` starts a new conversation
-in its place instead. After a reboot, `cld list` shows every session that ran as `ended`, and
-`cld restore` brings them all back (below). `cld join --resume SESSION` creates the session with
-another conversation: a session ID, a name - `cld-NAME-SUFFIX` for a session cld keeps no record
-of - or a search term for claude's picker. The conversation takes the session's name for good. By
-name, where several conversations have it - after `/clear`, or a `cld join --new` that gave an
-ended session's name again - claude opens its picker instead: pick one there, or resume it by its
-session ID, `cld join -s SUFFIX --resume ID`; `Ctrl+R`, once `Enter` has left the picker's search
-box, renames the one selected. `--fork` resumes a copy of `SESSION` under a new session ID, named
-after the session, and leaves `SESSION` as it was; it refuses a `SESSION` that is the session's own
-name, which the copy would take too. Do not resume a conversation that is open elsewhere without
-`--fork`: two claudes would write to one transcript, their messages interleaved, as the
-[Claude Code docs](https://code.claude.com/docs/en/sessions) say. claude refuses one that runs in
-its background sessions, naming `claude attach ID`, which opens it outside cld, and
-`claude stop ID`, after which `cld join` brings it back - after `cld kill`, where the session
-stays; `--fork` resumes a copy of it all the same. See the
-[guide](docs/guide.md#resuming-a-conversation) for more.
-
-### After a reboot
-
-A reboot ends every session, but not its conversation or cld's record of it. `cld restore` brings
-back each session that ran when the machine stopped - not those you ended, with `cld kill` or
-claude's `/exit`, nor those ended for being idle, or not given a prompt for longer than
-`CLD_IDLE_DAYS` days - as `cld join` would bring it back, but detached: claude resumes the
-session's conversation in the directory it ran in, with the environment the session started with,
-and `cld join` attaches to it. A claude that was in the middle of a turn is told to continue it,
-asking for permissions as in any turn. On Linux, `cld setup restore` has your systemd run
-`cld restore` as it starts:
-
-```sh
-cld setup restore
-```
-
-It writes and enables the user unit `cld-restore.service`. Your systemd starts at your first login,
-and at your last logout ends what it started, the sessions `cld restore` brought back among them,
-unless lingering is on for you: `loginctl enable-linger` has it start at boot, and keep them. The
-words given to claude after `--`, and panes split in a session, do not come back. See the
-[guide](docs/guide.md#after-a-reboot).
-
-### Worktrees
-
-`cld join -w`, as it creates a session, runs `claude --worktree cld-NAME-SUFFIX`, named as the
-session is: claude [creates the git worktree](https://code.claude.com/docs/en/worktrees)
-`.claude/worktrees/cld-NAME-SUFFIX` on the branch `worktree-cld-NAME-SUFFIX` - from your current
-`HEAD` - or reopens it, and works there. `cld kill` leaves the worktree, and `cld join -s SUFFIX`,
-run in the repository, takes the conversation back to it, without `-w`. See the
-[guide](docs/guide.md#worktrees).
-
-### Project settings
-
-`cld setup project` sets claude up in the project in the current directory:
-`.claude/settings.json` shares through git what claude may do without asking, and where it keeps
-plans; `.claude/settings.local.json` is for your own settings; and `.gitignore` keeps those, the
-plans and claude's worktrees out of git, so that what the project shares in `.claude` - commands,
-agents, skills - goes in. `--mcp` adds MCP servers to `.mcp.json`:
-
-```sh
-cld setup project --mcp goland,jbcontext   # or --mcp goland --mcp jbcontext
-```
-
-| `--mcp` | Server |
-|---|---|
-| `goland` | GoLand's own MCP server (Settings › Tools › MCP Server) |
-| `rider` | Rider's own MCP server (Settings › Tools › MCP Server) |
-| `jbcontext` | JetBrains Context's semantic code search, `jbcontext mcp` |
-
-`--permissions` says what claude may do without asking:
-
-| `--permissions` | claude may |
-|---|---|
-| `read-only` (default) | read files, run commands that only read (`git status`, `ls`, `cat`, `grep`, ...) and use the servers' tools that only read |
-| `cld` | as cld's own repository has it: also edit files and run `git`, `go`, `make`, `docker run` and more, and use every tool of the servers |
-| `none` | nothing more than claude allows by itself |
-
-The settings are shared: whoever accepts the folder's workspace trust gives claude what they allow,
-and `cld` amounts to running commands without a prompt - review the changes before you commit
-them. An IDE's port comes from `GOLAND_MCP_PORT` or `RIDER_MCP_PORT` where claude runs, or else is
-the IDE's default. cld edits files that exist in place, adding what they lack - a setting the
-project has keeps its value, and a server's entry in `.mcp.json` that differs from cld's is
-replaced - and removing nothing, so running it again changes nothing. See the
-[guide](docs/guide.md#project-settings).
-
-### Telemetry
-
-`cld setup telemetry` sends Claude Code's
-[telemetry](https://code.claude.com/docs/en/monitoring-usage) through an
-[OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) that it runs in Docker, as the
-container `cld-telemetry`, and points claude's user settings at it:
-
-```sh
-cld setup telemetry --local http://127.0.0.1:4319 --remote http://otel.example.com:4317
-```
-
-`--local` gets traces, metrics and logs - the JetBrains OpenTelemetry plugin in your IDE, say -
-and `--remote` metrics only, such as a team's collector; give either, or both.
-`--collector-config FILE` merges your YAML over the collector's config, for headers or TLS. Linux
-only. See the [guide](docs/guide.md#telemetry), turning it off included.
+When cld refuses a name or fails, see [troubleshooting](docs/guide/troubleshooting.md).
 
 ## cld and Claude Code's background sessions
 
-Claude Code keeps conversations running without a terminal too, and without tmux: `claude --bg`,
-or `/bg` or `←` in a conversation, hands one to a supervisor process; `claude attach ID` opens it
-again, and [agent view](https://code.claude.com/docs/en/agent-view), `claude agents`, lists them
-all on one screen. The two answer the same need, and you choose between them as you start
-claude: cld turns agent view off in its sessions, and a claude started without cld keeps it. cld
-keeps claude as you run it in a terminal: a session goes by a name, not an ID, and TAB completes
-it; claude keeps running, working or waiting, until you end it or leave it idle for 30 days; and
-it renders as your settings say, where an attached background session is always fullscreen. The
-[guide](docs/guide.md#cld-and-claude-codes-background-sessions) compares the two point by point,
-and says how to bring back into cld a conversation moved out of a session of an older cld.
+Claude Code keeps conversations running without a terminal too: `claude --bg`, `/bg` or `←` hands
+one to a supervisor, and [agent view](https://code.claude.com/docs/en/agent-view) lists them. You
+choose between the two as you start claude: cld turns agent view off in its sessions, and a claude
+started without cld keeps it. cld keeps claude as you run it in a terminal, under a name that TAB
+completes, until you end it or leave it idle. The guide compares the two
+[point by point](docs/guide/background-sessions.md).
 
-## cld and `claude --tmux`
-
-Claude Code has its own tmux option, `claude --worktree [name] --tmux`, for a different problem:
-
-| | `cld` | `claude --worktree --tmux` |
-|---|---|---|
-| Purpose | a named conversation you detach from and come back to | a new session working in an isolated git worktree |
-| Working copy | the current directory, or with `-w` a git worktree claude creates | a new git worktree per session (`--tmux` requires `--worktree`) |
-| Coming back | `cld join -s SUFFIX`, which resumes the conversation once the session has ended | not documented |
-| tmux configuration | a private server per session that ignores `~/.tmux.conf` and sets what claude needs | not documented; [the docs](https://code.claude.com/docs/en/terminal-config#configure-tmux) advise settings for `~/.tmux.conf` |
-| iTerm2 | a regular tmux client | native panes when available; `--tmux=classic` for regular tmux |
-
-The `claude --tmux` column follows the option's row in Claude Code's
-[CLI reference](https://code.claude.com/docs/en/cli-reference) and `claude --help` in 2.1.284.
-`cld join -w` combines the two: claude's own worktree, in a session of cld's.
-
-## Terminals
-
-The tests check one contract - title, Shift+Enter, Ctrl keys, detach, mouse wheel and clicks,
-focus, clipboard, notifications, links, paste, claude exiting, and the keys of the session list -
-against each terminal:
-
-| Terminal | How it is tested | Differences |
-|---|---|---|
-| xterm-compatible (baseline) | a pane of an outer tmux server | none |
-| JetBrains IDEs (JediTerm) | JediTerm's emulator, headless, typing through its own key handling | Shift+Enter arrives as ESC CR (the IDE's newline setting); no focus reports; no OSC 52 |
-| iTerm2 | not automated yet | |
+Claude Code's own `claude --worktree --tmux` answers another need: a new session in a new git
+worktree, in tmux as your `~/.tmux.conf` sets it up. Its
+[CLI reference](https://code.claude.com/docs/en/cli-reference) documents no way back to such a
+session, as of 2.1.284. `cld join -w` puts claude's own worktree in a session of cld's.
 
 ## Development
 
 ```sh
-make docker-check                    # as CI: tmux 3.7c built from source, baseline and JediTerm
-make docker-check TMUX_VERSION=3.5a  # the same on the oldest tmux cld runs on, as CI does too
-make check                           # natively, baseline terminal only
-make check TERMINALS=tmux,jediterm   # natively, with JediTerm
-make lint                            # as CI's lint job, with the linters tools/run downloads
+make check                           # vet and test natively, on the baseline terminal
+make check TERMINALS=tmux,jediterm   # with JetBrains' JediTerm too
+make lint                            # every gate of CI's lint job
+make docker-check                    # as CI runs it, on tmux built from source
 ```
 
-Natively, the checks need Go, tmux 3.5a or newer, ShellCheck and shfmt; for JediTerm also a JDK,
-and its jars, fetched once with `tests/jediterm/fetch-deps tests/jediterm/lib`.
-
-[docs/design.md](docs/design.md) records the tmux and claude behaviour cld relies on, the decisions
-taken and how the tests work. Pushing a tag `vX.Y.Z` publishes a release with cld for each
-platform, `cld.sha256` and `install.sh`; `make dist VERSION=X.Y.Z` builds the same into `dist/`.
+The tests check one [terminal contract](docs/design/testing.md) against an xterm-compatible
+terminal and JediTerm; iTerm2 is not automated yet. [docs/design.md](docs/design.md) records the
+tmux and claude behaviour cld relies on, the decisions taken and how the tests work.
+[CLAUDE.md](CLAUDE.md) has the commands and what they need, the constraints and the conventions.
 
 ## License
 

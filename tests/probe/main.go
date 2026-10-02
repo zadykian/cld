@@ -395,11 +395,11 @@ func startReceiver(dir, port string, listen bool) error {
 // the test the whole sandbox. As "receiver PORT FILE hold", for a collector that takes no
 // connections, it binds the port without listening, and without SO_REUSEADDR: a connection there
 // is refused, as where nothing listens, but no other socket can have the port meanwhile, a
-// listener's neither (see Findings in docs/design.md). Left free, the port could be the kernel's
-// pick for another test's cld, whose listener or collector would then take the connections of the
-// cld that waits here, and it would find this collector ready. It closes descriptor 3 once it has
-// the port, or has found it taken; a collector that cannot have the port does not get ready, and
-// nor does this one.
+// listener's neither (see docs/design/findings/environment.md). Left free, the port could be the
+// kernel's pick for another test's cld, whose listener or collector would then take the connections
+// of the cld that waits here, and it would find this collector ready. It closes descriptor 3 once
+// it has the port, or has found it taken; a collector that cannot have the port does not get ready,
+// and nor does this one.
 func receiver() error {
 	port, file, mode := os.Args[1], os.Args[2], os.Args[3]
 	var release func() error

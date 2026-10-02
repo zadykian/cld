@@ -1356,10 +1356,10 @@ func joinOptions(typed string, resuming bool, conversation string, fork, fresh, 
 
 // ownName refuses, with status, join --resume SESSION --fork of conversation, SESSION, into session
 // name where SESSION is the name the copy takes, cld-NAME, as claude compares names: lower-cased,
-// spaces around them trimmed (see Findings in docs/design.md). claude would find the conversation
-// of that name and give its copy the same, so that a resume by that name found two. A SESSION that
-// names the conversation another way - its session ID, a pick in claude's picker - cld cannot
-// tell.
+// spaces around them trimmed (see docs/design/findings/claude.md). claude would find the
+// conversation of that name and give its copy the same, so that a resume by that name found two. A
+// SESSION that names the conversation another way - its session ID, a pick in claude's picker - cld
+// cannot tell.
 func ownName(typed string, status int, conversation, name string) error {
 	if strings.ToLower(strings.TrimSpace(conversation)) != strings.ToLower("cld-"+name) {
 		return nil

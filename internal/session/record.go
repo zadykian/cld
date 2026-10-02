@@ -484,7 +484,7 @@ func leaveStartMark(file string) {
 // ended, or that is older - one tmux did not remove, as new-session failed and cut its command
 // short - is none: its process ID may name another process by now. Any answer of kill but ESRCH
 // is a process that runs: EPERM, and EACCES, which AppArmor gives for a snap's tmux while
-// snap-confine starts it (see Findings in docs/design.md).
+// snap-confine starts it (see docs/design/findings/environment.md).
 func starting(suffix string) bool {
 	dir, err := stateDir()
 	if err != nil {
@@ -511,15 +511,15 @@ func starting(suffix string) bool {
 // removes the busy mark, as the claude it starts is in no turn yet, and the start mark, as the
 // session is made (see starting), and makes the run mark, run, anew, where run is not "" - restore
 // passes none, keeping the mark's time (see Tmux.Restore). tmux cuts its command short where
-// new-session fails - a name taken, a terminal it cannot open (see Findings in docs/design.md) - so
-// a session that was never made gets no mark, and one that restore could not bring back keeps both
-// of its own; the start mark stays, naming the tmux client that has exited, which counts as none
-// (see starting). It is a run-shell, which tmux waits for, some milliseconds, before what follows
-// it, and before the command's client returns; claude, which takes a good part of a second to
-// start, has not exited by then, so the pane-died hook removes the mark after it (see died). It
-// prints nothing and exits 0 however rm and touch fare: tmux would show what it printed, and
-// "returned" with a status other than 0, on claude's pane, or on the output of restore's tmux,
-// which would then fail.
+// new-session fails - a name taken, a terminal it cannot open (see
+// docs/design/findings/tmux-sessions.md) - so a session that was never made gets no mark, and one
+// that restore could not bring back keeps both of its own; the start mark stays, naming the tmux
+// client that has exited, which counts as none (see starting). It is a run-shell, which tmux waits
+// for, some milliseconds, before what follows it, and before the command's client returns; claude,
+// which takes a good part of a second to start, has not exited by then, so the pane-died hook
+// removes the mark after it (see died). It prints nothing and exits 0 however rm and touch fare:
+// tmux would show what it printed, and "returned" with a status other than 0, on claude's pane, or
+// on the output of restore's tmux, which would then fail.
 func setMarks(file, run string) []string {
 	sh := `rm -f ` + shellWord(strings.TrimSuffix(file, ".json")+busyMark) + ` ` + shellWord(strings.TrimSuffix(file, ".json")+startMark)
 	if run != "" {

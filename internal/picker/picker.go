@@ -63,7 +63,7 @@
 // session, or in a pane of one of cld's servers, whose Enter moves the terminal on that session
 // (see session.Switch) - the list hands nothing over: it puts the terminal back as on Esc, writing
 // no title and asking the terminal nothing, and returns the session picked. A popup answers no
-// question of the list's (see Findings in docs/design.md).
+// question of the list's (see docs/design/findings/tmux-terminal.md).
 package picker
 
 import (

@@ -2,7 +2,6 @@
 # lines: the file's lines (cap 300). comments: Go comment blocks over 4 lines (cap 0).
 # package: the package comment's lines (cap 15).
 # go run ./tools/sizecheck -update lowers the ceilings and drops stale entries.
-README.md lines=349
 cmd/cld/commands.go lines=1779 comments=22
 internal/completion/completion.go package=36
 internal/configfile/configfile.go lines=340
@@ -12,7 +11,7 @@ internal/project/project.go lines=567 comments=2 package=29
 internal/restore/restore.go package=31
 internal/session/record.go lines=609 comments=11
 internal/session/restore.go comments=2
-internal/session/session.go lines=2516 comments=60 package=187
+internal/session/session.go lines=2450 comments=60 package=120
 internal/session/switch.go lines=523 comments=13
 internal/telemetry/settings.go comments=1
 internal/telemetry/telemetry.go lines=671 comments=6 package=43

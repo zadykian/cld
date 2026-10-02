@@ -5,9 +5,8 @@ paths:
 
 # tests
 
-The invariants a change to the tests keeps. Decision numbers, the terminal contract and the layers
-of the tests are in [docs/design.md](../../docs/design.md#testing); each helper's doc comment says
-how it works.
+The invariants a change to the tests keeps. The terminal contract and the layers of the tests are
+in [testing.md](../../docs/design/testing.md); each helper's doc comment says how it works.
 
 ## What runs
 
@@ -15,16 +14,16 @@ how it works.
   and for docker, systemctl and loginctl.
 - No test reaches the real Docker, the user's systemd or the user's own cld sessions: each runs
   in a sandbox of its own (`internal/sandbox`), in parallel.
-- The sandbox's `TMUX_TMPDIR` stays short, as socket paths hit the `sun_path` limit of about
-  108 bytes (decision 13).
+- The sandbox's `TMUX_TMPDIR` stays short, as socket paths hit the `sun_path` limit of about 108
+  bytes ([decision 13](../../docs/design/decisions/0013-a-server-per-session.md)).
 - The sandbox's work directory is `_`, of which nothing is left in a name: there `-s x` names the
   session `x`.
 - `TestMain` unsets every `GIT_*` variable, which git sets for hooks and `rebase --exec`;
   `TestGitVariables` pins that.
 - The probe enters the terminal modes claude enters; it changes with any behaviour of claude's
   that cld comes to rely on.
-- The probe answers `claude --version` with `99.0.0 (Claude Code)` by default, so that raising
-  the oldest claude leaves the tests alone (decision 6).
+- The probe answers `claude --version` with `99.0.0 (Claude Code)` by default, so that raising the
+  oldest claude leaves the tests alone ([decision 6](../../docs/design/decisions/0006-versions.md)).
 
 ## Terminals
 
