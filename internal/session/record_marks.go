@@ -17,16 +17,16 @@ func marked(dir, suffix string) bool {
 }
 
 // leaveStartMark writes the start mark beside the entry in file of the session that cld, attached,
-// is about to have tmux make: cld's process ID, which the tmux client it becomes keeps (decision
-// 50.4). One cld cannot write is none, as the record serves the sessions (decision 40.7).
+// is about to have tmux make. The mark is cld's process ID, which the tmux client it becomes keeps
+// (decision 50.4). One cld cannot write is none, as the record serves the sessions (decision 40.7).
 func leaveStartMark(file string) {
 	mark := strings.TrimSuffix(file, ".json") + startMark
 	_ = replace(mark, []byte(strconv.Itoa(os.Getpid())+"\n")) //nolint:errcheck // explained above
 }
 
-// starting reports whether another cld is starting session cld-SUFFIX: its start mark is younger
-// than lockWait and names a process that runs, as any answer of kill but ESRCH says (decision
-// 50.4). One older, as a failed new-session can leave, may name another process by now.
+// starting reports whether another cld is starting session cld-SUFFIX (decision 50.4). Its start
+// mark is then younger than lockWait and names a process that runs, as any answer of kill but ESRCH
+// says. One older, as a failed new-session can leave, may name another process by now.
 func starting(suffix string) bool {
 	dir, err := stateDir()
 	if err != nil {
@@ -62,9 +62,9 @@ func setMarks(file, run string) []string {
 }
 
 // unmark is the sh command, run-shell's argument, that removes session cld-SUFFIX's run mark in
-// the command that ends the session, before kill-session (decision 48.1); "" where cld has no
-// record's directory. It prints nothing and exits 0, as the session ends all the same, and has
-// every "#" doubled, as run-shell expands a format.
+// the command that ends the session, before kill-session (decision 48.1). Where cld has no
+// record's directory, unmark is "". The command prints nothing and exits 0, as the session ends
+// all the same, and has every "#" doubled, as run-shell expands a format.
 func unmark(suffix string) string {
 	dir, err := stateDir()
 	if err != nil {

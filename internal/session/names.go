@@ -23,8 +23,8 @@ const MaxName = 64
 func ValidName(name string) bool { return len(name) <= MaxName && validName.MatchString(name) }
 
 // Home is where the sessions made in the current directory belong, and where their NAME comes from
-// by default: the git repository the directory is in or, outside one, the directory itself. join
-// records Dir as the session's @cld-home (decision 37).
+// by default. That is the git repository the directory is in or, outside one, the directory itself.
+// join records Dir as the session's @cld-home (decision 37).
 type Home struct {
 	// Dir is the directory whose name DefaultName takes - the repository's (see repository), or
 	// the current directory - by the path that gives the name; "" where there is none.
@@ -48,9 +48,10 @@ func (h Home) Takes(made string) bool {
 	return err == nil && os.SameFile(here, there)
 }
 
-// DefaultName is the NAME of NAME-SUFFIX where -n gives none, and the home it comes from: the
-// name of the repository (see repository) or of the current directory, made a NAME (see asName).
-// Where nothing is left of the name, as for "/", the NAME is "", and SUFFIX is the whole name.
+// DefaultName is the NAME of NAME-SUFFIX where -n gives none, and the home it comes from. It takes
+// the name of the repository (see repository) or of the current directory, made a NAME (see
+// asName). Where nothing is left of the name, as for "/", the NAME is "", and SUFFIX is the whole
+// name.
 func DefaultName() (string, Home) {
 	name, dir, found := repository()
 	if !found {
@@ -65,8 +66,8 @@ func DefaultName() (string, Home) {
 	return asName(name), Home{Dir: dir, Repository: found}
 }
 
-// Options is how -n and -s name session NAME on cld's command line: split at its last "-", where
-// both parts are NAMEs, and otherwise -s NAME alone (decision 24.6).
+// Options is how -n and -s name session NAME on cld's command line. They split it at its last "-",
+// where both parts are NAMEs, and otherwise give -s NAME alone (decision 24.6).
 func Options(name string) string {
 	if prefix, suffix, ok := split(name); ok {
 		return "-n " + prefix + " -s " + suffix
@@ -84,9 +85,9 @@ func asName(name string) string {
 }
 
 // repository is the name and the directory of the git repository the current directory is in,
-// and whether there is one: the directory holding the common .git, or else the git directory of a
-// bare repository's worktree or a submodule, named without ".git" (decision 24.3). Outside a work
-// tree, without git, or where git fails, there is none.
+// and whether there is one. The directory holds the common .git, or is the git directory of a bare
+// repository's worktree or a submodule, named without ".git" (decision 24.3). Outside a work tree,
+// without git, or where git fails, there is none.
 func repository() (name, dir string, found bool) {
 	git, err := tool.Command("git", "rev-parse", "--is-inside-work-tree", "--git-common-dir")
 	if err != nil {

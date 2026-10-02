@@ -190,7 +190,7 @@ func (w *waiter) paused(os.Signal) step {
 	return step{err: w.list.suspend(w.in, w.tty)}
 }
 
-// continued takes the terminal back after a SIGSTOP the list did not see coming: the shell may
+// continued takes the terminal back after a SIGSTOP the list did not see coming. The shell may
 // have put back its own mode, as bash does, and written over the list.
 func (w *waiter) continued(os.Signal) step {
 	return step{err: w.list.takeBack(w.tty)}

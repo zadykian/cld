@@ -38,8 +38,9 @@ func ReadJSON(path string) (*JSON, error) {
 	return j, nil
 }
 
-// indentation is one level of the indentation of data, a JSON object: the white space that
-// starts the line of its first member, or two spaces where that member shares the object's line.
+// indentation is one level of the indentation of data, a JSON object. That level is the white
+// space that starts the line of its first member, or two spaces where that member shares the
+// object's line.
 func indentation(data []byte) string {
 	_, rest, ok := bytes.Cut(data, []byte{'{'})
 	if !ok {
@@ -103,8 +104,8 @@ func (j *JSON) Array(elements []json.RawMessage, depth int) json.RawMessage {
 	return b.Bytes()
 }
 
-// Value is value, valid JSON of cld's, as the file holds it depth levels deep, as for Object:
-// every object and array in it has a member or element a line.
+// Value is value, valid JSON of cld's, as the file holds it depth levels deep, as for Object.
+// Every object and array in it has a member or element a line.
 func (j *JSON) Value(value []byte, depth int) json.RawMessage {
 	var b bytes.Buffer
 	if err := json.Indent(&b, value, strings.Repeat(j.indent, depth), j.indent); err != nil {

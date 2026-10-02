@@ -116,8 +116,8 @@ func TestStaleSocketsRunNoTmux(t *testing.T) {
 }
 
 // staleSockets starts sessions cld-work-0 to 10, each on its server, and a server cld-work-11 that
-// outlives its session, all marked as cld marks its own (see TestLeavesAForeignServerAlone). It
-// leaves stale sockets from cld-work-12 to 29, and cld-work-99, and returns the sessions and those.
+// outlives its session. It marks them all as cld marks its own (see TestLeavesAForeignServerAlone).
+// It leaves stale sockets from cld-work-12 to 29 and cld-work-99, and returns sessions and sockets.
 func staleSockets(t *testing.T, s *sandbox.Sandbox) (running, stale []string) {
 	t.Helper()
 	for i := range 11 {

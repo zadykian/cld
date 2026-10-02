@@ -31,9 +31,9 @@ var Servers = []Server{
 		[]string{"mcp__rider"}, ideTools("rider")},
 }
 
-// ideTools are the allow entries for the tools of the IDE's MCP server name that only read: those
-// GoLand 2026.2.3 marks readOnlyHint, which Rider's server was taken to share (decision 28.5). An
-// entry for a tool that a server lacks allows nothing.
+// ideTools are the allow entries for the tools of the IDE's MCP server name that only read. They
+// are those GoLand 2026.2.3 marks readOnlyHint, which Rider's server was taken to share
+// (decision 28.5). An entry for a tool that a server lacks allows nothing.
 func ideTools(name string) []string {
 	var entries []string
 	for _, tool := range []string{

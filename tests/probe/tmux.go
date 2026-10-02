@@ -9,10 +9,9 @@ import (
 	"syscall"
 )
 
-// fakeTmux fakes tmux for the checks cld makes before starting it: "tmux -V" prints
-// $CLD_FAKE_TMUX_VERSION, list-sessions is listSessions, and any other call is recorded in
-// tmux.json. With $CLD_FAKE_TMUX_REAL, the path of a real tmux, it runs that for all but
-// list-sessions.
+// fakeTmux fakes tmux for the checks cld makes before starting it. "tmux -V" prints
+// $CLD_FAKE_TMUX_VERSION, list-sessions is listSessions, and tmux.json records any other call.
+// With $CLD_FAKE_TMUX_REAL, the path of a real tmux, it runs that for all but list-sessions.
 func fakeTmux() error {
 	real := os.Getenv("CLD_FAKE_TMUX_REAL")
 	if len(os.Args) == 2 && os.Args[1] == "-V" && real == "" {

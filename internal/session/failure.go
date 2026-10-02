@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// how says how claude exited, and widest is how many cells it takes at most: tmux numbers a status
-// up to 255 and a signal up to 64, or names the signal where the C library has sys_signame, as
+// how says how claude exited, and widest is how many cells it takes at most. tmux numbers a status
+// up to 255 and a signal up to 64. It names the signal where the C library has sys_signame, as
 // macOS does, vtalrm the longest.
 const (
 	how    = "#{?pane_dead_signal,signal #{pane_dead_signal},status #{pane_dead_status}}"

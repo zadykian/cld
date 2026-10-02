@@ -9,8 +9,8 @@ import (
 	"github.com/zadykian/cld/internal/tool"
 )
 
-// ReadyClient readies cld to become a tmux client, as join's first step once tmux is checked: in a
-// pane of one of cld's servers it returns the terminal to move instead (decision 51.5), and
+// ReadyClient readies cld to become a tmux client, as join's first step once tmux is checked. In
+// a pane of one of cld's servers it returns the terminal to move instead (decision 51.5), and
 // elsewhere the keys another tmux keeps from claude. TMUX stays until create or attach empty it,
 // so that the sweep keeps the session cld runs in (decision 50.3).
 func (t *Tmux) ReadyClient() ([]string, *Switch) {
@@ -20,8 +20,8 @@ func (t *Tmux) ReadyClient() ([]string, *Switch) {
 	return t.keptKeys(), nil
 }
 
-// emptyTMUX empties a TMUX that is set: tmux would refuse a client on a pty named as a dead
-// pane's, and an empty TMUX skips that check, the terminal still taken for UTF-8 (decision 2).
+// emptyTMUX empties a TMUX that is set, since tmux would refuse a client on a pty named as a dead
+// pane's. An empty TMUX skips that check, the terminal still taken for UTF-8 (decision 2).
 func emptyTMUX() error {
 	if os.Getenv("TMUX") == "" {
 		return nil
@@ -30,7 +30,7 @@ func emptyTMUX() error {
 }
 
 // OwnPane reports whether this terminal is a live pane of one of cld's servers, claude's external
-// editor say, and names the server's session: there join and the list move the terminal instead
+// editor say, and names the server's session. There join and the list move the terminal instead
 // (decision 2). It looks only on the server TMUX names, where that has cld's mark.
 func (t *Tmux) OwnPane() (string, bool) {
 	socket, suffix, found := ownServer()
@@ -66,10 +66,10 @@ func ttyName() (string, bool) {
 	return strings.TrimRight(string(terminal), "\n"), true
 }
 
-// keptKeys names the keys that the tmux this terminal is a pane of keeps from claude, where TMUX
-// names a tmux not cld's and cld's tmux is 3.6 or newer: its prefixes, and Shift+Enter unless it
-// passes modified keys on (decision 43.1). A tmux that does not answer, or finds another pane,
-// keeps nothing cld knows of.
+// keptKeys names the keys that the tmux this terminal is a pane of keeps from claude (decision
+// 43.1): its prefixes, and Shift+Enter unless it passes modified keys on. It names them only where
+// TMUX names a tmux not cld's, and cld's tmux is 3.6 or newer. A tmux that does not answer, or
+// finds another pane, keeps nothing cld knows of.
 func (t *Tmux) keptKeys() []string {
 	socket, _, _ := strings.Cut(os.Getenv("TMUX"), ",")
 	if socket == "" || t.older(version{3, 6, 0}) {
@@ -98,7 +98,7 @@ func (t *Tmux) keptKeys() []string {
 }
 
 // keysKept are the keys a tmux keeps from claude by its extended-keys, its prefixes and the
-// features of its client: Shift+Enter unless it passes modified keys on to cld's tmux.
+// features of its client. It keeps Shift+Enter unless it passes modified keys on to cld's tmux.
 func (t *Tmux) keysKept(extended string, prefixes []string, features string) []string {
 	var kept []string
 	for _, prefix := range prefixes {

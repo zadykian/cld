@@ -10,10 +10,10 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// choosePort chooses the port the collector listens on, on 127.0.0.1, as decision 18.2 orders
-// them: --port, the running collector's, the stopped one's, or one the kernel picks. It holds a
-// port it checks with a listener, which release closes just before the collector starts, so that
-// nothing takes the port meanwhile. The running collector holds its own until docker rm -f.
+// choosePort chooses the collector's port, on 127.0.0.1, in decision 18.2's order. The order is
+// --port, the running collector's, the stopped one's, or one the kernel picks. It holds a port it
+// checks with a listener, which release closes just before the collector starts, so that nothing
+// takes the port meanwhile. The running collector holds its own until docker rm -f.
 func choosePort(o Options, running state) (int, net.Listener, error) {
 	// A paused collector's receiver keeps the port, to which claude sessions send.
 	ours := (running.status == "running" || running.status == "paused") && running.port != 0
@@ -58,7 +58,7 @@ func holdPort(port int) (net.Listener, error) {
 }
 
 // pickPort holds a port the kernel picks, passing over one at which an endpoint of o reaches the
-// collector itself: the kernel knows nothing of a receiver that does not run now.
+// collector itself. The kernel knows nothing of a receiver that does not run now.
 func pickPort(o Options) (int, net.Listener, error) {
 	// A port passed over stays held until the kernel has picked another.
 	var passed []net.Listener

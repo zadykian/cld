@@ -128,7 +128,7 @@ func checkForeignPaneDetach(t *testing.T, s *sandbox.Sandbox) {
 }
 
 // checkMarkLostBeforeKill checks a server of cld's that has outlived its session, and loses the
-// mark after kill read it: the kill's own tmux command checks the mark again (decision 34.2), and
+// mark after kill read it. The kill's own tmux command checks the mark again (decision 34.2), and
 // ends nothing. A tmux first on the PATH takes the mark away.
 func checkMarkLostBeforeKill(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()

@@ -14,8 +14,8 @@ type worktreeSettings struct {
 	BaseRef string `json:"baseRef"`
 }
 
-// hook is a command claude runs on an event, where the event's matcher field - the notification's
-// type for Notification - matches Matcher, or on every one of the event without it.
+// hook is a command claude runs on an event where the event's matcher field matches Matcher, or on
+// every one of the event without it. For Notification, that field is the notification's type.
 type hook struct {
 	Matcher string        `json:"matcher,omitempty"`
 	Hooks   []hookCommand `json:"hooks"`
@@ -31,13 +31,14 @@ type hookCommand struct {
 }
 
 // hookTimeout is how many seconds claude waits for a hook of statusHooks that it does not run in
-// the background, and for those of recordHooks but SessionEnd's, where its own default is 600 (30
+// the background, and for those of recordHooks but SessionEnd's. claude's own default is 600 (30
 // for UserPromptSubmit; decision 39.2).
 const hookTimeout = 5
 
 // statusHooks are the hooks that keep claude's status in @cld-status on session cld-SUFFIX, for the
-// title and list (decision 25), and with git, found by an absolute path, @cld-worktree (decision
-// 26). claude waits for each but CwdChanged's, which it runs in the background (decision 39).
+// title and list (decision 25). With git, found by an absolute path, they keep @cld-worktree too
+// (decision 26). claude waits for each but CwdChanged's, which it runs in the background
+// (decision 39).
 func statusHooks(tmux, git, socket, suffix string) map[string][]hook {
 	set := optionSetter(tmux, socket, suffix)
 	busy, waiting, idle := set("@cld-status", "busy"), set("@cld-status", "waiting"),
@@ -63,8 +64,8 @@ func statusHooks(tmux, git, socket, suffix string) map[string][]hook {
 }
 
 // optionSetter gives the sh command that sets an option of session cld-SUFFIX to a value, which
-// the shell expands, where it differs: tmux by its path, on the server by its socket (decision
-// 25.3).
+// the shell expands, where it differs. It runs tmux by its path, on the server by its socket
+// (decision 25.3).
 func optionSetter(tmux, socket, suffix string) func(option, value string) string {
 	session := "=cld-" + suffix + ":"
 	return func(option, value string) string {

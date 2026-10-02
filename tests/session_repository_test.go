@@ -46,9 +46,9 @@ func TestSessionOfAnotherRepository(t *testing.T) {
 	dirs.checkTaken(t, s)
 }
 
-// apiRepositories are the directories of TestSessionOfAnotherRepository whose NAME is api: the
-// repositories work, by a symbolic link linked, and other; a subdirectory and a linked worktree of
-// work; and plain, in no repository.
+// apiRepositories are the directories of TestSessionOfAnotherRepository whose NAME is api. They
+// are the repositories work, by a symbolic link linked, and other; a subdirectory and a linked
+// worktree of work; and plain, in no repository.
 type apiRepositories struct {
 	work, linked, other, sub, worktree, plain string
 }
@@ -82,7 +82,7 @@ func makeAPIRepositories(t *testing.T, s *sandbox.Sandbox) apiRepositories {
 }
 
 // startSessions starts api-0 by the link, as PWD names it, api-1 in other, an older cld's api-2,
-// and api-3 in plain, checks the homes join records, and returns the claudes it started.
+// and api-3 in plain. It checks the homes join records, and returns the claudes it started.
 func (d apiRepositories) startSessions(t *testing.T, s *sandbox.Sandbox) []*sandbox.Probe {
 	t.Helper()
 	startCldIn(t, s, "tmux", d.linked, map[string]string{"PWD": d.linked}, "join")

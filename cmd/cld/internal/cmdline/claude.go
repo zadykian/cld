@@ -29,8 +29,8 @@ func ClaudeWords(c *cobra.Command, args []string) []string {
 	return words
 }
 
-// atDash splits args, the arguments of join, at the "--" after which the words go to claude:
-// pflag drops a "--" among the options, keeping its place (ArgsLenAtDash), and leaves one after
+// atDash splits args, the arguments of join, at the "--" after which the words go to claude.
+// pflag drops a "--" among the options, keeping its place (ArgsLenAtDash). It leaves one after
 // the first argument, past which it reads no option.
 func atDash(c *cobra.Command, args []string) (before, words []string) {
 	dash := c.ArgsLenAtDash()
@@ -43,8 +43,9 @@ func atDash(c *cobra.Command, args []string) (before, words []string) {
 	return args, nil
 }
 
-// claudeOption is one of claude's options as a word gives it: short at the start of the word, as
-// claude reads -xyz, and long, or its other spelling alias, alone or before "=" (decision 41.3).
+// claudeOption is one of claude's options as a word gives it (decision 41.3). The short one
+// counts at the start of the word, as claude reads -xyz. The long one, or its other spelling
+// alias, counts alone or before "=".
 type claudeOption struct {
 	short, long, alias string
 	// why join refuses the option
@@ -52,8 +53,8 @@ type claudeOption struct {
 }
 
 // claudeOptions are the options of claude's that join refuses among the words for claude
-// (decision 41.2): those cld gives claude itself, those that resume a conversation, and those
-// with which claude would leave the session.
+// (decision 41.2). They are those cld gives claude itself, those that resume a conversation, and
+// those with which claude would leave the session.
 var claudeOptions = []claudeOption{
 	{short: "-n", long: "--name",
 		why: "cld gives claude the session's name, which -n and -s make"},

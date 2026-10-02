@@ -24,9 +24,9 @@ import (
 // platforms are those the releases publish cld for, as they name the binaries: cld-PLATFORM.
 var platforms = []string{"darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64"}
 
-// releases stands in for GitHub's releases: the files under dir, a release's at
-// latest/download/NAME or download/vX.Y.Z/NAME, served at url, which records the paths asked for.
-// latest, once set (see setLatest), redirects to the tag of the latest release, as GitHub's does.
+// releases stands in for GitHub's releases, serving the files under dir at url and recording the
+// paths asked for. Once set (see setLatest), latest redirects to the tag of the latest release, as
+// GitHub's does. A release's files are at latest/download/NAME or download/vX.Y.Z/NAME.
 type releases struct {
 	dir   string
 	url   string
@@ -135,8 +135,8 @@ func (r *releases) asked() []string {
 }
 
 // fakeBinary is what a release of version serves as cld for platform: a script that prints "cld
-// VERSION", as cld --version does, and for cld completion SHELL a script that starts as cobra's
-// does (see fakeScript), which cld update writes where setup completion wrote one.
+// VERSION", as cld --version does. For cld completion SHELL it prints a script that starts as
+// cobra's does (see fakeScript), which cld update writes where setup completion wrote one.
 func fakeBinary(version, platform string) string {
 	return "#!/bin/sh\n# cld-" + platform + "\n" +
 		"case \"$1 $2\" in\n" +

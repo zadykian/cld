@@ -47,8 +47,8 @@ func (j *joinCommand) together(resuming bool) error {
 	return nil
 }
 
-// forkName refuses, with status 1, a copy given SESSION's own name by the name join resolved,
-// which the repository's or directory's name, or the index, made (decision 45.1).
+// forkName refuses, with status 1, a copy given SESSION's own name by the name join resolved
+// (decision 45.1). The repository's or directory's name, or the index, made that name.
 func (j *joinCommand) forkName(name string) error {
 	if !j.fork {
 		return nil
@@ -57,7 +57,8 @@ func (j *joinCommand) forkName(name string) error {
 }
 
 // ownName refuses, with status, a --fork of conversation, --resume's SESSION, into session name
-// where SESSION is the copy's own name, cld-NAME, as claude compares names (decision 45.1).
+// where SESSION is the copy's own name. That name is cld-NAME, compared as claude compares names
+// (decision 45.1).
 func ownName(typed string, status int, conversation, name string) error {
 	// claude compares names lower-cased and trimmed (docs/design/findings/claude.md).
 	//nolint:staticcheck // as claude does: EqualFold would also take ſ for s

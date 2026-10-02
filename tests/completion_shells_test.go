@@ -14,8 +14,9 @@ import (
 // bash with bash-completion 2, zsh and fish load what setup completion wrote, each started as a
 // user starts it; a shell that is not installed skips (decision 22.7).
 
-// shellEnv is the environment a shell runs in to load what setup completion wrote: the sandbox's,
-// with env, and the cld under test first on the PATH, for the scripts that run it on every TAB.
+// shellEnv is the environment a shell runs in to load what setup completion wrote. It takes the
+// sandbox's, adds env, and puts the cld under test first on the PATH, for the scripts that run it
+// on every TAB.
 func shellEnv(s *sandbox.Sandbox, env map[string]string) []string {
 	path := filepath.Dir(sandbox.Cld) + string(os.PathListSeparator) + os.Getenv("PATH")
 	extra := map[string]string{"PATH": path}
@@ -25,8 +26,8 @@ func shellEnv(s *sandbox.Sandbox, env map[string]string) []string {
 	return s.Environ(extra)
 }
 
-// runShell runs the shell at path with args, in env, and returns what it prints on stdout;
-// stderr, where an interactive shell without a terminal complains of job control, is dropped.
+// runShell runs the shell at path with args, in env, and returns what it prints on stdout. It
+// drops stderr, where an interactive shell without a terminal complains of job control.
 func runShell(t *testing.T, s *sandbox.Sandbox, env []string, path string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(path, args...)

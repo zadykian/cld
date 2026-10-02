@@ -13,9 +13,9 @@ const (
 	kill      // Ctrl+X
 )
 
-// parse takes the first key off input: the key and its length in bytes, or a length of 0 where
-// input only starts one, an Esc or a sequence that may still be arriving. Terminals send a key
-// with Alt as Esc and the key, which does nothing (decision 14).
+// parse takes the first key off input, and returns the key and its length in bytes. The length
+// is 0 where input only starts one: an Esc or a sequence that may still be arriving. Terminals
+// send a key with Alt as Esc and the key, which does nothing (decision 14).
 func parse(input []byte) (key, int) {
 	switch input[0] {
 	case '\r':

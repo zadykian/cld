@@ -209,7 +209,7 @@ func listKillHeldDown(t *testing.T) {
 	}
 }
 
-// holdCtrlX types the second Ctrl+X held down: it repeats after half a second, a common delay,
+// holdCtrlX types the second Ctrl+X held down. It repeats after half a second, a common delay,
 // then 20 times a second for a second, past the second after the kill. Where the terminal took
 // longer than its waits, two may have reached cld a second apart, two presses, and the test skips.
 func holdCtrlX(t *testing.T, term terminal.Terminal) {

@@ -41,7 +41,7 @@ func (d docker) output(args ...string) (string, error) {
 }
 
 // ran is err from running docker as cld reports it: an *exec.ExitError when docker ran and
-// failed, the end cld comes to when it could not run docker at all.
+// failed. Where cld could not run docker at all, ran gives the end cld comes to.
 func (d docker) ran(err error) error {
 	var exit *exec.ExitError
 	if err != nil && !errors.As(err, &exit) {

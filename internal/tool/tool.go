@@ -1,6 +1,6 @@
-// Package tool finds the programs cld runs - tmux, claude, git and tty for the sessions, git for
-// setup project, docker for setup telemetry - on the PATH, and says how cld ends when the system
-// cannot run one, as a shell would.
+// Package tool finds the programs cld runs on the PATH: tmux, claude, git and tty for the
+// sessions, git for setup project, docker for setup telemetry. It says how cld ends when the
+// system cannot run one, as a shell would.
 package tool
 
 import (
@@ -15,10 +15,10 @@ import (
 )
 
 // LookPath finds name in the absolute entries of the PATH: the first executable file of that
-// name or, where none is executable, the first file of that name, as bash's search had it - one
-// that then cannot run (see CannotRun), rather than one not installed. cld never runs a program
-// from a relative entry - ".", or an empty one - where the shell would; exec.LookPath refuses one
-// found there, but stops at it, even when a later, absolute entry has the program too.
+// name or, where none is executable, the first file of that name. As in bash's search, that one
+// then fails to run (see CannotRun) rather than counting as not installed. cld never runs a
+// program from a relative entry, "." or an empty one, where the shell would. Go's exec.LookPath
+// refuses one found there, but stops at it, even when a later, absolute entry has the program too.
 func LookPath(name string) (string, error) {
 	lastResort := ""
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {

@@ -43,9 +43,9 @@ var testPorts struct {
 	first, last, next int
 }
 
-// testPort listens on 127.0.0.1 on a port outside the kernel's ephemeral range, which neither a
-// listener on port 0 nor a connection's local port takes (docs/design/testing.md). Tests get the
-// ports in turn from a random start, so that two go test processes seldom meet.
+// testPort listens on 127.0.0.1 on a port outside the kernel's ephemeral range. Neither a listener
+// on port 0 nor a connection's local port takes such a port (docs/design/testing.md). Tests get
+// the ports in turn from a random start, so that two go test processes seldom meet.
 func testPort(t *testing.T) net.Listener {
 	t.Helper()
 	testPorts.Lock()

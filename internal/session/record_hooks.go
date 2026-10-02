@@ -27,8 +27,8 @@ func recordHooks(file, suffix, dir string) map[string][]hook {
 	}
 }
 
-// entryWriter is the sh command that writes session cld-SUFFIX's entry in file anew, with the
-// session_id of the hook's input where it has only the characters of an ID (decision 40.2). It
+// entryWriter is the sh command that writes session cld-SUFFIX's entry in file anew. It takes the
+// session_id of the hook's input where that has only the characters of an ID (decision 40.2). It
 // writes the whole line to a temporary file, renamed over the entry.
 func entryWriter(file, suffix, dir string) string {
 	// The line with no conversation ends in "", "}" and a newline: the hook writes what comes

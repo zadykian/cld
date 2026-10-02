@@ -46,7 +46,7 @@ func jsonText(text string) string {
 }
 
 // writeEntry writes session name's entry in cld's record in s, as join would have written it for a
-// session in dir, with the conversation of that ID, "" for none yet.
+// session in dir. The entry names the conversation of that ID, "" for none yet.
 func writeEntry(t *testing.T, s *sandbox.Sandbox, name, dir, conversation string) {
 	t.Helper()
 	file := entryFile(s, name)
@@ -124,9 +124,9 @@ type recorded struct {
 	Environment []string `json:"environment"`
 }
 
-// writeRestorable writes session name's entry in s - claude started in dir, in the conversation
-// of that ID - with its run mark and the environment file naming claude and env, as join would
-// have left them for a session a reboot ended.
+// writeRestorable writes session name's entry in s, claude started in dir in the conversation of
+// that ID. It adds the run mark and the environment file naming claude and env, as join would have
+// left them for a session a reboot ended.
 func writeRestorable(
 	t *testing.T, s *sandbox.Sandbox, name, dir, conversation, claude string, env []string,
 ) {

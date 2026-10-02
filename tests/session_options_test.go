@@ -92,8 +92,8 @@ func checkClaudesOwn(t *testing.T, s *sandbox.Sandbox) {
 	}
 }
 
-// checkSetTwice has a second join -s 0 set the options again on the server, as a join past its
-// wait for the record's lock would, before its new-session fails (decision 50.4). The terminal
+// checkSetTwice has a second join -s 0 set the options again on the server, before its new-session
+// fails (decision 50.4). A join past its wait for the record's lock would do so. The terminal
 // features, at fixed indexes, keep one copy of each entry (decision 30). Without -s, the second
 // would take index 1. The fake tmux finds no server, and runs the real one after.
 func checkSetTwice(t *testing.T, s *sandbox.Sandbox) {

@@ -28,7 +28,7 @@ const lockWait = 10 * time.Second
 // (see Sessions).
 const Ended = "ended"
 
-// entry is the entry of a session in cld's record, as sessions/NAME.json holds it; the file's time
+// entry is the entry of a session in cld's record, as sessions/NAME.json holds it. The file's time
 // is the entry's, that of its last write or touch (decision 40.1).
 type entry struct {
 	// Name is the session's NAME, without "cld-".
@@ -51,8 +51,9 @@ type given struct {
 	Time  time.Time `json:"time"`
 }
 
-// started is what the server of a session started with, as NAME.env holds it: the claude that join
-// checked, by its path, and tmux's environment without the terminal's variables (decision 48.4).
+// started is what the server of a session started with, as NAME.env holds it (decision 48.4). It
+// holds the claude that join checked, by its path, and tmux's environment without the terminal's
+// variables.
 type started struct {
 	Claude      string   `json:"claude"`
 	Environment []string `json:"environment"`
@@ -92,8 +93,8 @@ func companion(dir, suffix, ext string) string {
 	return filepath.Join(dir, "sessions", suffix+ext)
 }
 
-// sessionFile splits the name of a file in the record's sessions directory into the NAME of the
-// session it belongs to and its extension, the entry's or a companion's; false for any other, as
+// sessionFile splits the name of a file in the record's sessions directory into the NAME of its
+// session and its extension, the entry's or a companion's. It returns false for any other file, as
 // a temporary file that a write cut short leaves.
 func sessionFile(name string) (suffix, ext string, ok bool) {
 	for _, ext := range []string{".json", environment, runMark, busyMark, startMark} {

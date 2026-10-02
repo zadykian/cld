@@ -9,7 +9,7 @@ import (
 )
 
 // object is a JSON object of a file that setup project edits: its members, its key in the file,
-// such as permissions ("" for the file's own), and its depth; and the keys changed in it so far.
+// such as permissions ("" for the file's own), and its depth. It keeps the keys changed so far.
 type object struct {
 	file    *configfile.JSON
 	members []configfile.Member
@@ -36,9 +36,8 @@ func (o *object) put(key string, nested *object) {
 	o.changed = append(o.changed, nested.changed...)
 }
 
-// putValue sets key to value, as the file holds it, in place of the last of the key, which
-// claude reads, where the object has it, else as a new member at the end, or at the start with
-// first.
+// putValue sets key to value, as the file holds it. Where the object has the key, it replaces the
+// last of it, which claude reads; else it adds a member at the end, or at the start with first.
 func (o *object) putValue(key string, value json.RawMessage, first bool) {
 	if at := configfile.Last(o.members, key); at >= 0 {
 		o.members[at].Value = value

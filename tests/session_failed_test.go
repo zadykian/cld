@@ -91,9 +91,9 @@ func TestFailedClaudeLinesFit(t *testing.T) {
 	}
 }
 
-// waitBorderLine waits until the screen's last line is a line of the pane's border with text in
-// it, as the pane-died hook leaves it below a claude that failed. The text is between the border's
-// ─, unlike on the message line, which starts with it.
+// waitBorderLine waits until the screen's last line is the pane's border line with text in it,
+// which the pane-died hook leaves below a claude that failed. The text is between the border's ─,
+// unlike on the message line, which starts with it.
 func waitBorderLine(t *testing.T, term terminal.Terminal, text string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)

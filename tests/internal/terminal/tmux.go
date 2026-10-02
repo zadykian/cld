@@ -92,7 +92,7 @@ func (o *tmuxTerminal) Start(argv []string, env map[string]string, dir string) {
 }
 
 // literal is word as the outer tmux takes it back from its command line, as cld's own tmux does
-// (see literal in internal/session): tmux ends a command at a word that ends in ";", and turns a
+// (see literal in internal/session). tmux ends a command at a word that ends in ";", and turns a
 // "\;" at the end of a word into ";".
 func literal(word string) string {
 	if before, found := strings.CutSuffix(word, ";"); found {
@@ -102,7 +102,7 @@ func literal(word string) string {
 }
 
 // unexpanded is text as a tmux format that expands to text itself, as for cld's own tmux (see
-// unexpanded in internal/session): the outer tmux expands new-session's -c as a format too, in
+// unexpanded in internal/session). The outer tmux expands new-session's -c as a format too, in
 // which "##" is a "#".
 func unexpanded(text string) string {
 	return strings.ReplaceAll(text, "#", "##")
@@ -112,9 +112,9 @@ func (o *tmuxTerminal) outputFile() string {
 	return filepath.Join(o.sandbox.Root, o.socket+".out")
 }
 
-// older reports whether the outer server runs a tmux older than major.minor, from #{version}:
-// "3.7c" is 3.7, and a development build's "next-3.8" 3.8. One without a version, "master", is
-// not older.
+// older reports whether the outer server runs a tmux older than major.minor, from #{version}. It
+// reads "3.7c" as 3.7 and a development build's "next-3.8" as 3.8, and one without a version,
+// "master", as not older.
 func (o *tmuxTerminal) older(major, minor int) bool {
 	o.t.Helper()
 	match := regexp.MustCompile(`([0-9]+)\.([0-9]+)`).FindStringSubmatch(o.format("#{version}"))

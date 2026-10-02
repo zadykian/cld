@@ -29,17 +29,17 @@ type launch struct {
 	// server, so create does not look again.
 	looked bool
 	// detached makes the session without a terminal, cld waiting for tmux instead of becoming its
-	// client; restored brings it back as it ran, its run mark keeping its time (see setMarks).
+	// client. restored brings it back as it ran, its run mark keeping its time (see setMarks).
 	detached bool
 	restored bool
 	// from is the session a switch moved the terminal from, which the session records.
 	from string
 }
 
-// creation is what create has worked out for tmux's command that makes session cld-SUFFIX: the
-// claude CheckClaude checked, claude's directory, the session's home (see Home), the server's
-// socket by an absolute path, the keys that move the terminal (see switchKeys), and the run mark
-// that the pane-died hook removes (see died).
+// creation is what create has worked out for tmux's command that makes session cld-SUFFIX. It
+// holds the claude CheckClaude checked, claude's directory, the session's home (see Home) and the
+// server's socket by an absolute path. It also holds the keys that move the terminal (see
+// switchKeys), and the run mark that the pane-died hook removes (see died).
 type creation struct {
 	t       *Tmux
 	claude  string

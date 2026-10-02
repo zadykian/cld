@@ -18,8 +18,8 @@ func (t *Tmux) Kill(suffix string, home Home) error {
 	return t.End(context.Background(), suffix, home, nil, os.Stdout, os.Stderr)
 }
 
-// End is kill's steps after the name's check, which the list's Ctrl+X takes too (decision 15.4):
-// the lookup of session cld-SUFFIX, then one tmux command that ends it and its server, without
+// End is kill's steps after the name's check, which the list's Ctrl+X takes too (decision 15.4).
+// It looks session cld-SUFFIX up, then ends it and its server in one tmux command, without
 // waiting for claude (decisions 13 and 32). With pids, only a session that holds one of them counts
 // (decision 15.3). A kill that fails is its exit status. Once ctx is done, its tmux is killed.
 func (t *Tmux) End(ctx context.Context, suffix string, home Home, pids []string,
@@ -83,7 +83,7 @@ func outlivedKill(suffix string) []string {
 	return []string{"if", "-F", outlives(suffix), kill}
 }
 
-// Forget forgets session cld-SUFFIX, which has ended, for the list's Ctrl+X: its entry goes with
+// Forget forgets session cld-SUFFIX, which has ended, for the list's Ctrl+X. Its entry goes with
 // its environment and marks, but the index its name ends in stays given (decision 40). The caller
 // holds the record's lock (decision 48.6), and a session another cld is starting is refused
 // (decision 50.4). Once ctx is done, its tmux is killed.

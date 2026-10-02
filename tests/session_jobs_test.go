@@ -76,8 +76,8 @@ const jobScript = `tty >"$0.tty"; stty -g >"$0.before"; ` +
 	`until [ -e "$0.go" ]; do sleep 0.05; done; stty "$(cat "$0.before")"; ` +
 	`fg >/dev/null; echo $? >"$0.code"; stty -g >"$0.after"`
 
-// startJob runs jobScript in term under an interactive sh (-i), which has job control: macOS's sh
-// hears of a job that stops only when interactive (docs/design/findings/environment.md). There,
+// startJob runs jobScript in term under an interactive sh (-i), which has job control. On macOS,
+// sh hears of a job that stops only when interactive (docs/design/findings/environment.md). There,
 // bash puts its own mode back as the job stops, before the script reads it (during).
 func startJob(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal) listRun {
 	t.Helper()

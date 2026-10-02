@@ -77,8 +77,9 @@ func checkQuit(t *testing.T, keys func(terminal.Terminal)) {
 }
 
 // listJoinIdleKeys checks that the selection stops at the first and the last row, and that other
-// keys do nothing (decision 14): letters, Shift+Up, Alt+j and Alt+Up, sent as Esc and the key (ESC
-// ESC [ A). Each step ends on a row that a key taken for another would not have left selected.
+// keys do nothing (decision 14). Those are letters, Shift+Up, Alt+j and Alt+Up, sent as Esc and
+// the key (ESC ESC [ A). Each step ends on a row that a key taken for another would not have left
+// selected.
 func listJoinIdleKeys(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -135,8 +136,8 @@ func listJoinFrameAKey(t *testing.T) {
 	}
 }
 
-// listJoinKeysAfterLeaving checks that the list reads only the keys it takes (decision 14.7):
-// what comes with Ctrl+C, in the same write, stays with the terminal for the next program.
+// listJoinKeysAfterLeaving checks that the list reads only the keys it takes (decision 14.7).
+// What comes with Ctrl+C, in the same write, stays with the terminal for the next program.
 func listJoinKeysAfterLeaving(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

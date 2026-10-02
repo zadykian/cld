@@ -1,5 +1,5 @@
 // Package sandbox gives each test an isolated world: its own tmux socket directory, HOME and
-// probe records, so tests run in parallel and never touch the user's own cld sessions. cld runs
+// probe records. Tests then run in parallel, and never touch the user's own cld sessions. cld runs
 // each session on a server of its own, named like it: session cld-NAME on server cld-NAME.
 package sandbox
 
@@ -36,8 +36,8 @@ type Sandbox struct {
 	Root string
 	Home string
 	// Work is where cld runs unless a test says otherwise: a directory named "_", of which
-	// nothing is left in a session's name, so that -s SUFFIX names a session SUFFIX there, and
-	// the tests name their sessions exactly.
+	// nothing is left in a session's name. So -s SUFFIX names a session SUFFIX there, and the
+	// tests name their sessions exactly.
 	Work     string
 	ProbeDir string
 	// Env is the environment cld runs in; terminals add their own variables on top.
@@ -121,7 +121,7 @@ type Result struct {
 }
 
 // RunCld runs cld without a terminal, which is enough for everything cld does before tmux but
-// the handover itself: join refuses without a terminal, once its other checks pass (see
+// the handover itself. join refuses without a terminal, once its other checks pass (see
 // RunCldOnTerminal). extra variables are added to the sandbox environment.
 func (s *Sandbox) RunCld(extra map[string]string, args ...string) Result {
 	s.t.Helper()

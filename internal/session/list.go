@@ -13,10 +13,10 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// Sessions reads the sessions cld started, in the order of their names: those of the servers that
-// take the connection, asks at a time (decision 38.2), and those that have ended, as Ended. It
-// starts no server and writes nothing, as list, join's sweep and completion read with it. Once ctx
-// is done, its tmux is killed.
+// Sessions reads the sessions cld started, in the order of their names. It asks the servers that
+// take the connection, asks at a time (decision 38.2), and adds those that have ended, as Ended.
+// It starts no server and writes nothing, as list, join's sweep and completion read with it. Once
+// ctx is done, its tmux is killed.
 func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 	sockets, err := readSockets()
 	if err != nil {
@@ -37,7 +37,7 @@ func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
-// connected are the NAMEs of the sockets cld-NAME whose servers may run: a socket that refuses the
+// connected are the NAMEs of the sockets cld-NAME whose servers may run. A socket that refuses the
 // connection, or a NAME no session can have, is passed over (decision 38.1).
 func connected(ctx context.Context, sockets []os.DirEntry) []string {
 	connect := tmuxDir()
@@ -133,9 +133,9 @@ func (t *Tmux) session(ctx context.Context, suffix string) (*Session, error) {
 	return s, nil
 }
 
-// idleSince is how long a session with no terminal attached has been idle at now, by the later of
-// times, its activity and its last attach, the second missing before any attach (decision 46.5):
-// 0 where one of them is no whole seconds.
+// idleSince is how long a session with no terminal attached has been idle at now, or 0 where one
+// of times is no whole seconds. It goes by the later of times, its activity and its last attach,
+// the second missing before any attach (decision 46.5).
 func idleSince(now time.Time, times []string) time.Duration {
 	if len(times) == 0 {
 		return 0
@@ -151,9 +151,9 @@ func idleSince(now time.Time, times []string) time.Duration {
 	return max(now.Sub(time.Unix(last, 0)), 0)
 }
 
-// fields splits a line of Sessions' output into count fields: runs of tabs separate them, tabs
-// around the line are dropped, and the last, the home and the directory (see cutHome), takes the
-// rest of it.
+// fields splits a line of Sessions' output into count fields, which runs of tabs separate. Tabs
+// around the line are dropped, and the last field, the home and the directory (see cutHome),
+// takes the rest of it.
 func fields(line string, count int) []string {
 	rest := strings.Trim(line, "\t")
 	var split []string
