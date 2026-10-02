@@ -1,11 +1,9 @@
 package session
 
-// cld restore brings back the sessions that a reboot ended: the entries of cld's record with a run
-// mark and no server (see the top of record.go). A reboot ends every tmux server, and each claude
-// with its session, but neither the conversations nor cld's record: a session that ran then keeps
-// its run mark, where kill, the interactive list's Ctrl+X, the sweep of the idle sessions and
-// claude's own exit with status 0 remove it (see unmark and died). The user's systemd runs
-// restore as it starts, where cld setup restore set that up (see internal/restore).
+// cld restore brings back the sessions a reboot ended, the record's entries with a run mark and no
+// server (see the top of record.go; decision 48). A reboot leaves the mark, which kill, the list's
+// Ctrl+X, the idle sweep and claude's exit with status 0 remove (see unmark and died). cld setup
+// restore has the user's systemd run restore at startup (see internal/restore).
 
 import (
 	"context"
@@ -17,14 +15,15 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// ContinuePrompt is the prompt restore gives the claude of a session whose busy mark says it was
-// in a turn when the machine stopped: claude resumes the conversation and submits the prompt as
-// its first turn there (claude 2.1.232 and 2.1.285, read; see docs/design/findings/claude.md).
+// ContinuePrompt is the prompt restore gives claude where the busy mark shows a turn that the
+// machine's stop cut off (decision 48.7). claude resumes the conversation and submits the prompt
+// as its first turn there (claude 2.1.232 and 2.1.285, read; see docs/design/findings/claude.md).
 // claude asks the permissions it asks for as in any turn.
 const ContinuePrompt = "The machine restarted while you were working; continue where you left off."
 
 // Marked are the NAMEs of the sessions of cld's record that have a run mark, in the order of their
-// names: those that run, and those that ran when the machine stopped, which restore brings back.
+// file names. Those are the sessions that run, and those that ran when the machine stopped, which
+// restore brings back.
 func Marked() []string {
 	dir, err := stateDir()
 	if err != nil {
@@ -39,38 +38,19 @@ func Marked() []string {
 	return names
 }
 
-// Restored is what Restore did with a session: where Idle is 0, it brought the session back, its
-// claude running in Directory, and continuing the turn it was in where Busy (see ContinuePrompt);
-// otherwise it left the session ended, idle for that long.
+// Restored is what Restore did with a session. Where Idle is 0, it brought the session back, its
+// claude running in Directory, and continuing an unfinished turn where Busy (see ContinuePrompt).
+// Otherwise it left the session ended, idle for that long.
 type Restored struct {
 	Directory string
 	Busy      bool
 	Idle      time.Duration
 }
 
-// Restore brings session cld-SUFFIX back, for cld restore, where its entry in cld's record has its
-// run mark and no server runs as cld-SUFFIX, and returns what it did; nil where it left the
-// session as it is: one that runs, or whose server does, or that another cld is starting (see
-// starting), or that has lost its entry or its mark meanwhile - to kill, say, or to the list's
-// forget. A session idle for longer than limit, where that is not 0, by its run mark - the time
-// the mark was made, as join made the session, or last touched, as claude took a prompt (see
-// recordHooks) - it leaves ended, removing the mark: the sweep of the idle sessions goes by tmux's
-// times, which a reboot takes with the server, and the new server's would count the session as
-// used at every restore (see EndIdle). Otherwise it makes the session as join -n NAME -s SUFFIX
-// would bring it back, but detached: tmux makes the session with new-session -d, on no terminal,
-// and cld waits for tmux, which returns once the session is made, instead of becoming it; claude
-// resumes the conversation of the session's entry by its ID, or else the one named cld-SUFFIX (see
-// resumed), in the directory of the entry (see enter), with the claude and the environment the
-// session's server started with (see started) - but for TMUX_TMPDIR, which is cld's own: the
-// server's socket is where cld looks for it, and where the hooks reach it - and, for a session
-// whose busy mark is there, ContinuePrompt after --resume; the words given to claude after "--"
-// are not given again, as with join. The run mark keeps its time, so that a session restore alone
-// keeps bringing back ends all the same (see setMarks). claude is checked as join checks it (see
-// CheckClaude), but in the session's directory and environment, where it starts. The caller holds
-// the record's lock (see Lock), so that another restore, or a join of the session, at once makes
-// no second one. What refuses the session is an error - no environment recorded, its directory
-// gone or closed (see enterable), a claude that is too old or does not run, a name tmux refuses,
-// tmux's own failure, with its message - and restore goes on with the others.
+// Restore brings session cld-SUFFIX back, detached, as join brings back an ended one (decision
+// 48.5). It returns nil for a session that runs, or whose server does, that a join is starting,
+// or that has lost its entry or mark. Where limit is not 0, it leaves ended a session whose run
+// mark is older than limit (decision 48.8). The caller holds the record's lock (decision 48.6).
 func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
 	dir, err := stateDir()
 	if err != nil {
@@ -81,8 +61,8 @@ func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
 	if !ok || err != nil {
 		return nil, nil //nolint:nilerr // an entry or mark it cannot read is none, as in Marked
 	}
-	// The start mark before the lookup, as join reads it (see settled): one gone since was removed
-	// by a tmux that had made the session by then, which the lookup finds.
+	// The start mark is read before the lookup, as join reads it (see settled). A tmux that removed
+	// it since had made the session by then, which the lookup finds.
 	if starting(suffix) {
 		return nil, nil
 	}
@@ -104,7 +84,9 @@ func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
 	if err := enter(r); err != nil {
 		return nil, err
 	}
-	env := slices.DeleteFunc(slices.Clone(s.Environment), func(variable string) bool { return strings.HasPrefix(variable, "PWD=") })
+	env := slices.DeleteFunc(slices.Clone(s.Environment), func(variable string) bool {
+		return strings.HasPrefix(variable, "PWD=")
+	})
 	env = append(env, "PWD="+r.Directory)
 	c, err := checkClaude(s.Claude, r.Directory, env)
 	if err != nil {

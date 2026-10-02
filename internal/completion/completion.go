@@ -1,37 +1,15 @@
-// Package completion is cld setup completion: it sets up cld's completion in bash, zsh or fish,
-// writing the script that cld completion SHELL prints where the shell reads it:
+// Package completion is cld setup completion: it writes the script that cld completion SHELL
+// prints where the shell reads it (decision 22.2):
 //
-//   - bash: completions/cld in the first directory of $BASH_COMPLETION_USER_DIR, or else
-//     $XDG_DATA_HOME/bash-completion/completions/cld, by default under ~/.local/share - the
-//     directory that bash-completion 2 looks in first for a command's completion, at its first
-//     TAB. That needs nothing more where ~/.bashrc loads bash-completion, as Debian's and
-//     Ubuntu's do; bash-completion 1, which Homebrew installs for macOS's bash 3.2, reads no such
-//     directory;
-//   - zsh: $XDG_DATA_HOME/cld/zsh/_cld, by default under ~/.local/share, and the lines of
-//     zshLines at the end of $ZDOTDIR/.zshrc, by default ~/.zshrc, which put that directory first
-//     on $fpath and register _cld for cld with compdef. zsh has no directory it reads for every
-//     user as bash-completion and fish do: the one it has, the first of $fpath, belongs to root
-//     (see docs/design/findings/environment.md). The lines run compinit, which defines compdef,
-//     only where nothing before them has, since a second compinit drops what compdef registered
-//     after the first; with -i, which leaves out insecure directories rather than ask at each
-//     start, as compinit does where Homebrew's are group-writable. A compinit after them still
-//     finds _cld on $fpath, by the #compdef line the script starts with. They do nothing where the
-//     script is missing, as on a machine where cld set nothing up that shares the .zshrc;
-//   - fish: $XDG_CONFIG_HOME/fish/completions/cld.fish, by default under ~/.config: fish's own
-//     directory of completions, the first it looks in, and where cobra's help and cld's docs had
-//     users write the script by hand, so that cld replaces such a script rather than hide behind
-//     it.
+//   - bash: completions/cld in the first directory of $BASH_COMPLETION_USER_DIR, or else in
+//     $XDG_DATA_HOME/bash-completion, the user directory bash-completion 2 reads first;
+//   - zsh: $XDG_DATA_HOME/cld/zsh/_cld, which zshLines at the end of $ZDOTDIR/.zshrc load
+//     (decision 22.3);
+//   - fish: $XDG_CONFIG_HOME/fish/completions/cld.fish, the first directory of fish's completions.
 //
-// The script is written whole, as internal/configfile writes a file: made, directories included,
-// or replaced where it differs. .zshrc gets zshLines where it lacks their first line, and keeps
-// everything else. Setup reads both files before it writes either.
-//
-// cld update runs Refresh once it has replaced cld: where a script is at the place setup writes it
-// and starts as cobra's does, the new cld prints the script anew, with cld completion SHELL, which
-// every release has, and Refresh writes it where it differs. A script without descriptions, as
-// cld completion SHELL --no-descriptions prints it, stays one. .zshrc is left alone. cld is
-// updated by then, so a script Refresh cannot write is no failure of the update's: it warns,
-// naming the command that writes the script, and goes on with the next shell.
+// Those variables default to ~/.local/share, ~/.config and the home directory. Setup writes as
+// internal/configfile does, reading both files before it writes either (decision 22.4). cld
+// update runs Refresh once it has replaced cld, to write each script anew (decision 22.5).
 //
 // The package prints nothing: Setup and Refresh return what they did, for cld to report.
 package completion
@@ -63,7 +41,7 @@ var headers = map[string]string{
 // noDescriptions is in a script that cld completion SHELL --no-descriptions prints, and only there.
 const noDescriptions = " __completeNoDesc "
 
-// zshLines are the lines setup completion zsh adds to .zshrc (see the package comment). zsh finds
+// zshLines are the lines setup completion zsh adds to .zshrc (decision 22.3). zsh finds
 // the script where cld writes it, since XDG_DATA_HOME and HOME are the variables cld reads.
 const zshLines = `# cld's completion, from cld setup completion zsh
 if [[ -r ${XDG_DATA_HOME:-$HOME/.local/share}/cld/zsh/_cld ]]; then
@@ -118,7 +96,7 @@ func zshrc() (string, error) {
 }
 
 // change is one file setup completion writes: created, changed in what ("" for the whole file),
-// or neither and left as it was; write writes it.
+// or neither and left alone; write writes it.
 type change struct {
 	file    string
 	created bool
@@ -138,7 +116,12 @@ func Setup(shell string, script []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	changes := []change{{path, !file.Exists, !file.Exists || !bytes.Equal(file.Data, script), "", func() error { return file.Write(script) }}}
+	changes := []change{{
+		file:    path,
+		created: !file.Exists,
+		changed: !file.Exists || !bytes.Equal(file.Data, script),
+		write:   func() error { return file.Write(script) },
+	}}
 	if shell == "zsh" {
 		path, err := zshrc()
 		if err != nil {
@@ -149,9 +132,25 @@ func Setup(shell string, script []byte) (string, error) {
 			return "", err
 		}
 		data, added := addLines(rc.Data)
-		changes = append(changes, change{path, !rc.Exists, added, "the lines that load the script", func() error { return rc.Write(data) }})
+		changes = append(changes, change{
+			file:    path,
+			created: !rc.Exists,
+			changed: added,
+			what:    "the lines that load the script",
+			write:   func() error { return rc.Write(data) },
+		})
 	}
 
+	wrote, err := write(changes)
+	if err != nil {
+		return "", err
+	}
+	return describe(changes, shell, wrote), nil
+}
+
+// write writes the changes that change their file, and returns whether it wrote any. An error
+// names the files written before it.
+func write(changes []change) (bool, error) {
 	var written []string
 	for _, c := range changes {
 		if !c.changed {
@@ -159,12 +158,19 @@ func Setup(shell string, script []byte) (string, error) {
 		}
 		if err := c.write(); err != nil {
 			if len(written) > 0 {
-				err = fail.Runtime(err.Error() + " (" + strings.Join(written, " and ") + " written before it)")
+				err = fail.Runtime(err.Error() +
+					" (" + strings.Join(written, " and ") + " written before it)")
 			}
-			return "", err
+			return false, err
 		}
 		written = append(written, c.file)
 	}
+	return len(written) > 0, nil
+}
+
+// describe is Setup's report of the changes to set up completion in shell, wrote being whether it
+// wrote any file.
+func describe(changes []change, shell string, wrote bool) string {
 	var report strings.Builder
 	for _, c := range changes {
 		switch {
@@ -178,10 +184,10 @@ func Setup(shell string, script []byte) (string, error) {
 			report.WriteString("Updated " + c.file + "\n")
 		}
 	}
-	if len(written) > 0 {
+	if wrote {
 		report.WriteString("Start a new " + shell + " for it to take effect\n")
 	}
-	return report.String(), nil
+	return report.String()
 }
 
 // addLines is .zshrc, holding data, with zshLines at its end where it lacks their first line, and
@@ -204,8 +210,8 @@ func addLines(data []byte) ([]byte, bool) {
 }
 
 // Refresh writes anew the scripts setup completion wrote, from cld, the file cld update has just
-// replaced (see the package comment), and returns what it did, a line for each script it wrote,
-// and a warning for each it could not.
+// replaced (decision 22.5). It returns a line for each script it wrote, and a warning for each it
+// could not.
 func Refresh(cld string) (report string, warnings []string) {
 	var written strings.Builder
 	for _, shell := range Shells {
@@ -223,8 +229,8 @@ func Refresh(cld string) (report string, warnings []string) {
 	return written.String(), warnings
 }
 
-// refresh writes anew the script for shell at path from cld, where it is cobra's, and returns
-// whether it wrote it.
+// refresh writes anew the script for shell at path from cld, where the script starts as cobra's
+// does, and returns whether it wrote it.
 func refresh(cld, shell, path string) (bool, error) {
 	file, err := configfile.Read(path)
 	if err != nil || !file.Exists || !bytes.HasPrefix(file.Data, []byte(headers[shell])) {
@@ -254,7 +260,8 @@ func refreshWarning(shell, path string, err error) string {
 	for _, prefix := range []string{"cannot read " + path + ": ", "cannot write " + path + ": "} {
 		message = strings.TrimPrefix(message, prefix)
 	}
-	return fmt.Sprintf("cannot update the completion script for %s, %s: %s. Run cld setup completion %[1]s manually", shell, path, message)
+	return fmt.Sprintf("cannot update the completion script for %s, %s: %s. "+
+		"Run cld setup completion %[1]s manually", shell, path, message)
 }
 
 // reason is what err says, without the operation and file a path error names, or with the status
@@ -269,9 +276,9 @@ func reason(err error) string {
 		return pathError.Err.Error()
 	case errors.As(err, &exitError):
 		if stderr := strings.TrimSpace(string(exitError.Stderr)); stderr != "" {
-			return exitError.ProcessState.String() + ": " + stderr
+			return exitError.String() + ": " + stderr
 		}
-		return exitError.ProcessState.String()
+		return exitError.String()
 	}
 	return err.Error()
 }

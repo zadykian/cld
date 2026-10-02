@@ -12,12 +12,9 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// Print writes text to stdout. Its error is only that of a write that failed: a fail.Runtime, as
-// the script's printf and cat failing under set -e were, so that output cut short - on a full
-// disk, say - does not pass for whole. A write to a pipe whose reader has gone never gets here:
-// Go's runtime ends cld with SIGPIPE, as the signal ended the script - also when cld started with
-// SIGPIPE ignored, where the script failed the write instead. Go does not tell that disposition
-// apart from the default.
+// Print writes text to stdout. Its error is only that of a write that failed, a fail.Runtime, so
+// that output cut short does not pass for whole. A reader gone from a pipe ends cld by SIGPIPE
+// before then, even where SIGPIPE was ignored at startup (decision 11.9).
 func Print(text string) error {
 	if _, err := os.Stdout.WriteString(text); err != nil {
 		if pathError, ok := errors.AsType[*fs.PathError](err); ok {
@@ -34,7 +31,7 @@ func Warn(warning string) {
 	_, _ = fmt.Fprintf(os.Stderr, "cld: warning: %s\n", warning)
 }
 
-// Note writes note to stderr, as "cld: NOTE", for what cld did beside what it was asked, away
+// Note writes note to stderr, as "cld: NOTE", for what cld did beside what was asked of it, away
 // from its output - a session it ended for being idle, say. A write that fails is passed over, as
 // for Warn.
 func Note(note string) {
