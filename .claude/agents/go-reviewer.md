@@ -20,7 +20,7 @@ working tree's `git diff`, and untracked `.go` files from `git status --short`.
 Run them and report each finding as it stands:
 
 ```sh
-tools/run golangci-lint run ./...        # the ratchet: lines that differ from origin/main
+tools/run golangci-lint run ./...        # every line of every package
 go run ./tools/sizecheck FILES
 tools/valecheck FILES
 gofmt -l FILES
@@ -33,10 +33,9 @@ Then read the code for what they cannot see.
 - **Errors.** Every error is handled, returned with context, or discarded with a reason in a
   comment: `errcheck` counts `_ =` too. Wrapped errors are compared with `errors.Is` and
   `errors.As`. No `nil` returned beside an error just checked (`nilerr`).
-- **Size.** Files of 300 lines or fewer; `tools/sizecheck/baseline.txt` may only shrink, so a
-  file over the cap must not grow. Functions of 60 lines and 40 statements or fewer (revive's
-  `function-length`), cognitive complexity 20 or less (`gocognit`), no deep `if` nesting
-  (`nestif`). Say how to split what is over.
+- **Size.** Files of 300 lines or fewer. Functions of 60 lines and 40 statements or fewer
+  (revive's `function-length`), cognitive complexity 20 or less (`gocognit`), no deep `if`
+  nesting (`nestif`). Say how to split what is over.
 - **Comments.** As [writing.md](../rules/writing.md) has them: a block's purpose in one or two
   sentences, or a non-obvious reason; never narration of the code. Blocks of 4 lines or fewer,
   package comments of 15 or fewer, sentences of 30 words or fewer. A reason a decision records

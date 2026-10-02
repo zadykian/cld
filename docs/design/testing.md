@@ -7,7 +7,8 @@ probe stands in for claude, and for the programs that would reach outside the sa
 ## Layers
 
 1. **Static.** `make vet` runs gofmt, go vet, ShellCheck and shfmt. `make lint`, CI's `lint` job,
-   adds golangci-lint, the size caps, Vale, govulncheck, the workflow linters and lychee.
+   adds golangci-lint, the size caps, Vale, govulncheck, the workflow linters and lychee. Each
+   checks every file, and any finding fails it, warnings included.
 2. **Behaviour against real tmux.** The probe replaces claude, `tmux -V` for the version check,
    docker for `setup telemetry` ([decision 18](decisions/0018-telemetry.md)), and `systemctl`
    and `loginctl` for `setup restore` ([decision 48](decisions/0048-restore-after-reboot.md)).
