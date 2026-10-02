@@ -14,4 +14,3 @@ internal/update/update.go lines=334 package=21
 tests/contract_test.go lines=442 comments=1
 tests/internal/sandbox/sandbox.go lines=479
 tests/internal/terminal/tmux.go lines=303 comments=1
-tests/update_test.go lines=503 comments=2
