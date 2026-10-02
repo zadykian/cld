@@ -6,7 +6,6 @@ internal/restore/restore.go
 internal/session/record.go
 internal/session/restore.go
 internal/session/switch.go
-internal/update/update.go
 tests/internal/sandbox/pty.go
 tests/internal/terminal/jediterm.go
 tests/internal/terminal/terminal.go
