@@ -8,8 +8,6 @@ internal/restore/restore.go
 internal/session/record.go
 internal/session/restore.go
 internal/session/switch.go
-internal/telemetry/settings.go
-internal/telemetry/telemetry.go
 internal/update/update.go
 tests/completion_test.go
 tests/contract_test.go
