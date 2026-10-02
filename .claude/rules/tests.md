@@ -37,7 +37,10 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 
 ## Where a test goes
 
-- `contract_test.go`: the terminal contract.
+- `contract_test.go`: the terminal contract, its start and C1 and C2; `contract_keys_test.go`:
+  the keys and the paste (C3, C8); `contract_mouse_test.go`: C4; `contract_passthrough_test.go`:
+  C5; `contract_detach_test.go`: the detach and claude's exit (C7, C9); `contract_list_test.go`:
+  the session list (C10). The helpers that only these files use stay among them.
 - `session_TOPIC_test.go`: sessions and servers, a file per feature. They cover names, `join`,
   `detach`, `kill`, moves, other repositories and servers, and the server's options and hooks.
   They cover claude's exit and status, completion, the keys another tmux keeps, the idle sweep and
