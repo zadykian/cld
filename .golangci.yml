@@ -1,0 +1,43 @@
+# golangci-lint v2, run by `make golangci-lint` on ./... (cmd, internal, tests, tools).
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - nilerr
+    - errchkjson
+    - nolintlint
+    - revive
+    - gocognit
+    - nestif
+    - modernize
+    - unparam
+    - usetesting
+    - thelper
+    - misspell
+    - dupword
+    - lll
+  settings:
+    errcheck:
+      check-blank: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: function-length
+          # At most 40 statements and 60 lines in a function.
+          arguments: [40, 60]
+    gocognit:
+      min-complexity: 20
+    lll:
+      line-length: 100
+
+issues:
+  # The ratchet: only lines that differ from the merge base with main must pass, so today's
+  # backlog blocks nothing. CI's checkout has no local branch main, only origin/main.
+  new-from-merge-base: origin/main
+  # Every finding is reported, not the first 50 of a linter or 3 of a kind.
+  max-issues-per-linter: 0
+  max-same-issues: 0

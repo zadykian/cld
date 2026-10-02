@@ -18,17 +18,68 @@ VERSION ?= dev
 # The platforms make dist builds cld for, as dist/cld-OS-ARCH.
 PLATFORMS = linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 BUILD = CGO_ENABLED=0 go build -trimpath -ldflags '-X main.version=$(VERSION)'
+# The scripts vet checks, POSIX sh but for fetch-deps, which is bash.
+SCRIPTS = install.sh tests/jediterm/fetch-deps tools/run tools/valecheck
+# vet's ShellCheck and shfmt: those on the PATH, as the Docker image and Homebrew have them, but
+# the pinned ones under lint.
+SHELLCHECK = shellcheck
+SHFMT = shfmt
+# The files sizecheck and vale check, every one when empty: make vale FILES='README.md'.
+FILES =
 
-.PHONY: check lint test docker-image docker-test docker-check docker-blesh-image docker-blesh-test \
-	docker-blesh-check dist install uninstall
+.PHONY: check lint vet golangci-lint sizecheck vale govulncheck actionlint zizmor lychee test \
+	docker-image docker-test docker-check docker-blesh-image docker-blesh-test docker-blesh-check \
+	dist install uninstall
 
-check: lint test
+check: vet test
 
-lint:
-	shellcheck install.sh tests/jediterm/fetch-deps
-	shfmt -d -i 4 install.sh tests/jediterm/fetch-deps
+# Every gate, as CI's lint job runs them, each failing on any finding. tools/run downloads the
+# tools pinned there into .cache/tools; check keeps to vet, whose tools the Docker image has.
+lint: SHELLCHECK = tools/run shellcheck
+lint: SHFMT = tools/run shfmt
+lint: vet golangci-lint sizecheck vale govulncheck actionlint zizmor lychee
+
+vet:
+	$(SHELLCHECK) $(SCRIPTS)
+	$(SHFMT) -d -i 4 $(SCRIPTS)
 	@test -z "$$(gofmt -l .)" || { gofmt -d .; exit 1; }
 	go vet ./...
+
+# Only the lines that differ from origin/main: .golangci.yml's new-from-merge-base.
+golangci-lint:
+	tools/run golangci-lint run ./...
+
+# The size caps, against the overages tools/sizecheck/baseline.txt lists.
+sizecheck:
+	go test -count=1 ./tools/...
+	go run ./tools/sizecheck $(FILES)
+
+# The files that fail today are in tools/valecheck.txt, which may only shrink.
+vale:
+	tools/valecheck $(FILES)
+
+# Any finding fails, as do those govulncheck lists without failing: in packages cld imports but
+# does not call, and in modules it only requires.
+GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.8.0
+govulncheck:
+	$(GOVULNCHECK) -show verbose ./...
+	mkdir -p .cache && $(GOVULNCHECK) -format json ./... >.cache/govulncheck.json
+	@! grep -q '"finding"' .cache/govulncheck.json || \
+		{ echo 'govulncheck: the findings above fail the check, called or not'; exit 1; }
+
+# The workflows' shell scripts go through the pinned ShellCheck.
+actionlint:
+	shellcheck="$$(tools/run -path shellcheck)" && \
+		tools/run actionlint -shellcheck="$$shellcheck" -pyflakes=
+
+# The workflows and .github/dependabot.yml, with the online audits where GH_TOKEN is set, as in CI.
+zizmor:
+	tools/run zizmor .
+
+# Links to files and their headings in the Markdown files git lists, new ones included.
+lychee:
+	tools/run lychee --offline --include-fragments --no-progress \
+		$$(git ls-files --cached --others --exclude-standard '*.md')
 
 test:
 	cd tests && CLD_TERMINALS=$(TERMINALS) go test -count=1 ./...

@@ -1,0 +1,101 @@
+#!/bin/sh
+# Runs Vale (.vale.ini) on the Markdown files and Go sources that git lists, or on the FILEs:
+#
+#   tools/valecheck [-update] [FILE...]
+#
+# tools/valecheck.txt lists the files that failed when the check came in, and may only shrink. A
+# failing file it does not list fails the check, and so does a listed file that passes or is gone.
+# With -update, the list drops those files instead. Run it from the repository's root.
+
+set -eu
+
+# say prints a message of the script's.
+say() {
+    printf 'tools/valecheck: %s\n' "$*" >&2
+}
+
+# die prints a message of the script's and exits with status 1.
+die() {
+    say "$*"
+    exit 1
+}
+
+# files writes the files to check to $tmp/files, sorted: the FILEs given, or every one git lists,
+# new files included but not those it ignores, as sizecheck takes them. A FILE that is neither
+# Markdown nor Go is passed over, so that any list of files will do.
+files() {
+    if [ $# -eq 0 ]; then
+        git ls-files --cached --others --exclude-standard -- '*.md' '*.go' >"$tmp/given"
+    else
+        for file; do
+            [ -f "$file" ] || die "no file $file"
+            case $file in
+            *.md | *.go) printf '%s\n' "${file#./}" ;;
+            esac
+        done >"$tmp/given"
+    fi
+    LC_ALL=C sort -u "$tmp/given" >"$tmp/files"
+}
+
+# alerts writes Vale's alerts to $tmp/alerts, a line each, and the files they are in to $tmp/failing.
+alerts() {
+    set --
+    while IFS= read -r file; do
+        set -- "$@" "$file"
+    done <"$tmp/files"
+    # Vale reads stdin when given no file.
+    if [ $# -gt 0 ]; then
+        tools/run vale --no-exit --output=line "$@" >"$tmp/alerts" || die "Vale failed"
+    else
+        : >"$tmp/alerts"
+    fi
+    cut -d : -f 1 "$tmp/alerts" | LC_ALL=C sort -u >"$tmp/failing"
+}
+
+main() {
+    update=false
+    if [ "${1-}" = -update ]; then
+        update=true
+        shift
+    fi
+    [ -f .vale.ini ] || die "run it from the repository's root"
+    list=tools/valecheck.txt
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    trap 'exit 1' HUP INT TERM
+
+    files "$@"
+    alerts
+    grep -v '^#' "$list" | LC_ALL=C sort -u >"$tmp/listed"
+    LC_ALL=C comm -23 "$tmp/failing" "$tmp/listed" >"$tmp/new"
+    # The stale entries: every listed file that passes, or of the FILEs, those listed that pass.
+    if [ $# -eq 0 ]; then
+        LC_ALL=C comm -23 "$tmp/listed" "$tmp/failing"
+    else
+        LC_ALL=C comm -12 "$tmp/listed" "$tmp/files" | LC_ALL=C comm -23 - "$tmp/failing"
+    fi >"$tmp/stale"
+
+    status=0
+    if [ -s "$tmp/new" ]; then
+        awk -F : 'NR == FNR { new[$0] = 1; next } $1 in new' "$tmp/new" "$tmp/alerts"
+        while IFS= read -r file; do
+            say "$file fails Vale, and $list does not list it"
+        done <"$tmp/new"
+        status=1
+    fi
+    if [ -s "$tmp/stale" ] && $update; then
+        awk 'NR == FNR { stale[$0] = 1; next } !($0 in stale)' "$tmp/stale" "$list" >"$tmp/list"
+        cat "$tmp/list" >"$list"
+        while IFS= read -r file; do
+            say "dropped $file from $list"
+        done <"$tmp/stale"
+    elif [ -s "$tmp/stale" ]; then
+        while IFS= read -r file; do
+            say "$file passes Vale or is gone: drop it from $list (tools/valecheck -update)"
+        done <"$tmp/stale"
+        status=1
+    fi
+    return $status
+}
+
+main "$@"
