@@ -24,5 +24,4 @@ tests/probe/main.go lines=729 comments=1 package=88
 tests/project_test.go lines=657 comments=4
 tests/record_test.go lines=676 comments=8
 tests/restore_test.go lines=1016 comments=15
-tests/telemetry_test.go lines=1105 comments=5
 tests/update_test.go lines=503 comments=2
