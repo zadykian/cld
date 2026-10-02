@@ -6,7 +6,8 @@ paths:
 # internal/session
 
 The invariants a change to the tmux side keeps, each linking the decision that gives its reasons;
-the package comment says how the code works.
+the package comment, in `doc.go`, and the [overview](../../docs/design/overview.md) say how the code
+works.
 
 ## tmux
 
