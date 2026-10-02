@@ -22,23 +22,6 @@ import (
 // of make docker-blesh-check, bash with ble.sh completes cld through it, typed into a tmux pane.
 // cld update's refresh of the scripts is in update_test.go.
 
-// zshLines are the lines setup completion zsh adds to .zshrc.
-const zshLines = `# cld's completion, from cld setup completion zsh
-if [[ -r ${XDG_DATA_HOME:-$HOME/.local/share}/cld/zsh/_cld ]]; then
-  fpath=("${XDG_DATA_HOME:-$HOME/.local/share}/cld/zsh" $fpath)
-  (( $+functions[compdef] )) || { autoload -U compinit && compinit -i; }
-  autoload -Uz _cld && compdef _cld cld
-fi
-`
-
-// scripts are where setup completion writes each shell's script, under the home directory, without
-// the variables that move it.
-var scripts = map[string]string{
-	"bash": ".local/share/bash-completion/completions/cld",
-	"zsh":  ".local/share/cld/zsh/_cld",
-	"fish": ".config/fish/completions/cld.fish",
-}
-
 // completionScript is what cld completion shell prints.
 func completionScript(t *testing.T, s *sandbox.Sandbox, shell string) string {
 	t.Helper()
@@ -57,14 +40,6 @@ func setupCompletion(s *sandbox.Sandbox, shell string, env map[string]string) sa
 		extra[name] = strings.ReplaceAll(value, "{root}", s.Root)
 	}
 	return s.RunCld(extra, "setup", "completion", shell)
-}
-
-// checkContent reports a file at path that does not hold want.
-func checkContent(t *testing.T, path, want string) {
-	t.Helper()
-	if data, err := os.ReadFile(path); err != nil || string(data) != want {
-		t.Errorf("%s holds (%v)\n%s\nwant\n%s", path, err, data, want)
-	}
 }
 
 // completionCases are where setup completion writes, under the sandbox's root, with the variables

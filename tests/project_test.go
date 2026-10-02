@@ -1,14 +1,12 @@
 package tests
 
 import (
-	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -39,34 +37,6 @@ var (
 	}
 )
 
-// repoFile is what the file name of cld's own repository holds.
-func repoFile(t *testing.T, name string) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
-}
-
-// replaceOnce is text with old, which it holds once, replaced by new.
-func replaceOnce(t *testing.T, text, old, new string) string {
-	t.Helper()
-	if count := strings.Count(text, old); count != 1 {
-		t.Fatalf("%q is %d times in\n%s", old, count, text)
-	}
-	return strings.Replace(text, old, new, 1)
-}
-
-// quoted is entries as JSON strings, each after prefix, separated by commas and newlines.
-func quoted(prefix string, entries []string) string {
-	var lines []string
-	for _, entry := range entries {
-		lines = append(lines, prefix+strconv.Quote(entry))
-	}
-	return strings.Join(lines, ",\n")
-}
-
 // mcpFile is the .mcp.json setup project writes where there is none, with the MCP servers named.
 func mcpFile(servers ...string) string {
 	var entries []string
@@ -74,18 +44,6 @@ func mcpFile(servers ...string) string {
 		entries = append(entries, mcpEntries[name])
 	}
 	return "{\n  \"mcpServers\": {\n" + strings.Join(entries, ",\n") + "\n  }\n}\n"
-}
-
-// projectWrite writes content to the file name of the sandbox's work directory, making its
-// directory, and returns its path.
-func projectWrite(t *testing.T, s *sandbox.Sandbox, name, content string) string {
-	t.Helper()
-	path := filepath.Join(s.Work, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	s.WriteFile(path, content)
-	return path
 }
 
 // checkFile reports a file name of the sandbox's work directory that does not hold want.
@@ -107,38 +65,6 @@ func gitStatus(t *testing.T, s *sandbox.Sandbox) []string {
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 	slices.Sort(lines)
 	return lines
-}
-
-// tree is what dir holds, but for .git: each directory, file and symbolic link by its path, with
-// a file's content and a link's target.
-func tree(t *testing.T, dir string) map[string]string {
-	t.Helper()
-	entries := map[string]string{}
-	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || path == dir {
-			return err
-		}
-		name, _ := filepath.Rel(dir, path)
-		switch {
-		case entry.Name() == ".git":
-			return filepath.SkipDir
-		case entry.Type()&fs.ModeSymlink != 0:
-			target, err := os.Readlink(path)
-			entries[name] = "-> " + target
-			return err
-		case entry.IsDir():
-			entries[name] = "/"
-		default:
-			data, err := os.ReadFile(path)
-			entries[name] = string(data)
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return entries
 }
 
 // setup project where there is nothing: each file as the repository has it with --mcp goland

@@ -22,12 +22,6 @@ import (
 // what expires, the lock that two joins at once take, and a record cld cannot write.
 // Where a test needs no session, cld runs the fake tmux (see fakeTmux).
 
-// Conversations' IDs, as claude gives them.
-const (
-	firstID  = "0f4c1d7e-5a2b-4c3d-9e8f-1a2b3c4d5e6f"
-	secondID = "7e6d5c4b-3a29-4817-a6f5-e4d3c2b1a098"
-)
-
 // fakeTmux is the environment in which cld finds the fake tmux first on the PATH, which passes the
 // version check, says that no server runs, and records the command join would run rather than
 // run it (see probe): cld then makes no session, and prints the title of the one it
@@ -39,12 +33,6 @@ func fakeTmux(s *sandbox.Sandbox) map[string]string {
 	}
 }
 
-// readEntry is session name's entry in cld's record in s, "" where there is none.
-func readEntry(s *sandbox.Sandbox, name string) string {
-	data, _ := os.ReadFile(entryFile(s, name))
-	return string(data)
-}
-
 // touched reports an entry of session name in s that was not written or touched within a minute.
 func touched(t *testing.T, s *sandbox.Sandbox, name, after string) {
 	t.Helper()
@@ -54,17 +42,6 @@ func touched(t *testing.T, s *sandbox.Sandbox, name, after string) {
 	}
 	if since := time.Since(info.ModTime()); since > time.Minute {
 		t.Errorf("entry written %v ago after %s, want now", since.Round(time.Second), after)
-	}
-}
-
-// age makes the files paths as old as ago, as their time goes.
-func age(t *testing.T, ago time.Duration, paths ...string) {
-	t.Helper()
-	then := time.Now().Add(-ago)
-	for _, path := range paths {
-		if err := os.Chtimes(path, then, then); err != nil {
-			t.Fatal(err)
-		}
 	}
 }
 

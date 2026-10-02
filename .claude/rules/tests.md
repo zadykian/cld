@@ -49,3 +49,7 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 - `telemetry_test.go`: `setup telemetry` against the fake docker.
 - `install_test.go` and `update_test.go`: `install.sh` and `cld update`, against releases that an
   HTTP server of the test's serves.
+- The helpers that more than one test file uses, a file per topic with no test in it:
+  `terminal_test.go`, `tmux_test.go`, `list_test.go` for the interactive list, `entries_test.go`
+  for the record's entries, `hooks_test.go`, `files_test.go`, `setup_test.go` and
+  `release_test.go`. A helper of one file's tests stays there.

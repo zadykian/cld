@@ -29,59 +29,6 @@ import (
 // continuePrompt is what restore gives the claude of a session that was in a turn.
 const continuePrompt = "The machine restarted while you were working; continue where you left off."
 
-// companionFile is the file beside session name's entry in cld's record in s with the extension
-// ext: .run, .busy or .env.
-func companionFile(s *sandbox.Sandbox, name, ext string) string {
-	return strings.TrimSuffix(entryFile(s, name), ".json") + ext
-}
-
-// exists reports whether there is a file at path.
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-// checkMarks reports the run marks of the sessions in s that are not as want has them, by name:
-// true for a mark there. A mark that should be there is waited for: tmux makes it once it has made
-// the session, in a run-shell that can end after the terminal has attached and claude has started.
-func checkMarks(t *testing.T, s *sandbox.Sandbox, when string, want map[string]bool) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for name, marked := range want {
-		got := exists(companionFile(s, name, ".run"))
-		for marked && !got && time.Now().Before(deadline) {
-			time.Sleep(20 * time.Millisecond)
-			got = exists(companionFile(s, name, ".run"))
-		}
-		if got != marked {
-			t.Errorf("%s: session %s's run mark there: %v, want %v", when, name, got, marked)
-		}
-	}
-}
-
-// recorded is the environment file cld writes beside an entry: the claude it started, by its
-// path, and the environment of its server.
-type recorded struct {
-	Claude      string   `json:"claude"`
-	Environment []string `json:"environment"`
-}
-
-// writeRestorable writes session name's entry in s - claude started in dir, in the conversation
-// of that ID - with its run mark and the environment file naming claude and env, as join would
-// have left them for a session a reboot ended.
-func writeRestorable(t *testing.T, s *sandbox.Sandbox, name, dir, conversation, claude string, env []string) {
-	t.Helper()
-	writeEntry(t, s, name, dir, conversation)
-	data, err := json.Marshal(recorded{Claude: claude, Environment: env})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(companionFile(s, name, ".env"), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	s.WriteFile(companionFile(s, name, ".run"), "")
-}
-
 // startCldAsync starts cld with args in dir, without a terminal, as RunCldIn runs it, and returns
 // what waits for it to exit.
 func startCldAsync(t *testing.T, s *sandbox.Sandbox, dir string, extra map[string]string, args ...string) func() sandbox.Result {

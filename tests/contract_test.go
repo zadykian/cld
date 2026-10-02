@@ -14,32 +14,8 @@ import (
 )
 
 // The terminal contract: what cld promises wherever it runs, checked against every terminal in
-// CLD_TERMINALS. Where terminals legitimately differ, the difference is an expectation below
-// rather than a skip, so a terminal gaining or losing support fails a test.
-
-type expectation struct {
-	// features tmux must detect in the terminal (#{client_termfeatures}).
-	features []string
-	// shiftEnter lists what claude may receive for Shift+Enter; plain Enter is always "\r".
-	shiftEnter []string
-}
-
-var expectations = map[string]expectation{
-	// The outer tmux announces itself through XTVERSION, and the inner tmux knows its features,
-	// hyperlinks among them; extkeys comes from cld's terminal-features entry for xterm*.
-	"tmux": {
-		features:   []string{"clipboard", "extkeys", "focus", "hyperlinks", "mouse", "title"},
-		shiftEnter: []string{"\x1b[13;2u", "\x1b[27;2;13~"},
-	},
-	// JediTerm answers no XTVERSION, so tmux falls back to its defaults for xterm*: they claim
-	// clipboard and focus, which the emulator ignores (see the skipped tests), and cld adds
-	// extkeys and hyperlinks. The emulator ignores the modifyOtherKeys request that follows;
-	// Shift+Enter becomes ESC CR through its own setting, which tmux passes on as Meta+Enter.
-	"jediterm": {
-		features:   []string{"bpaste", "clipboard", "extkeys", "focus", "hyperlinks", "title"},
-		shiftEnter: []string{"\x1b\r"},
-	},
-}
+// CLD_TERMINALS. Where terminals legitimately differ, the difference is an expectation (see
+// expectations) rather than a skip, so a terminal gaining or losing support fails a test.
 
 // startContract starts cld in the named terminal and waits for claude and the attached client.
 func startContract(t *testing.T, name string) (*sandbox.Sandbox, terminal.Terminal, *sandbox.Probe) {
@@ -50,19 +26,6 @@ func startContract(t *testing.T, name string) (*sandbox.Sandbox, terminal.Termin
 	waitClients(t, s, 1)
 	waitScreen(t, term, "probe --name cld-contract")
 	return s, term, probe
-}
-
-// between types keys between two markers and returns what claude received between them.
-func between(t *testing.T, term terminal.Terminal, probe *sandbox.Probe, keys ...string) string {
-	t.Helper()
-	markers := func() int { return bytes.Count(probe.Input(), []byte(">")) }
-	before := markers()
-	term.Keys(append(append([]string{"<"}, keys...), ">")...)
-	sandbox.WaitFor(t, 10*time.Second, "the keys to reach claude", func() bool { return markers() > before })
-	input := probe.Input()
-	end := bytes.LastIndexByte(input, '>')
-	start := bytes.LastIndexByte(input[:end], '<')
-	return string(input[start+1 : end])
 }
 
 // C1: the tab shows the session name after claude's marker, whatever claude sets as its own title:
@@ -461,18 +424,6 @@ func TestContractList(t *testing.T) {
 			list.checkRestored(t, term)
 		})
 	})
-}
-
-// selectedRow is the name on the row the list marks as selected, or "" when it marks none.
-func selectedRow(term terminal.Terminal) string {
-	for line := range strings.SplitSeq(term.Screen(), "\n") {
-		if row, marked := strings.CutPrefix(line, "> "); marked {
-			if fields := strings.Fields(row); len(fields) > 0 {
-				return fields[0]
-			}
-		}
-	}
-	return ""
 }
 
 // modifiedKeysOn reports whether the last modifyOtherKeys sequence in a terminal's output turns
