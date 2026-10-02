@@ -25,5 +25,4 @@ tests/probe/main.go
 tests/project_test.go
 tests/record_test.go
 tests/restore_test.go
-tests/telemetry_test.go
 tests/update_test.go
