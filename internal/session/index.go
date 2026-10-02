@@ -35,7 +35,7 @@ func (t *Tmux) Next(ctx context.Context, prefix string) (string, error) {
 }
 
 // recordedNext is the index above those that cld's record keeps after prefix, in its entries and
-// in the indexes it says were given (see indexes); 0 where there are none.
+// in the indexes it says were given (see indexes). It gives 0 where there are none.
 func recordedNext(prefix string) int {
 	next := 0
 	for _, r := range entries() {

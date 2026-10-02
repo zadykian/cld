@@ -36,7 +36,7 @@ type Joining struct {
 }
 
 // launch is how create makes session cld-SUFFIX for a join that makes it, with kept, the keys the
-// tmux cld runs in keeps from claude: claude starts a new conversation, or resumes Conversation,
+// tmux cld runs in keeps from claude. claude starts a new conversation, or resumes Conversation,
 // taking the session's name either way (decision 16.2).
 func (j Joining) launch(kept []string) launch {
 	l := launch{worktree: j.Worktree, args: j.Args, kept: kept, from: j.SwitchedFrom}
@@ -49,9 +49,9 @@ func (j Joining) launch(kept []string) launch {
 	return l
 }
 
-// lost refuses the first of what j asks that would be lost on session cld-SUFFIX (decision 50.2):
-// for one that runs, -w, --new, --resume and the words for claude; for one that has ended, -w. The
-// advice for the command line is kept apart (fail.Error's Advice); nil where nothing is lost.
+// lost refuses the first of what j asks that would be lost on session cld-SUFFIX (decision 50.2).
+// Those are -w, --new, --resume and the words for claude where it runs, and -w where it has ended.
+// The advice for the command line is kept apart (fail.Error's Advice); nil where nothing is lost.
 func (j Joining) lost(suffix string, ended bool) error {
 	if ended {
 		if !j.Worktree {
@@ -89,7 +89,7 @@ func (t *Tmux) Create(c *Claude, suffix string, j Joining, kept []string) error 
 	return t.create(c, suffix, j.launch(kept))
 }
 
-// Join is cld join with -s, once the caller has readied the client, which gave kept or sw: it
+// Join is cld join with -s, once the caller has readied the client, which gave kept or sw. It
 // attaches to session cld-SUFFIX where it runs, brings it back where it has ended, and makes it
 // otherwise (decision 50.1). With sw, it moves that terminal instead (see switchJoin). It returns
 // only when it does not get as far.
@@ -98,13 +98,13 @@ func (t *Tmux) Join(suffix string, j Joining, kept []string, sw *Switch) error {
 }
 
 // JoinPicked is the interactive list's Enter on session cld-SUFFIX, once the list has handed the
-// terminal over: it joins as Join does, but refuses a session that neither runs nor has ended, as
+// terminal over. It joins as Join does, but refuses a session that neither runs nor has ended, as
 // the row picked has gone. It returns only when it does not get as far.
 func (t *Tmux) JoinPicked(suffix string) error {
 	return t.join(suffix, Joining{}, t.keptKeys(), false, nil)
 }
 
-// join is Join's and JoinPicked's work: with makes, a session that neither runs nor has ended is
+// join is Join's and JoinPicked's work. With makes, a session that neither runs nor has ended is
 // made, and otherwise refused; with sw, the terminal of sw moves to the session.
 func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool, sw *Switch) error {
 	if sw != nil {
@@ -169,9 +169,9 @@ func (t *Tmux) settled(suffix string) (unlock func(), server, exists bool, made 
 	}
 }
 
-// resumed is l with claude resuming the conversation of session cld-SUFFIX, which has ended: the
-// one its entry names by ID, or else the one named cld-SUFFIX (decision 40.4). join and restore
-// resume it so.
+// resumed is l with claude resuming the conversation of session cld-SUFFIX, which has ended. claude
+// resumes the one its entry names by ID, or else the one named cld-SUFFIX (decision 40.4). join
+// and restore resume it so.
 func resumed(suffix string, l launch) launch {
 	l.resume, l.id = []string{"--resume", "cld-" + suffix}, ""
 	if r, ok := recorded(suffix); ok && r.Conversation != "" {
@@ -180,7 +180,7 @@ func resumed(suffix string, l launch) launch {
 	return l
 }
 
-// attach is join's last step for a session that runs: once TMUX is emptied and the terminal
+// attach is join's last step for a session that runs. Once TMUX is emptied and the terminal
 // checked, it becomes a tmux client attached to session cld-SUFFIX, and shows the keys kept (see
 // showKept). It returns only when it does not get as far.
 func (t *Tmux) attach(suffix string, j Joining, kept []string) error {

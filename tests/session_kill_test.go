@@ -192,8 +192,8 @@ func checkSessionlessServerKept(t *testing.T, s *sandbox.Sandbox) {
 	}
 }
 
-// checkSessionMadeMeanwhile checks kill on a server that looks as if it outlived its session, when
-// a tmux first on the PATH makes session cld-NAME as kill reads the server (display-message), or
+// checkSessionMadeMeanwhile checks kill on a server that looks as if it outlived its session. A
+// tmux first on the PATH makes session cld-NAME as kill reads the server (display-message), or
 // after that read (kill-server). kill refuses the first, and its own tmux command ends neither.
 func checkSessionMadeMeanwhile(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()

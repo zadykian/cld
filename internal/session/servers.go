@@ -17,8 +17,8 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// socketDir is the directory tmux keeps the sockets of -L in: tmux-UID in TMUX_TMPDIR, or in /tmp
-// where TMUX_TMPDIR is unset, empty or names nothing, as tmux falls back to /tmp.
+// socketDir is the directory tmux keeps the sockets of -L in: tmux-UID in TMUX_TMPDIR. Where
+// TMUX_TMPDIR is unset, empty or names nothing, it takes /tmp instead, as tmux falls back to /tmp.
 func socketDir() string {
 	base := os.Getenv("TMUX_TMPDIR")
 	if _, err := os.Stat(base); err != nil {
@@ -63,9 +63,9 @@ func tmuxDir() string {
 }
 
 // serverless reports whether no server runs on socket cld-SUFFIX in dir, tmuxDir's, as tmux's
-// client would find, without running tmux: it connects, and takes a refused connection or no socket
-// for no server (decision 38.1). Anything else, a path too long for sun_path too, it leaves to
-// tmux, which says what is wrong.
+// client would find, without running tmux. It connects, and takes a refused connection or no
+// socket for no server (decision 38.1). Anything else, a path too long for sun_path too, it leaves
+// to tmux, which says what is wrong.
 func serverless(ctx context.Context, dir, suffix string) bool {
 	if dir == "" {
 		return false
@@ -84,9 +84,9 @@ func serverless(ctx context.Context, dir, suffix string) bool {
 }
 
 // lingering is how join, detach and kill refuse session cld-SUFFIX where its server runs without
-// it, and whether the server has outlived the session, which kill ends instead (decision 13). One
-// cld did not start, or another NAME's in other letters (decision 13.6), gets no kill. The advice
-// is kept apart (fail.Error's Advice). Once ctx is done, its tmux is killed.
+// it. It also reports whether the server has outlived the session, which kill ends instead
+// (decision 13). One cld did not start, or another NAME's in other letters (decision 13.6), gets
+// no kill. The advice is kept apart (fail.Error's Advice). Once ctx is done, its tmux is killed.
 func (t *Tmux) lingering(ctx context.Context, suffix string) (outlived bool, refused error) {
 	// Spaces, not tabs, which tmux writes as "_" to a client without a UTF-8 locale. The mark
 	// and the check are 1 or 0, and the path follows them.
@@ -122,16 +122,16 @@ func notClds(suffix, advice string) error {
 		Message: fmt.Sprintf("tmux server cld-%s is not one of cld's", suffix), Advice: advice}
 }
 
-// outlives is a format that tmux makes 1 on a server that has outlived session cld-SUFFIX, and 0 on
-// any other: one of cld's, with sessions, none of them cld-SUFFIX, on the socket cld-SUFFIX. End's
-// kill runs under it in the same command as the check (decision 13). Before tmux 3.6, && takes two
-// operands and there is no !.
+// outlives is a format that tmux makes 1 on a server that has outlived session cld-SUFFIX, and 0
+// on any other. Such a server is one of cld's, with sessions, none of them cld-SUFFIX, on the
+// socket cld-SUFFIX. End's kill runs under it in the same command as the check (decision 13).
+// Before tmux 3.6, && takes two operands and there is no !.
 func outlives(suffix string) string {
 	return "#{&&:" + mark + ",#{&&:#{S:1},#{&&:#{==:#{N/s:cld-" + suffix + "},0}," +
 		"#{==:#{b:socket_path},cld-" + suffix + "}}}}"
 }
 
-// noServer reports whether tmux failed, saying message, because no server runs: its socket is
+// noServer reports whether tmux failed, saying message, because no server runs. Its socket is
 // stale, there is none, or the server exited as tmux asked it, as one does once its session ends.
 // Any other error is cld's to report, a socket path too long for sun_path say (see MaxName).
 func noServer(message string) bool {

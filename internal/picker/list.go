@@ -17,7 +17,7 @@ import (
 const armWait = 2 * time.Second
 
 // repeatWait is how long Ctrl+X does nothing after the Ctrl+X that killed, and after each one
-// that comes meanwhile, so that a Ctrl+X held down kills nothing more (decision 15.1).
+// that comes meanwhile. A Ctrl+X held down then kills nothing more (decision 15.1).
 const repeatWait = time.Second
 
 // list is the state of the list on screen.
@@ -28,7 +28,7 @@ type list struct {
 	selected, top int
 	// message takes the place of the footer's hints until the next key.
 	message string
-	// armed is whether Ctrl+X has armed the kill of the selected session; expiry fires once the
+	// armed is whether Ctrl+X has armed the kill of the selected session. expiry fires once the
 	// wait for the second Ctrl+X is over, and is nil when the kill is not armed.
 	armed  bool
 	expiry <-chan time.Time
@@ -37,7 +37,7 @@ type list struct {
 	hold            <-chan time.Time
 	columns, height int
 	// acting gets the outcome of Enter's lookup, or of the kill or forget, while it runs, and is
-	// nil otherwise; cancel abandons it, and running counts it until it has ended.
+	// nil otherwise. cancel abandons it, and running counts it until it has ended.
 	acting  <-chan outcome
 	cancel  context.CancelFunc
 	running sync.WaitGroup

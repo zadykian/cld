@@ -36,7 +36,7 @@ type Source interface {
 	// can tell without running claude, and otherwise why not.
 	Joinable(ctx context.Context, name string) error
 	// Kill ends session NAME as cld kill -n NAME does, while one of its panes' pids is among pids
-	// or its server has outlived it (decision 15.3), and otherwise says why it ended nothing.
+	// or its server has outlived it (decision 15.3). Otherwise it says why it ended nothing.
 	Kill(ctx context.Context, name string, pids []string) error
 	// Forget forgets session NAME, which has ended, and otherwise says why it forgot nothing.
 	Forget(ctx context.Context, name string) error

@@ -13,7 +13,7 @@ import (
 )
 
 // remember writes r, the entry of the session create is about to make, and s, what its server
-// starts with, under the lock the caller holds, and returns r's file and the run mark tmux makes
+// starts with, under the lock the caller holds. It returns r's file and the run mark tmux makes
 // (see setMarks). Both are "" where r failed, and the mark where the environment did, as restore
 // could not start the session again. A failure is a warning (decisions 40.7 and 48.4).
 func remember(r entry, s started, runs func(suffix string) bool) (file, run string) {
@@ -123,7 +123,7 @@ func entryLine(r entry) []byte {
 }
 
 // replace replaces file with data: written to a temporary file beside it, readable by the user
-// alone, then renamed over it, so that no reader sees it half written (decision 40.1).
+// alone, then renamed over it. That way no reader sees it half written (decision 40.1).
 func replace(file string, data []byte) error {
 	temp, err := os.CreateTemp(filepath.Dir(file), filepath.Base(file)+".*")
 	if err != nil {

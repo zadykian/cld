@@ -10,9 +10,10 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// dockerFailure is a docker call that fails: the fake's CLD_FAKE_DOCKER_FAIL, how many of the
-// calls of a setup that goes well cld makes, what it says, {port} for the running collector's
-// port, and the container afterwards (see sandbox.DockerContainer).
+// dockerFailure is a docker call that fails, the fake's CLD_FAKE_DOCKER_FAIL. Its calls are how
+// many of the calls of a setup that goes well cld makes, and stderr what cld says, {port} for the
+// running collector's port. Its container is the container afterwards (see
+// sandbox.DockerContainer).
 type dockerFailure struct {
 	fail      string
 	calls     int
@@ -90,9 +91,9 @@ func TestSetupTelemetryCollectorNotReady(t *testing.T) {
 	}
 }
 
-// collectorNotReady is a collector that does not get ready: the fake's container before, {port}
-// for a port the test holds, the new one's state, its log and the call that fails. cld shows
-// shown, says message, waits the whole 10 s if waits and runs docker update if update.
+// collectorNotReady is a collector that does not get ready. The test gives the fake's container
+// before, {port} for a port it holds, the new one's state, its log and the call that fails. cld
+// shows shown, says message, waits the whole 10 s if waits and runs docker update if update.
 type collectorNotReady struct {
 	name                          string
 	container, started, log, fail string

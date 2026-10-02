@@ -166,8 +166,8 @@ func listKillReplaced(t *testing.T) {
 }
 
 // listKillLingering checks that a session whose server outlived it ends with the server, as cld
-// kill ends it, though no pane is left to check against the pids the list read (decision 15.3).
-// Its row stays, selected, as one that has ended.
+// kill ends it. It ends though no pane is left to check against the pids the list read (decision
+// 15.3). Its row stays, selected, as one that has ended.
 func listKillLingering(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

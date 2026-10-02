@@ -100,7 +100,7 @@ func listKillServerExiting(t *testing.T) {
 	}
 }
 
-// listKillKeysDuring checks that other keys than those that leave do nothing while the kill runs:
+// listKillKeysDuring checks that other keys than those that leave do nothing while the kill runs.
 // Down leaves the selection, and Ctrl+X arms nothing, though Down has ended the wait after a kill.
 // The two Ctrl+X go in one write, then a key a frame (see waitFrames). A tmux first on the PATH
 // holds the kill's lookup.

@@ -88,8 +88,8 @@ func (r moveRig) moveFirst(t *testing.T) {
 	}
 }
 
-// createFromSecond types a key in the second terminal and runs a join that creates c, from a
-// directory whose name leaves nothing of a NAME and goes encoded to the terminal. claude c starts
+// createFromSecond types a key in the second terminal and runs a join that creates c. It runs from
+// a directory whose name leaves nothing of a NAME and goes encoded to the terminal. claude c starts
 // there, with the second terminal's variables and not claude a's.
 func (r moveRig) createFromSecond(t *testing.T) {
 	t.Helper()
@@ -126,8 +126,8 @@ func (r moveRig) createFromSecond(t *testing.T) {
 	}
 }
 
-// fromB runs join in b's pane: refused, where claude shows why and the terminal stays on b, and
-// then without -s, where the terminal's cld join makes a session under the next index, 0 here.
+// fromB runs join in b's pane: refused, where claude shows why and the terminal stays on b. Then
+// without -s, the terminal's cld join makes a session under the next index, 0 here.
 func (r moveRig) fromB(t *testing.T) {
 	t.Helper()
 	inB := paneOf(t, r.s, "b")

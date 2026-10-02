@@ -20,6 +20,14 @@ temporary directory, `TMUX` is unset, and the probe comes first on the `PATH`. `
 attaches, so it needs a pty: a driver's, or the sandbox's own where a test hands over to the fake
 tmux ([decision 31.6](decisions/0031-a-terminal-to-attach-from.md)).
 
+Vale checks Go comments in Markdown mirrors that `tools/valemirror` writes, line for line. Vale
+3.23.0 reads Go itself through tree-sitter, but masks the name a doc comment starts with, and drops
+the alerts anchored there. A first sentence of 40 words passed `Microsoft.SentenceLength` that way,
+while a second sentence of 40 words failed. The mirrors mask the name alone, and its sentence
+still counts it. Vale 3.23.0 also skips the text between two `$` of a Markdown paragraph, across
+lines too: a sentence of 40 words between `$A` and `($)` passed. The mirrors write `¤` for `$`,
+which Vale counts alike.
+
 ## The terminal contract
 
 A result that rightly differs per terminal is an expectation of that terminal, never a skip, so

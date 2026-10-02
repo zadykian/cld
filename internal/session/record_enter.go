@@ -10,7 +10,7 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// enter makes the directory the session of entry r ran in the current one, PWD naming it too, as
+// enter makes the directory the session of entry r ran in the current one, PWD naming it too.
 // join and restore start claude there to resume the session's conversation (decision 40.4). A
 // directory that cannot be entered is refused (see enterError).
 func enter(r entry) error {
@@ -38,9 +38,9 @@ func enterable(r entry) error {
 	return nil
 }
 
-// enterError refuses the directory of entry r, which err says cannot be entered, with the join
-// that resumes the conversation in the current directory instead: by the entry's ID, or else by
-// the session's name.
+// enterError refuses the directory of entry r, which err says cannot be entered. Its advice is the
+// join that resumes the conversation in the current directory instead, by the entry's ID or else
+// by the session's name.
 func enterError(r entry, err error) error {
 	conversation := r.Conversation
 	if conversation == "" {

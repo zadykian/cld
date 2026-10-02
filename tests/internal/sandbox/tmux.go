@@ -60,8 +60,8 @@ func (s *Sandbox) Servers() []string {
 	return servers
 }
 
-// Sessions lists the sessions on the servers of Servers, in order: a session on the server named
-// like it as its name, cld-NAME, and any other as SERVER/SESSION - one that claude made on its
+// Sessions lists the sessions on the servers of Servers, in order. A session on the server named
+// like it goes as its name, cld-NAME, and any other as SERVER/SESSION: one that claude made on its
 // server, say. Nothing where no server runs.
 func (s *Sandbox) Sessions() []string {
 	var sessions []string

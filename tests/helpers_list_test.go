@@ -153,9 +153,9 @@ func (r listRun) checkRestored(t *testing.T, term terminal.Terminal) {
 		})
 }
 
-// armThen presses Ctrl+X, runs armed, which waits for the arm and checks what it will, and presses
-// then, such as C-x or Escape, within the arm's two seconds (decision 15). Where armed took a
-// second or more under load, a letter disarms a kill still armed, Ctrl+X arms it again, and then
+// armThen presses Ctrl+X and runs armed, which waits for the arm and checks what it will. Then it
+// presses then, such as C-x or Escape, within the arm's two seconds (decision 15). Where armed took
+// a second or more under load, a letter disarms a kill still armed, Ctrl+X arms it again, and then
 // follows.
 func armThen(t *testing.T, term terminal.Terminal, armed func(), then string) {
 	t.Helper()

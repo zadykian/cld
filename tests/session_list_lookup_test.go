@@ -40,7 +40,7 @@ func listJoinLeaveLookup(t *testing.T) {
 	}
 }
 
-// listJoinKeysDuringLookup checks that other keys do nothing while Enter looks the session up:
+// listJoinKeysDuringLookup checks that other keys do nothing while Enter looks the session up.
 // Down leaves the selection, and a second Enter looks nothing up, so the first lookup joins its
 // session. Each key draws a frame, which tells the test that the list has taken it.
 func listJoinKeysDuringLookup(t *testing.T) {

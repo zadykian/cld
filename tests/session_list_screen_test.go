@@ -151,7 +151,7 @@ func listJoinResize(t *testing.T) {
 }
 
 // listJoinControlCharacters checks that a control character in a directory shows as "?", so that
-// none moves the cursor or changes the terminal (decision 14.2): here an ESC would clear the
+// none moves the cursor or changes the terminal (decision 14.2). Here an ESC would clear the
 // screen. tmux 3.7c passes them on to a UTF-8 client, cld's -u or s.Format's LANG.
 func listJoinControlCharacters(t *testing.T) {
 	t.Parallel()
@@ -204,8 +204,8 @@ func cutTo(text string, columns int) string {
 	return string(runes[:min(columns, len(runes))])
 }
 
-// footerIn is the list's hints as they show in columns cells: without the arrows' hint where the
-// hints do not all fit, then cut, without the spaces the screen does not show at the end.
+// footerIn is the list's hints as they show in columns cells. Where the hints do not all fit, the
+// arrows' hint is dropped and the rest cut, without the spaces the screen does not show at the end.
 func footerIn(columns int) string {
 	hints := listHints
 	if utf8.RuneCountInString(hints) > columns {

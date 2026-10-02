@@ -42,7 +42,7 @@ type change struct {
 }
 
 // Setup sets Claude Code up in the project in the current directory, with the MCP servers and
-// the permission set given, in the order the package comment gives, and reports what it changed.
+// the permission set given, in the package comment's order. It reports what it changed.
 func Setup(servers []Server, permissions Permissions) error {
 	changes, err := plan(servers, permissions)
 	if err != nil {

@@ -78,8 +78,8 @@ func switchOptions(c *cobra.Command, typed, client, to string) error {
 	return nil
 }
 
-// listSessions ends the idle sessions, then shows the sessions, those ended among them, in the
-// interactive list where it can, and else, or once the list is left, in the table.
+// listSessions ends the idle sessions, then shows the sessions, those ended among them. It shows
+// them in the interactive list where it can, and else, or once the list is left, in the table.
 func listSessions() error {
 	limit, err := idleLimit()
 	if err != nil {
@@ -142,9 +142,9 @@ func table(sessions []session.Session) string {
 	return out.String()
 }
 
-// listSource is what the interactive list reads and acts through: the sessions, join's checks for
-// Enter, and kill's steps or the forget for the second Ctrl+X (decisions 14.5, 15.4 and 40.3).
-// The list names a session whole, as -n does, and takes it from anywhere.
+// listSource is what the interactive list reads and acts through (decisions 14.5, 15.4 and 40.3).
+// It gives the sessions, join's checks for Enter, and kill's steps or the forget for the second
+// Ctrl+X. The list names a session whole, as -n does, and takes it from anywhere.
 type listSource struct{ tmux *session.Tmux }
 
 func (l listSource) Sessions(ctx context.Context) ([]session.Session, error) {

@@ -53,7 +53,7 @@ func TestRecordWhileRunning(t *testing.T) {
 	}
 }
 
-// checkExpiredWhileRunning checks the record in s once join has expired it: session a, whose
+// checkExpiredWhileRunning checks the record in s once join has expired it. Session a, whose
 // server runs, keeps its entry and the files beside it, and c and o have none left.
 func checkExpiredWhileRunning(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()

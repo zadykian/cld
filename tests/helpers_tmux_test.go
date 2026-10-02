@@ -20,8 +20,8 @@ import (
 // The tmux that cld runs in the tests: wrapped first on its PATH to log or hold commands, a
 // server's stale socket, and the title's busy marker.
 
-// wrapTmux puts a tmux first on the PATH of the environment it returns: an sh script that runs
-// script with tmux's arguments as "$@", and then the tmux the tests run.
+// wrapTmux puts a tmux first on the PATH of the environment it returns. That tmux is an sh script
+// that runs script with tmux's arguments as "$@", and then the tmux the tests run.
 func wrapTmux(t *testing.T, s *sandbox.Sandbox, script string) map[string]string {
 	t.Helper()
 	tmux, err := exec.LookPath("tmux")
@@ -37,9 +37,9 @@ func wrapTmux(t *testing.T, s *sandbox.Sandbox, script string) map[string]string
 	return map[string]string{"PATH": bin + string(os.PathListSeparator) + s.Env["PATH"]}
 }
 
-// loggedTmux puts a tmux first on the PATH of the environment it returns (see wrapTmux) that
-// writes down what it runs, and returns with it asked, which gives the servers it ran
-// list-sessions on since asked was last called, as they ran.
+// loggedTmux puts a tmux that writes down what it runs first on the PATH of the environment it
+// returns (see wrapTmux). The asked it returns gives the servers that tmux ran list-sessions on
+// since asked was last called, in the order it ran them.
 func loggedTmux(
 	t *testing.T, s *sandbox.Sandbox,
 ) (env map[string]string, asked func() []string) {
@@ -66,7 +66,7 @@ func loggedTmux(
 }
 
 // heldTmux holds the tmux commands of a kind that cld run with env runs, from when the test holds
-// them until it releases them or ends: a tmux first on the PATH (see wrapTmux) waits as long as
+// them until it releases them or ends. A tmux first on the PATH (see wrapTmux) waits as long as
 // the file hold is there. It also counts the commands that begin, held or not, a line each in
 // hold.begun.
 type heldTmux struct {
@@ -81,7 +81,7 @@ func holdTmux(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
 	return holding(t, s, what, pattern, "", "")
 }
 
-// holdTmuxOutput is holdTmux, but for commands that run first: what they write, on stdout and
+// holdTmuxOutput is holdTmux, but for commands that run first. What they write, on stdout and
 // without its last newlines, and their exit status are held back until the test releases them, as
 // if tmux took that long to answer.
 func holdTmuxOutput(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
@@ -172,8 +172,8 @@ func lookupPattern(name string) string {
 		"' -F #{session_name} #{W:#{P:#{pane_pid} }}\t#{@cld-home}'"
 }
 
-// staleSocket makes the sandbox's socket of server as a server that has died leaves it: a socket
-// that nothing listens on, where the real tmux says that no server is running. A plain file will
+// staleSocket makes the sandbox's socket of server as a server that has died leaves it. That is a
+// socket nothing listens on, where the real tmux says that no server is running. A plain file will
 // not do on macOS (see docs/design/testing.md).
 func staleSocket(t *testing.T, s *sandbox.Sandbox, server string) {
 	t.Helper()
@@ -191,9 +191,9 @@ func staleSocket(t *testing.T, s *sandbox.Sandbox, server string) {
 	}
 }
 
-// busyMarker is the marker join has tmux put before the session's name in the tab's
-// title while claude is busy: ◐ in even seconds and ◑ in odd ones, with a job that, a second
-// later, has tmux set the title again (see TestContractTitle).
+// busyMarker is the marker join has tmux put before the session's name in the tab's title while
+// claude is busy: ◐ in even seconds and ◑ in odd ones. A job in it has tmux set the title again a
+// second later (see TestContractTitle).
 const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
 	"#((sleep 1; #{q:@cld-tmux} -S #{q:socket_path} refresh-client -S -t #{q:client_name})" +
 	" >/dev/null 2>&1 &)"

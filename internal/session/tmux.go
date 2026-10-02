@@ -15,8 +15,8 @@ import (
 	"github.com/zadykian/cld/internal/tool"
 )
 
-// Tmux is the tmux cld runs: found on the PATH by Find, which is all completion needs to read the
-// sessions, and checked by Check, as every command needs before it runs tmux.
+// Tmux is the tmux cld runs. Find finds it on the PATH, which is all completion needs to read the
+// sessions, and Check checks it, as every command needs before it runs tmux.
 type Tmux struct {
 	path string
 	// version is the release tmux -V reported, as Check read it: nil for a tmux that Find found,
@@ -24,7 +24,7 @@ type Tmux struct {
 	version version
 }
 
-// Find finds tmux on the PATH (see tool.LookPath) and checks nothing else: completion reads the
+// Find finds tmux on the PATH (see tool.LookPath) and checks nothing else. Completion reads the
 // sessions with it on every TAB, where Check would cost a tmux -V each time.
 func Find() (*Tmux, error) {
 	path, err := tool.LookPath("tmux")

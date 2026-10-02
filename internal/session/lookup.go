@@ -8,8 +8,8 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// mark is, as a format, 1 on a server that cld started and 0 on any other: the server option @cld,
-// or the prefix C-q that marks the servers of cld 0.8.2 and earlier (decision 34).
+// mark is, as a format, 1 on a server that cld started and 0 on any other. It reads the server
+// option @cld, or the prefix C-q that marks the servers of cld 0.8.2 and earlier (decision 34).
 const mark = "#{||:#{@cld},#{==:#{prefix},C-q}}"
 
 // only is a filter for session cld-SUFFIX alone on its server, beside the sessions claude made
@@ -19,15 +19,15 @@ func only(suffix string) string {
 	return "#{&&:#{==:#{session_name},cld-" + suffix + "}," + mark + "}"
 }
 
-// panePIDs are the pids of the programs in a session's panes, each followed by a space:
-// #{pane_pid} alone, in a list-sessions format, is the pid of the active pane of the session's
-// current window only.
+// panePIDs are the pids of the programs in a session's panes, each followed by a space. In a
+// list-sessions format, #{pane_pid} alone is the pid of the active pane of the session's current
+// window only.
 const panePIDs = "#{W:#{P:#{pane_pid} }}"
 
-// lookup reports whether the server of session cld-SUFFIX runs, whether the session is on it (see
-// only) and, if so, the pids of its panes and its home (see Session). A socket with no server runs
-// no tmux (see serverless). The home comes last, after a tab, which -u keeps unchanged. Once ctx
-// is done, its tmux is killed.
+// lookup reports whether the server of session cld-SUFFIX runs and whether the session is on it
+// (see only). If so, it gives the pids of its panes and its home (see Session). A socket with no
+// server runs no tmux (see serverless). The home comes last, after a tab, which -u keeps
+// unchanged. Once ctx is done, its tmux is killed.
 func (t *Tmux) lookup(ctx context.Context, suffix string) (
 	server, session bool, pids []string, home string, err error,
 ) {
@@ -51,9 +51,9 @@ func (t *Tmux) lookup(ctx context.Context, suffix string) (
 }
 
 // occupied is why create refuses the name of session cld-SUFFIX, which is on its server or whose
-// server runs without it, or what went wrong looking; nil where its server does not run. Callers
-// have mostly looked under the record's lock already (see docs/design/overview.md#joining). Once
-// ctx is done, its tmux is killed.
+// server runs without it, or what went wrong looking. It gives nil where the server does not run.
+// Callers have mostly looked under the record's lock already (see docs/design/overview.md#joining).
+// Once ctx is done, its tmux is killed.
 func (t *Tmux) occupied(ctx context.Context, suffix string) error {
 	server, exists, _, made, err := t.lookup(ctx, suffix)
 	if err != nil {
@@ -99,9 +99,9 @@ func noSession(suffix string) error {
 }
 
 // Joinable is the lookup the interactive list's Enter makes while the list owns the terminal, as
-// far as join goes without claude: nil where session cld-SUFFIX runs, or has ended in a directory
-// that can be entered, and otherwise why join refuses it. The list takes a session from anywhere,
-// as -n does. Once ctx is done, its tmux is killed.
+// far as join goes without claude. It returns nil where session cld-SUFFIX runs, or has ended in
+// a directory that can be entered, and otherwise why join refuses it. The list takes a session
+// from anywhere, as -n does. Once ctx is done, its tmux is killed.
 func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 	server, exists, _, _, err := t.lookup(ctx, suffix)
 	switch {
@@ -120,9 +120,9 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 	return enterable(r)
 }
 
-// foreign is how join, detach and kill, named in the advice as command, refuse session cld-SUFFIX,
-// made in the home made, where home does not take it (decision 37.2). The advice names the session
-// with -n, which they then take from anywhere, and goes apart (fail.Error's Advice).
+// foreign is how command, one of join, detach and kill, refuses session cld-SUFFIX, made in the
+// home made, where home does not take it (decision 37.2). The advice names the session with -n,
+// which they then take from anywhere, and goes apart (fail.Error's Advice).
 func foreign(command, suffix, made string, home Home) error {
 	if home.Takes(made) {
 		return nil

@@ -62,9 +62,9 @@ type Options struct {
 	CollectorConfig string
 }
 
-// Collector is the first of Local and Remote whose endpoint is where the collector listens, when
-// it listens on port (see Endpoint.Collector), as its option and URL, "--local URL"; "" for
-// neither. The collector must not have such a port: the command line refuses it as --port, and
+// Collector is the first of Local and Remote whose endpoint is where the collector would listen on
+// port (see Endpoint.Collector). It gives its option and URL, "--local URL", or "" for neither. The
+// collector must not have such a port: the command line refuses it as --port, and
 // choosePort refuses it as the running collector's and passes over any other.
 func (o Options) Collector(port int) string {
 	for _, option := range []struct {

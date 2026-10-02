@@ -188,8 +188,8 @@ func joinDetached(
 	return claudes
 }
 
-// reboot gives a and b conversations, b in a turn, ends c with kill and d with claude's /exit,
-// and then a and b as a reboot would, with kill-server.
+// reboot gives a and b conversations, b in a turn, and ends c with kill and d with claude's
+// /exit. It then ends a and b as a reboot would, with kill-server.
 func reboot(t *testing.T, s *sandbox.Sandbox, claudes map[string]*sandbox.Probe) {
 	t.Helper()
 	claudes["a"].Hook("SessionStart", `{"session_id":"`+firstID+`","source":"startup"}`)
@@ -208,8 +208,8 @@ func reboot(t *testing.T, s *sandbox.Sandbox, claudes map[string]*sandbox.Probe)
 	}
 }
 
-// checkRestoredClaudes checks the claudes restore started for a and b, beside those of before:
-// each resumes its conversation, b continuing its turn, without the words after --, in dir and
+// checkRestoredClaudes checks the claudes restore started for a and b, beside those of before.
+// Each resumes its conversation, b continuing its turn, without the words after --, in dir and
 // with the session's environment.
 func checkRestoredClaudes(
 	t *testing.T, s *sandbox.Sandbox, dir string, before map[string]*sandbox.Probe,
