@@ -45,7 +45,8 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   such as `session_cells_test.go` for the screen's attributes.
 - `record_test.go`: the record's entries, indexes, expiry and lock, and `ended` sessions.
 - `restore_test.go`: the run and busy marks, `restore` and `setup restore`.
-- `cli_test.go`: arguments, errors, tool and version checks, the help and the completion scripts.
+- `cli_TOPIC_test.go`: arguments, errors, tool and version checks, the help and the completion
+  scripts, a file per topic; `cli_fake_tmux_test.go` has the helpers they share.
 - `completion_test.go`: `setup completion`, and bash, zsh and fish loading its scripts.
 - `project_test.go`: `setup project` against the real git; `project_settings_test.go`: the
   permission rules it writes, read from the repository's own `.claude/settings.json`.

@@ -15,7 +15,6 @@ internal/session/switch.go
 internal/telemetry/settings.go
 internal/telemetry/telemetry.go
 internal/update/update.go
-tests/cli_test.go
 tests/completion_test.go
 tests/contract_test.go
 tests/install_test.go
