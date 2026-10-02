@@ -959,7 +959,7 @@ commit them: whoever trusts the project's folder gives claude what they allow.`,
 	command.RunE = func(c *cobra.Command, _ []string) error {
 		chosen := map[string]bool{}
 		for _, list := range *mcp {
-			for _, name := range strings.Split(list, ",") {
+			for name := range strings.SplitSeq(list, ",") {
 				if !slices.ContainsFunc(project.Servers, func(s project.Server) bool { return s.Name == name }) {
 					return fail.Usage(fmt.Sprintf("invalid MCP server '%s' for --mcp: goland, jbcontext or rider (see cld help)", name))
 				}
@@ -1460,8 +1460,7 @@ func (l listSource) Kill(ctx context.Context, name string, pids []string) error 
 	}
 	var said bytes.Buffer
 	err := l.tmux.End(ctx, name, session.Home{}, pids, &said, &said)
-	var status fail.Status
-	if errors.As(err, &status) {
+	if status, ok := errors.AsType[fail.Status](err); ok {
 		if message := strings.TrimSpace(said.String()); message != "" {
 			return fail.Runtime(message)
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,9 +75,7 @@ func (j *jediTerm) Start(argv []string, env map[string]string, dir string) {
 	}
 	// What the JetBrains IDEs add to the environment of their terminals.
 	extra := map[string]string{"TERMINAL_EMULATOR": "JetBrains-JediTerm"}
-	for name, value := range env {
-		extra[name] = value
-	}
+	maps.Copy(extra, env)
 	logFile, err := os.Create(filepath.Join(j.sandbox.Root, "jediterm.log"))
 	if err != nil {
 		j.t.Fatal(err)

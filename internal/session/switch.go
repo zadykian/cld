@@ -218,8 +218,7 @@ func Moved(value string) ([]string, error) {
 	}
 	dir := fields[0]
 	if err := os.Chdir(dir); err != nil {
-		var pathError *fs.PathError
-		if errors.As(err, &pathError) {
+		if pathError, ok := errors.AsType[*fs.PathError](err); ok {
 			err = pathError.Err
 		}
 		return nil, fail.Runtime("cannot enter " + dir + ", where cld join ran: " + err.Error())
@@ -380,11 +379,12 @@ func (t *Tmux) switchTerminal(sw *Switch, words ...string) error {
 // its path, as join --switched-from FROM, which records on the session joined the session FROM the
 // terminal leaves, with words, each as the user's shell takes it (see shellArgument).
 func moving(cld, from string, words []string) string {
-	command := "exec " + shellArgument(cld) + " join --switched-from " + shellArgument(from)
+	var command strings.Builder
+	command.WriteString("exec " + shellArgument(cld) + " join --switched-from " + shellArgument(from))
 	for _, word := range words {
-		command += " " + shellArgument(word)
+		command.WriteString(" " + shellArgument(word))
 	}
-	return command
+	return command.String()
 }
 
 // shells are the base names of the default-shells that tmux may run the command a terminal runs in
@@ -491,8 +491,7 @@ func self() (string, error) {
 	if err == nil {
 		file, err = filepath.EvalSymlinks(file)
 	}
-	var pathError *os.PathError
-	if errors.As(err, &pathError) {
+	if pathError, ok := errors.AsType[*os.PathError](err); ok {
 		err = pathError.Err
 	}
 	if err == nil && strings.ContainsFunc(file, func(r rune) bool { return r < ' ' || r == 0x7f }) {

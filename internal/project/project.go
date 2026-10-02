@@ -660,8 +660,7 @@ func and(names []string) string {
 
 // reason is err without the operation and path that *fs.PathError adds to it.
 func reason(err error) string {
-	var pathError *fs.PathError
-	if errors.As(err, &pathError) {
+	if pathError, ok := errors.AsType[*fs.PathError](err); ok {
 		return pathError.Err.Error()
 	}
 	return err.Error()

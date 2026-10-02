@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -241,11 +242,10 @@ func invalid(data []byte, err error) string {
 // indentation is one level of the indentation of data, a JSON object: the white space that
 // starts the line of its first member, or two spaces where it is on the object's line.
 func indentation(data []byte) string {
-	start := bytes.IndexByte(data, '{')
-	if start < 0 {
+	_, rest, ok := bytes.Cut(data, []byte{'{'})
+	if !ok {
 		return "  "
 	}
-	rest := data[start+1:]
 	space := rest[:len(rest)-len(bytes.TrimLeft(rest, " \t\r\n"))]
 	if line := bytes.LastIndexByte(space, '\n'); line >= 0 && line+1 < len(space) {
 		return string(space[line+1:])
@@ -255,8 +255,8 @@ func indentation(data []byte) string {
 
 // Last is the index of the last of members with key, which claude reads; -1 for none.
 func Last(members []Member, key string) int {
-	for i := len(members) - 1; i >= 0; i-- {
-		if members[i].Key == key {
+	for i, member := range slices.Backward(members) {
+		if member.Key == key {
 			return i
 		}
 	}

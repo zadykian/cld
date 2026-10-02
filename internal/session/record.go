@@ -397,8 +397,7 @@ func replace(file string, data []byte) error {
 
 // reason is err as the system says it, with the path it names.
 func reason(err error) error {
-	var pathError *fs.PathError
-	if errors.As(err, &pathError) {
+	if pathError, ok := errors.AsType[*fs.PathError](err); ok {
 		return errors.New(pathError.Path + ": " + pathError.Err.Error())
 	}
 	return err
@@ -602,8 +601,7 @@ func enterError(r entry, err error) error {
 	if errors.Is(err, fs.ErrNotExist) {
 		return &fail.Error{Status: 1, Message: "session '" + r.Name + "' ran in " + r.Directory + ", which no longer exists", Advice: advice}
 	}
-	var errno unix.Errno
-	if errors.As(err, &errno) {
+	if errno, ok := errors.AsType[unix.Errno](err); ok {
 		err = errno
 	}
 	return &fail.Error{Status: 1, Message: "cannot enter " + r.Directory + ", where session '" + r.Name + "' ran: " + err.Error(), Advice: advice}

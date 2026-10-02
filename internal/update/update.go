@@ -267,7 +267,7 @@ func download(ctx context.Context, address string, w io.Writer) error {
 // checksum is the SHA-256 checksum that sums, a cld.sha256 as sha256sum writes it, gives the file
 // name: the first of its lines "HASH  NAME", or "HASH *NAME".
 func checksum(sums, name string) ([]byte, bool) {
-	for _, line := range strings.Split(sums, "\n") {
+	for line := range strings.SplitSeq(sums, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != name {
 			continue

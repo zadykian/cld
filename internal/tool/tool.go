@@ -59,8 +59,7 @@ func CannotRun(path string, err error) error {
 	if errors.Is(err, fs.ErrNotExist) {
 		status = 127
 	}
-	var pathError *fs.PathError
-	if errors.As(err, &pathError) {
+	if pathError, ok := errors.AsType[*fs.PathError](err); ok {
 		err = pathError.Err
 	}
 	return &fail.Error{Status: status, Message: fmt.Sprintf("cannot run %s: %v", path, err)}

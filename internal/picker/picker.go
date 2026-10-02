@@ -723,11 +723,9 @@ func (l *list) start(task func(ctx context.Context) outcome) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan outcome, 1)
 	l.acting, l.cancel = done, cancel
-	l.running.Add(1)
-	go func() {
-		defer l.running.Done()
+	l.running.Go(func() {
 		done <- task(ctx)
-	}()
+	})
 }
 
 // lookUp starts Enter's lookup of the session on row, join's, and the read of the sessions again
@@ -840,8 +838,7 @@ func follow(old []session.Session, selected int, rows []session.Session) int {
 // describe is what the list says about err: cld's message, without the advice meant for the
 // command line.
 func describe(err error) string {
-	var failure *fail.Error
-	if errors.As(err, &failure) {
+	if failure, ok := errors.AsType[*fail.Error](err); ok {
 		return failure.Message
 	}
 	return err.Error()

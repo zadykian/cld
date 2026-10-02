@@ -118,7 +118,7 @@ func listedCommands(help string) []string {
 	_, listing, _ := strings.Cut(help, "\nAvailable Commands:\n")
 	listing, _, _ = strings.Cut(listing, "\n\n")
 	var names []string
-	for _, line := range strings.Split(listing, "\n") {
+	for line := range strings.SplitSeq(listing, "\n") {
 		if fields := strings.Fields(line); len(fields) > 0 {
 			names = append(names, fields[0])
 		}
@@ -138,7 +138,7 @@ func optionsAfterArguments(help string) []string {
 	_, usage, _ := strings.Cut(help, "\nUsage:\n")
 	usage, _, _ = strings.Cut(usage, "\n\n")
 	var late []string
-	for _, line := range strings.Split(usage, "\n") {
+	for line := range strings.SplitSeq(usage, "\n") {
 		argument, value := false, false
 		for _, word := range usageWord.FindAllString(line, -1) {
 			switch {

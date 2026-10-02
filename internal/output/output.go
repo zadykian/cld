@@ -20,8 +20,7 @@ import (
 // apart from the default.
 func Print(text string) error {
 	if _, err := os.Stdout.WriteString(text); err != nil {
-		var pathError *fs.PathError
-		if errors.As(err, &pathError) {
+		if pathError, ok := errors.AsType[*fs.PathError](err); ok {
 			err = pathError.Err
 		}
 		return fail.Runtime("write error: " + err.Error())

@@ -465,7 +465,7 @@ func TestContractList(t *testing.T) {
 
 // selectedRow is the name on the row the list marks as selected, or "" when it marks none.
 func selectedRow(term terminal.Terminal) string {
-	for _, line := range strings.Split(term.Screen(), "\n") {
+	for line := range strings.SplitSeq(term.Screen(), "\n") {
 		if row, marked := strings.CutPrefix(line, "> "); marked {
 			if fields := strings.Fields(row); len(fields) > 0 {
 				return fields[0]

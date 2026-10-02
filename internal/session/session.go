@@ -491,8 +491,7 @@ func workingDirectory() (string, error) {
 
 // cannotEnter refuses a current directory that cannot be entered, with the system's reason.
 func cannotEnter(err error) error {
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
+	if errno, ok := errors.AsType[syscall.Errno](err); ok {
 		err = errno
 	}
 	return fail.Runtime("cannot enter the current directory: " + err.Error())
@@ -1604,8 +1603,7 @@ func (t *Tmux) Sessions(ctx context.Context) ([]Session, error) {
 	dir := socketDir()
 	sockets, err := os.ReadDir(dir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		var pathError *fs.PathError
-		if errors.As(err, &pathError) {
+		if pathError, ok := errors.AsType[*fs.PathError](err); ok {
 			err = pathError.Err
 		}
 		return nil, fail.Runtime(fmt.Sprintf("cannot read %s: %v", dir, err))
@@ -2327,8 +2325,7 @@ func (t *Tmux) Next(ctx context.Context, prefix string) (string, error) {
 	dir := socketDir()
 	sockets, err := os.ReadDir(dir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		var pathError *fs.PathError
-		if errors.As(err, &pathError) {
+		if pathError, ok := errors.AsType[*fs.PathError](err); ok {
 			err = pathError.Err
 		}
 		return "", fail.Runtime(fmt.Sprintf("cannot read %s: %v", dir, err))

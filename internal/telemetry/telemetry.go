@@ -349,8 +349,7 @@ func (d docker) ran(err error) error {
 // failed is how cld ends when docker failed, after err, having written out: out, then cld's
 // message; and when docker could not run at all, as that ends it.
 func (d docker) failed(err error, out, message string) error {
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
+	if !errors.As(err, new(*exec.ExitError)) {
 		return err
 	}
 	fmt.Fprint(os.Stderr, out)
