@@ -1767,12 +1767,6 @@ func switchKeys(t *testing.T, s *sandbox.Sandbox, tmux, name string) []string {
 	}
 }
 
-// busyMarker is the marker join has tmux put before the session's name in the tab's
-// title while claude is busy: ◐ in even seconds and ◑ in odd ones, with a job that, a second
-// later, has tmux set the title again (see TestContractTitle).
-const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
-	"#((sleep 1; #{q:@cld-tmux} -S #{q:socket_path} refresh-client -S -t #{q:client_name}) >/dev/null 2>&1 &)"
-
 // join hands over to tmux with this command, word for word, where it creates a session: a client
 // that takes the terminal for UTF-8 whatever the locale (see TestClientsTakeUTF8), the session's
 // own server, its options, the directory, claude - by the path of the one it checked - and its
@@ -2975,23 +2969,4 @@ func socket(t *testing.T, s *sandbox.Sandbox, server string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = listener.Close() })
-}
-
-// staleSocket makes the sandbox's socket of server as a server that has died leaves it: a socket
-// that nothing listens on, where the real tmux says that no server is running. A plain file will
-// not do: tmux says so on Linux, whose connect refuses the connection there, but macOS's reports
-// that the file is no socket, and tmux fails with that.
-func staleSocket(t *testing.T, s *sandbox.Sandbox, server string) {
-	t.Helper()
-	if err := os.MkdirAll(s.SocketDir(), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(s.SocketDir(), server), Net: "unix"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	listener.SetUnlinkOnClose(false)
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
 }

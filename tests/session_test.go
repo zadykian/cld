@@ -21,145 +21,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/zadykian/cld/tests/internal/sandbox"
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
 
 // How cld uses its tmux server, independent of the outer terminal: cld runs in the baseline
 // terminal (a pane of an outer tmux server).
-
-// sessionSettings is the --settings the claude of session name, started in dir, gets in s from a
-// cld that finds the sandbox's tmux and git (see settings).
-func sessionSettings(s *sandbox.Sandbox, name, dir string) string {
-	return settings(s, sandbox.RealTmux, sandbox.RealGit, name, dir, false)
-}
-
-// settings is the --settings the claude of session name, cld-NAME, started in dir, gets in s from
-// a cld that found tmux and git at those paths: agent view off, in every session, where /bg and ←
-// would move the conversation out of it; with fromHead, join -w's worktree branched from HEAD;
-// then the hooks that keep claude's status and whether it is in a linked worktree on its
-// session, for the tab's title (see TestStatusHooks, TestWorktreeHooks and
-// TestHooksOutsideThePane), and the session's entry in cld's record and its busy mark (see
-// TestRecordHooks and TestBusyMark). Each of the first runs that tmux on the session's server, by
-// the socket in the sandbox's directory, and names the session; the others write or touch the
-// entry, in the sandbox's home directory, with the session's name and dir, or make or remove the
-// busy mark beside it, and touch the run mark as claude takes a prompt (see TestRestoreIdle).
-// That of CwdChanged runs in the background, the record's SessionEnd one
-// within claude's own bound, and the others with a timeout of 5 s. Nothing else: no
-// remoteControlAtStartup, which would override the user's own setting.
-func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) string {
-	socket := filepath.Join(s.SocketDir(), name)
-	set := func(option, value string) string {
-		return `'` + tmux + `' -S '` + socket + `' if -F -t '=` + name + `:' \"#{!=:#{` + option + `},` + value + `}\" \"set -t =` + name + `: ` + option + ` ` + value + `\"`
-	}
-	status := func(value string) string { return set("@cld-status", value) }
-	gitDir := func(which string) string {
-		return `\"$('` + git + `' rev-parse --path-format=absolute ` + which + ` 2>/dev/null)\"`
-	}
-	worktree := `w=0; [ ` + gitDir("--git-dir") + ` = ` + gitDir("--git-common-dir") + ` ] || w=1; ` + set("@cld-worktree", "$w")
-	// group is a group of an event's hooks: command, where the event matches matcher, run as how
-	// says - with claude's default timeout where how is "" - and hook the event's groups.
-	group := func(matcher, command, how string) string {
-		if matcher != "" {
-			matcher = `"matcher":"` + matcher + `",`
-		}
-		if how != "" {
-			how = `,` + how
-		}
-		return `{` + matcher + `"hooks":[{"type":"command","command":"` + command + `"` + how + `}]}`
-	}
-	hook := func(event string, groups ...string) string {
-		return `"` + event + `":[` + strings.Join(groups, ",") + `]`
-	}
-	// on runs each of commands, in a group of its own, and claude waits for it 5 s at most;
-	// background runs command, and claude goes on.
-	on := func(event, matcher string, commands ...string) string {
-		var groups []string
-		for _, command := range commands {
-			groups = append(groups, group(matcher, command, `"timeout":5`))
-		}
-		return hook(event, groups...)
-	}
-	background := func(event, command string) string { return hook(event, group("", command, `"async":true`)) }
-	file := entryFile(s, strings.TrimPrefix(name, "cld-"))
-	head := `{"name":` + jsonText(strings.TrimPrefix(name, "cld-")) + `,"directory":` + jsonText(dir) + `,"conversation":"`
-	temp := `'` + file + `'.$$`
-	// The hooks' commands, as the settings' JSON has them.
-	escaped := func(command string) string { text := jsonText(command); return text[1 : len(text)-1] }
-	record := escaped(`id=$(sed -n 's/.*"session_id" *: *"\([0-9A-Za-z-]*\)".*/\1/p' | head -n 1); ` +
-		`if [ -n "$id" ]; then printf '%s%s"}\n' '` + head + `' "$id" >` + temp + ` && mv -f ` + temp + ` '` + file + `'; fi`)
-	touch := escaped(`touch -c '` + file + `'`)
-	busy := `'` + strings.TrimSuffix(file, ".json") + `.busy'`
-	idle := escaped(`rm -f ` + busy)
-	busyMark := escaped(`[ ! -e '` + file + `' ] || : >` + busy + `; touch -c '` + strings.TrimSuffix(file, ".json") + `.run'`)
-	interrupted := escaped(`if grep -Eq '"is_interrupt": *true'; then rm -f ` + busy + `; fi`)
-	stop := escaped(`rm -f ` + busy + `; touch -c '` + file + `'`)
-	base := ""
-	if fromHead {
-		base = `"worktree":{"baseRef":"head"},`
-	}
-	return `{"disableAgentView":true,` + base + `"hooks":{` + strings.Join([]string{
-		background("CwdChanged", worktree),
-		on("Elicitation", "", status("waiting")),
-		on("ElicitationResult", "", status("busy")),
-		on("Notification", "idle_prompt", status("idle"), idle),
-		on("PermissionRequest", "", status("waiting")),
-		on("PostToolUse", "", status("busy")),
-		on("PostToolUseFailure", "", `if grep -Eq '\"is_interrupt\": *true'; then `+status("idle")+`; else `+status("busy")+`; fi`, interrupted),
-		hook("SessionEnd", group("", touch, "")),
-		on("SessionStart", "", worktree, record),
-		on("Stop", "", status("idle"), stop),
-		on("StopFailure", "", status("idle"), idle),
-		on("UserPromptSubmit", "", status("busy"), busyMark),
-	}, ",") + `}}`
-}
-
-// jsonText is text as a JSON string, quotes included, without HTML's escapes, as cld writes the
-// settings and the entries of its record.
-func jsonText(text string) string {
-	var encoded bytes.Buffer
-	encoder := json.NewEncoder(&encoded)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(text); err != nil {
-		panic(err)
-	}
-	return strings.TrimSuffix(encoded.String(), "\n")
-}
-
-// entryFile is the file of session name's entry in cld's record, in s's home directory.
-func entryFile(s *sandbox.Sandbox, name string) string {
-	return filepath.Join(s.Home, ".local", "state", "cld", "sessions", name+".json")
-}
-
-// forget removes the entries of the sessions names from cld's record in s, as the list's forget
-// does: once their sessions end, they are gone rather than ended.
-func forget(t *testing.T, s *sandbox.Sandbox, names ...string) {
-	t.Helper()
-	for _, name := range names {
-		if err := os.Remove(entryFile(s, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-// entry is session name's entry as cld writes it, and its SessionStart hook: the session started
-// in dir, with the conversation of that ID, "" for none yet.
-func entry(name, dir, conversation string) string {
-	return `{"name":` + jsonText(name) + `,"directory":` + jsonText(dir) + `,"conversation":"` + conversation + "\"}\n"
-}
-
-// writeEntry writes session name's entry in cld's record in s, as join would have written it for a
-// session in dir, with the conversation of that ID, "" for none yet.
-func writeEntry(t *testing.T, s *sandbox.Sandbox, name, dir, conversation string) {
-	t.Helper()
-	file := entryFile(s, name)
-	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	s.WriteFile(file, entry(name, dir, conversation))
-}
 
 // Session NAME-SUFFIX is the tmux session cld-NAME-SUFFIX, and claude's --name: NAME is -n's, or
 // else the name of the git repository - outside one, as here, of the directory, work - and SUFFIX
@@ -3834,16 +3701,6 @@ func TestJoinInItsOwnPaneWithNoTerminal(t *testing.T) {
 	}
 }
 
-// The footer of the interactive list, and once Ctrl+X has armed the kill, on a detached row and on
-// an attached one; and on a row that has ended, where Ctrl+X arms the forget.
-const (
-	listHints         = "↑/↓ to navigate · enter to join · ctrl+x to kill · esc to quit"
-	killArmed         = "ctrl+x again to kill · esc to keep"
-	killArmedAttached = "ctrl+x again to kill and detach its terminal · esc to keep"
-	endedHints        = "↑/↓ to navigate · enter to resume · ctrl+x to forget · esc to quit"
-	forgetArmed       = "ctrl+x again to forget · esc to keep"
-)
-
 // On a terminal, cld list shows cld's sessions on the alternate screen, the first one selected:
 // the arrows move the selection, Enter joins the selected session as cld join does, and Esc or
 // Ctrl+C leave, printing the plain table. Elsewhere it prints the table, as it did before.
@@ -5708,14 +5565,6 @@ func isStopped(pid int) bool {
 	return strings.HasPrefix(strings.TrimSpace(string(state)), "T")
 }
 
-// gitInit makes the sandbox's work directory a git repository, whose name, "_", leaves nothing
-// of a session's name. git runs in the sandbox's environment, as cld does, so no GIT_DIR, say,
-// sends it to another repository (see TestMain).
-func gitInit(t *testing.T, s *sandbox.Sandbox) {
-	t.Helper()
-	runGit(t, s, s.Root, "init", "-q", s.Work)
-}
-
 // repository makes the git repository name in the sandbox's root, whose name a session's takes,
 // and returns its directory.
 func repository(t *testing.T, s *sandbox.Sandbox, name string) string {
@@ -5723,52 +5572,6 @@ func repository(t *testing.T, s *sandbox.Sandbox, name string) string {
 	dir := filepath.Join(s.Root, name)
 	runGit(t, s, s.Root, "init", "-q", dir)
 	return dir
-}
-
-// runGit runs git with args in dir, in the sandbox's environment (see gitInit), as an author and
-// committer of its own, where the sandbox's home has no git configuration.
-func runGit(t *testing.T, s *sandbox.Sandbox, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", append([]string{"-c", "user.name=cld", "-c", "user.email=cld@example.com"}, args...)...)
-	cmd.Env = s.Environ(nil)
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-}
-
-// gitWorktree makes the linked worktree .claude/worktrees/NAME of the work directory's
-// repository, which gitInit made, on a commit of its own, as claude's --worktree NAME makes one,
-// and returns its path.
-func gitWorktree(t *testing.T, s *sandbox.Sandbox, name string) string {
-	t.Helper()
-	path := filepath.Join(s.Work, ".claude", "worktrees", name)
-	for _, args := range [][]string{
-		{"-c", "user.name=cld", "-c", "user.email=cld@example.com", "commit", "-q", "--allow-empty", "-m", name},
-		{"worktree", "add", "-q", "-b", "worktree-" + name, path},
-	} {
-		cmd := exec.Command("git", append([]string{"-C", s.Work}, args...)...)
-		cmd.Env = s.Environ(nil)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-		}
-	}
-	return path
-}
-
-// waitClients waits until count clients are attached to cld's servers, all told.
-func waitClients(t *testing.T, s *sandbox.Sandbox, count int) {
-	t.Helper()
-	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("%d attached client(s)", count), func() bool {
-		return len(s.Clients()) == count
-	})
-}
-
-func waitScreen(t *testing.T, term terminal.Terminal, text string) {
-	t.Helper()
-	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("%q on the screen", text), func() bool {
-		return strings.Contains(term.Screen(), text)
-	})
 }
 
 // waitBorderLine waits until the screen's last line is a line of the pane's border with text in
@@ -5785,44 +5588,6 @@ func waitBorderLine(t *testing.T, term terminal.Terminal, text string) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out after 10s waiting for the last line to be the pane's border with %q; the screen shows\n%s", text, screen)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-// waitModes waits until the terminal's modes are as ok wants them, and reports them otherwise: the
-// terminal may not have taken in yet what sets them, which can come after the screen it shows -
-// tmux turns every mouse mode off and on again once it has drawn.
-func waitModes(t *testing.T, term terminal.Terminal, when, want string, ok func(terminal.Modes) bool) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for modes := term.Modes(); !ok(modes); modes = term.Modes() {
-		if time.Now().After(deadline) {
-			t.Errorf("modes %s %+v, want %s", when, modes, want)
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-// waitLines waits until the screen shows exactly lines, from the top, and nothing below them;
-// spaces at the end of a line do not count.
-func waitLines(t *testing.T, term terminal.Terminal, lines ...string) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		got := strings.Split(term.Screen(), "\n")
-		for i := range got {
-			got[i] = strings.TrimRight(got[i], " ")
-		}
-		for len(got) > 0 && got[len(got)-1] == "" {
-			got = got[:len(got)-1]
-		}
-		if slices.Equal(got, lines) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out after 10s waiting for the screen to show\n%s\nit shows\n%s", strings.Join(lines, "\n"), strings.Join(got, "\n"))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -5882,181 +5647,10 @@ func footerIn(hints string, columns int) string {
 	return strings.TrimRight(cutTo(hints, columns), " ")
 }
 
-// detachedSessions creates cld's sessions of the given names, each from a terminal of its own
-// that then detaches with C-q d, and returns their claudes by name.
-func detachedSessions(t *testing.T, s *sandbox.Sandbox, names ...string) map[string]*sandbox.Probe {
-	t.Helper()
-	for _, name := range names {
-		term := startCld(t, s, "tmux", nil, "join", "-s", name)
-		sandbox.WaitFor(t, 10*time.Second, "a terminal attached to cld-"+name, func() bool {
-			return slices.Contains(s.Clients(), "cld-"+name)
-		})
-		term.Keys("C-q", "d")
-		sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !term.Running() })
-	}
-	probes := map[string]*sandbox.Probe{}
-	sandbox.WaitFor(t, 10*time.Second, "the claudes to start", func() bool {
-		for _, probe := range s.Probes() {
-			probes[strings.TrimPrefix(probe.Argv[1], "cld-")] = probe
-		}
-		return !slices.ContainsFunc(names, func(name string) bool { return probes[name] == nil })
-	})
-	return probes
-}
-
-// wrapTmux puts a tmux first on the PATH of the environment it returns: an sh script that runs
-// script with tmux's arguments as "$@", and then the tmux the tests run.
-func wrapTmux(t *testing.T, s *sandbox.Sandbox, script string) map[string]string {
-	t.Helper()
-	tmux, err := exec.LookPath("tmux")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bin, err := os.MkdirTemp(s.Root, "bin.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.WriteProgram(filepath.Join(bin, "tmux"), "#!/bin/sh\n"+script+"exec '"+tmux+"' \"$@\"\n", 0o755)
-	return map[string]string{"PATH": bin + string(os.PathListSeparator) + s.Env["PATH"]}
-}
-
-// loggedTmux puts a tmux first on the PATH of the environment it returns (see wrapTmux) that
-// writes down what it runs, and returns with it asked, which gives the servers it ran
-// list-sessions on since asked was last called, as they ran.
-func loggedTmux(t *testing.T, s *sandbox.Sandbox) (env map[string]string, asked func() []string) {
-	t.Helper()
-	ran := filepath.Join(s.Root, "tmux ran")
-	env = wrapTmux(t, s, "echo \"$*\" >>'"+ran+"'\n")
-	return env, func() []string {
-		t.Helper()
-		out, err := os.ReadFile(ran)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			t.Fatal(err)
-		}
-		if err := os.Remove(ran); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			t.Fatal(err)
-		}
-		var servers []string
-		for line := range strings.SplitSeq(string(out), "\n") {
-			if words := strings.Fields(line); slices.Contains(words, "list-sessions") {
-				servers = append(servers, words[slices.Index(words, "-L")+1])
-			}
-		}
-		return servers
-	}
-}
-
-// heldTmux holds the tmux commands of a kind that cld run with env runs, from when the test holds
-// them until it releases them or ends: a tmux first on the PATH (see wrapTmux) waits as long as
-// the file hold is there. It also counts the commands that begin, held or not, a line each in
-// hold.begun.
-type heldTmux struct {
-	hold, what string
-	env        map[string]string
-}
-
-// holdLookup holds the lookup of session cld-NAME that Enter, the kill and join make, from the
-// start. It tells the lookup from the read of the sessions, which asks server cld-NAME with the
-// same filter, by the one format that follows.
-func holdLookup(t *testing.T, s *sandbox.Sandbox, name string) heldTmux {
-	t.Helper()
-	lookup := holdTmux(t, s, "the lookup of cld-"+name, lookupPattern(name))
-	lookup.start(t)
-	return lookup
-}
-
-// lookupPattern is the pattern of sh's case that the arguments of the lookup of session cld-NAME
-// match (see holdLookup).
-func lookupPattern(name string) string {
-	return "*'#{==:#{session_name},cld-" + name + "},'*' -F #{session_name} #{W:#{P:#{pane_pid} }}\t#{@cld-home}'"
-}
-
-// holdTmux is ready to hold the tmux commands, described by what, whose arguments match pattern,
-// a pattern of sh's case, once the test calls start.
-func holdTmux(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
-	t.Helper()
-	return holding(t, s, what, pattern, "", "")
-}
-
-// holdTmuxOutput is holdTmux, but for commands that run first: what they write, on stdout and
-// without its last newlines, and their exit status are held back until the test releases them, as
-// if tmux took that long to answer.
-func holdTmuxOutput(t *testing.T, s *sandbox.Sandbox, what, pattern string) heldTmux {
-	t.Helper()
-	tmux, err := exec.LookPath("tmux")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return holding(t, s, what, pattern, "\tout=$('"+tmux+"' \"$@\" 2>&1); status=$?\n",
-		"\t[ -z \"$out\" ] || printf '%s\\n' \"$out\"\n\texit $status\n")
-}
-
-// holding is holdTmux, and holdTmuxOutput, with the lines of sh's run before the commands are held
-// and then after.
-func holding(t *testing.T, s *sandbox.Sandbox, what, pattern, run, then string) heldTmux {
-	t.Helper()
-	dir, err := os.MkdirTemp(s.Root, "hold.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	hold := filepath.Join(dir, "hold")
-	t.Cleanup(func() { _ = os.Remove(hold) })
-	return heldTmux{hold: hold, what: what, env: wrapTmux(t, s, "case \"$*\" in "+pattern+")\n"+run+
-		"\techo $$ >>'"+hold+".begun'\n"+
-		"\tif [ -e '"+hold+"' ]; then echo $$ >'"+hold+".held'; fi\n"+
-		"\twhile [ -e '"+hold+"' ]; do sleep 0.05; done\n"+then+
-		"\t;;\n"+
-		"esac\n")}
-}
-
-// start holds the commands from now on.
-func (h heldTmux) start(t *testing.T) {
-	t.Helper()
-	if err := os.WriteFile(h.hold, nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// held waits for a command to be held, and returns the pid of the tmux holding it.
-func (h heldTmux) held(t *testing.T) int {
-	t.Helper()
-	var data []byte
-	sandbox.WaitFor(t, 10*time.Second, h.what, func() bool {
-		data, _ = os.ReadFile(h.hold + ".held")
-		return len(data) > 0 && data[len(data)-1] == '\n'
-	})
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return pid
-}
-
-// release lets the commands go on.
-func (h heldTmux) release(t *testing.T) {
-	t.Helper()
-	if err := os.Remove(h.hold); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// begun counts the commands that have begun, held or not.
-func (h heldTmux) begun(t *testing.T) int {
-	t.Helper()
-	data, err := os.ReadFile(h.hold + ".begun")
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal(err)
-	}
-	return bytes.Count(data, []byte("\n"))
-}
-
 // gone reports whether process pid has ended and been waited for.
 func gone(pid int) bool {
 	return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
 }
-
-// listScript runs cld list, as "$@", recording what listRun reads.
-const listScript = `tty >"$0.tty"; stty -g >"$0.before"; "$@"; echo $? >"$0.code"; stty -g >"$0.after"`
 
 // pidScript is listScript that also records cld's pid: the inner sh writes its own, which exec
 // hands on to cld.
@@ -6087,35 +5681,6 @@ func waitFrames(t *testing.T, term terminal.Terminal, count int) {
 	})
 }
 
-// armThen presses Ctrl+X, runs armed - which waits for the list to arm the kill, and checks what
-// it will meanwhile - and presses then, such as C-x to kill or Escape to keep, which has to reach
-// the list within the two seconds of the arm. Under load the checks can take them all: when a
-// second has gone by since the first Ctrl+X, a letter disarms the kill, if it is still armed, and
-// Ctrl+X arms it again, then follows at once.
-func armThen(t *testing.T, term terminal.Terminal, armed func(), then string) {
-	t.Helper()
-	pressed := time.Now()
-	term.Keys("C-x")
-	armed()
-	if time.Since(pressed) < time.Second {
-		term.Keys(then)
-		return
-	}
-	term.Keys("k", "C-x", then)
-}
-
-// listRun is cld list run under sh, with the files sh writes: the terminal's name (tty), its
-// mode before and after cld (stty -g), and cld's exit status. The script gets the files' common
-// path as $0 and cld list as "$@".
-type listRun string
-
-// startList runs script in term, in the sandbox's environment with extra variables added. sh
-// then sleeps, so that the terminal shows what cld left behind rather than tmux's "Pane is dead".
-func startList(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal, script string, extra map[string]string) listRun {
-	t.Helper()
-	return startListIn(t, s, term, []string{"sh"}, script, extra)
-}
-
 // startJob runs jobScript in term under an interactive sh (-i), which has job control. macOS's
 // sh, bash 3.2 as Apple builds it, hears of a job that stops (waitpid's WUNTRACED) only when it
 // is interactive: under set -m in a script, it goes on waiting for a stopped job to end. There,
@@ -6123,131 +5688,6 @@ func startList(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal, script 
 func startJob(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal) listRun {
 	t.Helper()
 	return startListIn(t, s, term, []string{"sh", "-i"}, jobScript, nil)
-}
-
-// startListIn is startList with shell, a command line, in place of sh.
-func startListIn(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal, shell []string, script string, extra map[string]string) listRun {
-	t.Helper()
-	dir, err := os.MkdirTemp(s.Root, "list.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	env := map[string]string{}
-	maps.Copy(env, s.Env)
-	maps.Copy(env, extra)
-	run := listRun(filepath.Join(dir, "cld"))
-	argv := append(slices.Clone(shell), "-c", script+"; exec sleep 600", string(run))
-	term.Start(append(argv, s.CldArgv("list")...), env, s.Work)
-	return run
-}
-
-// exited reports whether cld has exited.
-func (r listRun) exited() bool {
-	_, err := os.Stat(string(r) + ".code")
-	return err == nil
-}
-
-// read waits for the named file to hold a line and returns it.
-func (r listRun) read(t *testing.T, name string) string {
-	t.Helper()
-	var data []byte
-	sandbox.WaitFor(t, 10*time.Second, "sh to write "+name, func() bool {
-		data, _ = os.ReadFile(string(r) + "." + name)
-		return len(data) > 0 && data[len(data)-1] == '\n'
-	})
-	return strings.TrimSuffix(string(data), "\n")
-}
-
-// code is cld's exit status, once it has exited.
-func (r listRun) code(t *testing.T) string {
-	t.Helper()
-	return r.read(t, "code")
-}
-
-// checkRaw checks that the terminal is in raw mode: no line editing, no echo, and Ctrl+C a key.
-func (r listRun) checkRaw(t *testing.T) {
-	t.Helper()
-	tty, err := os.Open(strings.TrimSpace(r.readTTY(t)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tty.Close()
-	stty := exec.Command("stty", "-a")
-	stty.Stdin = tty
-	out, err := stty.Output()
-	if err != nil {
-		t.Fatalf("stty -a: %v", err)
-	}
-	for _, flag := range []string{"-icanon", "-echo", "-isig"} {
-		if !slices.Contains(strings.Fields(strings.ReplaceAll(string(out), ";", " ")), flag) {
-			t.Errorf("the terminal is not in raw mode: no %s in\n%s", flag, out)
-		}
-	}
-}
-
-// unread reports whether the terminal has input that cld has not read, as cld itself tells: in
-// raw mode, the terminal is readable once it has a byte.
-func (r listRun) unread(t *testing.T) bool {
-	t.Helper()
-	tty, err := os.Open(strings.TrimSpace(r.readTTY(t)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tty.Close()
-	fd := int(tty.Fd())
-	var set unix.FdSet
-	set.Set(fd)
-	n, err := unix.Select(fd+1, &set, nil, nil, &unix.Timeval{})
-	return err == nil && n > 0
-}
-
-// readTTY is the terminal's name; uutils' tty (0.8.0) prints it without a newline.
-func (r listRun) readTTY(t *testing.T) string {
-	t.Helper()
-	var data []byte
-	sandbox.WaitFor(t, 10*time.Second, "sh to write the terminal's name", func() bool {
-		data, _ = os.ReadFile(string(r) + ".tty")
-		return len(data) > 0
-	})
-	return string(data)
-}
-
-// checkRestored checks that cld left the terminal as it found it: the same mode (stty -g), the
-// main screen, no mouse reporting and the cursor visible. The terminal may still be reading
-// what cld wrote last when sh has written its exit status.
-func (r listRun) checkRestored(t *testing.T, term terminal.Terminal) {
-	t.Helper()
-	if before, after := r.read(t, "before"), r.read(t, "after"); before != after {
-		t.Errorf("stty -g after cld\n%s\nwant as before\n%s", after, before)
-	}
-	waitModes(t, term, "after cld", "the main screen, no mouse and the cursor visible", func(modes terminal.Modes) bool {
-		return !modes.AltScreen && !modes.Mouse && modes.Cursor
-	})
-}
-
-// afterList waits for cld to leave the alternate screen and print want after it, with the
-// terminal's CR LF line ends as LF. The output log trails the screen and cld's exit status: the
-// outer terminal writes it as it goes, through a pipe.
-func afterList(t *testing.T, term terminal.Terminal, want string) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		output := string(term.Output())
-		end := strings.LastIndex(output, "\x1b[?1049l")
-		printed := ""
-		if end >= 0 {
-			if printed = strings.ReplaceAll(output[end+len("\x1b[?1049l"):], "\r\n", "\n"); printed == want {
-				return
-			}
-		}
-		if time.Now().After(deadline) {
-			if end < 0 {
-				t.Fatalf("timed out after 10s: cld never left the alternate screen: %q", output)
-			}
-			t.Fatalf("timed out after 10s: printed on leaving\n%q\nwant\n%q", printed, want)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
 }
 
 var sgr = regexp.MustCompile(`\x1b\[([0-9;:]*)m`)

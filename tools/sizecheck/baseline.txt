@@ -17,16 +17,16 @@ internal/telemetry/settings.go comments=1
 internal/telemetry/telemetry.go lines=671 comments=6 package=43
 internal/tool/tool.go comments=1
 internal/update/update.go lines=334 package=21
-tests/cli_test.go lines=2997 comments=33
-tests/completion_test.go lines=598 comments=3
-tests/contract_test.go lines=491 comments=1
-tests/install_test.go lines=658 comments=1
+tests/cli_test.go lines=2972 comments=33
+tests/completion_test.go lines=573 comments=3
+tests/contract_test.go lines=442 comments=1
+tests/install_test.go lines=461 comments=1
 tests/internal/sandbox/sandbox.go lines=479
 tests/internal/terminal/tmux.go lines=303 comments=1
 tests/probe/main.go lines=729 comments=1 package=88
-tests/project_test.go lines=731 comments=4
-tests/record_test.go lines=699 comments=8
-tests/restore_test.go lines=1069 comments=15
-tests/session_test.go lines=6357 comments=52
-tests/telemetry_test.go lines=1171 comments=5
+tests/project_test.go lines=657 comments=4
+tests/record_test.go lines=676 comments=8
+tests/restore_test.go lines=1016 comments=15
+tests/session_test.go lines=5797 comments=50
+tests/telemetry_test.go lines=1105 comments=5
 tests/update_test.go lines=503 comments=2
