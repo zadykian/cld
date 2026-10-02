@@ -241,7 +241,7 @@ func (s *Sandbox) Sessions() []string {
 		if err != nil {
 			continue
 		}
-		for _, session := range strings.Fields(out) {
+		for session := range strings.FieldsSeq(out) {
 			if session != server {
 				session = server + "/" + session
 			}
@@ -341,7 +341,7 @@ func (s *Sandbox) DockerCalls() []DockerCall {
 		s.t.Fatal(err)
 	}
 	var calls []DockerCall
-	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(data), "\n"), "\n") {
 		var call DockerCall
 		if err := json.Unmarshal([]byte(line), &call); err != nil {
 			s.t.Fatalf("docker.jsonl: %v", err)
@@ -377,7 +377,7 @@ func (s *Sandbox) SystemdCalls() [][]string {
 		s.t.Fatal(err)
 	}
 	var calls [][]string
-	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(data), "\n"), "\n") {
 		var call []string
 		if err := json.Unmarshal([]byte(line), &call); err != nil {
 			s.t.Fatalf("systemd.jsonl: %v", err)

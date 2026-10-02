@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,7 +92,7 @@ func (f *File) Write(data []byte) error {
 		err = os.Rename(file.Name(), f.target)
 	}
 	if err != nil {
-		_ = os.Remove(file.Name())
+		_ = os.Remove(file.Name()) //nolint:errcheck // best effort: the failure is returned
 		return fail.Runtime("cannot write " + f.Path + ": " + reason(err).Error())
 	}
 	return nil
@@ -113,12 +114,11 @@ func createTemp(dir, name string, perm fs.FileMode) (*os.File, error) {
 // cld's messages name the file themselves.
 func reason(err error) error {
 	for {
-		switch e := err.(type) {
-		case *os.PathError:
+		if e, ok := errors.AsType[*os.PathError](err); ok {
 			err = e.Err
-		case *os.SyscallError:
+		} else if e, ok := errors.AsType[*os.SyscallError](err); ok {
 			err = e.Err
-		default:
+		} else {
 			return err
 		}
 	}
@@ -241,11 +241,10 @@ func invalid(data []byte, err error) string {
 // indentation is one level of the indentation of data, a JSON object: the white space that
 // starts the line of its first member, or two spaces where it is on the object's line.
 func indentation(data []byte) string {
-	start := bytes.IndexByte(data, '{')
-	if start < 0 {
+	_, rest, ok := bytes.Cut(data, []byte{'{'})
+	if !ok {
 		return "  "
 	}
-	rest := data[start+1:]
 	space := rest[:len(rest)-len(bytes.TrimLeft(rest, " \t\r\n"))]
 	if line := bytes.LastIndexByte(space, '\n'); line >= 0 && line+1 < len(space) {
 		return string(space[line+1:])
@@ -255,8 +254,8 @@ func indentation(data []byte) string {
 
 // Last is the index of the last of members with key, which claude reads; -1 for none.
 func Last(members []Member, key string) int {
-	for i := len(members) - 1; i >= 0; i-- {
-		if members[i].Key == key {
+	for i, member := range slices.Backward(members) {
+		if member.Key == key {
 			return i
 		}
 	}
@@ -268,7 +267,7 @@ func String(s string) json.RawMessage {
 	var b bytes.Buffer
 	encoder := json.NewEncoder(&b)
 	encoder.SetEscapeHTML(false)
-	_ = encoder.Encode(s)
+	_ = encoder.Encode(s) //nolint:errcheck,errchkjson // a string always encodes, into memory
 	return bytes.TrimRight(b.Bytes(), "\n")
 }
 

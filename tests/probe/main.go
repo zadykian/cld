@@ -600,7 +600,7 @@ func obey(control *os.File, write func(string), base string) {
 				fmt.Fprintln(os.Stderr, "probe:", err)
 			}
 		case "unsetenv":
-			for _, name := range strings.Fields(argument) {
+			for name := range strings.FieldsSeq(argument) {
 				if err := os.Unsetenv(name); err != nil {
 					fmt.Fprintln(os.Stderr, "probe:", err)
 				}

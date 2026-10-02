@@ -152,7 +152,7 @@ func (u *updater) run(ctx context.Context) (Result, error) {
 	renamed := false
 	defer func() {
 		if !renamed {
-			_ = os.Remove(temporary.Name())
+			_ = os.Remove(temporary.Name()) //nolint:errcheck // best effort: the failure is returned
 		}
 	}()
 	hash := sha256.New()
@@ -205,7 +205,7 @@ func (u *updater) latest(ctx context.Context) (release, error) {
 	if err != nil {
 		return release{}, fail.Runtime("cannot find the latest release at " + address + ": " + reason(err))
 	}
-	_ = response.Body.Close()
+	_ = response.Body.Close() //nolint:errcheck // a response's close loses nothing
 	location, err := response.Location()
 	if err != nil {
 		return release{}, fail.Runtime("cannot find the latest release at " + address + ": " + response.Status)
@@ -251,7 +251,7 @@ func download(ctx context.Context, address string, w io.Writer) error {
 		}
 		return fail.Runtime("cannot download " + address + ": " + reason(err))
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() //nolint:errcheck // a response's close loses nothing
 	if response.StatusCode != http.StatusOK {
 		return fail.Runtime("cannot download " + address + ": " + response.Status)
 	}
@@ -267,7 +267,7 @@ func download(ctx context.Context, address string, w io.Writer) error {
 // checksum is the SHA-256 checksum that sums, a cld.sha256 as sha256sum writes it, gives the file
 // name: the first of its lines "HASH  NAME", or "HASH *NAME".
 func checksum(sums, name string) ([]byte, bool) {
-	for _, line := range strings.Split(sums, "\n") {
+	for line := range strings.SplitSeq(sums, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != name {
 			continue

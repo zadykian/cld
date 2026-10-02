@@ -3391,7 +3391,7 @@ func TestServerOptions(t *testing.T) {
 	// tmux hands a mouse key it has no binding for to the pane: a Ctrl+click and an Alt+right-click
 	// reach claude whole (see TestContractClicks). tmux's other mouse bindings stay.
 	var keys []string
-	for _, binding := range strings.Split(s.MustTmux("cld-0", "list-keys", "-T", "root"), "\n") {
+	for binding := range strings.SplitSeq(s.MustTmux("cld-0", "list-keys", "-T", "root"), "\n") {
 		if fields := strings.Fields(binding); len(fields) > 3 {
 			keys = append(keys, fields[3])
 		}
@@ -3567,7 +3567,7 @@ func tmuxOlder(t *testing.T, major, minor int) bool {
 // drew over them.
 func shownMessages(s *sandbox.Sandbox, server string) []string {
 	var messages []string
-	for _, line := range strings.Split(s.MustTmux(server, "show-messages"), "\n") {
+	for line := range strings.SplitSeq(s.MustTmux(server, "show-messages"), "\n") {
 		if _, message, found := strings.Cut(line, " message: "); found {
 			messages = append(messages, message)
 		}
@@ -3752,9 +3752,7 @@ func TestNestsOnADeadPanesPty(t *testing.T) {
 	// A pane of another tmux: the terminal writes down its pty and runs join.
 	// printf ends the line: uutils' tty (0.8.0) prints the name without a newline.
 	env := map[string]string{"TMUX": filepath.Join(s.Root, "elsewhere", "default") + ",1,0"}
-	for name, value := range s.Env {
-		env[name] = value
-	}
+	maps.Copy(env, s.Env)
 	ttyFile := filepath.Join(s.Root, "tty")
 	term := terminal.New(t, "tmux", s)
 	term.Start(append([]string{"sh", "-c", `tty=$(tty) && printf '%s\n' "$tty" >"$0" && exec "$@" join -s main`, ttyFile}, s.CldArgv()...), env, s.Work)
@@ -5939,7 +5937,7 @@ func loggedTmux(t *testing.T, s *sandbox.Sandbox) (env map[string]string, asked 
 			t.Fatal(err)
 		}
 		var servers []string
-		for _, line := range strings.Split(string(out), "\n") {
+		for line := range strings.SplitSeq(string(out), "\n") {
 			if words := strings.Fields(line); slices.Contains(words, "list-sessions") {
 				servers = append(servers, words[slices.Index(words, "-L")+1])
 			}
@@ -6135,12 +6133,8 @@ func startListIn(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal, shell
 		t.Fatal(err)
 	}
 	env := map[string]string{}
-	for name, value := range s.Env {
-		env[name] = value
-	}
-	for name, value := range extra {
-		env[name] = value
-	}
+	maps.Copy(env, s.Env)
+	maps.Copy(env, extra)
 	run := listRun(filepath.Join(dir, "cld"))
 	argv := append(slices.Clone(shell), "-c", script+"; exec sleep 600", string(run))
 	term.Start(append(argv, s.CldArgv("list")...), env, s.Work)
@@ -6283,7 +6277,7 @@ var clearing = map[string]bool{
 func cells(styled string) []string {
 	state := map[string]string{} // capture-pane -e carries attributes over line ends
 	var lines []string
-	for _, row := range strings.Split(styled, "\n") {
+	for row := range strings.SplitSeq(styled, "\n") {
 		var attrs, texts []string // one per run
 		matches := sgr.FindAllStringSubmatch(row, -1)
 		for i, text := range sgr.Split(row, -1) {

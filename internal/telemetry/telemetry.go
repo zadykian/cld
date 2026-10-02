@@ -246,7 +246,8 @@ func Setup(o Options) error {
 		return err
 	}
 	defer release(held)
-	d.env = append(env, configVariable+"="+collectorConfig(port, o.Local, o.Remote))
+	config := configVariable + "=" + collectorConfig(port, o.Local, o.Remote)
+	d.env = slices.Concat(env, []string{config})
 
 	// Validate.
 	if err := d.validate(passed, configs); err != nil {
@@ -349,8 +350,7 @@ func (d docker) ran(err error) error {
 // failed is how cld ends when docker failed, after err, having written out: out, then cld's
 // message; and when docker could not run at all, as that ends it.
 func (d docker) failed(err error, out, message string) error {
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
+	if !errors.As(err, new(*exec.ExitError)) {
 		return err
 	}
 	fmt.Fprint(os.Stderr, out)
@@ -386,7 +386,7 @@ func (d docker) inspect(unchanged string) (state, error) {
 		s.status = fields[0]
 	}
 	if len(fields) > 1 {
-		s.restarts, _ = strconv.Atoi(fields[1])
+		s.restarts, _ = strconv.Atoi(fields[1]) //nolint:errcheck // docker writes a number
 	}
 	if len(fields) > 2 {
 		s.port, _ = ParsePort(fields[2])
@@ -463,7 +463,7 @@ func (d docker) wait(port int, unchanged string) error {
 func accepts(port int) bool {
 	conn, err := net.DialTimeout("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), time.Second)
 	if err == nil {
-		_ = conn.Close()
+		_ = conn.Close() //nolint:errcheck // a probe's connection, which sent nothing
 	}
 	return err == nil
 }
@@ -547,7 +547,7 @@ func listen(port int) (net.Listener, error) {
 // release closes held, if cld holds a port.
 func release(held net.Listener) {
 	if held != nil {
-		_ = held.Close()
+		_ = held.Close() //nolint:errcheck // the port is free after a close, even a failed one
 	}
 }
 
@@ -555,14 +555,13 @@ func release(held net.Listener) {
 // *net.OpError add to it.
 func reason(err error) error {
 	for {
-		switch e := err.(type) {
-		case *os.PathError:
+		if e, ok := errors.AsType[*os.PathError](err); ok {
 			err = e.Err
-		case *os.SyscallError:
+		} else if e, ok := errors.AsType[*os.SyscallError](err); ok {
 			err = e.Err
-		case *net.OpError:
+		} else if e, ok := errors.AsType[*net.OpError](err); ok {
 			err = e.Err
-		default:
+		} else {
 			return err
 		}
 	}

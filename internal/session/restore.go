@@ -74,12 +74,12 @@ type Restored struct {
 func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
 	dir, err := stateDir()
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	r, ok := recorded(suffix)
 	mark, err := os.Stat(companion(dir, suffix, runMark))
 	if !ok || err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // an entry or mark it cannot read is none, as in Marked
 	}
 	// The start mark before the lookup, as join reads it (see settled): one gone since was removed
 	// by a tmux that had made the session by then, which the lookup finds.
@@ -92,7 +92,7 @@ func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
 	}
 	if idle := time.Since(mark.ModTime()); limit > 0 && idle > limit {
 		// A mark cld cannot remove stays, and the next restore says the same.
-		_ = os.Remove(companion(dir, suffix, runMark))
+		_ = os.Remove(companion(dir, suffix, runMark)) //nolint:errcheck // explained above
 		return &Restored{Idle: idle}, nil
 	}
 	s, err := readStarted(dir, suffix)

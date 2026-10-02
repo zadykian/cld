@@ -12,6 +12,7 @@ package tests
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,12 +172,8 @@ func startCldIn(t *testing.T, s *sandbox.Sandbox, name, dir string, extra map[st
 	t.Helper()
 	term := terminal.New(t, name, s)
 	env := map[string]string{}
-	for key, value := range s.Env {
-		env[key] = value
-	}
-	for key, value := range extra {
-		env[key] = value
-	}
+	maps.Copy(env, s.Env)
+	maps.Copy(env, extra)
 	term.Start(s.CldArgv(args...), env, dir)
 	return term
 }

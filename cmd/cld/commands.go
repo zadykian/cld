@@ -959,7 +959,7 @@ commit them: whoever trusts the project's folder gives claude what they allow.`,
 	command.RunE = func(c *cobra.Command, _ []string) error {
 		chosen := map[string]bool{}
 		for _, list := range *mcp {
-			for _, name := range strings.Split(list, ",") {
+			for name := range strings.SplitSeq(list, ",") {
 				if !slices.ContainsFunc(project.Servers, func(s project.Server) bool { return s.Name == name }) {
 					return fail.Usage(fmt.Sprintf("invalid MCP server '%s' for --mcp: goland, jbcontext or rider (see cld help)", name))
 				}
@@ -1170,7 +1170,7 @@ func sessionSuffixes(all bool) cobra.CompletionFunc {
 		var name string
 		var home session.Home
 		if c.Flags().Changed("name") {
-			name, _ = c.Flags().GetString("name")
+			name, _ = c.Flags().GetString("name") //nolint:errcheck // cannot fail: -n is a string option
 		} else {
 			name, home = defaultName()
 		}
@@ -1460,8 +1460,7 @@ func (l listSource) Kill(ctx context.Context, name string, pids []string) error 
 	}
 	var said bytes.Buffer
 	err := l.tmux.End(ctx, name, session.Home{}, pids, &said, &said)
-	var status fail.Status
-	if errors.As(err, &status) {
+	if status, ok := errors.AsType[fail.Status](err); ok {
 		if message := strings.TrimSpace(said.String()); message != "" {
 			return fail.Runtime(message)
 		}
@@ -1622,7 +1621,7 @@ func topic(parent *cobra.Command, name string) *cobra.Command {
 // once every option has been read, and pflag stops at the error.
 func flagError(typed string) func(*cobra.Command, error) error {
 	return func(c *cobra.Command, err error) error {
-		if help, _ := c.Flags().GetBool("help"); help {
+		if help, _ := c.Flags().GetBool("help"); help { //nolint:errcheck // no -h option: no help asked
 			return pflag.ErrHelp
 		}
 		var (
@@ -1713,8 +1712,8 @@ func idleLimit() (time.Duration, error) {
 	if !days.MatchString(value) {
 		return 0, fail.Runtime(fmt.Sprintf("CLD_IDLE_DAYS is not a number of days: '%s'", value))
 	}
-	// +Inf where the number is too large for a float64.
-	count, _ := strconv.ParseFloat(value, 64)
+	// days took value, so ParseFloat fails only on a number too large for a float64, giving +Inf.
+	count, _ := strconv.ParseFloat(value, 64) //nolint:errcheck // explained above
 	limit := math.Ceil(count * float64(24*time.Hour))
 	if limit >= math.MaxInt64 {
 		return 0, nil
