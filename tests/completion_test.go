@@ -13,7 +13,7 @@ import (
 // cld setup completion in the sandbox's home, with nothing on the PATH: each script where its
 // shell reads it, byte for byte what cld completion SHELL prints (decision 22). The other
 // completion_*_test.go files hold files that exist, refusals and the shells loading the scripts.
-// TestUpdateRefreshesCompletion checks cld update writing them anew.
+// update_completion_test.go checks cld update writing them anew.
 
 // completionScript is what cld completion shell prints.
 func completionScript(t *testing.T, s *sandbox.Sandbox, shell string) string {
