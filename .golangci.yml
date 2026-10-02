@@ -35,9 +35,6 @@ linters:
       line-length: 100
 
 issues:
-  # The ratchet: only lines that differ from the merge base with main must pass, so today's
-  # backlog blocks nothing. CI's checkout has no local branch main, only origin/main.
-  new-from-merge-base: origin/main
   # Every finding is reported, not the first 50 of a linter or 3 of a kind.
   max-issues-per-linter: 0
   max-same-issues: 0

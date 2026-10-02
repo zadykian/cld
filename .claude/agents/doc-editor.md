@@ -36,9 +36,7 @@ make sizecheck FILES='PATHS'
 make lychee
 ```
 
-For Go files, also `gofmt -l .` and `make golangci-lint`. Then lower your files' baseline entries
-with `tools/valecheck -update` and `go run ./tools/sizecheck -update`, keeping only their lines
-in `git diff tools/`.
+For Go files, also `gofmt -l .` and `make golangci-lint`.
 
 ## Report
 

@@ -100,12 +100,12 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   systemd (decisions [18](docs/design/decisions/0018-telemetry.md),
   [22](docs/design/decisions/0022-setting-completion-up.md) and
   [48](docs/design/decisions/0048-restore-after-reboot.md)).
-- `make lint` fails on any finding, warnings included; golangci-lint checks the lines that differ
-  from `origin/main` ([testing](docs/design/testing.md#layers); #121).
+- `make lint` fails on any finding, warnings included, in any line of any file
+  ([testing](docs/design/testing.md#layers); #121).
 - Fix a finding, or justify it in place (`//nolint:LINTER // reason`); never lower a severity or
   add an exclusion.
-- The baselines, `tools/sizecheck/baseline.txt` and `tools/valecheck.txt`, only shrink; a new file
-  passes every gate outright.
+- The baselines, `tools/sizecheck/baseline.txt` and `tools/valecheck.txt`, are empty and stay so:
+  every file passes every gate outright (#125).
 
 ## Commits
 
