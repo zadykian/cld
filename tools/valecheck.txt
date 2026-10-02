@@ -11,7 +11,6 @@ internal/session/switch.go
 internal/update/update.go
 tests/completion_test.go
 tests/contract_test.go
-tests/install_test.go
 tests/internal/sandbox/pty.go
 tests/internal/sandbox/sandbox.go
 tests/internal/terminal/jediterm.go
