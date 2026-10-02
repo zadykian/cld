@@ -1,10 +1,1 @@
 # The files that fail Vale (tools/valecheck): the list may only shrink.
-internal/completion/completion.go
-internal/fail/fail.go
-internal/output/output.go
-internal/restore/restore.go
-internal/session/restore.go
-tests/internal/sandbox/pty.go
-tests/internal/terminal/jediterm.go
-tests/internal/terminal/terminal.go
-tests/main_test.go

@@ -60,24 +60,24 @@ type Terminal interface {
 	// Clipboard is the text last copied to the clipboard through OSC 52.
 	Clipboard() string
 	// Running reports whether the program Start ran is still running, or the terminal has yet to
-	// take in what it wrote: once it reports false, the screen and the modes are final.
+	// take in what it wrote. Once it reports false, the screen and the modes are final.
 	Running() bool
 	Close()
 }
 
-// New creates the named terminal; it is closed when the test ends.
-func New(t testing.TB, name string, s *sandbox.Sandbox) Terminal {
-	t.Helper()
+// New creates the named terminal, and closes it when the test ends.
+func New(tb testing.TB, name string, s *sandbox.Sandbox) Terminal {
+	tb.Helper()
 	var created Terminal
 	switch name {
 	case "tmux":
-		created = newTmux(t, s)
+		created = newTmux(tb, s)
 	case "jediterm":
-		created = newJediTerm(t, s)
+		created = newJediTerm(tb, s)
 	default:
-		t.Fatalf("unknown terminal %q", name)
+		tb.Fatalf("unknown terminal %q", name)
 	}
-	t.Cleanup(created.Close)
+	tb.Cleanup(created.Close)
 	return created
 }
 
@@ -137,9 +137,9 @@ func (u unsupported) Clipboard() string {
 var mouseModifiers = map[string]int{"S-": 4, "M-": 8, "C-": 16}
 
 // mouseButton is the button of an xterm mouse report for key, a press named the way tmux names it
-// (see Click): the button counted from 0, and a bit for each modifier.
-func mouseButton(t testing.TB, key string) int {
-	t.Helper()
+// (see Click). Buttons count from 0, and each modifier adds a bit.
+func mouseButton(tb testing.TB, key string) int {
+	tb.Helper()
 	button := 0
 	for len(key) > 2 && mouseModifiers[key[:2]] != 0 {
 		button |= mouseModifiers[key[:2]]
@@ -149,6 +149,6 @@ func mouseButton(t testing.TB, key string) int {
 	if n, err := strconv.Atoi(number); found && err == nil && n >= 1 && n <= 3 {
 		return button | (n - 1)
 	}
-	t.Fatalf("no mouse press %q", key)
+	tb.Fatalf("no mouse press %q", key)
 	return 0
 }

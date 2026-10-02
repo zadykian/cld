@@ -1,32 +1,16 @@
-// Package restore is cld setup restore: it has the user's systemd run cld restore as it starts, so
-// that the sessions a reboot ended come back (see Tmux.Restore in internal/session). Setup runs
-// these steps in this order, so that nothing is written where it would not run:
+// Package restore is cld setup restore, which has the user's systemd run cld restore as it
+// starts (decision 48.9). cld restore brings back the sessions a reboot ended (see Tmux.Restore
+// in internal/session). Setup runs these steps in this order, so that nothing is written where it
+// would not run:
 //
 //   - checks: systemctl on the PATH (see tool.LookPath), then the user's systemd answering
-//     systemctl --user show-environment: without it - a container, a system without systemd, a
-//     shell with no user manager of its own - nothing is written. Linux alone has systemd (see
-//     Supported), which cld refuses to go past elsewhere
-//   - the unit: ~/.config/systemd/user/cld-restore.service, where the user's systemd reads units -
-//     from $XDG_CONFIG_HOME/systemd/user only where its own environment sets that, which the
-//     shell's does not tell - written as internal/configfile writes a file, where it differs.
-//     Type=oneshot, with RemainAfterExit=yes: the unit is done once cld restore returns, and
-//     stays active. KillMode=process: stopping the unit ends cld restore, if it still runs, and
-//     not the tmux servers it started, which stay in the unit's cgroup - a snap's tmux moves its
-//     server to a scope of its own (see docs/design/findings/environment.md).
-//     WantedBy=default.target, which the user's systemd starts as it starts: at boot where
-//     lingering is on, and otherwise at the first login. ExecStart names this cld by the file it
-//     runs from, which cld update replaces in place, and Environment gives cld restore what the
-//     user's systemd has none of: the PATH cld runs with now, where cld restore finds tmux, and
-//     TMUX_TMPDIR and XDG_STATE_HOME where set, where the sessions' sockets and cld's record are,
-//     and CLD_IDLE_DAYS where set, past which cld restore leaves a session ended. Each goes quoted,
-//     as systemd reads C's escapes, specifiers (%) and, in ExecStart, variables ($)
-//   - enable: systemctl --user daemon-reload where the unit changed, so that the user's systemd
-//     reads it, then systemctl --user enable cld-restore.service, which links it into
-//     default.target.wants: once more changes nothing
-//   - lingering: loginctl show-user UID --property=Linger --value. Without it the user's systemd
-//     starts at the first login, not at boot, and stops at the last logout, which ends what runs in
-//     its units, the sessions cld restore started among them. The report names loginctl
-//     enable-linger, which cld does not run: logind may ask for a password
+//     systemctl --user show-environment; cld refuses any system but Linux before (see Supported)
+//   - the unit: ~/.config/systemd/user/cld-restore.service, written as internal/configfile writes
+//     a file, where it differs (see unit)
+//   - enable: systemctl --user daemon-reload where the unit changed, then systemctl --user enable,
+//     which links the unit into default.target.wants: once more changes nothing
+//   - lingering: loginctl show-user, as the user's systemd starts at boot only with lingering on;
+//     the report names loginctl enable-linger, which cld does not run
 //
 // The package prints nothing: Setup returns what it did, for cld to report.
 package restore
@@ -57,10 +41,12 @@ func Supported() error {
 }
 
 // variables are the variables of cld's environment the unit gives cld restore where they are set
-// (see the package comment); PATH goes whether set or not.
+// (decision 48.9); PATH goes whether set or not.
 var variables = []string{"PATH", "TMUX_TMPDIR", "XDG_STATE_HOME", "CLD_IDLE_DAYS"}
 
-// unit is the unit file that runs cld, the file at that path, as cld restore.
+// unit is the unit file that runs cld, the file at that path, as cld restore. A oneshot unit, it
+// stays active once run, leaves the tmux servers in its cgroup when stopped, and gives cld restore
+// the variables it needs (decision 48.9).
 func unit(cld string) []byte {
 	var environment strings.Builder
 	for _, name := range variables {
@@ -84,7 +70,7 @@ WantedBy=default.target
 `)
 }
 
-// quoted is value as a word of a unit file, in double quotes: systemd reads C's escapes in it,
+// quoted is value as a word of a unit file, in double quotes. In it systemd reads C's escapes,
 // "%" as the start of a specifier and, in a command, "$" as the start of a variable.
 func quoted(value string, command bool) string {
 	var word strings.Builder
@@ -107,8 +93,8 @@ func quoted(value string, command bool) string {
 	return word.String()
 }
 
-// Setup has the user's systemd run cld, the file at that path, as cld restore as it starts (see
-// the package comment), and returns what it did.
+// Setup has the user's systemd run cld, the file at that path, as cld restore as it starts, and
+// returns what it did.
 func Setup(cld string) (string, error) {
 	if _, err := tool.LookPath("systemctl"); err != nil {
 		return "", fail.Runtime("setup restore needs systemd, and systemctl is not installed")
@@ -150,17 +136,24 @@ func Setup(cld string) (string, error) {
 		return "", fail.Runtime(err.Error() + written)
 	}
 	report.WriteString("Enabled " + Unit + ": your systemd runs cld restore as it starts\n")
-	const without = "your systemd starts, and cld restore with it, at your first login, and at your last " +
-		"logout ends the sessions cld restore brought back; loginctl enable-linger has it start at boot, and keeps them\n"
-	switch linger, err := run("loginctl", "show-user", strconv.Itoa(os.Getuid()), "--property=Linger", "--value"); {
-	case err != nil:
-		report.WriteString("Cannot tell whether lingering is on (" + err.Error() + "): without it, " + without)
-	case linger == "yes":
-		report.WriteString("Lingering is on: your systemd starts at boot, and cld restore with it\n")
-	default:
-		report.WriteString("Lingering is off: " + without)
-	}
+	report.WriteString(lingering())
 	return report.String(), nil
+}
+
+// lingering is the report's line on lingering, without which the user's systemd starts at the
+// first login, and stops at the last logout (decision 48.9).
+func lingering() string {
+	const without = "your systemd starts, and cld restore with it, at your first login, " +
+		"and at your last logout ends the sessions cld restore brought back; " +
+		"loginctl enable-linger has it start at boot, and keeps them\n"
+	uid := strconv.Itoa(os.Getuid())
+	switch linger, err := run("loginctl", "show-user", uid, "--property=Linger", "--value"); {
+	case err != nil:
+		return "Cannot tell whether lingering is on (" + err.Error() + "): without it, " + without
+	case linger == "yes":
+		return "Lingering is on: your systemd starts at boot, and cld restore with it\n"
+	}
+	return "Lingering is off: " + without
 }
 
 // run runs the program name, found on the PATH, with args and no input, and returns what it

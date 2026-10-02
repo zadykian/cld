@@ -28,7 +28,7 @@ type Joining struct {
 	// Args, the words given after "--", go to claude after cld's own arguments.
 	Args []string
 	// SwitchedFrom is the session a switch moved the terminal from, which the session joined
-	// records for C-q L (see Switch).
+	// records for C-q L (decision 51.4).
 	SwitchedFrom string
 	// Typed are the words given after join, which join passes on where it moves a terminal instead
 	// of attaching this one (see Tmux.move).

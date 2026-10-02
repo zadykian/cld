@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"syscall"
 	"unsafe"
@@ -18,8 +19,7 @@ func openPty() (*os.File, string, error) {
 	}
 	controller := os.NewFile(uintptr(fd), "/dev/ptmx")
 	fail := func(err error) (*os.File, string, error) {
-		controller.Close()
-		return nil, "", err
+		return nil, "", errors.Join(err, controller.Close())
 	}
 	if err := unix.IoctlSetInt(fd, unix.TIOCPTYGRANT, 0); err != nil {
 		return fail(err)
@@ -29,7 +29,9 @@ func openPty() (*os.File, string, error) {
 	}
 	// TIOCPTYGNAME writes the name, and a NUL, to a buffer of 128 bytes.
 	name := make([]byte, 128)
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(unix.TIOCPTYGNAME), uintptr(unsafe.Pointer(&name[0]))); errno != 0 {
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(unix.TIOCPTYGNAME),
+		uintptr(unsafe.Pointer(&name[0])))
+	if errno != 0 {
 		return fail(errno)
 	}
 	path, _, _ := bytes.Cut(name, []byte{0})

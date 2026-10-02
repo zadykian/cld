@@ -5,9 +5,9 @@ package fail
 
 import "strconv"
 
-// Error ends cld with Status, after "cld: Message" on stderr, followed by Advice: what to do
-// about it on cld's command line, such as " (see cld help)", kept apart for a caller that shows
-// the message elsewhere - the session list's footer.
+// Error ends cld with Status, after "cld: Message" on stderr, followed by Advice. Advice says what
+// to do about it on cld's command line, such as " (see cld help)". It stays apart for a caller
+// that shows the message elsewhere: the session list's footer.
 type Error struct {
 	Status  int
 	Message string
@@ -22,9 +22,9 @@ func Usage(message string) error { return &Error{Status: 2, Message: message} }
 // Runtime is anything else that stops cld: exit status 1.
 func Runtime(message string) error { return &Error{Status: 1, Message: message} }
 
-// Status ends cld with an exit status, printing nothing: its reason has been shown already, as
-// when it is a tmux command's and tmux has said why, or needs none, as when a signal ended what cld
-// was doing and the status is 128 plus its number.
+// Status ends cld with an exit status, printing nothing. Its reason has been shown already, as
+// when a tmux command failed and tmux has said why, or needs none, as when a signal ended what cld
+// was doing. That status is 128 plus the signal's number.
 type Status int
 
 func (s Status) Error() string { return "exit status " + strconv.Itoa(int(s)) }

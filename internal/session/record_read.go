@@ -42,7 +42,7 @@ func readEntry(file, suffix string) (entry, bool) {
 	return r, true
 }
 
-// entries are the entries of the record that have not expired, in the order of their names.
+// entries are the entries of the record that have not expired, in the order of their file names.
 func entries() []entry {
 	dir, err := stateDir()
 	if err != nil {
