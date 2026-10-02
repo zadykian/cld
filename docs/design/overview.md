@@ -82,8 +82,8 @@ makes on its server, then behave as plain tmux.
   `.gitignore` ([decision 19](decisions/0019-project-settings.md)).
 - `internal/telemetry`: `cld setup telemetry`, a local OpenTelemetry Collector in Docker and
   claude's settings pointed at it ([decision 18](decisions/0018-telemetry.md)).
-- `internal/configfile`: edits claude's and git's files in place for those two. A file keeps
-  what cld does not change, byte for byte, so one Claude Code wrote keeps its look.
+- `internal/configfile`: edits in place the files the `setup` commands write. A file keeps what
+  cld does not change, byte for byte, so one Claude Code wrote keeps its look.
 - `internal/update`: `cld update` ([decision 21](decisions/0021-self-update.md)).
 - `internal/completion`: `cld setup completion`, and the scripts `cld update` writes anew
   ([decision 22](decisions/0022-setting-completion-up.md)).
