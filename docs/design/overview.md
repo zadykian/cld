@@ -69,9 +69,9 @@ makes on its server, then behave as plain tmux.
 
 - `cmd/cld`: the command line on cobra, the commands' help texts, argument errors, and which
   checks run in which order.
-- `internal/session`: the tmux side, and cld's record of its sessions. `switch.go` moves a
-  terminal between servers, `record.go` and `record_*.go` keep the record and `restore.go` is
-  `cld restore`.
+- `internal/session`: the tmux side, and cld's record of its sessions. `switch.go` and
+  `switch_*.go` move a terminal between servers, `record.go` and `record_*.go` keep the record and
+  `restore.go` is `cld restore`.
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
   join's checks and kill's steps.
 - `internal/project`: `cld setup project`, a project's claude settings, `.mcp.json` and
