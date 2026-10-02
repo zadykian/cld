@@ -20,15 +20,17 @@ unit that runs `cld restore`, which is `internal/session`'s), `internal/tool` fi
 cld runs on the `PATH` (and ends cld as a shell would when one cannot run), `internal/fail`
 carries exit statuses up to
 `main`, and `internal/output` prints cld's own output, a write that fails being one of those ends,
-and its warnings and notes. `install.sh`, published with each release,
-installs cld from a release. Everything else is its test harness (Go, under `tests/`),
-docs and CI.
+and its warnings and notes. `install.sh`, published with each release, installs cld from a
+release. Everything else is its test harness (Go, under `tests/`), the lint gates' tools
+(`tools/`), docs and CI.
 
 ## Commands
 
 ```sh
-make check                              # lint + test, natively (baseline terminal only)
-make lint                               # gofmt, go vet; shellcheck, shfmt -i 4 on the scripts
+make check                              # vet + test, natively (baseline terminal only)
+make vet                                # gofmt, go vet; shellcheck, shfmt -i 4 on the scripts
+make lint                               # vet + gates, as CI's lint job; tools/run pins the tools
+make vale FILES=README.md               # one gate of lint's alone; sizecheck and vale take FILES
 make test                               # cd tests && go test -count=1 ./...
 cd tests && go test -count=1 -run 'TestList$' .   # a single test
 cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata/help from cld
@@ -36,26 +38,24 @@ make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
 make docker-check                       # same as CI: tmux 3.7c built from source, tmux + jediterm
 make docker-check TMUX_VERSION=3.5a     # the same on the oldest tmux cld runs on, as CI does too
-make docker-blesh-check                 # the completion tests in bash with ble.sh, in that image
-                                        #   built on Ubuntu 26.04 with its package ble.sh
+make docker-blesh-check                 # the completion tests in bash with Ubuntu 26.04's ble.sh
 make docker-image TMUX_VERSION=X        # an image with another tmux release, to try it by hand
-make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH, linux/darwin x amd64/arm64, cld.sha256,
-                                        #   install.sh
+make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH (4 platforms), cld.sha256, install.sh
 make install PREFIX=DIR                 # build cld for the host into DIR/bin (VERSION stamps it)
 ```
 
-Native runs need Go, tmux 3.5a or newer, ShellCheck and shfmt. CI (`.github/workflows/ci.yml`)
-runs the Docker image in one job, `linux`, on the pinned tmux 3.7c, and in another,
-`linux-oldest`, on tmux 3.5a, the oldest cld runs on, the completion tests in the image built on
-Ubuntu with ble.sh in a third, `blesh`, and `make check` on macOS with Homebrew tmux. Pushing a
-tag `vX.Y.Z` runs the checks and publishes a release: a binary per platform, `cld.sha256` and
-`install.sh`.
+Native runs need Go, tmux 3.5a or newer, ShellCheck and shfmt; `make lint` downloads the tools it
+pins. CI (`.github/workflows/ci.yml`) runs the Docker image in `linux` on the pinned tmux 3.7c, and
+in `linux-oldest` on tmux 3.5a, the oldest cld runs on. `blesh` runs the completion tests in the
+image built on Ubuntu with ble.sh, `macos` runs `make check` with Homebrew tmux, and `lint` runs
+`make lint`. Pushing a tag `vX.Y.Z` runs the checks and publishes a release: a binary per
+platform, `cld.sha256` and `install.sh`.
 
 Pull requests land on `main` by fast-forward only, as the commits CI checked; GitHub's merge
 methods are all refused (`gh pr merge` included): the repository allows merge commits alone, and
 the ruleset on `main` rebase alone. A comment `/fast-forward` on the pull request pushes its head
 to `main` (`.github/workflows/fast-forward.yml`), which the ruleset lets through once the checks
-`linux` and `macos` pass and every conversation is resolved. A pull request that changes
+`linux`, `macos` and `lint` pass and every conversation is resolved. A pull request that changes
 `.github/workflows` is pushed by hand, `git push origin SHA:main`, since the workflow's token may
 not push such a change. Rebase onto `main` before either.
 
@@ -77,8 +77,8 @@ not push such a change. Rebase onto `main` before either.
   `update` and completion do not. Re-derive the minimum when cld starts to pass or rely on something
   newer (docs/design.md, decision 6).
 - Builds with `CGO_ENABLED=0` for linux and darwin on amd64 and arm64 (so no `ttyname`: cld runs
-  `tty`). gofmt and go vet must pass; ShellCheck and `shfmt -i 4` for `install.sh` and
-  `tests/jediterm/fetch-deps`.
+  `tty`). `make lint` must pass, each gate failing on any finding: golangci-lint checks the lines
+  that differ from `origin/main`, and sizecheck's and Vale's baselines may only shrink.
 - `install.sh` is POSIX sh, run as `curl -fsSL .../releases/latest/download/install.sh | sh`:
   everything stays in functions that its last line calls, so that a download cut short runs
   nothing. It relies on the names `make dist` publishes, `cld-OS-ARCH` and `cld.sha256` with its

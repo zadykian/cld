@@ -1,0 +1,17 @@
+# Weekly updates of cld's Go modules and of the actions the workflows pin, each release a week
+# old at least. Dependabot cannot see the tools that tools/run pins: they are bumped by hand. So
+# is go.mod's toolchain line, when govulncheck reports its Go release.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

@@ -1,0 +1,6 @@
+# Go comments read as Markdown, so that sentence-scoped rules apply to them.
+engine: tree-sitter
+scopes:
+  - name: comment
+    expr: (comment)+ @comment
+    type: md

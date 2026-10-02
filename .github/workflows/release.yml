@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: make docker-check
 
   publish:
@@ -23,9 +25,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # Nothing restored from a cache goes into what is published.
+          cache: false
       # A binary per platform, cld-OS-ARCH, cld.sha256 listing them, and install.sh, which
       # downloads them; a build that fails for any platform fails the job before anything is
       # published. The runner is linux/amd64.

@@ -174,12 +174,11 @@ options and a prompt to start with, as in
 `cld join -- --model opus --permission-mode plan "review the diff"`. Where the session runs, its
 claude has started, and `cld join` refuses them. A resumed conversation does not keep
 `--mcp-config`, `--plugin-dir`, `--add-dir` and `--fallback-model`: give them again to the
-`cld join` that resumes it. cld refuses the options it gives claude itself - `--name`,
-`--worktree` (`cld join -w` gives it), `--settings` - those that resume a conversation, such as
-`--resume` and `--continue` (`cld join` resumes, and `cld join --resume SESSION`), and those with
-which claude would not stay in the session, such as `-p` and `--bg`. claude reports the rest, and a
-claude that fails to start stays on screen with its message. See the
-[guide](docs/guide.md#claudes-options).
+`cld join` that resumes it. cld refuses the options it gives claude itself - `--name`, `--worktree`
+(`cld join -w` gives it), `--settings` - those that resume a conversation, such as `--resume` and
+`--continue` (`cld join` resumes, and `cld join --resume SESSION`), and those with which claude
+would not stay in the session, such as `-p` and `--bg`. claude reports the rest, and a claude that
+fails to start stays on screen with its message. See the [guide](docs/guide.md#claudes-options).
 
 ### Resuming a conversation
 
@@ -335,6 +334,7 @@ make docker-check                    # as CI: tmux 3.7c built from source, basel
 make docker-check TMUX_VERSION=3.5a  # the same on the oldest tmux cld runs on, as CI does too
 make check                           # natively, baseline terminal only
 make check TERMINALS=tmux,jediterm   # natively, with JediTerm
+make lint                            # as CI's lint job, with the linters tools/run downloads
 ```
 
 Natively, the checks need Go, tmux 3.5a or newer, ShellCheck and shfmt; for JediTerm also a JDK,

@@ -272,8 +272,8 @@ rows that name none were probed against tmux 3.6.
 
 ### Layers
 
-1. **Static**: gofmt and go vet; ShellCheck and shfmt for the two shell scripts, `install.sh` and
-   `tests/jediterm/fetch-deps`.
+1. **Static**: `make vet`, gofmt, go vet, ShellCheck and shfmt on the shell scripts; `make lint`,
+   which CI's `lint` job runs, adds golangci-lint, size caps, Vale and the workflow linters.
 2. **Behaviour against real tmux**: tmux is local and cheap, so it is not faked. Only `claude` is
    replaced, by a *probe* that behaves like claude towards the terminal (the modes above), logs
    its argv, cwd, environment and raw input bytes, and emits OSC sequences on request; and
