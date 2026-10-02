@@ -31,8 +31,9 @@ cld removes no line. In a work tree it asks git about each path a project shares
 ([decision 19.7](0019-project-settings.md)), and warns once for each pattern that ignores some. An
 ignored `.claude/settings.json` still ends with status 1. A directory goes with its slash, to count
 before it exists, and without the index, so files added with `git add -f` hide no pattern. The index
-then tells a submodule, whose files are beyond the project's patterns. A symbolic link goes as a
-file, without the slash and with the index, as git refuses a slash beyond a link.
+then tells a submodule, whose files are beyond the project's patterns. A file goes with the index,
+since one git tracks is shared whatever pattern matches it. A symbolic link goes as a file, without
+the slash, as git refuses a slash beyond a link.
 
 Rejected: rewriting the old lines, which a project may have made its own, and checking every file.
 
