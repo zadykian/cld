@@ -20,5 +20,4 @@ tests/internal/terminal/jediterm.go
 tests/internal/terminal/terminal.go
 tests/internal/terminal/tmux.go
 tests/main_test.go
-tests/record_test.go
 tests/update_test.go
