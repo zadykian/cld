@@ -10,7 +10,6 @@ internal/project/project.go
 internal/restore/restore.go
 internal/session/record.go
 internal/session/restore.go
-internal/session/session.go
 internal/session/switch.go
 internal/telemetry/settings.go
 internal/telemetry/telemetry.go

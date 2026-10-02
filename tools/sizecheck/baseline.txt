@@ -11,7 +11,6 @@ internal/project/project.go lines=567 comments=2 package=29
 internal/restore/restore.go package=31
 internal/session/record.go lines=609 comments=11
 internal/session/restore.go comments=2
-internal/session/session.go lines=2450 comments=60 package=120
 internal/session/switch.go lines=523 comments=13
 internal/telemetry/settings.go comments=1
 internal/telemetry/telemetry.go lines=671 comments=6 package=43
