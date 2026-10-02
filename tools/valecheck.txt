@@ -1,5 +1,4 @@
 # The files that fail Vale (tools/valecheck): the list may only shrink.
-CLAUDE.md
 README.md
 cmd/cld/commands.go
 cmd/cld/main.go

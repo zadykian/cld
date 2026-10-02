@@ -1346,9 +1346,9 @@ comment `/fast-forward` from someone who can push; a pull request that changes
     4. files that exist are edited in place, through `internal/configfile`, which `setup
        telemetry` uses for its settings (18.6): cld sets its keys - the last of a key given twice,
        which claude reads - where their values differ (since 28 only where the file lacks them),
-       however they are written (`1.0` is `1`, an
-       object's members in any order); adds the entries `permissions.allow` and
-       `enabledMcpjsonServers` lack, after theirs; replaces a server's entry in `.mcp.json` that
+       however they are written (`1.0` is `1`, an object's members in any order); adds the
+       entries `permissions.allow` and `enabledMcpjsonServers` lack, after theirs, and since 28.4
+       those `permissions.deny` lacks; replaces a server's entry in `.mcp.json` that
        differs, whole, since a merge would keep a stdio server's old `args` beside `mcp`, or a
        `command` beside a `url`; and keeps everything else: other keys, entries and servers,
        `permissions.deny`, their order, indentation and values, byte for byte, and the file's
@@ -1859,29 +1859,29 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        since a file git tracks is shared whatever pattern matches it. Not taken: rewriting the old
        lines, which a project may have made its own, and a check of each file under the
        directories;
-    3. the settings are `$schema`, `permissions.allow` and `plansDirectory`, and with `--mcp`
-       `enabledMcpjsonServers`. `theme`, `autoUpdatesChannel`, `autoMemoryEnabled` and
-       `autoCompactEnabled` are gone: the first two are a person's, which the project's file would
-       override in each developer's `~/.claude/settings.json`, and all four restate claude's
-       defaults (see Findings). cld never replaces a value the file has, `$schema` and
-       `plansDirectory` included: it adds the keys and entries the file lacks (19.4 otherwise). A
-       project that ran an earlier cld keeps the four keys until it removes them;
-    4. `--permissions SET` picks what `permissions.allow` gets. `read-only`, the default: `Read`,
-       and `Bash` prefix rules for `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `grep`, `stat`, `du`,
-       `which` and `git status` - commands none of whose options runs another command, as
-       `find -exec` and `rg --pre` do, or writes a file, as `sort -o` and `tree -o` do. A prefix
-       rule admits every option (see Findings), so `git diff`, `git log` and `git show` are left
-       out: their `--output FILE` writes any file, `.git/config` among them, whose
-       `core.fsmonitor` the next `git status` runs - a claude that a prompt injected would run any
-       command without a prompt. claude runs the three without asking with the options it checks,
-       and asks for the others. `cld`: this repository's list, one developer's,
-       which lets claude edit files and run `git`, `go`, `make`, `docker run` and more without a
-       prompt. `none`: nothing, and cld does not read `permissions`. claude asks for no bare
-       read-only command anyway (see Findings), so `read-only` saves prompts for their other
-       options and for reading outside the project; what matters is that it is safe to share,
-       since whoever accepts the folder's workspace trust gives claude what the file allows. Any
-       other SET, the empty one included, is a usage error, checked after `--mcp`'s servers;
-       completion offers the three, each described;
+    3. the settings are `$schema`, `permissions.allow` (and `permissions.deny`, 4) and
+       `plansDirectory`, and with `--mcp` `enabledMcpjsonServers`. `theme`, `autoUpdatesChannel`,
+       `autoMemoryEnabled` and `autoCompactEnabled` are gone: the first two are a person's, which
+       the project's file would override in each developer's `~/.claude/settings.json`, and all four
+       restate claude's defaults (see Findings). cld never replaces a value the file has, `$schema`
+       and `plansDirectory` included: it adds the keys and entries the file lacks (19.4 otherwise).
+       A project that ran an earlier cld keeps the four keys until it removes them;
+    4. `--permissions SET` picks what `permissions.allow` gets, and with `cld` `permissions.deny`.
+       `read-only`, the default: `Read`, and `Bash` prefix rules for `ls`, `pwd`, `cat`, `head`,
+       `tail`, `wc`, `grep`, `stat`, `du`, `which` and `git status` - commands none of whose options
+       runs another command, as `find -exec` and `rg --pre` do, or writes a file, as `sort -o` and
+       `tree -o` do. A prefix rule admits every option (see Findings), so `git diff`, `git log` and
+       `git show` are left out: their `--output FILE` writes any file, `.git/config` among them,
+       whose `core.fsmonitor` the next `git status` runs - a claude that a prompt injected would run
+       any command without a prompt. claude runs the three without asking with the options it
+       checks, and asks for the others. `cld`: this repository's list, one developer's, which lets
+       claude edit files and run `git`, `go`, `make`, `docker run` and more without a prompt, but
+       denies `gh pr merge` and pushes to `main`. `none`: nothing, and cld does not read
+       `permissions`. claude asks for no bare read-only command anyway (see Findings), so
+       `read-only` saves prompts for their other options and for reading outside the project; what
+       matters is that it is safe to share, since whoever accepts the folder's workspace trust gives
+       claude what the file allows. Any other SET, the empty one included, is a usage error, checked
+       after `--mcp`'s servers; completion offers the three, each described;
     5. a server allows what the set does of it: with `cld`, every tool (`mcp__NAME`) and, for
        `jbcontext`, `Bash(jbcontext:*)`; with `read-only`, `mcp__NAME__TOOL` for each tool GoLand
        2026.2.3's server marks `readOnlyHint` - Rider's too, the same platform's server, not
@@ -1889,16 +1889,16 @@ comment `/fast-forward` from someone who can push; a pull request that changes
        (see Findings); with `none`, nothing. An entry for a tool a server lacks allows nothing,
        and a tool it adds later is asked for until cld's list has it;
     6. this repository's `.claude/settings.json` and `.mcp.json` are what `cld setup project --mcp
-       goland --permissions cld` writes, byte for byte, which the tests check (19.1); its
-       `.gitignore` was changed by hand to the new lines. The README and the guide say what the
-       command writes, and to review it before committing;
-    7. the tests: each set, with servers and without, where there is nothing; a file with the
-       keys already, other values in them, a key given twice, and `none` beside a `permissions`
-       that is no object; the new lines as git reads them, with `git status` adding the shared
-       files and ignoring the personal ones; and the warnings - `.claude/`, the old lines with
-       and without exceptions after them, patterns that ignore some of the paths, git's excludes,
-       a symbolic link to a directory of skills, files added with `git add -f`, and submodules,
-       checked out and not, beside a repository that is none.
+       goland --permissions cld` writes, byte for byte but for the settings' `hooks`, which the
+       tests check (19.1); its `.gitignore` was changed by hand to the new lines. The README and the
+       guide say what the command writes, and to review it before committing;
+    7. the tests: each set, with servers and without, where there is nothing; a file with the keys
+       already, other values in them, a key given twice, `none` beside a `permissions` that is no
+       object, a `permissions.deny` with entries or no array; the new lines as git reads them, with
+       `git status` adding the shared files and ignoring the personal ones; and the warnings -
+       `.claude/`, the old lines with and without exceptions after them, patterns that ignore some
+       of the paths, git's excludes, a symbolic link to a directory of skills, files added with
+       `git add -f`, and submodules, checked out and not, beside a repository that is none.
 
     Out of scope: other MCP servers (19), removing the old lines or keys, and sets of a project's
     own.

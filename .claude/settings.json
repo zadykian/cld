@@ -33,7 +33,6 @@
       "Bash(sed:*)",
       "Bash(nl -ba)",
       "Bash(git:*)",
-      "Bash(dotnet:*)",
       "Bash(jq:*)",
       "Bash(go:*)",
       "Bash(gofmt:*)",
@@ -50,15 +49,51 @@
       "Bash(gh pr list:*)",
       "Bash(gh pr checks:*)",
       "Bash(gh pr diff:*)",
-      "Bash(gh pr merge:*)",
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
       "Workflow(code-review)",
       "mcp__goland"
+    ],
+    "deny": [
+      "Bash(gh pr merge *)",
+      "Bash(git push * main)",
+      "Bash(git push * main *)",
+      "Bash(git push * +main)",
+      "Bash(git push *:main)",
+      "Bash(git push *:main *)",
+      "Bash(git push *:refs/heads/main)",
+      "Bash(git push *:refs/heads/main *)"
     ]
   },
   "plansDirectory": ".claude/plans",
   "enabledMcpjsonServers": [
     "goland"
-  ]
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint-file.sh",
+            "args": [],
+            "statusMessage": "Linting the file"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint-branch.sh",
+            "args": [],
+            "statusMessage": "Running make lint"
+          }
+        ]
+      }
+    ]
+  }
 }

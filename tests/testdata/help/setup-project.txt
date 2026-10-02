@@ -29,7 +29,7 @@ Flags:
       --permissions SET   what claude may do in the project without asking:
                           SET is read-only, the default, to read files, run
                           commands that only read, such as git status and ls,
-                          and use the servers' tools that only read;
-                          cld, as cld's own repository has it, to edit files,
-                          run git, go, make, docker and more, and use every
-                          tool of the servers; or none, to allow nothing more
+                          and use the servers' tools that only read; cld, as
+                          cld's own repository has it, to edit files, run git,
+                          go, make, docker and more, use every server tool, but
+                          not merge or push to main; or none, to add nothing
