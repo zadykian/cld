@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"bytes"
-	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,8 +21,8 @@ var outerSockets atomic.Int64
 
 // tmuxTerminal is the baseline terminal: a pane of an outer tmux server on its own socket, typing
 // what an xterm-compatible terminal with CSI u keys would send. The outer server keeps OSC 52
-// copies in its paste buffers, pipes the program's output to a file, and keeps the pane after the
-// program exits so that the state it left behind can still be inspected.
+// copies in its paste buffers and pipes the program's output to a file. It keeps the pane once the
+// program exits, so that the state left behind can still be inspected.
 type tmuxTerminal struct {
 	unsupported
 	sandbox       *sandbox.Sandbox
@@ -34,25 +33,10 @@ type tmuxTerminal struct {
 
 const outerPane = "outer:0.0"
 
-// Input an xterm-compatible terminal sends; the outer tmux types it as raw bytes because its own
-// key names and focus reporting differ between versions and need an attached client. A key with
-// Alt comes as Esc and the key, as xterm sends it with metaSendsEscape - Alt+Esc as Esc twice at
-// once; Alt+Up as the terminals that send Alt that way for any key send it (rxvt), where xterm
-// sends CSI 1;3A.
-var xtermInput = map[string]string{
-	"S-Enter":   "\x1b[13;2u",
-	"S-Up":      "\x1b[1;2A",
-	"M-j":       "\x1bj",
-	"M-Escape":  "\x1b\x1b",
-	"M-Up":      "\x1b\x1b[A",
-	"focus-in":  "\x1b[I",
-	"focus-out": "\x1b[O",
-	"wheel-up":  "\x1b[<64;10;10M",
-}
-
-func newTmux(t testing.TB, s *sandbox.Sandbox) *tmuxTerminal {
+func newTmux(tb testing.TB, s *sandbox.Sandbox) *tmuxTerminal {
+	tb.Helper()
 	return &tmuxTerminal{
-		unsupported: unsupported{t: t, name: "tmux"},
+		unsupported: unsupported{t: tb, name: "tmux"},
 		sandbox:     s,
 		socket:      "outer" + strconv.FormatInt(outerSockets.Add(1), 10),
 		columns:     120,
@@ -68,7 +52,8 @@ func (o *tmuxTerminal) tmux(args ...string) string {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		o.t.Fatalf("outer tmux %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		o.t.Fatalf("outer tmux %s: %v: %s",
+			strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return strings.TrimRight(string(out), "\n")
 }
@@ -86,8 +71,8 @@ func (o *tmuxTerminal) Start(argv []string, env map[string]string, dir string) {
 		"set", "-g", "set-clipboard", "on", ";",
 		"set", "-g", "remain-on-exit", "on", ";",
 		"set", "-g", "status", "off", ";",
-		// A real terminal does not set TMUX, the outer server does: it is unset first and set
-		// again only when env asks for it.
+		// A real terminal sets no TMUX, though the outer server does: env -u drops it, and only
+		// an entry in env sets it again.
 		"new-session", "-d", "-x", strconv.Itoa(o.columns), "-y", strconv.Itoa(o.rows), "-s", "outer",
 		"-c", literal(unexpanded(dir)), "env", "-u", "TMUX",
 	}
@@ -97,10 +82,11 @@ func (o *tmuxTerminal) Start(argv []string, env map[string]string, dir string) {
 	for _, word := range argv {
 		args = append(args, literal(word))
 	}
-	// In the same command list as new-session, so the pipe is in place before the first output.
-	// dd writes each read as it comes; uutils' cat (0.8.0, Ubuntu 26.04) holds the last one back
-	// until the next arrives, and the log misses what the program wrote last.
-	args = append(args, ";", "pipe-pane", "-O", "-t", outerPane, "dd bs=65536 2>/dev/null >> '"+o.outputFile()+"'")
+	// In new-session's command list, so that the pipe is in place before the first output. dd
+	// writes each read as it comes. uutils' cat (0.8.0, Ubuntu 26.04) holds the last read back
+	// until the next, so the log would miss what the program wrote last.
+	pipe := "dd bs=65536 2>/dev/null >> '" + o.outputFile() + "'"
+	args = append(args, ";", "pipe-pane", "-O", "-t", outerPane, pipe)
 	o.tmux(args...)
 	o.started = true
 }
@@ -126,55 +112,6 @@ func (o *tmuxTerminal) outputFile() string {
 	return filepath.Join(o.sandbox.Root, o.socket+".out")
 }
 
-func (o *tmuxTerminal) Keys(keys ...string) {
-	o.t.Helper()
-	for _, key := range keys {
-		o.key(key)
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-func (o *tmuxTerminal) key(key string) {
-	o.t.Helper()
-	o.tmux(typeKey(key)...)
-}
-
-// typeKey is the tmux command that types key.
-func typeKey(key string) []string {
-	if input, found := xtermInput[key]; found {
-		return typeRaw(input)
-	}
-	return []string{"send-keys", "-t", outerPane, key}
-}
-
-// Hold types the keys in one command list, which the outer server runs while the test waits for
-// it: run-shell -d with no command only waits, and the list goes on once it has (tmux 3.7c). A
-// tmux client run for each key would space them out by the time it takes to start, a tenth of a
-// second or more, and far more under load.
-func (o *tmuxTerminal) Hold(key string, delay, interval time.Duration, repeats int) {
-	o.t.Helper()
-	args, wait := typeKey(key), delay
-	for range repeats {
-		args = append(args, ";", "run-shell", "-d", strconv.FormatFloat(wait.Seconds(), 'f', -1, 64), ";")
-		args, wait = append(args, typeKey(key)...), interval
-	}
-	o.tmux(args...)
-}
-
-// Paste goes through a paste buffer: paste-buffer -p brackets the text only if the program asked
-// for bracketed paste, and turns line feeds into carriage returns, as terminals do. -S keeps it
-// from writing control characters as ^X, which tmux 3.7 does and a terminal does not; it is new
-// in 3.7, and 3.5a, which writes them as they are, refuses it.
-func (o *tmuxTerminal) Paste(text string) {
-	o.t.Helper()
-	args := []string{"paste-buffer", "-p", "-d", "-b", "paste", "-t", outerPane}
-	if !o.older(3, 7) {
-		args = append(args, "-S")
-	}
-	o.tmux("set-buffer", "-b", "paste", "--", text)
-	o.tmux(args...)
-}
-
 // older reports whether the outer server runs a tmux older than major.minor, from #{version}:
 // "3.7c" is 3.7, and a development build's "next-3.8" 3.8. One without a version, "master", is
 // not older.
@@ -186,46 +123,10 @@ func (o *tmuxTerminal) older(major, minor int) bool {
 	}
 	var version []int
 	for _, digits := range match[1:] {
-		n, _ := strconv.Atoi(digits)
+		n, _ := strconv.Atoi(digits) //nolint:errcheck // the pattern matched only digits
 		version = append(version, n)
 	}
 	return slices.Compare(version, []int{major, minor}) < 0
-}
-
-func (o *tmuxTerminal) send(input string) {
-	o.t.Helper()
-	o.tmux(typeRaw(input)...)
-}
-
-// typeRaw is the tmux command that types input as raw bytes.
-func typeRaw(input string) []string {
-	args := []string{"send-keys", "-t", outerPane, "-H"}
-	for _, b := range []byte(input) {
-		args = append(args, hex.EncodeToString([]byte{b}))
-	}
-	return args
-}
-
-func (o *tmuxTerminal) WheelUp() {
-	o.t.Helper()
-	o.send(xtermInput["wheel-up"])
-}
-
-// Click types the press and the release as an xterm reports them in SGR mode, which tmux asks
-// for, over the cell the wheel turns over.
-func (o *tmuxTerminal) Click(key string) {
-	o.t.Helper()
-	button := strconv.Itoa(mouseButton(o.t, key))
-	o.send("\x1b[<" + button + ";10;10M" + "\x1b[<" + button + ";10;10m")
-}
-
-func (o *tmuxTerminal) Focus(focused bool) {
-	o.t.Helper()
-	if focused {
-		o.send(xtermInput["focus-in"])
-	} else {
-		o.send(xtermInput["focus-out"])
-	}
 }
 
 func (o *tmuxTerminal) Resize(columns, rows int) {
@@ -248,7 +149,9 @@ func (o *tmuxTerminal) Freeze() (thaw func()) {
 	if err := syscall.Kill(pid, syscall.SIGSTOP); err != nil {
 		o.t.Fatal(err)
 	}
-	thaw = func() { _ = syscall.Kill(pid, syscall.SIGCONT) }
+	thaw = func() {
+		_ = syscall.Kill(pid, syscall.SIGCONT) //nolint:errcheck // fails only once the server has gone
+	}
 	o.t.Cleanup(thaw)
 	return thaw
 }
@@ -299,5 +202,5 @@ func (o *tmuxTerminal) Running() bool {
 func (o *tmuxTerminal) Close() {
 	cmd := exec.Command("tmux", "-L", o.socket, "kill-server")
 	cmd.Env = o.sandbox.Environ(nil)
-	_ = cmd.Run()
+	_ = cmd.Run() //nolint:errcheck // a server never started, or gone, has nothing to kill
 }
