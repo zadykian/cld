@@ -75,7 +75,8 @@ makes on its server, then behave as plain tmux.
   - `idle`: `CLD_IDLE_DAYS` and the sweep that ends idle sessions
     ([decision 46](decisions/0046-idle-sessions.md)).
 - `internal/session`: the tmux side, and cld's record of its sessions. `switch.go` moves a
-  terminal between servers, `record.go` keeps the record and `restore.go` is `cld restore`.
+  terminal between servers, `record.go` and `record_*.go` keep the record and `restore.go` is
+  `cld restore`.
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
   join's checks and kill's steps.
 - `internal/project`: `cld setup project`, a project's claude settings, `.mcp.json` and

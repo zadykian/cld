@@ -10,5 +10,5 @@
 // What concerns claude alone goes on its pane or session, never its window or the server. The
 // clients that attach and the reads of the sessions run tmux -u, as tmux writes "_" for what is
 // not ASCII under a locale without UTF-8. switch.go moves a terminal between sessions, record.go
-// keeps cld's record of its sessions, and restore.go is cld restore.
+// and record_*.go keep cld's record of its sessions, and restore.go is cld restore.
 package session
