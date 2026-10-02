@@ -121,6 +121,11 @@ The tests' own comments give each case's reasons; these shape the harness as a w
   most Linux takes, as in the telemetry tests.
 - The telemetry tests take ports outside the kernel's ephemeral range. The kernel hands a port that
   a listener on port 0 let go to the next such listener, now and then another test's.
+- The fake docker's collector holds its port until `rm -f`. One that takes no connections binds the
+  port without listening and without `SO_REUSEADDR`: connections are refused, but no other socket
+  can have the port ([findings](findings/environment.md)). Left free, the port could go to another
+  test's cld, whose listener would then take the waiting cld's connections as if the collector were
+  ready.
 
 The session list's timing tests ([decision 15](decisions/0015-killing-from-the-list.md)) never
 rely on the time between keys that separate tmux clients type. Under load such keys came over two
