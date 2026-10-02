@@ -54,7 +54,9 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   and `restore_forget_test.go`: the races; `restore_setup_test.go`: `setup restore`.
 - `cli_TOPIC_test.go`: arguments, errors, tool and version checks, the help and the completion
   scripts, a file per topic; `cli_fake_tmux_test.go` has the helpers they share.
-- `completion_test.go`: `setup completion`, and bash, zsh and fish loading its scripts.
+- `completion_test.go`: `setup completion` where nothing was; `completion_files_test.go`: files
+  that exist, and refusals; `completion_shells_test.go`: bash, zsh and fish loading its scripts;
+  `completion_blesh_test.go`: bash with ble.sh.
 - `project_test.go`: `setup project` against the real git where there is nothing, and what the
   `project_*` files share; `project_edits_test.go`: files that exist; `project_refusals_test.go`:
   what it refuses.
