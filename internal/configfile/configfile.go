@@ -92,7 +92,7 @@ func (f *File) Write(data []byte) error {
 		err = os.Rename(file.Name(), f.target)
 	}
 	if err != nil {
-		_ = os.Remove(file.Name())
+		_ = os.Remove(file.Name()) //nolint:errcheck // best effort: the failure is returned
 		return fail.Runtime("cannot write " + f.Path + ": " + reason(err).Error())
 	}
 	return nil
@@ -114,12 +114,11 @@ func createTemp(dir, name string, perm fs.FileMode) (*os.File, error) {
 // cld's messages name the file themselves.
 func reason(err error) error {
 	for {
-		switch e := err.(type) {
-		case *os.PathError:
+		if e, ok := errors.AsType[*os.PathError](err); ok {
 			err = e.Err
-		case *os.SyscallError:
+		} else if e, ok := errors.AsType[*os.SyscallError](err); ok {
 			err = e.Err
-		default:
+		} else {
 			return err
 		}
 	}
@@ -268,7 +267,7 @@ func String(s string) json.RawMessage {
 	var b bytes.Buffer
 	encoder := json.NewEncoder(&b)
 	encoder.SetEscapeHTML(false)
-	_ = encoder.Encode(s)
+	_ = encoder.Encode(s) //nolint:errcheck,errchkjson // a string always encodes, into memory
 	return bytes.TrimRight(b.Bytes(), "\n")
 }
 

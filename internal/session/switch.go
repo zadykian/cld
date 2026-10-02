@@ -309,7 +309,7 @@ func (t *Tmux) Tell(sw *Switch, text string) {
 	}
 	tell := t.command(append(args, "cld: "+text)...)
 	tell.Stdout, tell.Stderr = nil, nil
-	_ = tell.Run()
+	_ = tell.Run() //nolint:errcheck // nothing else could show it
 }
 
 // last is the session that session cld-SUFFIX recorded as the one the terminal on it came from

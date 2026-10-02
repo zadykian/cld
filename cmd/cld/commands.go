@@ -1170,7 +1170,7 @@ func sessionSuffixes(all bool) cobra.CompletionFunc {
 		var name string
 		var home session.Home
 		if c.Flags().Changed("name") {
-			name, _ = c.Flags().GetString("name")
+			name, _ = c.Flags().GetString("name") //nolint:errcheck // cannot fail: -n is a string option
 		} else {
 			name, home = defaultName()
 		}
@@ -1621,7 +1621,7 @@ func topic(parent *cobra.Command, name string) *cobra.Command {
 // once every option has been read, and pflag stops at the error.
 func flagError(typed string) func(*cobra.Command, error) error {
 	return func(c *cobra.Command, err error) error {
-		if help, _ := c.Flags().GetBool("help"); help {
+		if help, _ := c.Flags().GetBool("help"); help { //nolint:errcheck // no -h option: no help asked
 			return pflag.ErrHelp
 		}
 		var (
@@ -1712,8 +1712,8 @@ func idleLimit() (time.Duration, error) {
 	if !days.MatchString(value) {
 		return 0, fail.Runtime(fmt.Sprintf("CLD_IDLE_DAYS is not a number of days: '%s'", value))
 	}
-	// +Inf where the number is too large for a float64.
-	count, _ := strconv.ParseFloat(value, 64)
+	// days took value, so ParseFloat fails only on a number too large for a float64, giving +Inf.
+	count, _ := strconv.ParseFloat(value, 64) //nolint:errcheck // explained above
 	limit := math.Ceil(count * float64(24*time.Hour))
 	if limit >= math.MaxInt64 {
 		return 0, nil

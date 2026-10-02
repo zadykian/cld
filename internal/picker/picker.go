@@ -420,14 +420,15 @@ func (t *terminal) open() error {
 }
 
 // restore puts the terminal back as it was: the main screen, the cursor and the terminal's mode.
+// Each step is best effort, on the way out: a failure has nowhere to show but the terminal.
 func (t *terminal) restore() {
 	if t.shown {
 		t.shown = false
-		_, _ = os.Stdout.WriteString(closeScreen)
+		_, _ = os.Stdout.WriteString(closeScreen) //nolint:errcheck // best effort, as above
 	}
 	if t.raw {
 		t.raw = false
-		_ = term.Restore(t.fd, t.saved)
+		_ = term.Restore(t.fd, t.saved) //nolint:errcheck // best effort, as above
 	}
 }
 
@@ -501,14 +502,14 @@ func (in *input) signalled() error {
 // A signal that ends cld, if one comes meanwhile, ends it once it goes on.
 func (in *input) pause() error {
 	if leader, err := unix.Getsid(0); err != nil || leader == unix.Getpgrp() {
-		return nil
+		return nil //nolint:nilerr // with no session to tell by, cld goes on rather than stop for good
 	}
 	select {
 	case <-in.continued: // one from before the stop
 	default:
 	}
 	if err := unix.Kill(unix.Getpid(), unix.SIGSTOP); err != nil {
-		return nil
+		return nil //nolint:nilerr // cld has not stopped, so it goes on
 	}
 	select {
 	case <-in.continued:

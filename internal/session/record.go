@@ -184,10 +184,10 @@ func Lock() (unlock func()) {
 	for {
 		err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 		if err == nil {
-			return func() { _ = file.Close() }
+			return func() { _ = file.Close() } //nolint:errcheck // the close lets the lock go regardless
 		}
 		if !errors.Is(err, unix.EWOULDBLOCK) || time.Now().After(deadline) {
-			_ = file.Close()
+			_ = file.Close() //nolint:errcheck // a file only opened, to lock
 			return func() {}
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -327,7 +327,7 @@ func write(r entry, s started, runs func(suffix string) bool) (file, run string,
 	// one cld cannot remove stays, read as none. So does the entry of a session whose server runs,
 	// however old - one left alone for longer than expiry, say: its claude's hooks touch the entry
 	// as the session is used again, and as it ends, but would make none that was gone.
-	files, _ := os.ReadDir(filepath.Join(dir, "sessions"))
+	files, _ := os.ReadDir(filepath.Join(dir, "sessions")) //nolint:errcheck // unlisted files stay
 	stays := map[string]bool{}
 	for _, other := range files {
 		suffix, _, ok := sessionFile(other.Name())
@@ -346,7 +346,7 @@ func write(r entry, s started, runs func(suffix string) bool) (file, run string,
 				continue
 			}
 		}
-		_ = os.Remove(filepath.Join(dir, "sessions", other.Name()))
+		_ = os.Remove(filepath.Join(dir, "sessions", other.Name())) //nolint:errcheck // stays, as above
 	}
 	highest := indexes(dir)
 	if prefix, index, ok := indexOf(r.Name); ok {
@@ -370,7 +370,7 @@ func entryLine(r entry) []byte {
 	var line bytes.Buffer
 	encoder := json.NewEncoder(&line)
 	encoder.SetEscapeHTML(false)
-	_ = encoder.Encode(r)
+	_ = encoder.Encode(r) //nolint:errcheck,errchkjson // strings always encode, into memory
 	return line.Bytes()
 }
 
@@ -389,7 +389,7 @@ func replace(file string, data []byte) error {
 		err = os.Rename(temp.Name(), file)
 	}
 	if err != nil {
-		_ = os.Remove(temp.Name())
+		_ = os.Remove(temp.Name()) //nolint:errcheck // best effort: the failure is returned
 		return reason(err)
 	}
 	return nil
@@ -474,7 +474,8 @@ func marked(dir, suffix string) bool {
 // has made the session (see setMarks). One cld cannot write is none: the record serves the
 // sessions.
 func leaveStartMark(file string) {
-	_ = replace(strings.TrimSuffix(file, ".json")+startMark, []byte(strconv.Itoa(os.Getpid())+"\n"))
+	mark := strings.TrimSuffix(file, ".json") + startMark
+	_ = replace(mark, []byte(strconv.Itoa(os.Getpid())+"\n")) //nolint:errcheck // explained above
 }
 
 // starting reports whether another cld is starting session cld-SUFFIX: its start mark is there

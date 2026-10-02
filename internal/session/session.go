@@ -441,9 +441,9 @@ func binary(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // a file only read loses nothing
 	sample := make([]byte, 80)
-	n, _ := io.ReadFull(f, sample)
+	n, _ := io.ReadFull(f, sample) //nolint:errcheck // what was read is the sample
 	sample = sample[:n]
 	if bytes.HasPrefix(sample, []byte("\x7fELF")) {
 		return true
@@ -958,7 +958,7 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 	}
 	// The keys that move the terminal to another session name cld by its file; where cld cannot
 	// find it, tmux's own keys stay (see switchKeys).
-	cld, _ := self()
+	cld, _ := self() //nolint:errcheck // explained above
 	keys := switchKeys(t.path, socket, cld)
 	// build is tmux's command, whose claude gets the hooks that keep the session's entry in file
 	// where file is not empty, and which sets the marks beside it once the session is made - the
@@ -977,7 +977,7 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 		// keeps the hooks, which name this session (decision 47). A claude started without cld
 		// keeps it. A resumed conversation does not keep the settings it was started with: they
 		// go again.
-		git, _ := tool.LookPath("git")
+		git, _ := tool.LookPath("git") //nolint:errcheck // none leaves out the worktree's hooks
 		given := settings{DisableAgentView: true, Hooks: statusHooks(t.path, git, socket, suffix)}
 		var marks []string
 		if file != "" {
@@ -1503,7 +1503,7 @@ func (t *Tmux) Forget(ctx context.Context, suffix string) error {
 	if _, ok := recorded(suffix); !ok {
 		return &fail.Error{Status: 1, Message: fmt.Sprintf("no session '%s'", suffix), Advice: " (see cld list)"}
 	}
-	dir, _ := stateDir() // recorded found the entry there
+	dir, _ := stateDir() //nolint:errcheck // recorded found the entry there
 	for _, file := range []string{entryFile(dir, suffix), companion(dir, suffix, runMark), companion(dir, suffix, busyMark), companion(dir, suffix, startMark), companion(dir, suffix, environment)} {
 		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fail.Runtime("cannot forget session '" + suffix + "': " + reason(err).Error())
@@ -1714,7 +1714,7 @@ func (t *Tmux) session(ctx context.Context, suffix string) (*Session, error) {
 	if field[0] != "cld-"+suffix {
 		return nil, nil
 	}
-	clients, _ := strconv.Atoi(field[2])
+	clients, _ := strconv.Atoi(field[2]) //nolint:errcheck // no number is no terminal attached
 	home, directory := cutHome(field[5], field[6])
 	s := &Session{Name: suffix, Attached: clients > 0, PIDs: strings.Fields(field[3]), Directory: directory, Home: home}
 	s.State, s.Status, _ = strings.Cut(field[1], " ")
@@ -1842,7 +1842,7 @@ func serverless(ctx context.Context, dir, suffix string) bool {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", path)
 	if err == nil {
-		_ = conn.Close()
+		_ = conn.Close() //nolint:errcheck // a probe's connection, which sent nothing
 		return false
 	}
 	return errors.Is(err, unix.ECONNREFUSED) || errors.Is(err, unix.ENOENT)
@@ -1962,7 +1962,7 @@ func (t *Tmux) lingering(ctx context.Context, suffix string) (outlived bool, ref
 	// Sessions); the mark and the check are 1 or 0, and the path follows them.
 	read := t.serverContext(ctx, suffix, "display-message", "-p", mark+" "+outlives(suffix)+" #{socket_path}")
 	read.Stderr = nil
-	out, _ := read.Output()
+	out, _ := read.Output() //nolint:errcheck // a read that fails refuses, with no kill
 	marked, rest, _ := strings.Cut(strings.TrimSuffix(string(out), "\n"), " ")
 	check, path, _ := strings.Cut(rest, " ")
 	if marked == "0" {
@@ -2384,7 +2384,7 @@ func inWorkTree() bool {
 		return false
 	}
 	git.Stderr = nil
-	out, _ := git.Output()
+	out, _ := git.Output() //nolint:errcheck // git fails outside a work tree
 	return strings.TrimRight(string(out), "\n") == "true"
 }
 

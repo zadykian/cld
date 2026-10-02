@@ -8,12 +8,12 @@ cmd/cld/commands.go lines=1779 comments=22
 docs/design.md lines=4152
 docs/guide.md lines=1085
 internal/completion/completion.go package=36
-internal/configfile/configfile.go lines=341
+internal/configfile/configfile.go lines=340
 internal/output/output.go comments=1
-internal/picker/picker.go lines=1034 comments=10 package=66
+internal/picker/picker.go lines=1032 comments=10 package=66
 internal/project/project.go lines=667 comments=3 package=29
 internal/restore/restore.go package=31
-internal/session/record.go lines=610 comments=11
+internal/session/record.go lines=609 comments=11
 internal/session/restore.go comments=2
 internal/session/session.go lines=2516 comments=60 package=187
 internal/session/switch.go lines=523 comments=13
