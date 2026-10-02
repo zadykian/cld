@@ -5,7 +5,6 @@
 internal/completion/completion.go package=36
 internal/configfile/configfile.go lines=340
 internal/output/output.go comments=1
-internal/picker/picker.go lines=1032 comments=10 package=66
 internal/project/project.go lines=567 comments=2 package=29
 internal/restore/restore.go package=31
 internal/session/record.go lines=609 comments=11

@@ -3,7 +3,6 @@ internal/completion/completion.go
 internal/configfile/configfile.go
 internal/fail/fail.go
 internal/output/output.go
-internal/picker/picker.go
 internal/project/project.go
 internal/restore/restore.go
 internal/session/record.go
