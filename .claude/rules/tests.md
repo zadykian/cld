@@ -50,7 +50,10 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 - `completion_test.go`: `setup completion`, and bash, zsh and fish loading its scripts.
 - `project_test.go`: `setup project` against the real git; `project_settings_test.go`: the
   permission rules it writes, read from the repository's own `.claude/settings.json`.
-- `telemetry_test.go`: `setup telemetry` against the fake docker.
+- `telemetry_test.go`: `setup telemetry` against the fake docker, and its refusal off Linux;
+  `telemetry_TOPIC_test.go`: the rest by topic, such as `telemetry_port_test.go` for the
+  collector's port. `telemetry_expect_test.go` holds what a setup does, and
+  `telemetry_listen_test.go` the ports the tests take.
 - `install_test.go` and `update_test.go`: `install.sh` and `cld update`, against releases that an
   HTTP server of the test's serves.
 - `helpers_TOPIC_test.go`: the helpers that more than one test file uses, a file per topic, such
