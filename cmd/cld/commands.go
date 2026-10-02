@@ -952,10 +952,10 @@ commit them: whoever trusts the project's folder gives claude what they allow.`,
 	permissions := flags.String("permissions", "", "what claude may do in the project without asking:\n"+
 		"`SET` is read-only, the default, to read files, run\n"+
 		"commands that only read, such as git status and ls,\n"+
-		"and use the servers' tools that only read;\n"+
-		"cld, as cld's own repository has it, to edit files,\n"+
-		"run git, go, make, docker and more, and use every\n"+
-		"tool of the servers; or none, to allow nothing more")
+		"and use the servers' tools that only read; cld, as\n"+
+		"cld's own repository has it, to edit files, run git,\n"+
+		"go, make, docker and more, use every server tool, but\n"+
+		"not merge or push to main; or none, to add nothing")
 	command.RunE = func(c *cobra.Command, _ []string) error {
 		chosen := map[string]bool{}
 		for _, list := range *mcp {

@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/json"
 	"io/fs"
 	"maps"
 	"os"
@@ -31,55 +30,14 @@ const (
 	addedLines  = "/.claude/settings.local.json, /.claude/plans/, /.claude/worktrees/"
 )
 
-// readOnlyAllow is permissions.allow of the settings setup project writes with --permissions
-// read-only, the default, before what the MCP servers add; serverAllow are the entries each MCP
-// server adds with read-only and with cld; and mcpEntries each server's entry in .mcp.json's
-// mcpServers, as cld writes it there.
+// mcpEntries are each MCP server's entry in .mcp.json's mcpServers, as cld writes it there.
 var (
-	readOnlyAllow = []string{
-		"Read",
-		"Bash(ls:*)",
-		"Bash(pwd:*)",
-		"Bash(cat:*)",
-		"Bash(head:*)",
-		"Bash(tail:*)",
-		"Bash(wc:*)",
-		"Bash(grep:*)",
-		"Bash(stat:*)",
-		"Bash(du:*)",
-		"Bash(which:*)",
-		"Bash(git status:*)",
-	}
-	serverAllow = map[string]map[string][]string{
-		"read-only": {
-			"goland":    ideTools("goland"),
-			"jbcontext": {"Bash(jbcontext search:*)", "mcp__jbcontext__code_search"},
-			"rider":     ideTools("rider"),
-		},
-		"cld": {
-			"goland":    {"mcp__goland"},
-			"jbcontext": {"Bash(jbcontext:*)", "mcp__jbcontext"},
-			"rider":     {"mcp__rider"},
-		},
-	}
 	mcpEntries = map[string]string{
 		"goland":    "    \"goland\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:${GOLAND_MCP_PORT:-64422}/stream\"\n    }",
 		"jbcontext": "    \"jbcontext\": {\n      \"type\": \"stdio\",\n      \"command\": \"jbcontext\",\n      \"args\": [\n        \"mcp\"\n      ]\n    }",
 		"rider":     "    \"rider\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:${RIDER_MCP_PORT:-64482}/stream\"\n    }",
 	}
 )
-
-// ideTools are the entries of the tools of the IDE's MCP server name that --permissions read-only
-// allows: those GoLand 2026.2.3's server marks readOnlyHint.
-func ideTools(name string) []string {
-	var entries []string
-	for _, tool := range []string{"analyze_calls", "get_all_open_file_paths", "get_file_problems", "get_project_dependencies",
-		"get_project_modules", "get_repositories", "get_run_configurations", "get_symbol_info", "git_status", "lint_files",
-		"list_directory_tree", "read_file", "search_file", "search_regex", "search_symbol", "search_text"} {
-		entries = append(entries, "mcp__"+name+"__"+tool)
-	}
-	return entries
-}
 
 // repoFile is what the file name of cld's own repository holds.
 func repoFile(t *testing.T, name string) string {
@@ -107,59 +65,6 @@ func quoted(prefix string, entries []string) string {
 		lines = append(lines, prefix+strconv.Quote(entry))
 	}
 	return strings.Join(lines, ",\n")
-}
-
-// allowed is permissions.allow of the settings setup project writes with --permissions set and
-// the MCP servers named, in cld's order: with cld, the repository's own, but for goland's entry,
-// and then the servers'.
-func allowed(t *testing.T, set string, servers ...string) []string {
-	t.Helper()
-	var allow []string
-	switch set {
-	case "read-only":
-		allow = slices.Clone(readOnlyAllow)
-	case "cld":
-		allow = baseAllow(t)
-	}
-	for _, name := range servers {
-		allow = append(allow, serverAllow[set][name]...)
-	}
-	return allow
-}
-
-// projectSettings is the .claude/settings.json setup project writes where there is none, with
-// --permissions set and the MCP servers named, in cld's order: the repository's own, whose
-// permissions are cld's and whose server is goland, with the set's and the servers' in their
-// place, and no permissions where they allow nothing.
-func projectSettings(t *testing.T, set string, servers ...string) string {
-	t.Helper()
-	settings := repoFile(t, ".claude/settings.json")
-	start, end := "  \"permissions\": {\n    \"allow\": [\n", "\n    ]\n  },\n"
-	from, to := strings.Index(settings, start), strings.Index(settings, end)
-	if from < 0 || to < from {
-		t.Fatalf("no permissions.allow in the repository's settings\n%s", settings)
-	}
-	permissions := ""
-	if allow := allowed(t, set, servers...); len(allow) > 0 {
-		permissions = start + quoted("      ", allow) + end
-	}
-	settings = settings[:from] + permissions + settings[to+len(end):]
-	enabled := ""
-	if len(servers) > 0 {
-		enabled = ",\n  \"enabledMcpjsonServers\": [\n" + quoted("    ", servers) + "\n  ]"
-	}
-	return replaceOnce(t, settings, ",\n  \"enabledMcpjsonServers\": [\n    \"goland\"\n  ]", enabled)
-}
-
-// baseAllow is permissions.allow of the settings setup project writes with --permissions cld
-// without MCP servers: the repository's own, but for goland's entry.
-func baseAllow(t *testing.T) []string {
-	t.Helper()
-	var settings struct{ Permissions struct{ Allow []string } }
-	if err := json.Unmarshal([]byte(repoFile(t, ".claude/settings.json")), &settings); err != nil {
-		t.Fatal(err)
-	}
-	return slices.DeleteFunc(settings.Permissions.Allow, func(entry string) bool { return entry == "mcp__goland" })
 }
 
 // mcpFile is the .mcp.json setup project writes where there is none, with the MCP servers named.
@@ -425,7 +330,8 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 		settings := projectWrite(t, s, ".claude/settings.json", `{"$schema": "https://example.com/settings.json", "plansDirectory": "plans", "enabledMcpjsonServers": ["goland"], "plansDirectory": "notes", "enabledMcpjsonServers": []}`)
 		projectWrite(t, s, ".mcp.json", `{"mcpServers": {"goland": {}}, "mcpServers": {"goland": {}, "goland": {"type": "sse"}}}`)
 		result := s.RunCld(nil, "setup", "project", "--mcp", "goland", "--permissions", "cld")
-		want := "Updated .claude/settings.json: permissions.allow, enabledMcpjsonServers\n" +
+		want := "Updated .claude/settings.json: permissions.allow, permissions.deny, " +
+			"enabledMcpjsonServers\n" +
 			"Created .claude/settings.local.json\n" +
 			"Updated .mcp.json: mcpServers.goland\n" +
 			"Created .gitignore\n"
@@ -443,6 +349,9 @@ func TestSetupProjectEditsFiles(t *testing.T) {
   "permissions": {
     "allow": [
 `+quoted("      ", allowed(t, "cld", "goland"))+`
+    ],
+    "deny": [
+`+quoted("      ", denied(t, "cld"))+`
     ]
   }
 }

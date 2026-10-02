@@ -713,18 +713,18 @@ a session or brings back one that has ended; where the session runs, its claude 
 
 ## Project settings
 
-- `.claude/settings.json` gets `$schema`, `permissions.allow` as `--permissions` says, and
-  `plansDirectory`, `.claude/plans`. Settings of a person's, such as a theme or an update channel,
+- `.claude/settings.json` gets `$schema`, `permissions.allow` and `permissions.deny` as
+  `--permissions` says, and `plansDirectory`, `.claude/plans`. A person's settings, such as a theme,
   belong in your own `~/.claude/settings.json`: the project's file would override everyone's.
 - `--permissions read-only`, the default, allows `Read` and `ls`, `pwd`, `cat`, `head`, `tail`,
   `wc`, `grep`, `stat`, `du`, `which` and `git status`, with any options, none of which runs a
   command or writes a file. It leaves out `git diff`, `git log` and `git show`, whose
   `--output FILE` writes any file - `.git/config` too, where git reads commands to run. claude
   runs the three without asking with the options it knows to be safe, and asks for the others.
-  `--permissions cld` allows what cld's own repository does: reading, editing and writing files,
-  web search and fetch, and shell commands such as `ls`, `grep`, `git`, `go`, `dotnet`, `make`,
-  `docker run` and `gh pr merge` - enough for a prompt-injected claude to run anything.
-  `--permissions none` adds nothing: claude asks for all it does not allow by itself.
+  `--permissions cld` allows what cld's own repository does: reading and editing files, web
+  search and fetch, and shell commands such as `ls`, `git`, `go`, `make` and `docker run` -
+  enough for a prompt-injected claude to run anything. It denies `gh pr merge` and pushes to
+  `main`. `--permissions none` adds nothing: claude asks for all it does not allow by itself.
 - `.claude/settings.local.json` is only created, holding its `$schema`.
 - `.gitignore` gets `/.claude/settings.local.json`, `/.claude/plans/` and `/.claude/worktrees/`;
   the lines without the leading slash count as there. The rest of `.claude` - `commands/`,

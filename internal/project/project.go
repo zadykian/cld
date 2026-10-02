@@ -1,13 +1,13 @@
 // Package project is cld setup project: it sets Claude Code up in the project in the current
 // directory, writing what claude reads there and what git needs to share it:
 //
-//   - .claude/settings.json, the settings the project shares through git: $schema, what claude
-//     may do without asking - what the set given allows (see PermissionSets), of each MCP server
-//     given too (see Server) - plansDirectory, and the servers enabled. The file ranks above
-//     each developer's own ~/.claude/settings.json, so it holds no setting of a person's, such as
-//     a theme. Where the file exists, cld adds the keys it lacks and never replaces a value it
-//     has, adds the entries that permissions.allow and enabledMcpjsonServers lack - to the last
-//     of a key given twice, which claude reads - and keeps everything else;
+//   - .claude/settings.json, the settings the project shares through git: $schema, the permission
+//     rules of the set given (see PermissionSets) and of each MCP server given (see Server),
+//     plansDirectory, and the servers enabled. The file ranks above each developer's own
+//     ~/.claude/settings.json, so it holds no setting of a person's, such as a theme. Where the
+//     file exists, cld adds the keys it lacks and never replaces a value it has, adds the entries
+//     that permissions.allow, permissions.deny and enabledMcpjsonServers lack - to the last of a
+//     key given twice, which claude reads - and keeps everything else;
 //   - .claude/settings.local.json, the settings of whoever works on the project, which git
 //     ignores: made holding its $schema alone, and left as it is once anything is there, a
 //     symbolic link that leads nowhere included, since they are someone's own;
@@ -115,109 +115,6 @@ func ideTools(name string) []string {
 		entries = append(entries, "mcp__"+name+"__"+tool)
 	}
 	return entries
-}
-
-// Permissions is a set of what claude may do without asking, which --permissions picks and
-// setup project adds to permissions.allow.
-type Permissions struct {
-	// Name is the set's name for --permissions, and Description what completion shows for it.
-	Name, Description string
-	// allow is what the set allows before the servers, and server what it allows of one.
-	allow  []string
-	server func(Server) []string
-}
-
-// PermissionSets are the sets --permissions takes, the default first: read-only, which lets
-// claude read and nothing more; cld, this repository's own, which is one developer's and lets
-// claude run nearly anything; and none, which adds nothing to what claude allows by itself. The
-// settings are shared: whoever accepts the folder's workspace trust gives claude what they allow.
-var PermissionSets = []Permissions{
-	{"read-only", "read files and run commands that only read, the default", readOnlyAllow,
-		func(s Server) []string { return s.read }},
-	{"cld", "cld's own: edit files, run git, go, make, docker and more", cldAllow,
-		func(s Server) []string { return s.all }},
-	{"none", "nothing more than claude allows by itself", nil,
-		func(Server) []string { return nil }},
-}
-
-// readOnlyAllow is what --permissions read-only lets claude do without asking: read files, and run
-// commands that only read. A Bash rule is a prefix rule, which admits every option, so none of
-// them takes an option that runs another command, as find's -exec and rg's --pre do, or writes a
-// file, as sort's -o does; git diff, git log and git show are left out, since their --output
-// writes any file, .git/config too, where git reads commands to run. claude runs most of them
-// without asking all the same, with the options it knows to be safe - git diff, git log and git
-// show too - and the entries allow the others.
-var readOnlyAllow = []string{
-	"Read",
-	"Bash(ls:*)",
-	"Bash(pwd:*)",
-	"Bash(cat:*)",
-	"Bash(head:*)",
-	"Bash(tail:*)",
-	"Bash(wc:*)",
-	"Bash(grep:*)",
-	"Bash(stat:*)",
-	"Bash(du:*)",
-	"Bash(which:*)",
-	"Bash(git status:*)",
-}
-
-// cldAllow is what --permissions cld lets claude do without asking, as this repository's own
-// .claude/settings.json has it, before what the MCP servers add: one developer's tools, and
-// nearly anything - Edit and Write, Bash(git:*), Bash(docker run:*) - without a prompt.
-var cldAllow = []string{
-	"Read",
-	"Edit",
-	"Write",
-	"WebSearch",
-	"WebFetch",
-	"Bash(ls:*)",
-	"Bash(dir:*)",
-	"Bash(pwd:*)",
-	"Bash(find:*)",
-	"Bash(grep:*)",
-	"Bash(grep -E:*)",
-	"Bash(rg:*)",
-	"Bash(cat:*)",
-	"Bash(head:*)",
-	"Bash(tail:*)",
-	"Bash(wc:*)",
-	"Bash(sort:*)",
-	"Bash(uniq:*)",
-	"Bash(printf:*)",
-	"Bash(echo:*)",
-	"Bash(tree:*)",
-	"Bash(stat:*)",
-	"Bash(du:*)",
-	"Bash(which:*)",
-	"Bash(where:*)",
-	"Bash(mkdir:*)",
-	"Bash(touch:*)",
-	"Bash(chmod:*)",
-	"Bash(sed:*)",
-	"Bash(nl -ba)",
-	"Bash(git:*)",
-	"Bash(dotnet:*)",
-	"Bash(jq:*)",
-	"Bash(go:*)",
-	"Bash(gofmt:*)",
-	"Bash(make:*)",
-	"Bash(shellcheck:*)",
-	"Bash(shfmt:*)",
-	"Bash(docker build:*)",
-	"Bash(docker run:*)",
-	"Bash(docker images:*)",
-	"Bash(gh issue view:*)",
-	"Bash(gh issue list:*)",
-	"Bash(gh pr create:*)",
-	"Bash(gh pr view:*)",
-	"Bash(gh pr list:*)",
-	"Bash(gh pr checks:*)",
-	"Bash(gh pr diff:*)",
-	"Bash(gh pr merge:*)",
-	"Bash(gh run list:*)",
-	"Bash(gh run view:*)",
-	"Workflow(code-review)",
 }
 
 // scalarSettings are the settings' other keys, after permissions, with their values as JSON, as
@@ -360,12 +257,15 @@ func editSettings(file *configfile.JSON, servers []Server, permissions Permissio
 	for _, s := range servers {
 		entries = append(entries, permissions.server(s)...)
 	}
-	if len(entries) > 0 {
+	if len(entries) > 0 || len(permissions.deny) > 0 {
 		nested, err := top.object("permissions")
 		if err != nil {
 			return nil, err
 		}
 		if err := nested.add("allow", entries); err != nil {
+			return nil, err
+		}
+		if err := nested.add("deny", permissions.deny); err != nil {
 			return nil, err
 		}
 		top.put("permissions", nested)
@@ -463,10 +363,10 @@ func (o *object) setMissing(key string, value json.RawMessage, first bool) {
 }
 
 // add adds to the array at key the entries, strings, it lacks, at its end; an object without the
-// key gets an array of them.
+// key gets an array of them. Without entries it reads nothing.
 func (o *object) add(key string, entries []string) error {
 	var elements []json.RawMessage
-	if at := configfile.Last(o.members, key); at >= 0 {
+	if at := configfile.Last(o.members, key); at >= 0 && len(entries) > 0 {
 		var err error
 		if elements, err = configfile.Array(o.members[at].Value); err != nil {
 			return fail.Runtime(o.name(key) + " in " + o.file.Path + " is not a JSON array")

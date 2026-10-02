@@ -11,7 +11,7 @@ internal/completion/completion.go package=36
 internal/configfile/configfile.go lines=340
 internal/output/output.go comments=1
 internal/picker/picker.go lines=1032 comments=10 package=66
-internal/project/project.go lines=667 comments=3 package=29
+internal/project/project.go lines=567 comments=2 package=29
 internal/restore/restore.go package=31
 internal/session/record.go lines=609 comments=11
 internal/session/restore.go comments=2
@@ -28,7 +28,7 @@ tests/install_test.go lines=658 comments=1
 tests/internal/sandbox/sandbox.go lines=479
 tests/internal/terminal/tmux.go lines=303 comments=1
 tests/probe/main.go lines=729 comments=1 package=88
-tests/project_test.go lines=822 comments=4
+tests/project_test.go lines=731 comments=4
 tests/record_test.go lines=699 comments=8
 tests/restore_test.go lines=1069 comments=15
 tests/session_test.go lines=6357 comments=52
