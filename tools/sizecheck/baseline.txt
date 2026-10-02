@@ -9,4 +9,3 @@ internal/session/record.go lines=609 comments=11
 internal/session/restore.go comments=2
 internal/session/switch.go lines=523 comments=13
 internal/tool/tool.go comments=1
-tests/internal/terminal/tmux.go lines=303 comments=1
