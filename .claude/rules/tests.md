@@ -38,8 +38,11 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 ## Where a test goes
 
 - `contract_test.go`: the terminal contract.
-- `session_test.go`: sessions and servers, `join`, `detach`, moves, names, the title's hooks,
-  claude's status, the keys another tmux keeps, and the idle sweep.
+- `session_TOPIC_test.go`: sessions and servers, a file per feature. They cover names, `join`,
+  `detach`, `kill`, moves, other repositories and servers, and the server's options and hooks.
+  They cover claude's exit and status, completion, the keys another tmux keeps, the idle sweep and
+  the interactive list (`session_list_*`). The helpers that only these files use stay among them,
+  such as `session_cells_test.go` for the screen's attributes.
 - `record_test.go`: the record's entries, indexes, expiry and lock, and `ended` sessions.
 - `restore_test.go`: the run and busy marks, `restore` and `setup restore`.
 - `cli_test.go`: arguments, errors, tool and version checks, the help and the completion scripts.
