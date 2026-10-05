@@ -80,18 +80,33 @@ func TestContractTitle(t *testing.T) {
 	})
 }
 
-// C2: what tmux learned about the terminal decides what it forwards to claude.
+// C2: what tmux learned about the terminal decides what it forwards to claude. tmux learns some
+// features from the terminal's answers to its queries, which may come after the client attached.
 func TestContractClientFeatures(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) { //nolint:thelper // a subtest, not a helper
 		s, _, _ := startContract(t, name)
-		client := s.MustTmux("cld-contract", "list-clients", "-F",
-			"#{client_termname}|#{client_termtype}|#{client_termfeatures}")
+		client, missing := clientFeatures(t, s, name)
+		deadline := time.Now().Add(10 * time.Second)
+		for len(missing) > 0 && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+			client, missing = clientFeatures(t, s, name)
+		}
 		t.Logf("client: %s", client)
-		detected := strings.Split(strings.SplitN(client, "|", 3)[2], ",")
-		for _, feature := range expectations[name].features {
-			if !slices.Contains(detected, feature) {
-				t.Errorf("tmux does not detect %q in %s", feature, name)
-			}
+		for _, feature := range missing {
+			t.Errorf("tmux does not detect %q in %s", feature, name)
 		}
 	})
+}
+
+// clientFeatures returns how tmux sees the contract's client, and the features expected of the
+// named terminal that tmux has not detected yet.
+func clientFeatures(t *testing.T, s *sandbox.Sandbox, name string) (string, []string) {
+	t.Helper()
+	client := s.MustTmux("cld-contract", "list-clients", "-F",
+		"#{client_termname}|#{client_termtype}|#{client_termfeatures}")
+	detected := strings.Split(strings.SplitN(client, "|", 3)[2], ",")
+	missing := slices.DeleteFunc(slices.Clone(expectations[name].features), func(f string) bool {
+		return slices.Contains(detected, f)
+	})
+	return client, missing
 }
