@@ -68,10 +68,10 @@ func onlyJoinCases() []onlyJoinCase {
 		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.4", fakeSession("main", 0), 0,
 			"main\n:4\n", noFileReport, false},
 		{[]string{"setup", "restore"}, "tmux 3.4", "", 1, "", noSystemctl, false},
-		{[]string{"setup", "project"}, "tmux 3.4", "", 0,
+		{[]string{"setup", "config", "project"}, "tmux 3.4", "", 0,
 			"Created .claude/settings.json\nCreated .claude/settings.local.json\nCreated .gitignore\n",
 			"", false},
-		{[]string{"__complete", "setup", "project", "--mcp", "r"}, "tmux 3.4", "", 0,
+		{[]string{"__complete", "setup", "config", "project", "--mcp", "r"}, "tmux 3.4", "", 0,
 			"rider\tRider's MCP server, port $RIDER_MCP_PORT or 64482\n:4\n", noFileReport, false},
 	}
 }

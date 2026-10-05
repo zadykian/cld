@@ -1,7 +1,7 @@
 package project
 
-// Permissions is a set of permission rules, which --permissions picks: setup project adds its
-// entries to permissions.allow and permissions.deny.
+// Permissions is a set of permission rules, which --permissions picks: setup config project and
+// user add its entries to permissions.allow and permissions.deny.
 type Permissions struct {
 	// Name is the set's name for --permissions, and Description what completion shows for it.
 	Name, Description string

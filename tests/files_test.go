@@ -103,6 +103,22 @@ func tree(t *testing.T, dir string) map[string]string {
 	return entries
 }
 
+// longPath makes the directories of a file of the name given whose path in the sandbox is 4095
+// bytes, the most Linux takes, and returns that path. A temporary file beside it has a longer one.
+func longPath(t *testing.T, s *sandbox.Sandbox, name string) string {
+	t.Helper()
+	length := 4095 - len("/"+name)
+	dir := filepath.Join(s.Root, "long")
+	for len(dir) < length-202 {
+		dir += "/" + strings.Repeat("d", 200)
+	}
+	dir += "/" + strings.Repeat("d", length-len(dir)-1)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, name)
+}
+
 // checkContent reports a file at path that does not hold want.
 func checkContent(t *testing.T, path, want string) {
 	t.Helper()

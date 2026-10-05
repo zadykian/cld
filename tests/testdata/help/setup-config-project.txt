@@ -16,7 +16,7 @@ project shares under .claude that git ignores. Review the changes before you
 commit them: whoever trusts the project's folder gives claude what they allow.
 
 Usage:
-  cld setup project [--mcp SERVER] [--permissions SET] [flags]
+  cld setup config project [--mcp SERVER] [--permissions SET] [flags]
 
 Flags:
   -h, --help              help for project

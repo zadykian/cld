@@ -8,12 +8,12 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What setup project says of the files a project shares under .claude that git ignores all the
-// same (decisions 19.7 and 28.2).
+// What setup config project says of the files a project shares under .claude that git ignores all
+// the same (decisions 19.7 and 28.2).
 
 const (
-	// ignoredCreated and ignoredUpdated are what setup project reports of the settings and of
-	// .gitignore.
+	// ignoredCreated and ignoredUpdated are what setup config project reports of the settings and
+	// of .gitignore.
 	ignoredCreated = "Created .claude/settings.json\nCreated .claude/settings.local.json\n"
 	ignoredUpdated = "Updated .gitignore: " + addedLines + "\n"
 	// ignoredOthers are the paths a project shares under .claude, but for the settings.
@@ -23,7 +23,7 @@ const (
 )
 
 // ignoredCase is a .gitignore and a .git/info/exclude, whether the work directory is a git work
-// tree, with git on the PATH, and what setup project does there.
+// tree, with git on the PATH, and what setup config project does there.
 type ignoredCase struct {
 	name, gitignore, exclude string
 	git                      bool
@@ -31,8 +31,8 @@ type ignoredCase struct {
 	stdout, stderr           string
 }
 
-// ignoredCases are TestSetupProjectIgnoredAllTheSame's. cld's lines before are the /.claude/* and
-// !/.claude/settings.json it wrote until decision 28.1 (decision 19.5).
+// ignoredCases are TestSetupConfigProjectIgnoredAllTheSame's. cld's lines before are the
+// /.claude/* and !/.claude/settings.json it wrote until decision 28.1 (decision 19.5).
 var ignoredCases = []ignoredCase{
 	{"the directory", ".claude/\n", "", true, 1, ignoredCreated + ignoredUpdated,
 		"cld: warning: git ignores " + ignoredOthers + ignoredShared + ".claude/ (.gitignore, line 1)\n" +
@@ -65,7 +65,7 @@ var ignoredCases = []ignoredCase{
 // Once the files are written, cld warns of each pattern by which git ignores a path a project
 // shares, and fails where git ignores .claude/settings.json. It asks git nothing outside a work
 // tree, or without git. A path goes as git sees it: a symbolic link as a file, a submodule whole.
-func TestSetupProjectIgnoredAllTheSame(t *testing.T) {
+func TestSetupConfigProjectIgnoredAllTheSame(t *testing.T) {
 	t.Parallel()
 	for _, test := range ignoredCases {
 		t.Run(test.name, test.run)
@@ -76,7 +76,7 @@ func TestSetupProjectIgnoredAllTheSame(t *testing.T) {
 	t.Run("submodules", ignoredSubmodules)
 }
 
-// run runs setup project where git looks no further up than the sandbox for a work tree.
+// run runs setup config project where git looks no further up than the sandbox for a work tree.
 func (test ignoredCase) run(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -90,7 +90,7 @@ func (test ignoredCase) run(t *testing.T) {
 	if test.exclude != "" {
 		projectWrite(t, s, ".git/info/exclude", test.exclude)
 	}
-	result := s.RunCld(extra, "setup", "project")
+	result := s.RunCld(extra, "setup", "config", "project")
 	checkIgnored(t, result, test.code, test.stdout, test.stderr)
 	checkFile(t, s, ".claude/settings.json", projectSettings(t, "read-only"))
 }
@@ -101,7 +101,7 @@ func ignoredNoGit(t *testing.T) {
 	s := sandbox.New(t)
 	gitInit(t, s)
 	projectWrite(t, s, ".gitignore", ".claude/\n")
-	result := s.RunCld(map[string]string{"PATH": s.Tools()}, "setup", "project")
+	result := s.RunCld(map[string]string{"PATH": s.Tools()}, "setup", "config", "project")
 	want := ignoredCreated + ignoredUpdated
 	if result.Code != 0 || result.Stdout != want || result.Stderr != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q",
@@ -124,7 +124,8 @@ func ignoredSymbolicLink(t *testing.T) {
 	if err := os.Symlink(skills, filepath.Join(s.Work, ".claude", "skills")); err != nil {
 		t.Fatal(err)
 	}
-	result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root}, "setup", "project")
+	result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root},
+		"setup", "config", "project")
 	want := "cld: warning: git ignores .claude/commands/, .claude/agents/, .claude/skills, " +
 		".claude/rules/, .claude/hooks/ and .claude/CLAUDE.md" + ignoredShared +
 		"/.claude/* (.gitignore, line 1)\n" +
@@ -145,7 +146,8 @@ func ignoredFilesAdded(t *testing.T) {
 	projectWrite(t, s, ".claude/skills/deploy/SKILL.md", "")
 	runGit(t, s, s.Work, "add", "-f",
 		".claude/settings.json", ".claude/CLAUDE.md", ".claude/skills/deploy/SKILL.md")
-	result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root}, "setup", "project")
+	result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root},
+		"setup", "config", "project")
 	stdout := "Left .claude/settings.json as it was\nCreated .claude/settings.local.json\n" +
 		ignoredUpdated
 	want := "cld: warning: git ignores .claude/commands/, .claude/agents/, .claude/skills/, " +
@@ -170,13 +172,14 @@ func ignoredSubmodules(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(s.Work, ".claude", "agents", ".git")); err != nil {
 		t.Fatal(err)
 	}
-	result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root}, "setup", "project")
+	result := s.RunCld(map[string]string{"GIT_CEILING_DIRECTORIES": s.Root},
+		"setup", "config", "project")
 	want := "cld: warning: git ignores .claude/commands/, .claude/rules/, .claude/hooks/ and " +
 		".claude/CLAUDE.md" + ignoredShared + "/.claude/* (.gitignore, line 1)\n"
 	checkIgnored(t, result, 0, ignoredCreated+ignoredUpdated, want)
 }
 
-// checkIgnored reports a setup project that did not end with code, stdout and stderr.
+// checkIgnored reports a setup config project that did not end with code, stdout and stderr.
 func checkIgnored(t *testing.T, result sandbox.Result, code int, stdout, stderr string) {
 	t.Helper()
 	if result.Code != code || result.Stdout != stdout || result.Stderr != stderr {

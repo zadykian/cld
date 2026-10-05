@@ -1,6 +1,7 @@
 # 52. Telemetry outside cld
 
-Status: Accepted (#158). Replaces [18](0018-telemetry.md).
+Status: Accepted (#158). Replaces [18](0018-telemetry.md). Amended by
+[53](0053-project-and-user-settings.md).
 
 ## Context
 

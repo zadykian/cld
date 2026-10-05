@@ -9,13 +9,14 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What setup project writes in .claude/settings.json: the permission rules of each set and MCP
-// server. With --mcp goland --permissions cld, that is the repository's own file, but for its
+// What setup config project writes in .claude/settings.json: the permission rules of each set and
+// MCP server. With --mcp goland --permissions cld, that is the repository's own file, but for its
 // hooks.
 
-// With --permissions cld, setup project adds the entries permissions.deny lacks after those it
-// has, keeping them. The settings' order and indentation stay, the new key permissions.allow last.
-func TestSetupProjectDeny(t *testing.T) {
+// With --permissions cld, setup config project adds the entries permissions.deny lacks after those
+// it has, keeping them. The settings' order and indentation stay, the new key permissions.allow
+// last.
+func TestSetupConfigProjectDeny(t *testing.T) {
 	t.Parallel()
 	deny := denied(t, "cld")
 	if len(deny) < 3 {
@@ -32,7 +33,7 @@ func TestSetupProjectDeny(t *testing.T) {
   }
 }
 `)
-	result := s.RunCld(nil, "setup", "project", "--permissions", "cld")
+	result := s.RunCld(nil, "setup", "config", "project", "--permissions", "cld")
 	want := "Updated .claude/settings.json: $schema, permissions.allow, permissions.deny, " +
 		"plansDirectory\n"
 	if result.Code != 0 || !strings.HasPrefix(result.Stdout, want) || result.Stderr != "" {
@@ -57,7 +58,7 @@ func TestSetupProjectDeny(t *testing.T) {
 
 // A permissions.deny that is no array: --permissions cld refuses it with status 1, writing
 // nothing, and read-only, which denies nothing, leaves it as the file has it.
-func TestSetupProjectDenyNoArray(t *testing.T) {
+func TestSetupConfigProjectDenyNoArray(t *testing.T) {
 	t.Parallel()
 	const before = `{"permissions": {"allow": ["Read"], "deny": "Bash(rm:*)"}}`
 	t.Run("cld", func(t *testing.T) {
@@ -65,7 +66,7 @@ func TestSetupProjectDenyNoArray(t *testing.T) {
 		s := sandbox.New(t)
 		gitInit(t, s)
 		settings := projectWrite(t, s, ".claude/settings.json", before)
-		result := s.RunCld(nil, "setup", "project", "--permissions", "cld")
+		result := s.RunCld(nil, "setup", "config", "project", "--permissions", "cld")
 		want := "cld: permissions.deny in .claude/settings.json is not a JSON array\n"
 		if result.Code != 1 || result.Stderr != want || result.Stdout != "" {
 			t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q",
@@ -78,7 +79,7 @@ func TestSetupProjectDenyNoArray(t *testing.T) {
 		s := sandbox.New(t)
 		gitInit(t, s)
 		settings := projectWrite(t, s, ".claude/settings.json", before)
-		result := s.RunCld(nil, "setup", "project")
+		result := s.RunCld(nil, "setup", "config", "project")
 		data, err := os.ReadFile(settings)
 		if result.Code != 0 || result.Stderr != "" || err != nil ||
 			!strings.Contains(string(data), `"deny": "Bash(rm:*)"`) {

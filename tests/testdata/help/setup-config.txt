@@ -1,0 +1,15 @@
+set up claude's settings, one of the commands below: those a project shares
+through git, or your own, which claude reads in every project. Each adds what
+the settings lack, and keeps the values they have.
+
+Usage:
+  cld setup config [command]
+
+Available Commands:
+  project     set claude up in the project in the current directory
+  user        set claude up in your own settings, for every project
+
+Flags:
+  -h, --help   help for config
+
+Use "cld setup config [command] --help" for more information about a command.

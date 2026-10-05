@@ -8,16 +8,16 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The lines setup project adds to .gitignore, and what git ignores after them (decision 28.1).
+// The lines setup config project adds to .gitignore, and what git then ignores (decision 28.1).
 
-// gitignoreCase is a .gitignore before setup project and after it, and the lines cld reports
+// gitignoreCase is a .gitignore before setup config project and after it, and the lines cld reports
 // added, "" where it adds none.
 type gitignoreCase struct {
 	name, before, after, added string
 }
 
-// gitignoreCases are TestSetupProjectGitignore's. A line counts with its leading slash or without,
-// and with a carriage return or spaces at its end, but not with a tab.
+// gitignoreCases are TestSetupConfigProjectGitignore's. A line counts with its leading slash or
+// without, and with a carriage return or spaces at its end, but not with a tab.
 var gitignoreCases = []gitignoreCase{
 	{"empty", "", ignoreLines, addedLines},
 	{"no newline at the end", "dist/", "dist/\n" + ignoreLines, addedLines},
@@ -42,8 +42,9 @@ var gitignoreCases = []gitignoreCase{
 		"/.claude/settings.local.json, /.claude/worktrees/"},
 }
 
-// gitignoreStatus is what git status says after setup project of the files under .claude that
-// TestSetupProjectGitignore writes: it ignores the local settings, the plans and the worktrees.
+// gitignoreStatus is what git status says after setup config project of the files under .claude
+// that TestSetupConfigProjectGitignore writes: it ignores the local settings, the plans and the
+// worktrees.
 var gitignoreStatus = []string{
 	"!! .claude/plans/plan.md",
 	"!! .claude/settings.local.json",
@@ -57,14 +58,14 @@ var gitignoreStatus = []string{
 
 // .gitignore gets cld's lines where git does not read them already, in its line endings, after a
 // newline where its last line has none. Each time git adds the rest of .claude.
-func TestSetupProjectGitignore(t *testing.T) {
+func TestSetupConfigProjectGitignore(t *testing.T) {
 	t.Parallel()
 	for _, test := range gitignoreCases {
 		t.Run(test.name, test.run)
 	}
 }
 
-// run runs setup project with the .gitignore before and files under .claude.
+// run runs setup config project with the .gitignore before and files under .claude.
 func (test gitignoreCase) run(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -76,7 +77,7 @@ func (test gitignoreCase) run(t *testing.T) {
 	} {
 		projectWrite(t, s, ".claude/"+name, "")
 	}
-	result := s.RunCld(nil, "setup", "project")
+	result := s.RunCld(nil, "setup", "config", "project")
 	line, after := "Left .gitignore as it was\n", test.before
 	if test.added != "" {
 		line, after = "Updated .gitignore: "+test.added+"\n", test.after

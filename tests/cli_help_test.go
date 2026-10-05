@@ -19,10 +19,10 @@ var update = flag.Bool("update", false,
 	"rewrite the help in testdata/help from what cld help prints")
 
 // helpTopics are what cld help takes, in the order the help lists them, "" for none. Each command
-// of cld's comes before its own, as "setup project", and theirs, as "setup completion zsh".
+// of cld's comes before its own, as "setup config", and theirs, as "setup config project".
 var helpTopics = []string{
 	"", "join", "detach", "kill", "list", "restore",
-	"setup", "setup project", "setup completion",
+	"setup", "setup config", "setup config project", "setup config user", "setup completion",
 	"setup completion bash", "setup completion zsh", "setup completion fish", "setup restore",
 	"update", "completion", "help", "version",
 }

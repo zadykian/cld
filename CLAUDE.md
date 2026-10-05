@@ -12,8 +12,8 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
   options and their errors, `naming` the `-n` and `-s`, and `idle` `CLD_IDLE_DAYS` and the sweep.
 - `internal/session`: the tmux side, cld's record of its sessions, and `cld restore`.
 - `internal/picker`: the interactive `cld list` on a terminal.
-- `internal/project`: `cld setup project`, a project's `.claude` settings, `.mcp.json` and
-  `.gitignore`.
+- `internal/project`: `cld setup config project` and `user`: a project's `.claude` settings,
+  `.mcp.json` and `.gitignore`, and claude's user settings.
 - `internal/completion`: `cld setup completion`, the script where bash, zsh or fish reads it.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`.
 - `internal/update`: `cld update`, which replaces cld with the latest release.
@@ -89,15 +89,16 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   `internal/update`, which rely on them (decisions
   [20](docs/design/decisions/0020-install-script.md) and
   [21](docs/design/decisions/0021-self-update.md)).
-- `setup project --mcp goland --permissions cld` writes this repository's `.mcp.json` and
+- `setup config project --mcp goland --permissions cld` writes this repository's `.mcp.json` and
   `.claude/settings.json` byte for byte, but for the hooks, which stay the settings' last key.
   Change them with `internal/project` (decisions
   [19](docs/design/decisions/0019-project-settings.md) and
   [28](docs/design/decisions/0028-shared-project-settings.md)).
-- Run `setup completion` and `setup restore` only with `HOME` and the variables they follow pointing
-  at a scratch directory, and `setup restore` never against the user's own systemd (decisions
-  [22](docs/design/decisions/0022-setting-completion-up.md) and
-  [48](docs/design/decisions/0048-restore-after-reboot.md)).
+- Run `setup config user`, `setup completion` and `setup restore` only with `HOME` and the
+  variables they follow pointing at a scratch directory, and `setup restore` never against the
+  user's own systemd (decisions [22](docs/design/decisions/0022-setting-completion-up.md),
+  [48](docs/design/decisions/0048-restore-after-reboot.md) and
+  [53](docs/design/decisions/0053-project-and-user-settings.md)).
 - `make lint` fails on any finding, warnings included, in any line of any file
   ([testing](docs/design/testing.md#layers); #121).
 - Fix a finding, or justify it in place (`//nolint:LINTER // reason`); never lower a severity or

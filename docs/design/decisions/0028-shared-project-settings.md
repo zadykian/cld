@@ -1,6 +1,6 @@
 # 28. Project settings a team can share
 
-Status: Accepted.
+Status: Accepted. Amended by [53](0053-project-and-user-settings.md).
 
 ## Context
 

@@ -1,5 +1,5 @@
-// Package project is cld setup project: it sets Claude Code up in the project in the current
-// directory, writing what claude reads there and what git needs to share it.
+// Package project is cld setup config project and user. Setup sets Claude Code up in the project
+// in the current directory, writing what claude reads there and what git needs to share it:
 //
 //   - .claude/settings.json holds the settings the project shares. They rank above each
 //     developer's own, so they hold no setting of a person's, such as a theme.
@@ -8,10 +8,10 @@
 //     would break it.
 //   - .gitignore gets the lines that keep one developer's files in .claude out of git.
 //
-// Setup never replaces a value the settings have. It reads every file, refusing one it cannot
-// edit, before it writes only those that change. Then, in a git work tree, it warns of the shared
-// files git ignores, and fails where git ignores .claude/settings.json. Decisions 19 and 28 give
-// the reasons.
+// SetupUser sets up claude's user settings, a person's own, in the same way. Neither replaces a
+// value the settings have. Each reads every file, refusing one it cannot edit, before it writes
+// only those that change. Then Setup, in a git work tree, warns of the shared files git ignores,
+// and fails where git ignores .claude/settings.json. Decisions 19, 28 and 53 say why.
 package project
 
 import (
@@ -32,8 +32,8 @@ const (
 	schema = "https://json.schemastore.org/claude-code-settings.json"
 )
 
-// change is one file setup project writes: created, changed in what, or neither and left as it
-// was; write writes it.
+// change is one file setup config project or user writes: created, changed in what, or neither and
+// left unchanged; write writes it.
 type change struct {
 	file    string
 	created bool
@@ -101,7 +101,7 @@ func write(changes []change) error {
 	return nil
 }
 
-// report is what Setup prints at its end: a line for each file.
+// report is what Setup and SetupUser print at their end: a line for each file.
 func report(changes []change) string {
 	var b strings.Builder
 	for _, c := range changes {

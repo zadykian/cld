@@ -6,7 +6,7 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What __complete offers for the commands, help and setup project's options.
+// What __complete offers for the commands, help and the options of setup config's commands.
 
 // noFileDirective ends what __complete offers: ShellCompDirectiveNoFileComp, no file names, the
 // root's default for an argument with nothing to complete. noFileReport is cobra's line for it on
@@ -26,7 +26,7 @@ const (
 		"kill\tend session NAME-SUFFIX and its tmux server\n" +
 		"list\tlist cld's sessions; on a terminal, join or kill one\n" + //nolint:dupword // as above
 		"restore\tbring back the sessions that ran when the machine stopped\n" +
-		"setup\tset up claude in a project, shell completion or restore\n" +
+		"setup\tset up claude's settings, shell completion or restore\n" +
 		"update\tupdate cld to the latest release\n" + //nolint:dupword // as above
 		"version\tshow the version\n" +
 		offeredCompletion +
@@ -35,10 +35,13 @@ const (
 
 // What __complete offers for setup and its commands.
 const (
-	offeredProject         = "project\tset claude up in the project in the current directory\n"
+	offeredConfig          = "config\tset up claude's settings, in a project or your own\n"
 	offeredSetupCompletion = "completion\tset up cld's completion in bash, zsh or fish\n"
 	offeredSetupRestore    = "restore\thave your systemd run cld restore at login, or at boot\n"
-	offeredSetups          = offeredProject + offeredSetupCompletion + offeredSetupRestore
+	offeredSetups          = offeredConfig + offeredSetupCompletion + offeredSetupRestore
+
+	offeredProject = "project\tset claude up in the project in the current directory\n"
+	offeredUser    = "user\tset claude up in your own settings, for every project\n"
 
 	offeredSetupZsh    = "zsh\tset up cld's completion in zsh\n"
 	offeredSetupFish   = "fish\tset up cld's completion in fish\n"
@@ -51,6 +54,15 @@ const (
 	offeredReadOnly  = "read-only\tread files and run commands that only read, the default\n"
 	offeredCld       = "cld\tcld's own: edit files, run git, go, make, docker and more\n"
 	offeredNone      = "none\tnothing more than claude allows by itself\n"
+	offeredKitty     = "kitty\tkitty's notifications, OSC 99\n"
+	offeredITerm2    = "iterm2\tiTerm2's notifications, OSC 9\n" +
+		"iterm2_with_bell\tiTerm2's notifications, and the bell\n"
+	offeredChannels = "auto\tclaude's default, by the terminal: none under tmux\n" +
+		"iterm2\tiTerm2's notifications, OSC 9\n" +
+		"terminal_bell\tthe bell, for Terminal.app and any other terminal\n" +
+		"iterm2_with_bell\tiTerm2's notifications, and the bell\n" + offeredKitty +
+		"ghostty\tGhostty's notifications, OSC 777\n" +
+		"notifications_disabled\tno notifications\n"
 )
 
 // What __complete offers for completion and for the options of join and detach.
@@ -94,8 +106,13 @@ var completeCases = []struct {
 	// After a command with commands of its own, help takes one of those, and nothing after it.
 	{[]string{"__complete", "help", "setup", ""}, offeredSetups + noFileDirective},
 	{[]string{"__complete", "help", "setup", "r"}, offeredSetupRestore + noFileDirective},
+	{[]string{"__complete", "help", "setup", "p"}, noFileDirective},
+	{[]string{"__complete", "help", "setup", "config", ""},
+		offeredProject + offeredUser + noFileDirective},
+	{[]string{"__complete", "help", "setup", "config", "p"}, offeredProject + noFileDirective},
+	{[]string{"__complete", "help", "setup", "config", "user", ""}, noFileDirective},
 	{[]string{"__complete", "help", "setup", "t"}, noFileDirective},
-	{[]string{"__complete", "help", "setup", "project", ""}, noFileDirective},
+	{[]string{"__complete", "help", "setup", "config", "project", ""}, noFileDirective},
 	{[]string{"__complete", "help", "setup", "x"}, noFileDirective},
 	{[]string{"__complete", "help", "setup", "completion", ""}, offeredShellSetups + noFileDirective},
 	{[]string{"__complete", "help", "setup", "completion", "z"}, offeredSetupZsh + noFileDirective},
@@ -104,8 +121,13 @@ var completeCases = []struct {
 	{[]string{"__complete", "help", "nope", ""}, noFileDirective},
 	{[]string{"__complete", "completion", ""}, offeredShells + noFileDirective},
 	{[]string{"__complete", "setup", ""}, offeredSetups + noFileDirective},
-	{[]string{"__complete", "setup", "p"}, offeredProject + noFileDirective},
-	{[]string{"__complete", "setup", "c"}, offeredSetupCompletion + noFileDirective},
+	{[]string{"__complete", "setup", "p"}, noFileDirective},
+	{[]string{"__complete", "setup", "c"}, offeredConfig + offeredSetupCompletion + noFileDirective},
+	{[]string{"__complete", "setup", "co"}, offeredConfig + offeredSetupCompletion + noFileDirective},
+	{[]string{"__complete", "setup", "con"}, offeredConfig + noFileDirective},
+	{[]string{"__complete", "setup", "config", ""}, offeredProject + offeredUser + noFileDirective},
+	{[]string{"__complete", "setup", "config", "u"}, offeredUser + noFileDirective},
+	{[]string{"__complete", "setup", "config", "user", ""}, noFileDirective},
 	{[]string{"__complete", "setup", "r"}, offeredSetupRestore + noFileDirective},
 	{[]string{"__complete", "setup", "t"}, noFileDirective},
 	{[]string{"__complete", "setup", "restore", ""}, noFileDirective},
@@ -114,33 +136,53 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "completion", "f"}, offeredSetupFish + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "bash", ""}, noFileDirective},
 	// --mcp offers its servers; after a comma, those the list does not have, after it.
-	{[]string{"__complete", "setup", "project", "--m"},
+	{[]string{"__complete", "setup", "config", "project", "--m"},
 		"--mcp\tan MCP `SERVER` for claude in the project: goland or\n" + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", ""},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", ""},
 		offeredGoland + offeredJbcontext + offeredRider + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", "j"}, offeredJbcontext + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp=r"}, offeredRider + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", "rider,"},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", "j"},
+		offeredJbcontext + noFileDirective},
+	{[]string{"__complete", "setup", "config", "project", "--mcp=r"}, offeredRider + noFileDirective},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", "rider,"},
 		"rider," + offeredGoland + "rider," + offeredJbcontext + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", "goland,rider,j"},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", "goland,rider,j"},
 		"goland,rider," + offeredJbcontext + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", "goland,jbcontext,rider,"}, noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", "x"}, noFileDirective},
-	{[]string{"__completeNoDesc", "setup", "project", "--mcp", "goland,"},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", "goland,jbcontext,rider,"},
+		noFileDirective},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", "x"}, noFileDirective},
+	{[]string{"__completeNoDesc", "setup", "config", "project", "--mcp", "goland,"},
 		"goland,jbcontext\ngoland,rider\n" + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", "goland", ""}, noFileDirective},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", "goland", ""}, noFileDirective},
 	// --permissions offers its sets, the default first.
-	{[]string{"__complete", "setup", "project", "--p"},
+	{[]string{"__complete", "setup", "config", "project", "--p"},
 		"--permissions\twhat claude may do in the project without asking:\n" + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--permissions", ""},
+	{[]string{"__complete", "setup", "config", "project", "--permissions", ""},
 		offeredReadOnly + offeredCld + offeredNone + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--permissions", "n"}, offeredNone + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--mcp", "goland", "--permissions=c"},
+	{[]string{"__complete", "setup", "config", "project", "--permissions", "n"},
+		offeredNone + noFileDirective},
+	{[]string{"__complete", "setup", "config", "project", "--mcp", "goland", "--permissions=c"},
 		offeredCld + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--permissions", "x"}, noFileDirective},
-	{[]string{"__completeNoDesc", "setup", "project", "--permissions", ""},
+	{[]string{"__complete", "setup", "config", "project", "--permissions", "x"}, noFileDirective},
+	{[]string{"__completeNoDesc", "setup", "config", "project", "--permissions", ""},
 		"read-only\ncld\nnone\n" + noFileDirective},
-	{[]string{"__complete", "setup", "project", "--permissions", "cld", ""}, noFileDirective},
+	{[]string{"__complete", "setup", "config", "project", "--permissions", "cld", ""},
+		noFileDirective},
+	// setup config user's --permissions offers the same sets, and --notifications claude's channels.
+	{[]string{"__complete", "setup", "config", "user", "--n"},
+		"--notifications\tthe `CHANNEL` claude notifies on: auto, claude's\n" + noFileDirective},
+	{[]string{"__complete", "setup", "config", "user", "--permissions", ""},
+		offeredReadOnly + offeredCld + offeredNone + noFileDirective},
+	{[]string{"__complete", "setup", "config", "user", "--notifications", ""},
+		offeredChannels + noFileDirective},
+	{[]string{"__complete", "setup", "config", "user", "--notifications", "i"},
+		offeredITerm2 + noFileDirective},
+	{[]string{"__complete", "setup", "config", "user", "--permissions", "cld",
+		"--notifications=k"}, offeredKitty + noFileDirective},
+	{[]string{"__complete", "setup", "config", "user", "--notifications", "x"}, noFileDirective},
+	{[]string{"__completeNoDesc", "setup", "config", "user", "--notifications", "g"},
+		"ghostty\n" + noFileDirective},
+	{[]string{"__complete", "setup", "config", "user", "--notifications", "kitty", ""},
+		noFileDirective},
 	{[]string{"__complete", "completion", "bash", ""}, noFileDirective},
 	{[]string{"__complete", "join", "-"}, offeredJoinOptions + noFileDirective},
 	{[]string{"__complete", "detach", "-"}, offeredDetachOptions + noFileDirective},
@@ -151,8 +193,8 @@ var completeCases = []struct {
 }
 
 // __complete offers the commands, and those help takes, each with its description; the options;
-// setup project's MCP servers and permission sets; and never file names (decision 17.3). Without
-// the word to complete it fails, as cld's other command-line mistakes do.
+// setup config's MCP servers, permission sets and channels; and never file names (decision 17.3).
+// Without the word to complete it fails, as cld's other command-line mistakes do.
 func TestCompleteCommands(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

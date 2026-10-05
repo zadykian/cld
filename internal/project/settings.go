@@ -68,13 +68,9 @@ func mcpChange(servers []Server) (change, error) {
 func editSettings(
 	file *configfile.JSON, servers []Server, permissions Permissions,
 ) ([]string, error) {
-	top := &object{file: file, members: file.Members}
-	top.setMissing("$schema", configfile.String(schema), true)
-	if err := addPermissions(top, servers, permissions); err != nil {
+	top, err := seed(file, servers, permissions, scalarSettings)
+	if err != nil {
 		return nil, err
-	}
-	for _, m := range scalarSettings {
-		top.setMissing(m.Key, m.Value, false)
 	}
 	if len(servers) > 0 {
 		var names []string
@@ -87,6 +83,23 @@ func editSettings(
 	}
 	file.Members = top.members
 	return top.changed, nil
+}
+
+// seed adds to the settings that file holds, a project's or the user's, the keys they lack. It
+// adds $schema first, then the permission set with what it allows of each server, then the
+// scalars. It returns the settings, for the caller to add its own keys to.
+func seed(
+	file *configfile.JSON, servers []Server, permissions Permissions, scalars []configfile.Member,
+) (*object, error) {
+	top := &object{file: file, members: file.Members}
+	top.setMissing("$schema", configfile.String(schema), true)
+	if err := addPermissions(top, servers, permissions); err != nil {
+		return nil, err
+	}
+	for _, m := range scalars {
+		top.setMissing(m.Key, m.Value, false)
+	}
+	return top, nil
 }
 
 // addPermissions adds the set's entries, and what it allows of each server, to permissions.allow

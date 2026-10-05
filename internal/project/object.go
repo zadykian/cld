@@ -8,7 +8,7 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// object is a JSON object of a file that setup project edits: its members, its key in the file,
+// object is a JSON object of a file that setup config edits: its members, its key in the file,
 // such as permissions ("" for the file's own), and its depth. It keeps the keys changed so far.
 type object struct {
 	file    *configfile.JSON
@@ -61,7 +61,7 @@ func (o *object) set(key string, value json.RawMessage, first bool) {
 }
 
 // setMissing sets key to value, JSON of cld's, where the object lacks it: a value the object has
-// is the project's, and stays.
+// is the file owner's, and stays.
 func (o *object) setMissing(key string, value json.RawMessage, first bool) {
 	if configfile.Last(o.members, key) < 0 {
 		o.set(key, value, first)

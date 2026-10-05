@@ -60,12 +60,14 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 - `completion_test.go`: `setup completion` where nothing was; `completion_files_test.go`: files
   that exist, and refusals; `completion_shells_test.go`: bash, zsh and fish loading its scripts;
   `completion_blesh_test.go`: bash with ble.sh.
-- `project_test.go`: `setup project` against the real git where there is nothing, and what the
-  `project_*` files share; `project_edits_test.go`: files that exist; `project_refusals_test.go`:
-  what it refuses.
-- `project_gitignore_test.go`: the lines `setup project` adds to `.gitignore`;
+- `project_test.go`: `setup config project` against the real git where there is nothing, and what
+  the `project_*` files share; `project_edits_test.go`: files that exist;
+  `project_refusals_test.go`: what it refuses.
+- `project_gitignore_test.go`: the lines `setup config project` adds to `.gitignore`;
   `project_ignored_test.go`: the shared files git ignores all the same; `project_settings_test.go`:
   the permission rules it writes, read from the repository's own `.claude/settings.json`.
+- `user_test.go`: `setup config user` against the sandbox's `HOME` and `CLAUDE_CONFIG_DIR`;
+  `user_refusals_test.go`: what it refuses.
 - `install_test.go` and `update_test.go`: `install.sh` and `cld update`, against releases that an
   HTTP server of the test's serves; `install_release_test.go`: the release and binary `install.sh`
   picks; `install_refusals_test.go`: what it refuses.

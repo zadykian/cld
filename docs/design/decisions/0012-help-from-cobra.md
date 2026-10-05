@@ -2,8 +2,8 @@
 
 Status: Accepted (#28). Amended by [17](0017-shell-completion.md), [18](0018-telemetry.md),
 [22](0022-setting-completion-up.md), [24](0024-names-from-the-repository.md),
-[42](0042-remote-control-is-claudes.md), [50](0050-one-command-join.md) and
-[52](0052-telemetry-outside-cld.md).
+[42](0042-remote-control-is-claudes.md), [50](0050-one-command-join.md),
+[52](0052-telemetry-outside-cld.md) and [53](0053-project-and-user-settings.md).
 
 ## Context
 

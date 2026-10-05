@@ -1,6 +1,7 @@
 # 29. Notifications
 
-Status: Accepted (#59).
+Status: Accepted (#59). Amended by [53](0053-project-and-user-settings.md), whose
+`setup config user` writes the channel the user names.
 
 ## Context
 

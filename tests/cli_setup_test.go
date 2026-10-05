@@ -10,12 +10,13 @@ import (
 
 // setup's commands.
 
-// setupCommands and setupShells end the messages for a missing or unknown argument of setup, and
-// of setup completion.
+// setupCommands, configCommands and setupShells end the messages for a missing or unknown
+// argument of setup, of setup config and of setup completion.
 const (
-	setupCommands = "cld setup project, cld setup completion SHELL or cld setup restore " +
+	setupCommands = "cld setup config COMMAND, cld setup completion SHELL or cld setup restore " +
 		"(see cld help)\n"
-	setupShells = "bash, zsh or fish (see cld help)\n"
+	configCommands = "project or user (see cld help)\n"
+	setupShells    = "bash, zsh or fish (see cld help)\n"
 )
 
 // setupCommandCases are setup's command lines without one of its commands, or setup
@@ -40,6 +41,28 @@ var setupCommandCases = []struct {
 	{[]string{"setup", "--mcp", "goland", "project"},
 		"cld: setup: unknown command '--mcp': " + setupCommands},
 	{[]string{"setup", "Project"}, "cld: setup: unknown command 'Project': " + setupCommands},
+	// setup project is setup config project now, as new and resume are join (decision 53.1).
+	{[]string{"setup", "project"}, "cld: setup: unknown command 'project': " + setupCommands},
+	{[]string{"setup", "project", "--mcp", "goland"},
+		"cld: setup: unknown command 'project': " + setupCommands},
+	{[]string{"setup", "user"}, "cld: setup: unknown command 'user': " + setupCommands},
+	{[]string{"setup", "config"}, "cld: setup config: missing command: " + configCommands},
+	{[]string{"setup", "config", ""}, "cld: setup config: missing command: " + configCommands},
+	{[]string{"setup", "config", "", "user"},
+		"cld: setup config: missing command: " + configCommands},
+	{[]string{"setup", "config", "other"},
+		"cld: setup config: unknown command 'other': " + configCommands},
+	{[]string{"setup", "config", "User"},
+		"cld: setup config: unknown command 'User': " + configCommands},
+	{[]string{"setup", "config", "restore"},
+		"cld: setup config: unknown command 'restore': " + configCommands},
+	// cobra would run user for setup config --permissions cld user.
+	{[]string{"setup", "config", "--permissions", "cld", "user"},
+		"cld: setup config: unknown command '--permissions': " + configCommands},
+	{[]string{"setup", "config", "--help=false", "project"},
+		"cld: setup config: unknown command '--help=false': " + configCommands},
+	{[]string{"setup", "config", "--", "user"},
+		"cld: setup config: unknown command '--': " + configCommands},
 	{[]string{"setup", "completion"}, "cld: setup completion: missing shell: " + setupShells},
 	{[]string{"setup", "completion", ""}, "cld: setup completion: missing shell: " + setupShells},
 	{[]string{"setup", "completion", "", "zsh"},
@@ -60,8 +83,9 @@ var setupCommandCases = []struct {
 }
 
 // setup's first argument is one of its commands, checked as cld's first is: no option comes
-// before it (decision 52.3). The shell after setup completion is checked the same way. A mistake
-// writes nothing, in the work directory or the home directory.
+// before it (decision 52.3). The command after setup config and the shell after setup completion
+// are checked the same way (decision 53.2). A mistake writes nothing, here or in the home
+// directory.
 func TestSetupRequiresCommand(t *testing.T) {
 	t.Parallel()
 	for _, test := range setupCommandCases {

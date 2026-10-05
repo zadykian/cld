@@ -12,7 +12,7 @@ import (
 	"github.com/zadykian/cld/internal/project"
 )
 
-// projectLong is setup project's help.
+// projectLong is setup config project's help.
 const projectLong = `set claude up in the project in the current directory: .claude/settings.json
 holds the settings the project shares through git - what claude may do without
 asking, which --permissions sets, and where claude keeps its plans - and
@@ -30,7 +30,7 @@ it checks that git does not ignore the settings, and warns of the other files a
 project shares under .claude that git ignores. Review the changes before you
 commit them: whoever trusts the project's folder gives claude what they allow.`
 
-// setupProject is cld setup project (decision 19), named in its messages as typed.
+// setupProject is cld setup config project (decision 19), named in its messages as typed.
 func setupProject(typed string) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "project [--mcp SERVER] [--permissions SET]",
@@ -108,9 +108,9 @@ func permissionSet(given bool, name string) (project.Permissions, error) {
 	return project.PermissionSets[at], nil
 }
 
-// serverNames completes the SERVER of setup project --mcp: the servers it takes that start with
-// what was typed, each described. After a comma it completes the last of the list, offering the
-// servers the list does not have yet after the ones it has.
+// serverNames completes the SERVER of setup config project --mcp: the servers it takes that start
+// with what was typed, each described. After a comma it completes the last of the list, offering
+// the servers the list does not have yet after the ones it has.
 func serverNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion,
 	cobra.ShellCompDirective) {
 	before, last := "", typed
@@ -126,8 +126,8 @@ func serverNames(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// permissionSets completes the SET of setup project --permissions: the sets it takes that start
-// with what was typed, each described.
+// permissionSets completes the SET of --permissions, of setup config project and user: the sets it
+// takes that start with what was typed, each described.
 func permissionSets(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion,
 	cobra.ShellCompDirective) {
 	var names []cobra.Completion

@@ -20,6 +20,10 @@ By hand, download your system's binary and `cld.sha256` from a
 
 ### From cld 0.11.0 and earlier
 
+- **`cld setup project`** is now `cld setup config project`, with the same options, and
+  `cld setup project` fails as an unknown command
+  ([decision 53](../design/decisions/0053-project-and-user-settings.md)). The new
+  `cld setup config user` sets up your own settings: see [claude's settings](project-settings.md).
 - **`cld setup telemetry`** is gone
   ([decision 52](../design/decisions/0052-telemetry-outside-cld.md)). What it set up stays and
   keeps working: Docker starts the collector after a reboot, and claude sends to it. To send
@@ -72,8 +76,8 @@ By hand, download your system's binary and `cld.sha256` from a
 - **Project settings.** `cld setup project` of 0.4.0 to 0.8.2 wrote `/.claude/*` and
   `!/.claude/settings.json` to `.gitignore`, which keep shared files out of git. It also wrote
   `theme`, `autoUpdatesChannel`, `autoMemoryEnabled`, `autoCompactEnabled` and a long allow list.
-- Run `cld setup project` again, then remove the two lines, the four keys and the entries you do
-  not want to share.
+- Run `cld setup config project` again, then remove the two lines, the four keys and the entries
+  you do not want to share.
 
 ### From cld 0.8.0 and 0.8.1
 

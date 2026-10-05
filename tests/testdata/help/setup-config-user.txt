@@ -1,0 +1,29 @@
+set up claude's user settings, your own, $CLAUDE_CONFIG_DIR/settings.json, by
+default ~/.claude/settings.json, which claude reads in every project: what
+claude may do without asking, which --permissions sets, and model opus,
+effortLevel xhigh, theme dark, editorMode normal, autoCompactEnabled true and
+autoUpdatesChannel latest. With --notifications, cld sets the channel claude
+notifies on: under tmux, as in cld's sessions, claude's default sends nothing.
+
+Where the file exists, cld adds what it lacks and keeps everything else, the
+values of the settings it would set included. It leaves env alone, which holds
+claude's telemetry settings among others.
+
+Usage:
+  cld setup config user [--permissions SET] [--notifications CHANNEL] [flags]
+
+Flags:
+  -h, --help                    help for user
+      --notifications CHANNEL   the CHANNEL claude notifies on: auto, claude's
+                                default; iterm2 or iterm2_with_bell for iTerm2;
+                                kitty for kitty; ghostty for Ghostty;
+                                terminal_bell, the bell, for any other terminal;
+                                or notifications_disabled. Without it, cld sets
+                                no channel
+      --permissions SET         what claude may do without asking, in every
+                                project: SET is read-only, the default, to read
+                                files and run commands that only read, such as
+                                git status and ls; cld, as cld's own repository
+                                has it, to edit files, run git, go, make, docker
+                                and more, but not merge or push to main; or
+                                none, to add nothing

@@ -73,7 +73,8 @@ claude has failed, `!` runs nothing: run the `cld detach` its line names from an
 ## Notifications
 
 `"auto"`, the default of claude's `preferredNotifChannel`, goes by `TERM_PROGRAM`. tmux sets that
-to `tmux`, so `"auto"` sends nothing. Name your terminal's channel in claude's user settings:
+to `tmux`, so `"auto"` sends nothing. Name your terminal's channel in claude's user settings, as
+`cld setup config user --notifications CHANNEL` does:
 
 | Terminal | `preferredNotifChannel` | claude sends |
 |---|---|---|
@@ -84,7 +85,7 @@ to `tmux`, so `"auto"` sends nothing. Name your terminal's channel in claude's u
 
 - Every terminal on the session gets them; a session with none attached shows none, then or later.
 - The setting serves claude outside cld too, where `"terminal_bell"` rings where `"auto"` sends
-  nothing. cld sets no channel, as the next terminal to join may be another
+  nothing. A session of cld's sets no channel, as the next terminal to join may be another
   ([decision 29](../design/decisions/0029-notifications.md)).
 - iTerm2 needs "Notification Center Alerts" on, with "Send escape sequence-generated alerts" under
   "Filter Alerts" (Settings › Profiles › Terminal).

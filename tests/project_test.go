@@ -12,16 +12,17 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// setup project in the sandbox's work directory, a git work tree unless a test says otherwise,
-// against the real git. Where nothing was, cld writes the repository's own .mcp.json and
+// setup config project in the sandbox's work directory, a git work tree unless a test says
+// otherwise, against the real git. Where nothing was, cld writes the repository's own .mcp.json and
 // .claude/settings.json, less its hooks, with --mcp goland --permissions cld (decisions 19.1 and
 // 28.6). The tests read both from the repository, so a change to either goes with a change to cld.
 
 const (
-	// localSettings is the .claude/settings.local.json setup project writes where there is none.
+	// localSettings is the .claude/settings.local.json setup config project writes where there is
+	// none.
 	localSettings = "{\n  \"$schema\": \"https://json.schemastore.org/claude-code-settings.json\"\n}\n"
-	// ignoreLines are the lines setup project adds to .gitignore, and addedLines how it reports
-	// them.
+	// ignoreLines are the lines setup config project adds to .gitignore, and addedLines how it
+	// reports them.
 	ignoreLines = "/.claude/settings.local.json\n/.claude/plans/\n/.claude/worktrees/\n"
 	addedLines  = "/.claude/settings.local.json, /.claude/plans/, /.claude/worktrees/"
 )
@@ -45,7 +46,8 @@ var mcpEntries = map[string]string{
     }`,
 }
 
-// mcpFile is the .mcp.json setup project writes where there is none, with the MCP servers named.
+// mcpFile is the .mcp.json setup config project writes where there is none, with the MCP servers
+// named.
 func mcpFile(servers ...string) string {
 	var entries []string
 	for _, name := range servers {
@@ -75,16 +77,16 @@ func gitStatus(t *testing.T, s *sandbox.Sandbox) []string {
 	return lines
 }
 
-// projectFresh is a run of setup project where there is nothing: its options, the permission set
-// expected and the MCP servers.
+// projectFresh is a run of setup config project where there is nothing: its options, the permission
+// set expected and the MCP servers.
 type projectFresh struct {
 	args    []string
 	set     string
 	servers []string
 }
 
-// projectFreshCases are TestSetupProject's: read-only's entries by default and none with none,
-// the servers in cld's order whatever the order given, each once.
+// projectFreshCases are TestSetupConfigProject's: read-only's entries by default and none with
+// none, the servers in cld's order whatever the order given, each once.
 var projectFreshCases = []projectFresh{
 	{nil, "read-only", nil},
 	{[]string{"--mcp", "goland"}, "read-only", []string{"goland"}},
@@ -103,10 +105,10 @@ var projectFreshCases = []projectFresh{
 	{[]string{"--permissions", "none", "--permissions", "cld"}, "cld", nil},
 }
 
-// Where there is nothing, setup project writes each file as the repository has it, with --mcp
-// goland --permissions cld. git adds the settings and .mcp.json, and ignores settings.local.json.
-// Run again, setup project changes no file.
-func TestSetupProject(t *testing.T) {
+// Where there is nothing, setup config project writes each file as the repository has it, with
+// --mcp goland --permissions cld. git adds the settings and .mcp.json, and ignores
+// settings.local.json. Run again, setup config project changes no file.
+func TestSetupConfigProject(t *testing.T) {
 	t.Parallel()
 	if want, got := repoFile(t, ".mcp.json"), mcpFile("goland"); got != want {
 		t.Fatalf("the repository's .mcp.json\n%s\nwant, as the tests expect of --mcp goland\n%s",
@@ -123,11 +125,11 @@ func TestSetupProject(t *testing.T) {
 
 // command is cld's arguments.
 func (test projectFresh) command() []string {
-	return append([]string{"setup", "project"}, test.args...)
+	return append([]string{"setup", "config", "project"}, test.args...)
 }
 
-// report is what setup project prints: a line for each file it writes, verb before it and suffix
-// after it.
+// report is what setup config project prints: a line for each file it writes, verb before it and
+// suffix after it.
 func (test projectFresh) report(verb, suffix string) string {
 	names := []string{".claude/settings.json", ".claude/settings.local.json"}
 	if test.servers != nil {
@@ -158,7 +160,7 @@ func (test projectFresh) files(t *testing.T) (files map[string]string, status []
 	return files, status
 }
 
-// run runs setup project in a new git work tree, then again.
+// run runs setup config project in a new git work tree, then again.
 func (test projectFresh) run(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -190,7 +192,7 @@ func (test projectFresh) run(t *testing.T) {
 	test.again(t, s)
 }
 
-// again runs setup project once more, which changes no file.
+// again runs setup config project once more, which changes no file.
 func (test projectFresh) again(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
 	before := tree(t, s.Work)

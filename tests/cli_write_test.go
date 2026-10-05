@@ -57,8 +57,10 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"__complete", "join", "-s", ""}, fakeSession("x", 0), noFileReport},
 		{[]string{"help", "setup"}, "", ""},
 		{[]string{"setup", "-h", "restore"}, "", ""},
-		{[]string{"help", "setup", "project"}, "", ""},
-		{[]string{"setup", "project", "--mcp", "goland"}, "", ""},
+		{[]string{"help", "setup", "config", "project"}, "", ""},
+		{[]string{"setup", "config", "project", "--mcp", "goland"}, "", ""},
+		{[]string{"setup", "config", "user"}, "", ""},
+		{[]string{"help", "setup", "config"}, "", ""},
 		{[]string{"help", "setup", "completion"}, "", ""},
 		{[]string{"setup", "completion", "fish"}, "", ""},
 	} {

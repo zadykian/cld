@@ -136,6 +136,16 @@ is in [tmux-sessions.md](tmux-sessions.md) and [tmux-terminal.md](tmux-terminal.
 - **When claude reads its telemetry settings** (2.1.282 with GoLand 2026.2.3 and the JetBrains
   OpenTelemetry plugin 2.1.5, run). At startup only, from its environment
   ([decision 18](../decisions/0018-telemetry.md)).
+- **The user settings `setup config user` writes** (2.1.232 from npm and 2.1.289, read). Both
+  bundles' settings schemas have `model`, `effortLevel` (`low` to `xhigh`), `theme` (`dark` among
+  others), `editorMode` (`normal` or `vim`), `autoCompactEnabled` and `autoUpdatesChannel`
+  (`latest`, `stable` or `rc`). `preferredNotifChannel` takes `auto`, `iterm2`, `terminal_bell`,
+  `iterm2_with_bell`, `kitty`, `ghostty` or `notifications_disabled`. A value the schema does not
+  know for `effortLevel`, `theme`, `editorMode` or `preferredNotifChannel` reads as unset, with no
+  error ([decision 53](../decisions/0053-project-and-user-settings.md)).
+- **The name of their scope** (the same, run). The `--help` of `claude mcp add` and
+  `claude plugin install` names it `user`, beside `project` and `local`, in `--scope`
+  ([decision 53.1](../decisions/0053-project-and-user-settings.md)).
 
 ## Hooks
 

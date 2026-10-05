@@ -23,7 +23,7 @@ Available Commands:
   kill        end session NAME-SUFFIX and its tmux server
   list        list cld's sessions; on a terminal, join or kill one
   restore     bring back the sessions that ran when the machine stopped
-  setup       set up claude in a project, shell completion or restore
+  setup       set up claude's settings, shell completion or restore
   update      update cld to the latest release
   completion  print the completion script for a shell
   help        show this help, or the help of COMMAND

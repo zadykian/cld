@@ -1,6 +1,6 @@
 package project
 
-// Server is an MCP server that setup project configures.
+// Server is an MCP server that setup config project configures.
 type Server struct {
 	// Name is the server's name in .mcp.json and in the settings.
 	Name string
@@ -12,7 +12,7 @@ type Server struct {
 	all, read []string
 }
 
-// Servers are the MCP servers setup project takes, in the order it writes them. GoLand's and
+// Servers are the MCP servers setup config project takes, in the order it writes them. GoLand's and
 // Rider's, under Settings | Tools | MCP Server, go over streamable HTTP, and JetBrains Context's
 // over stdio. An IDE's port is a variable with a default, since each developer's IDE may listen
 // on another (decision 19.2).

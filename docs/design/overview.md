@@ -79,8 +79,9 @@ makes on its server, then behave as plain tmux.
   `restore.go` is `cld restore`.
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
   join's checks and kill's steps.
-- `internal/project`: `cld setup project`, a project's claude settings, `.mcp.json` and
-  `.gitignore` ([decision 19](decisions/0019-project-settings.md)).
+- `internal/project`: `cld setup config project`, a project's claude settings, `.mcp.json` and
+  `.gitignore` ([decision 19](decisions/0019-project-settings.md)), and `cld setup config user`,
+  the user's settings ([decision 53](decisions/0053-project-and-user-settings.md)).
 - `internal/configfile`: edits in place the files the `setup` commands write. A file keeps what
   cld does not change, byte for byte, so one Claude Code wrote keeps its look.
 - `internal/update`: `cld update` ([decision 21](decisions/0021-self-update.md)).
@@ -111,7 +112,8 @@ line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cl
 `cmd/cld/internal/cmdline` give each reason.
 
 - cld checks the first argument before cobra, which takes an unknown command for an argument of
-  the root and runs `cld -n x join` as `join -n x`.
+  the root and runs `cld -n x join` as `join -n x`. It checks the word after `setup` and after
+  `setup config` the same way ([decision 53.2](decisions/0053-project-and-user-settings.md)).
 - Each command reads options only up to its first argument, where pflag would read them all.
 - cobra's output goes to a buffer that cld prints, as cobra drops the error of a failed write.
 - `version` is a command, `completion` is cld's own, and completion offers no file names

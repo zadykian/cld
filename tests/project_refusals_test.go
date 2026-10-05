@@ -11,15 +11,16 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What setup project refuses: files it cannot edit or write (decision 19.6), and usage errors.
+// What setup config project refuses: files it cannot edit or write (decision 19.6), and usage
+// mistakes.
 
-// projectRefusal is a file setup project cannot edit: the file name holding content, or a
+// projectRefusal is a file setup config project cannot edit: the file name holding content, or a
 // symbolic link .claude/settings.json leading to link, and what cld says.
 type projectRefusal struct {
 	name, file, content, link, want string
 }
 
-// projectRefusals are TestSetupProjectRefuses' cases.
+// projectRefusals are TestSetupConfigProjectRefuses' cases.
 var projectRefusals = []projectRefusal{
 	{"settings not valid", ".claude/settings.json", "{", "",
 		".claude/settings.json is not valid JSON: line 1: unexpected end of JSON input"},
@@ -48,14 +49,14 @@ var projectRefusals = []projectRefusal{
 
 // cld reads every file before it writes any: one it cannot edit ends it with status 1 and
 // nothing written.
-func TestSetupProjectRefuses(t *testing.T) {
+func TestSetupConfigProjectRefuses(t *testing.T) {
 	t.Parallel()
 	for _, test := range projectRefusals {
 		t.Run(test.name, test.run)
 	}
 }
 
-// run runs setup project on the file that cld cannot edit.
+// run runs setup config project on the file that cld cannot edit.
 func (test projectRefusal) run(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -72,7 +73,7 @@ func (test projectRefusal) run(t *testing.T) {
 		}
 	}
 	before := tree(t, s.Work)
-	result := s.RunCld(nil, "setup", "project", "--mcp", "goland")
+	result := s.RunCld(nil, "setup", "config", "project", "--mcp", "goland")
 	want := "cld: " + test.want + "\n"
 	if result.Code != 1 || result.Stderr != want || result.Stdout != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, stderr %q",
@@ -86,28 +87,19 @@ func (test projectRefusal) run(t *testing.T) {
 // A write that fails ends cld, which names the files it wrote before (decision 19.6). Here
 // .gitignore is a symbolic link to a path of 4095 bytes, the most Linux takes, so the temporary
 // file beside it has a longer one.
-func TestSetupProjectCannotWrite(t *testing.T) {
+func TestSetupConfigProjectCannotWrite(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS != "linux" {
 		t.Skip("the longest path is Linux's")
 	}
 	s := sandbox.New(t)
 	gitInit(t, s)
-	length := 4095 - len("/gitignore")
-	dir := filepath.Join(s.Root, "long")
-	for len(dir) < length-202 {
-		dir += "/" + strings.Repeat("d", 200)
-	}
-	dir += "/" + strings.Repeat("d", length-len(dir)-1)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "gitignore")
+	target := longPath(t, s, "gitignore")
 	s.WriteFile(target, "")
 	if err := os.Symlink(target, filepath.Join(s.Work, ".gitignore")); err != nil {
 		t.Fatal(err)
 	}
-	result := s.RunCld(nil, "setup", "project")
+	result := s.RunCld(nil, "setup", "config", "project")
 	want := "cld: cannot write .gitignore: file name too long " +
 		"(.claude/settings.json and .claude/settings.local.json written before it)\n"
 	if result.Code != 1 || result.Stderr != want || result.Stdout != "" {
@@ -118,7 +110,7 @@ func TestSetupProjectCannotWrite(t *testing.T) {
 	checkSettings(t, target, "")
 }
 
-// projectUsage is setup project's options and the usage error cld gives for them.
+// projectUsage is setup config project's options and the usage error cld gives for them.
 type projectUsage struct {
 	args []string
 	want string
@@ -130,7 +122,7 @@ const (
 	permissionsUsage = ": read-only, cld or none (see cld help)\n"
 )
 
-// projectUsages are TestSetupProjectRejectsArguments' cases.
+// projectUsages are TestSetupConfigProjectRejectsArguments' cases.
 var projectUsages = []projectUsage{
 	{[]string{"--mcp", "idea"}, "cld: invalid MCP server 'idea' for --mcp" + mcpUsage},
 	{[]string{"--mcp", "GoLand"}, "cld: invalid MCP server 'GoLand' for --mcp" + mcpUsage},
@@ -153,21 +145,21 @@ var projectUsages = []projectUsage{
 		"cld: invalid MCP server 'idea' for --mcp" + mcpUsage},
 	{[]string{"--permissions"}, "cld: option '--permissions' needs a value (see cld help)\n"},
 	{[]string{"--permissions", "cld", "none"},
-		"cld: setup project: unexpected argument 'none' (see cld help)\n"},
-	{[]string{"x"}, "cld: setup project: unexpected argument 'x' (see cld help)\n"},
+		"cld: setup config project: unexpected argument 'none' (see cld help)\n"},
+	{[]string{"x"}, "cld: setup config project: unexpected argument 'x' (see cld help)\n"},
 	{[]string{"--mcp", "goland", "rider"},
-		"cld: setup project: unexpected argument 'rider' (see cld help)\n"},
+		"cld: setup config project: unexpected argument 'rider' (see cld help)\n"},
 	{[]string{"x", "--mcp", "goland"},
-		"cld: setup project: unexpected argument 'x' (see cld help)\n"},
-	{[]string{"--"}, "cld: setup project: unexpected argument '--' (see cld help)\n"},
-	{[]string{"--bogus"}, "cld: setup project: unexpected argument '--bogus' (see cld help)\n"},
-	{[]string{"-n", "x"}, "cld: setup project: unexpected argument '-n' (see cld help)\n"},
+		"cld: setup config project: unexpected argument 'x' (see cld help)\n"},
+	{[]string{"--"}, "cld: setup config project: unexpected argument '--' (see cld help)\n"},
+	{[]string{"--bogus"}, "cld: setup config project: unexpected argument '--bogus' (see cld help)\n"},
+	{[]string{"-n", "x"}, "cld: setup config project: unexpected argument '-n' (see cld help)\n"},
 }
 
-// setup project's mistakes are usage errors, read left to right as other commands' are. A server
-// --mcp does not take comes first, the empty one included, then a set --permissions does not
+// setup config project's mistakes are usage errors, read left to right as other commands' are. A
+// server --mcp does not take comes first, the empty one included, then a set --permissions does not
 // take, an argument, or an option cld does not know. Nothing is written.
-func TestSetupProjectRejectsArguments(t *testing.T) {
+func TestSetupConfigProjectRejectsArguments(t *testing.T) {
 	t.Parallel()
 	for _, test := range projectUsages {
 		t.Run(strings.Join(test.command(), " "), test.run)
@@ -176,10 +168,10 @@ func TestSetupProjectRejectsArguments(t *testing.T) {
 
 // command is cld's arguments.
 func (test projectUsage) command() []string {
-	return append([]string{"setup", "project"}, test.args...)
+	return append([]string{"setup", "config", "project"}, test.args...)
 }
 
-// run runs setup project with the options, in an empty work directory.
+// run runs setup config project with the options, in an empty work directory.
 func (test projectUsage) run(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

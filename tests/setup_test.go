@@ -12,7 +12,7 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What the tests of the setup commands share: the settings setup project writes, and setup
+// What the tests of the setup commands share: the settings setup config project writes, and setup
 // completion's scripts and lines.
 
 // readOnlyAllow is permissions.allow with --permissions read-only, the default, before the
@@ -114,8 +114,8 @@ func denied(t *testing.T, set string) []string {
 	return deny
 }
 
-// projectSettings is the .claude/settings.json setup project writes where there is none, with
-// --permissions set and the MCP servers named, in cld's order. That is repoSettings, with the
+// projectSettings is the .claude/settings.json setup config project writes where there is none,
+// with --permissions set and the MCP servers named, in cld's order. That is repoSettings, with the
 // set's and the servers' permissions in place of cld's and goland's, and none where they are empty.
 func projectSettings(t *testing.T, set string, servers ...string) string {
 	t.Helper()

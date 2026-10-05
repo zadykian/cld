@@ -13,7 +13,8 @@ yet, troubleshooting and upgrading. How cld works, and why, is in [design.md](de
 - [Resuming a conversation](guide/resuming.md): the record, names, copies, agent view's moves
 - [After a reboot](guide/after-a-reboot.md): `cld restore` and `cld setup restore`
 - [claude's options and worktrees](guide/claude-options.md): the words after `--`, and `-w`
-- [Project settings](guide/project-settings.md): permission sets, the IDE's port, existing files
+- [claude's settings](guide/project-settings.md): a project's permission sets and IDE port, and
+  your own settings
 - [Shell completion](guide/shell-completion.md): what TAB offers, and each shell's caveats
 - [cld and Claude Code's background sessions](guide/background-sessions.md): the two compared
 - [Troubleshooting](guide/troubleshooting.md): cld's refusals and errors, and a slow cld

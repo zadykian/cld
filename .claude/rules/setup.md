@@ -17,16 +17,22 @@ the decision that gives its reasons. CLAUDE.md says where they may run.
 
 - Every `setup` command writes through `internal/configfile`: it edits a file in place, and removes
   nothing (decisions [19](../../docs/design/decisions/0019-project-settings.md),
-  [22](../../docs/design/decisions/0022-setting-completion-up.md) and
-  [48](../../docs/design/decisions/0048-restore-after-reboot.md)).
-- `setup project` never replaces a value the settings have, but replaces whole a server's entry in
-  `.mcp.json` that differs ([decision 19](../../docs/design/decisions/0019-project-settings.md)).
-- `setup project` only creates `.claude/settings.local.json`, and the settings it writes hold
-  nothing of one person's, such as `theme`
+  [22](../../docs/design/decisions/0022-setting-completion-up.md),
+  [48](../../docs/design/decisions/0048-restore-after-reboot.md) and
+  [53](../../docs/design/decisions/0053-project-and-user-settings.md)).
+- `setup config project` never replaces a value the settings have, but replaces whole a server's
+  entry in `.mcp.json` that differs
+  ([decision 19](../../docs/design/decisions/0019-project-settings.md)).
+- `setup config project` only creates `.claude/settings.local.json`, and the settings it writes
+  hold nothing of one person's, such as `theme`
   ([decision 28](../../docs/design/decisions/0028-shared-project-settings.md)).
-- `setup project`'s `.gitignore` lines keep in git what a project shares in `.claude`. In a git work
-  tree it checks that git ignores none of those files
+- `setup config project`'s `.gitignore` lines keep in git what a project shares in `.claude`. In a
+  git work tree it checks that git ignores none of those files
   ([decision 28](../../docs/design/decisions/0028-shared-project-settings.md)).
+- `setup config user` writes only what claude's user settings lack, a permission set whole, and
+  leaves `env` alone ([decision 53](../../docs/design/decisions/0053-project-and-user-settings.md)).
+- `setup config user` takes only the channels claude knows for `--notifications`, and sets none
+  without it ([decision 53.4](../../docs/design/decisions/0053-project-and-user-settings.md)).
 - `setup completion` writes byte for byte what `cld completion SHELL` prints, where the shell reads
   it, and reads both files before it writes either
   ([decision 22](../../docs/design/decisions/0022-setting-completion-up.md)).

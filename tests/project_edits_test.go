@@ -10,18 +10,18 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// setup project on files that exist, which it edits in place (decisions 19.4 and 28.3).
+// setup config project on files that exist, which it edits in place (decisions 19.4 and 28.3).
 
 // Files that exist: cld adds what each lacks after what it has, and replaces rider's entry, which
 // differs, whole. It keeps the order, indentation and mode, the values it leaves, theme's and those
 // with <, > and &, and jbcontext's entry, written otherwise but the same. settings.local.json, a
 // symbolic link to no file, stays unchanged.
-func TestSetupProjectEditsFiles(t *testing.T) {
+func TestSetupConfigProjectEditsFiles(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	gitInit(t, s)
 	settings := writeFilesToEdit(t, s)
-	result := s.RunCld(nil, "setup", "project", "--mcp", "rider,jbcontext")
+	result := s.RunCld(nil, "setup", "config", "project", "--mcp", "rider,jbcontext")
 	want := "Updated .claude/settings.json: " +
 		"$schema, permissions.allow, plansDirectory, enabledMcpjsonServers\n" +
 		"Left .claude/settings.local.json as it was\n" +
@@ -39,7 +39,7 @@ func TestSetupProjectEditsFiles(t *testing.T) {
 	t.Run("no permissions", editsNoPermissions)
 }
 
-// writeFilesToEdit writes TestSetupProjectEditsFiles' files, and returns the settings' path.
+// writeFilesToEdit writes TestSetupConfigProjectEditsFiles' files, and returns the settings' path.
 func writeFilesToEdit(t *testing.T, s *sandbox.Sandbox) string {
 	t.Helper()
 	settings := projectWrite(t, s, ".claude/settings.json", `{
@@ -76,8 +76,8 @@ func writeFilesToEdit(t *testing.T, s *sandbox.Sandbox) string {
 	return settings
 }
 
-// checkEditedSettings reports TestSetupProjectEditsFiles' settings at path, unless they hold the
-// entries and keys cld adds after those the file has.
+// checkEditedSettings reports TestSetupConfigProjectEditsFiles' settings at path, unless they hold
+// the entries and keys cld adds after those the file has.
 func checkEditedSettings(t *testing.T, path string) {
 	t.Helper()
 	allow := []string{"Bash(make test)", "Read", "mcp__rider", "Read(<&>)"}
@@ -110,7 +110,7 @@ func checkEditedSettings(t *testing.T, path string) {
 	checkMode(t, path, 0o666)
 }
 
-// checkEditedFiles reports TestSetupProjectEditsFiles' other files, unless they hold what cld
+// checkEditedFiles reports TestSetupConfigProjectEditsFiles' other files, unless they hold what cld
 // adds, and a temporary file cld leaves.
 func checkEditedFiles(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
@@ -148,7 +148,7 @@ func editsKeyGivenTwice(t *testing.T) {
 			`"enabledMcpjsonServers": []}`)
 	projectWrite(t, s, ".mcp.json", `{"mcpServers": {"goland": {}}, `+
 		`"mcpServers": {"goland": {}, "goland": {"type": "sse"}}}`)
-	result := s.RunCld(nil, "setup", "project", "--mcp", "goland", "--permissions", "cld")
+	result := s.RunCld(nil, "setup", "config", "project", "--mcp", "goland", "--permissions", "cld")
 	want := "Updated .claude/settings.json: permissions.allow, permissions.deny, " +
 		"enabledMcpjsonServers\n" +
 		"Created .claude/settings.local.json\n" +
@@ -192,7 +192,7 @@ func editsNoServers(t *testing.T) {
 	s := sandbox.New(t)
 	gitInit(t, s)
 	projectWrite(t, s, ".mcp.json", "{")
-	result := s.RunCld(nil, "setup", "project")
+	result := s.RunCld(nil, "setup", "config", "project")
 	if result.Code != 0 || strings.Contains(result.Stdout, ".mcp.json") || result.Stderr != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, nothing of .mcp.json",
 			result.Code, result.Stdout, result.Stderr)
@@ -206,7 +206,7 @@ func editsNoPermissions(t *testing.T) {
 	s := sandbox.New(t)
 	gitInit(t, s)
 	settings := projectWrite(t, s, ".claude/settings.json", `{"permissions": "ask"}`)
-	result := s.RunCld(nil, "setup", "project", "--permissions", "none")
+	result := s.RunCld(nil, "setup", "config", "project", "--permissions", "none")
 	want := "Updated .claude/settings.json: $schema, plansDirectory\n"
 	if result.Code != 0 || !strings.HasPrefix(result.Stdout, want) || result.Stderr != "" {
 		t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, stdout starting with %q",

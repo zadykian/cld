@@ -126,8 +126,9 @@ The tests' own comments give each case's reasons; these shape the harness as a w
   `kill-server` on each server, which runs no `pane-died` hook.
 - `install.sh` and `cld update` run against releases that an HTTP server of the test's serves
   (`CLD_RELEASES_URL`), `install.sh` under a fake `uname`.
-- `setup project`'s tests run the real git. A failed write comes from a path of 4095 bytes, the
-  most Linux takes.
+- `setup config project`'s tests run the real git. `setup config user`'s write the sandbox's
+  `HOME`, or a `CLAUDE_CONFIG_DIR` in it. A failed write, for either, comes from a path of 4095
+  bytes, the most Linux takes.
 
 The session list's timing tests ([decision 15](decisions/0015-killing-from-the-list.md)) never
 rely on the time between keys that separate tmux clients type. Under load such keys came over two
@@ -204,7 +205,7 @@ Checked with the probe or by hand, with what is left:
 - `setup completion` ([22](decisions/0022-setting-completion-up.md)): bash 5.2.37 with
   bash-completion 2.16, zsh 5.9 and fish 4.0.2 in the image, and zsh on macOS. Not Homebrew's
   `bash-completion@2`, nor `compinit -i` under group-writable directories.
-- `setup project` ([19](decisions/0019-project-settings.md),
+- `setup config project` ([19](decisions/0019-project-settings.md),
   [28](decisions/0028-shared-project-settings.md)): checked with git 2.53.0 and
   `claude mcp list` 2.1.283, not in a claude session.
 - Names and homes ([24](decisions/0024-names-from-the-repository.md),
@@ -249,6 +250,8 @@ the maintainer's to run or allow.
   `/resume`, `/rename` or background conversations keeping the ID, nor macOS's file system.
 - Words after `--` ([41](decisions/0041-claude-options.md)): `--help` 2.1.284 was run, the rest
   read.
+- User settings ([53](decisions/0053-project-and-user-settings.md)): the keys and values
+  `setup config user` writes, read in 2.1.232 and 2.1.289. No claude ran on the file it writes.
 - Agent view ([47](decisions/0047-agent-view-off.md)): the maintainer saw 2.1.285's
   `claude agents --json` refused under the key. Not `/bg`, `←`, `/exit`'s dialog or `/fork` in a
   session, `ListAgents` and `SendMessage` between cld's sessions, and whatever else of claude needs

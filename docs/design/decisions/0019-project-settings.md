@@ -1,7 +1,8 @@
 # 19. Project settings
 
 Status: Accepted. Amended by [28](0028-shared-project-settings.md), which writes only what a project
-shares, and [52](0052-telemetry-outside-cld.md).
+shares, [52](0052-telemetry-outside-cld.md) and [53](0053-project-and-user-settings.md), which moves
+the command to `setup config project`.
 
 ## Context
 

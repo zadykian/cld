@@ -49,7 +49,7 @@ index, for a new session. In a repository `api`, `cld join` twice makes the sess
 | `cld kill` | end a session, its claude and its tmux server |
 | `cld list` | list the sessions and claude's status in each; on a terminal, join or kill one |
 | `cld restore` | bring back the sessions that ran when the machine stopped |
-| `cld setup` | set claude up in a project, shell completion, or a restore at login |
+| `cld setup` | set up claude's settings, shell completion, or a restore at login |
 | `cld update` | update cld to the latest release |
 
 `cld help COMMAND` gives each command's options. In a session, `C-q d` detaches, and `C-q s` shows
@@ -71,7 +71,8 @@ detaches it (see [terminals that keep C-q](docs/guide/terminal.md#terminals-that
   claude's classic renderer, tmux keeps the last 50000 lines, which the wheel or `C-q [` opens in
   copy mode. See [scrollback and screen readers](docs/guide/terminal.md#scrollback).
 - **Notifications** reach every terminal on the session, once claude's setting
-  `preferredNotifChannel` names your terminal's channel: its default sends none under tmux. See
+  `preferredNotifChannel` names your terminal's channel: its default sends none under tmux.
+  `cld setup config user --notifications CHANNEL` sets it. See
   [notifications](docs/guide/terminal.md#notifications).
 - **Inside your own tmux**, claude gets only what that tmux lets through, and the session's last
   line names the keys it keeps. See [inside your own tmux](docs/guide/inside-your-own-tmux.md).
@@ -90,8 +91,9 @@ detaches it (see [terminals that keep C-q](docs/guide/terminal.md#terminals-that
 - **claude's options.** The words after `--` go to claude, as in
   `cld join -- --model opus "review the diff"`. `cld join -w` has claude work in a git worktree
   named after the session. See [claude's options and worktrees](docs/guide/claude-options.md).
-- **Project settings.** `cld setup project` shares through git what claude may do without asking,
-  and adds the IDE's MCP server. See [project settings](docs/guide/project-settings.md).
+- **claude's settings.** `cld setup config project` shares through git what claude may do without
+  asking, and adds the IDE's MCP server. `cld setup config user` sets up your own settings for
+  every project. See [claude's settings](docs/guide/project-settings.md).
 - **Shell completion.** `cld setup completion SHELL` has bash, zsh or fish complete the commands,
   their options and the sessions' names. See [shell completion](docs/guide/shell-completion.md).
 - **Remote Control** is claude's own setting, as without cld. While connected, the session's
