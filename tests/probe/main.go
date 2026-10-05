@@ -1,6 +1,6 @@
-// Command probe stands in for claude in cld's tests, and for tmux, docker, systemctl and
-// loginctl where a test checks cld's calls. The name it runs under picks which. The reasons
-// behind the fakes are in docs/design/testing.md.
+// Command probe stands in for claude in cld's tests, and for tmux, systemctl and loginctl where a
+// test checks cld's calls. The name it runs under picks which. The reasons behind the fakes are in
+// docs/design/testing.md.
 //
 // As claude it enters the terminal modes claude enters, and records what cld and the terminal
 // hand it in $CLD_PROBE_DIR, in files named after its PID:
@@ -26,12 +26,8 @@ func main() {
 	switch filepath.Base(os.Args[0]) {
 	case "tmux":
 		err = fakeTmux()
-	case "docker":
-		err = fakeDocker()
 	case "systemctl", "loginctl":
 		err = fakeSystemd()
-	case "receiver":
-		err = receiver()
 	default:
 		err = claude()
 	}

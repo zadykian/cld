@@ -56,8 +56,7 @@ func TestFailedWriteEndsCld(t *testing.T) {
 		{[]string{"completion"}, "", ""},
 		{[]string{"__complete", "join", "-s", ""}, fakeSession("x", 0), noFileReport},
 		{[]string{"help", "setup"}, "", ""},
-		{[]string{"setup", "-h", "telemetry"}, "", ""},
-		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "", ""},
+		{[]string{"setup", "-h", "restore"}, "", ""},
 		{[]string{"help", "setup", "project"}, "", ""},
 		{[]string{"setup", "project", "--mcp", "goland"}, "", ""},
 		{[]string{"help", "setup", "completion"}, "", ""},
@@ -65,9 +64,6 @@ func TestFailedWriteEndsCld(t *testing.T) {
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()
-			if test.args[0] == "setup" && test.args[1] == "telemetry" {
-				linuxOnly(t)
-			}
 			s := sandbox.New(t)
 			socket(t, s, "cld-x")
 			code, stderr := runFailingWrite(t, s, test.sessions, test.args)

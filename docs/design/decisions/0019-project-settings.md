@@ -1,7 +1,7 @@
 # 19. Project settings
 
 Status: Accepted. Amended by [28](0028-shared-project-settings.md), which writes only what a project
-shares.
+shares, and [52](0052-telemetry-outside-cld.md).
 
 ## Context
 

@@ -10,31 +10,31 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// newSetup is cld setup, whose commands are setup project, telemetry, completion and restore. It
-// runs nothing itself, so cobra's help shows no usage line of its own: run has made sure that one
-// of its commands, or -h or --help, follows it.
+// newSetup is cld setup, whose commands are setup project, completion and restore. It runs nothing
+// itself, so cobra's help shows no usage line of its own: run has made sure that one of its
+// commands, or -h or --help, follows it.
 func newSetup(typed string) *cobra.Command {
 	setup := &cobra.Command{
 		Use:   "setup",
-		Short: "set up claude in a project, telemetry, shell completion or restore",
+		Short: "set up claude in a project, shell completion or restore",
 	}
-	setup.AddCommand(setupProject(typed+" project"), setupTelemetry(typed+" telemetry"),
-		setupCompletion(typed+" completion"), setupRestore(typed+" restore"))
+	setup.AddCommand(setupProject(typed+" project"), setupCompletion(typed+" completion"),
+		setupRestore(typed+" restore"))
 	return setup
 }
 
 // setupCommand checks the argument after setup before cobra sees it, as run checks the first
-// (decision 18.8): one of setup's commands, or -h or --help. After setup completion, it checks
+// (decision 52.3): one of setup's commands, or -h or --help. After setup completion, it checks
 // the shell, as cobra would run zsh's for setup completion --help=false zsh.
 func setupCommand(args []string) error {
-	const hint = "cld setup project, cld setup telemetry, cld setup completion SHELL or " +
-		"cld setup restore (see cld help)"
+	const hint = "cld setup project, cld setup completion SHELL or cld setup restore " +
+		"(see cld help)"
 	switch {
 	case len(args) == 0 || args[0] == "":
 		return fail.Usage("setup: missing command: " + hint)
 	case args[0] == "completion":
 		return shellArgument(args[1:])
-	case slices.Contains([]string{"project", "telemetry", "restore", "-h", "--help"}, args[0]):
+	case slices.Contains([]string{"project", "restore", "-h", "--help"}, args[0]):
 		return nil
 	}
 	return fail.Usage(fmt.Sprintf("setup: unknown command '%s': %s", args[0], hint))

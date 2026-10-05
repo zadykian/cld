@@ -18,6 +18,18 @@ By hand, download your system's binary and `cld.sha256` from a
 
 [Upgrading](../guide.md) says how to upgrade; here is what changed, newest first.
 
+### From cld 0.11.0 and earlier
+
+- **`cld setup telemetry`** is gone
+  ([decision 52](../design/decisions/0052-telemetry-outside-cld.md)). What it set up stays and
+  keeps working: Docker starts the collector after a reboot, and claude sends to it. To send
+  claude's telemetry elsewhere, edit the keys in claude's settings, as
+  [Claude Code's docs](https://code.claude.com/docs/en/monitoring-usage) say.
+- To remove the collector, run `docker rm -f cld-telemetry`. Then remove the keys cld set from the
+  `env` of claude's settings: `CLAUDE_CODE_ENABLE_TELEMETRY`, `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`,
+  `OTEL_LOG_TOOL_DETAILS`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
+  `OTEL_METRICS_EXPORTER`, `OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER`.
+
 ### From cld 0.10.0 and earlier
 
 - **`cld new` and `cld resume`** are gone: `cld join` does all three, by the session's state

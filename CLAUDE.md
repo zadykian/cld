@@ -14,7 +14,6 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
 - `internal/picker`: the interactive `cld list` on a terminal.
 - `internal/project`: `cld setup project`, a project's `.claude` settings, `.mcp.json` and
   `.gitignore`.
-- `internal/telemetry`: `cld setup telemetry`, a local OpenTelemetry Collector in Docker.
 - `internal/completion`: `cld setup completion`, the script where bash, zsh or fish reads it.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`.
 - `internal/update`: `cld update`, which replaces cld with the latest release.
@@ -95,9 +94,8 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   Change them with `internal/project` (decisions
   [19](docs/design/decisions/0019-project-settings.md) and
   [28](docs/design/decisions/0028-shared-project-settings.md)).
-- Run `setup telemetry`, `setup completion` and `setup restore` only with `HOME` and the variables
-  they follow pointing at a scratch directory, and `setup restore` never against the user's own
-  systemd (decisions [18](docs/design/decisions/0018-telemetry.md),
+- Run `setup completion` and `setup restore` only with `HOME` and the variables they follow pointing
+  at a scratch directory, and `setup restore` never against the user's own systemd (decisions
   [22](docs/design/decisions/0022-setting-completion-up.md) and
   [48](docs/design/decisions/0048-restore-after-reboot.md)).
 - `make lint` fails on any finding, warnings included, in any line of any file

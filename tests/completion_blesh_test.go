@@ -44,7 +44,7 @@ var bleshLines = []struct{ typed, want string }{
 	{"cld detach -n al", "cld detach -n alpha "},
 	{"cld join f", "cld join f"},
 	{"cld kill -s f", "cld kill -s f"},
-	{"cld setup telemetry --collector-config f", "cld setup telemetry --collector-config f"},
+	{"cld setup project --mcp f", "cld setup project --mcp f"},
 	{"cld joni f", "cld joni f"},
 }
 

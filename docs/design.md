@@ -49,7 +49,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [11. Go and cobra](design/decisions/0011-go-and-cobra.md): Accepted (#20). Amended by 12, 13 and
   33.
 - [12. Help from cobra](design/decisions/0012-help-from-cobra.md): Accepted (#28). Amended by 17,
-  18, 22, 24, 42 and 50.
+  18, 22, 24, 42, 50 and 52.
 - [13. A server per session](design/decisions/0013-a-server-per-session.md): Accepted (#22).
   Replaces 9. Amended by #69, 15, 24, 34, 38, 40 and 51.
 - [14. The session list](design/decisions/0014-the-session-list.md): Accepted (#23). Amended by 15,
@@ -59,13 +59,14 @@ The `adr` skill in `.claude/skills` adds a record.
 - [16. Resume](design/decisions/0016-resume.md): Accepted (#26). Amended by 24, 40, 41, 45 and 47.
   Superseded by 50.
 - [17. Shell completion](design/decisions/0017-shell-completion.md): Accepted (#25). Amended by 18,
-  19, 22, 24, 27, 28, 37, 40, 44, 49 and 50.
+  19, 22, 24, 27, 28, 37, 40, 44, 49, 50 and 52.
 - [18. Telemetry](design/decisions/0018-telemetry.md): Accepted (#30). Amended by 19, 22 and 48.
-- [19. Project settings](design/decisions/0019-project-settings.md): Accepted. Amended by 28.
+  Superseded by 52.
+- [19. Project settings](design/decisions/0019-project-settings.md): Accepted. Amended by 28 and 52.
 - [20. An install script](design/decisions/0020-install-script.md): Accepted.
 - [21. Self-update](design/decisions/0021-self-update.md): Accepted. Amended by 22.
 - [22. Setting completion up](design/decisions/0022-setting-completion-up.md): Accepted. Amended by
-  27.
+  27 and 52.
 - [23. Joining beside other terminals](design/decisions/0023-joining-beside-other-terminals.md):
   Accepted. Amended by 50.
 - [24. Names from the repository](design/decisions/0024-names-from-the-repository.md): Accepted.
@@ -108,9 +109,11 @@ The `adr` skill in `.claude/skills` adds a record.
 - [47. Agent view is off in cld's sessions](design/decisions/0047-agent-view-off.md): Accepted
   (#111). Amended by 50.
 - [48. Sessions come back after a reboot](design/decisions/0048-restore-after-reboot.md): Accepted
-  (#115). Amended by 50.
+  (#115). Amended by 50 and 52.
 - [49. claude's status in the list](design/decisions/0049-status-in-the-list.md): Accepted (#113).
   Amended by 50.
 - [50. One command for a session](design/decisions/0050-one-command-join.md): Accepted (#114).
   Replaces `new` and `join` of 3 and `resume` of 16. Amended by 51.
 - [51. Moving between sessions](design/decisions/0051-moving-between-sessions.md): Accepted (#112).
+- [52. Telemetry outside cld](design/decisions/0052-telemetry-outside-cld.md): Accepted (#158).
+  Replaces 18.

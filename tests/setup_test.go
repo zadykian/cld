@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,8 +12,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What the tests of the setup commands share: the settings setup project writes, setup
-// completion's scripts and lines, and claude's user settings, which setup telemetry edits.
+// What the tests of the setup commands share: the settings setup project writes, and setup
+// completion's scripts and lines.
 
 // readOnlyAllow is permissions.allow with --permissions read-only, the default, before the
 // servers' entries; serverAllow are the entries each MCP server adds with read-only and with cld.
@@ -188,28 +187,4 @@ var scripts = map[string]string{
 	"bash": ".local/share/bash-completion/completions/cld",
 	"zsh":  ".local/share/cld/zsh/_cld",
 	"fish": ".config/fish/completions/cld.fish",
-}
-
-// linuxOnly skips a test of what setup telemetry does on a system where it does not run.
-func linuxOnly(t *testing.T) {
-	t.Helper()
-	if runtime.GOOS != "linux" {
-		t.Skip("setup telemetry works on Linux only; TestSetupTelemetryLinuxOnly checks the refusal")
-	}
-}
-
-// settingsPath is claude's settings file in the sandbox's HOME.
-func settingsPath(s *sandbox.Sandbox) string {
-	return filepath.Join(s.Home, ".claude", "settings.json")
-}
-
-// writeSettings writes claude's settings file in the sandbox's HOME and returns its path.
-func writeSettings(t *testing.T, s *sandbox.Sandbox, content string) string {
-	t.Helper()
-	path := settingsPath(s)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	s.WriteFile(path, content)
-	return path
 }

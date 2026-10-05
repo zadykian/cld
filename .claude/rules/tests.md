@@ -11,9 +11,9 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 ## What runs
 
 - Tests build cld and run it against real tmux. The probe, `tests/probe`, stands in for claude,
-  and for docker, systemctl and loginctl.
-- No test reaches the real Docker, the user's systemd or the user's own cld sessions: each runs
-  in a sandbox of its own (`internal/sandbox`), in parallel.
+  and for systemctl and loginctl.
+- No test reaches the user's systemd or the user's own cld sessions: each runs in a sandbox of its
+  own (`internal/sandbox`), in parallel.
 - The sandbox's `TMUX_TMPDIR` stays short, as socket paths hit the `sun_path` limit of about 108
   bytes ([decision 13](../../docs/design/decisions/0013-a-server-per-session.md)).
 - The sandbox's work directory is `_`, of which nothing is left in a name: there `-s x` names the
@@ -66,10 +66,6 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 - `project_gitignore_test.go`: the lines `setup project` adds to `.gitignore`;
   `project_ignored_test.go`: the shared files git ignores all the same; `project_settings_test.go`:
   the permission rules it writes, read from the repository's own `.claude/settings.json`.
-- `telemetry_test.go`: `setup telemetry` against the fake docker, and its refusal off Linux;
-  `telemetry_TOPIC_test.go`: the rest by topic, such as `telemetry_port_test.go` for the
-  collector's port. `telemetry_expect_test.go` holds what a setup does, and
-  `telemetry_listen_test.go` the ports the tests take.
 - `install_test.go` and `update_test.go`: `install.sh` and `cld update`, against releases that an
   HTTP server of the test's serves; `install_release_test.go`: the release and binary `install.sh`
   picks; `install_refusals_test.go`: what it refuses.

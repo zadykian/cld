@@ -4,7 +4,6 @@ paths:
   - "internal/configfile/**"
   - "internal/project/**"
   - "internal/restore/**"
-  - "internal/telemetry/**"
   - "internal/update/**"
   - "install.sh"
 ---
@@ -28,8 +27,6 @@ the decision that gives its reasons. CLAUDE.md says where they may run.
 - `setup project`'s `.gitignore` lines keep in git what a project shares in `.claude`. In a git work
   tree it checks that git ignores none of those files
   ([decision 28](../../docs/design/decisions/0028-shared-project-settings.md)).
-- `setup telemetry` rewrites only `env` in claude's user settings, keeping every other key
-  ([decision 18](../../docs/design/decisions/0018-telemetry.md)).
 - `setup completion` writes byte for byte what `cld completion SHELL` prints, where the shell reads
   it, and reads both files before it writes either
   ([decision 22](../../docs/design/decisions/0022-setting-completion-up.md)).
@@ -38,10 +35,6 @@ the decision that gives its reasons. CLAUDE.md says where they may run.
 
 ## Their checks
 
-- `setup telemetry` needs Docker and Linux, for `--network host`; it replaces the one container
-  `cld-telemetry` of a Docker daemon ([decision 18](../../docs/design/decisions/0018-telemetry.md)).
-- The collector image is pinned, `otel/opentelemetry-collector:0.161.0`, and bumped deliberately
-  ([decision 18](../../docs/design/decisions/0018-telemetry.md)).
 - `setup restore` runs on Linux with systemd alone, where `systemctl --user show-environment`
   answers ([decision 48](../../docs/design/decisions/0048-restore-after-reboot.md)).
 - `setup restore` refuses a `CLD_IDLE_DAYS` that `restore` would refuse, and runs `daemon-reload`

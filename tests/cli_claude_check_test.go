@@ -20,12 +20,12 @@ const (
 	tmuxTooOld   = "cld: tmux 3.5a or newer is required, found 'tmux 3.4'\n"
 )
 
-// noDocker is setup telemetry's message without docker, or its refusal elsewhere than Linux.
-var noDocker = func() string {
+// noSystemctl is setup restore's message without systemctl, or its refusal elsewhere than Linux.
+var noSystemctl = func() string {
 	if runtime.GOOS != "linux" {
-		return "cld: setup telemetry works on Linux only\n"
+		return "cld: setup restore works on Linux only\n"
 	}
-	return "cld: docker is not installed\n"
+	return "cld: setup restore needs systemd, and systemctl is not installed\n"
 }()
 
 // onlyJoinCase is a command line run with a claude too old for join, and how it ends.
@@ -67,10 +67,7 @@ func onlyJoinCases() []onlyJoinCase {
 			noFileReport, false},
 		{[]string{"__completeNoDesc", "join", "-s", ""}, "tmux 3.4", fakeSession("main", 0), 0,
 			"main\n:4\n", noFileReport, false},
-		{[]string{"setup", "telemetry", "--remote", "https://otel.example.com:4317"}, "tmux 3.4", "",
-			1, "", noDocker, false},
-		{[]string{"__complete", "setup", "telemetry", "--local", ""}, "tmux 3.4", "", 0, ":4\n",
-			noFileReport, false},
+		{[]string{"setup", "restore"}, "tmux 3.4", "", 1, "", noSystemctl, false},
 		{[]string{"setup", "project"}, "tmux 3.4", "", 0,
 			"Created .claude/settings.json\nCreated .claude/settings.local.json\nCreated .gitignore\n",
 			"", false},

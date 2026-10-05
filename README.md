@@ -33,7 +33,7 @@ cld needs:
   less. cld 0.3.0 still runs on tmux 3.3 and 3.4 (see [upgrading](docs/guide.md#upgrading)).
 - Claude Code 2.1.232 or newer, as `claude` on the `PATH`.
 - git, for `cld join -w` and to name sessions after their repository.
-- On Linux, Docker for `cld setup telemetry`, and systemd for `cld setup restore`.
+- On Linux, systemd for `cld setup restore`.
 
 ## Usage
 
@@ -49,7 +49,7 @@ index, for a new session. In a repository `api`, `cld join` twice makes the sess
 | `cld kill` | end a session, its claude and its tmux server |
 | `cld list` | list the sessions and claude's status in each; on a terminal, join or kill one |
 | `cld restore` | bring back the sessions that ran when the machine stopped |
-| `cld setup` | set claude up in a project, telemetry, shell completion, or a restore at login |
+| `cld setup` | set claude up in a project, shell completion, or a restore at login |
 | `cld update` | update cld to the latest release |
 
 `cld help COMMAND` gives each command's options. In a session, `C-q d` detaches, and `C-q s` shows
@@ -92,9 +92,6 @@ detaches it (see [terminals that keep C-q](docs/guide/terminal.md#terminals-that
   named after the session. See [claude's options and worktrees](docs/guide/claude-options.md).
 - **Project settings.** `cld setup project` shares through git what claude may do without asking,
   and adds the IDE's MCP server. See [project settings](docs/guide/project-settings.md).
-- **Telemetry.** `cld setup telemetry` sends claude's
-  [telemetry](https://code.claude.com/docs/en/monitoring-usage) through an OpenTelemetry Collector
-  in Docker. See [telemetry](docs/guide/telemetry.md).
 - **Shell completion.** `cld setup completion SHELL` has bash, zsh or fish complete the commands,
   their options and the sessions' names. See [shell completion](docs/guide/shell-completion.md).
 - **Remote Control** is claude's own setting, as without cld. While connected, the session's

@@ -1,6 +1,7 @@
 # 48. Sessions come back after a reboot
 
-Status: Accepted (#115). Amended by [50](0050-one-command-join.md).
+Status: Accepted (#115). Amended by [50](0050-one-command-join.md) and
+[52](0052-telemetry-outside-cld.md).
 
 ## Context
 

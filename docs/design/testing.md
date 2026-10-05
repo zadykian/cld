@@ -10,10 +10,10 @@ probe stands in for claude, and for the programs that would reach outside the sa
    adds golangci-lint, the size caps, Vale, govulncheck, the workflow linters and lychee. Each
    checks every file, and any finding fails it, warnings included.
 2. **Behaviour against real tmux.** The probe replaces claude, `tmux -V` for the version check,
-   docker for `setup telemetry` ([decision 18](decisions/0018-telemetry.md)), and `systemctl`
-   and `loginctl` for `setup restore` ([decision 48](decisions/0048-restore-after-reboot.md)).
-   As claude it sets the terminal modes claude sets, logs its arguments, directory, environment
-   and raw input, and writes what claude writes on command.
+   and `systemctl` and `loginctl` for `setup restore`
+   ([decision 48](decisions/0048-restore-after-reboot.md)). As claude it sets the terminal modes
+   claude sets, logs its arguments, directory, environment and raw input, and writes what claude
+   writes on command.
 3. **Terminal contract.** The same checks run against several outer terminals, through drivers.
 
 Isolation needs no seams in cld. `TMUX_TMPDIR` moves the sockets into a sandbox, `HOME` is a
@@ -127,14 +127,7 @@ The tests' own comments give each case's reasons; these shape the harness as a w
 - `install.sh` and `cld update` run against releases that an HTTP server of the test's serves
   (`CLD_RELEASES_URL`), `install.sh` under a fake `uname`.
 - `setup project`'s tests run the real git. A failed write comes from a path of 4095 bytes, the
-  most Linux takes, as in the telemetry tests.
-- The telemetry tests take ports outside the kernel's ephemeral range. The kernel hands a port that
-  a listener on port 0 let go to the next such listener, now and then another test's.
-- The fake docker's collector holds its port until `rm -f`. One that takes no connections binds the
-  port without listening and without `SO_REUSEADDR`: connections are refused, but no other socket
-  can have the port ([findings](findings/environment.md)). Left free, the port could go to another
-  test's cld, whose listener would then take the waiting cld's connections as if the collector were
-  ready.
+  most Linux takes.
 
 The session list's timing tests ([decision 15](decisions/0015-killing-from-the-list.md)) never
 rely on the time between keys that separate tmux clients type. Under load such keys came over two
@@ -211,8 +204,6 @@ Checked with the probe or by hand, with what is left:
 - `setup completion` ([22](decisions/0022-setting-completion-up.md)): bash 5.2.37 with
   bash-completion 2.16, zsh 5.9 and fish 4.0.2 in the image, and zsh on macOS. Not Homebrew's
   `bash-completion@2`, nor `compinit -i` under group-writable directories.
-- `setup telemetry` ([18](decisions/0018-telemetry.md)): run by hand against the real collector
-  image. Not the JetBrains plugin, nor claude sending through it.
 - `setup project` ([19](decisions/0019-project-settings.md),
   [28](decisions/0028-shared-project-settings.md)): checked with git 2.53.0 and
   `claude mcp list` 2.1.283, not in a claude session.

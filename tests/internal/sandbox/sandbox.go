@@ -19,9 +19,8 @@ import (
 var (
 	// Cld is the cld binary under test; built by TestMain.
 	Cld string
-	// ProbeBin is the directory holding the probe installed as "claude", and as "docker", the
-	// fake docker (see DockerCalls), and "systemctl" and "loginctl", the fake systemd (see
-	// SystemdCalls); set by TestMain.
+	// ProbeBin is the directory holding the probe installed as "claude", and as "systemctl" and
+	// "loginctl", the fake systemd (see SystemdCalls); set by TestMain.
 	ProbeBin string
 	// FakeTmux is the probe installed as "tmux"; set by TestMain.
 	FakeTmux string
@@ -150,8 +149,8 @@ func (s *Sandbox) RunCldIn(dir string, extra map[string]string, args ...string) 
 }
 
 // Tools creates a directory holding only the named tools, for a PATH that lacks the others.
-// "tmux" is the fake tmux, "claude" the probe, "docker" the fake docker, and "systemctl" and
-// "loginctl" the fake systemd; any other name links the real tool.
+// "tmux" is the fake tmux, "claude" the probe, and "systemctl" and "loginctl" the fake systemd;
+// any other name links the real tool.
 func (s *Sandbox) Tools(names ...string) string {
 	s.t.Helper()
 	dir, err := os.MkdirTemp(s.Root, "tools.")
@@ -161,7 +160,7 @@ func (s *Sandbox) Tools(names ...string) string {
 	for _, name := range names {
 		target := FakeTmux
 		switch name {
-		case "claude", "docker", "systemctl", "loginctl":
+		case "claude", "systemctl", "loginctl":
 			target = filepath.Join(ProbeBin, name)
 		case "tmux":
 		default:

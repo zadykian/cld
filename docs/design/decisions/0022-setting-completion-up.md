@@ -1,6 +1,7 @@
 # 22. Setting completion up
 
-Status: Accepted. Amended by [27](0027-completion-with-blesh.md).
+Status: Accepted. Amended by [27](0027-completion-with-blesh.md) and
+[52](0052-telemetry-outside-cld.md).
 
 ## Context
 

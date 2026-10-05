@@ -1,6 +1,6 @@
 // Package tests holds cld's tests. They build cld and run it against real tmux servers, one
-// private world per test (see internal/sandbox). A probe stands in for claude, docker, systemctl
-// and loginctl (see probe).
+// private world per test (see internal/sandbox). A probe stands in for claude, systemctl and
+// loginctl (see probe).
 //
 // CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"):
 // tmux, jediterm (needs a JDK and CLD_JEDITERM_LIB, see jediterm/fetch-deps).
@@ -76,9 +76,9 @@ func setup(dir string) error {
 	if err := run("go", "build", "-o", probe, "./probe"); err != nil {
 		return err
 	}
-	// The fake docker and the fake systemd are on every sandbox's PATH, before the real ones: no
-	// test reaches Docker, or the user's systemd.
-	for _, name := range []string{"docker", "systemctl", "loginctl"} {
+	// The fake systemd is on every sandbox's PATH, before the real one: no test reaches the user's
+	// systemd.
+	for _, name := range []string{"systemctl", "loginctl"} {
 		if err := os.Symlink("claude", filepath.Join(sandbox.ProbeBin, name)); err != nil {
 			return err
 		}

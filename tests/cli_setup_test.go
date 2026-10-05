@@ -1,22 +1,20 @@
 package tests
 
 import (
-	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// setup's commands, and setup telemetry's docker.
+// setup's commands.
 
 // setupCommands and setupShells end the messages for a missing or unknown argument of setup, and
 // of setup completion.
 const (
-	setupCommands = "cld setup project, cld setup telemetry, cld setup completion SHELL or " +
-		"cld setup restore (see cld help)\n"
+	setupCommands = "cld setup project, cld setup completion SHELL or cld setup restore " +
+		"(see cld help)\n"
 	setupShells = "bash, zsh or fish (see cld help)\n"
 )
 
@@ -28,13 +26,15 @@ var setupCommandCases = []struct {
 }{
 	{[]string{"setup"}, "cld: setup: missing command: " + setupCommands},
 	{[]string{"setup", ""}, "cld: setup: missing command: " + setupCommands},
-	{[]string{"setup", "", "telemetry"}, "cld: setup: missing command: " + setupCommands},
+	{[]string{"setup", "", "restore"}, "cld: setup: missing command: " + setupCommands},
 	{[]string{"setup", "other"}, "cld: setup: unknown command 'other': " + setupCommands},
-	{[]string{"setup", "other", "telemetry"}, "cld: setup: unknown command 'other': " + setupCommands},
-	{[]string{"setup", "--local", "http://127.0.0.1:4319", "telemetry"},
-		"cld: setup: unknown command '--local': " + setupCommands},
+	{[]string{"setup", "other", "project"}, "cld: setup: unknown command 'other': " + setupCommands},
+	// setup telemetry is gone, as new and resume are (decision 52.1).
+	{[]string{"setup", "telemetry"}, "cld: setup: unknown command 'telemetry': " + setupCommands},
+	{[]string{"setup", "telemetry", "--local", "http://127.0.0.1:4319"},
+		"cld: setup: unknown command 'telemetry': " + setupCommands},
 	{[]string{"setup", "-x"}, "cld: setup: unknown command '-x': " + setupCommands},
-	{[]string{"setup", "--help=false", "telemetry"},
+	{[]string{"setup", "--help=false", "restore"},
 		"cld: setup: unknown command '--help=false': " + setupCommands},
 	{[]string{"setup", "--"}, "cld: setup: unknown command '--': " + setupCommands},
 	{[]string{"setup", "--mcp", "goland", "project"},
@@ -60,7 +60,7 @@ var setupCommandCases = []struct {
 }
 
 // setup's first argument is one of its commands, checked as cld's first is: no option comes
-// before it (decision 18.8). The shell after setup completion is checked the same way. A mistake
+// before it (decision 52.3). The shell after setup completion is checked the same way. A mistake
 // writes nothing, in the work directory or the home directory.
 func TestSetupRequiresCommand(t *testing.T) {
 	t.Parallel()
@@ -69,53 +69,14 @@ func TestSetupRequiresCommand(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
 			checkFailed(t, s.RunCld(nil, test.args...), 2, test.want)
-			if calls := s.DockerCalls(); len(calls) != 0 {
-				t.Errorf("docker ran: %q", calls[0].Argv)
+			if calls := s.SystemdCalls(); len(calls) != 0 {
+				t.Errorf("%s ran: %q", calls[0][0], calls[0][1:])
 			}
 			if entries, err := os.ReadDir(s.Work); err != nil || len(entries) != 0 {
 				t.Errorf("the work directory holds %v (%v), want nothing", entries, err)
 			}
 			if entries, err := os.ReadDir(s.Home); err != nil || len(entries) != 1 {
 				t.Errorf("the home directory holds %v (%v), want .tmux.conf alone", entries, err)
-			}
-		})
-	}
-}
-
-// setup telemetry looks for docker first, as the other commands look for tmux: before it reads
-// the settings, here not valid JSON.
-func TestSetupTelemetryRequiresDocker(t *testing.T) {
-	t.Parallel()
-	linuxOnly(t)
-	s := sandbox.New(t)
-	settings := writeSettings(t, s, "{")
-	result := s.RunCld(map[string]string{"PATH": s.Tools()},
-		"setup", "telemetry", "--remote", "https://otel.example.com:4317")
-	checkFailed(t, result, 1, "cld: docker is not installed\n")
-	checkSettings(t, settings, "{")
-}
-
-// A docker the system cannot run ends cld as a tmux that cannot run does (see TestCannotRunTmux),
-// from its first call, which looks for the collector: nothing has changed.
-func TestCannotRunDocker(t *testing.T) {
-	t.Parallel()
-	linuxOnly(t)
-	for _, broken := range unrunnable("docker") {
-		t.Run(broken.what, func(t *testing.T) {
-			t.Parallel()
-			s := sandbox.New(t)
-			fake := filepath.Join(s.Root, "fake")
-			if err := os.Mkdir(fake, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			docker := filepath.Join(fake, "docker")
-			s.WriteProgram(docker, broken.content, broken.mode)
-			result := s.RunCld(map[string]string{"PATH": fake},
-				"setup", "telemetry", "--remote", "https://otel.example.com:4317")
-			want := "cld: cannot run " + docker + ": " + broken.reason + "\n"
-			checkFailed(t, result, broken.code, want)
-			if _, err := os.Stat(filepath.Join(s.Home, ".claude")); !errors.Is(err, os.ErrNotExist) {
-				t.Errorf("~/.claude: %v, want none", err)
 			}
 		})
 	}

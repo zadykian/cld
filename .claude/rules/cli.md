@@ -64,9 +64,9 @@ overrides cobra.
 - Completion runs none of the startup checks, `setup`'s included, never starts the interactive list,
   and never ends a session (decisions [17](../../docs/design/decisions/0017-shell-completion.md) and
   [46](../../docs/design/decisions/0046-idle-sessions.md)).
-- Nothing completes a file name, `--collector-config`'s `FILE` neither; bash's script ends with
-  cld's lines that turn them off under ble.sh too (decisions
-  [17](../../docs/design/decisions/0017-shell-completion.md) and
+- Nothing completes a file name; bash's script ends with cld's lines that turn them off under
+  ble.sh too (decisions [17](../../docs/design/decisions/0017-shell-completion.md) and
   [27](../../docs/design/decisions/0027-completion-with-blesh.md)).
 - The `setup` commands' checks stay in their `Args` and `RunE`, never in a root hook, which
-  completion would run ([decision 18](../../docs/design/decisions/0018-telemetry.md)).
+  completion would run (decisions [17.4](../../docs/design/decisions/0017-shell-completion.md) and
+  [48.9](../../docs/design/decisions/0048-restore-after-reboot.md)).

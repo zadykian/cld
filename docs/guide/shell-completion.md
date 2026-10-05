@@ -2,8 +2,7 @@
 
 - `-s` describes each session by its state and claude's status, or as `ended in DIR`. Without
   `-n`, it offers only the sessions that `cld join` takes from here.
-- Nothing offers file names, and `cld kill`, `--resume` and the values of `cld setup telemetry`
-  offer nothing.
+- Nothing offers file names, and `cld kill` and `--resume` offer nothing.
 - Each TAB runs `cld`, so the names are current. `CLD_COMPLETION_DESCRIPTIONS=0` drops the
   descriptions.
 - `cld update` writes the scripts anew, and one written with `--no-descriptions` stays so. Where it

@@ -2,7 +2,8 @@
 
 Status: Accepted (#30). Amended by [19](0019-project-settings.md),
 [22](0022-setting-completion-up.md) and [48](0048-restore-after-reboot.md), which add commands to
-`setup`.
+`setup`. Superseded by [52](0052-telemetry-outside-cld.md): `setup telemetry` is gone, and 18.8 is
+52.3.
 
 ## Context
 

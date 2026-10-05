@@ -1,11 +1,10 @@
-set up claude in a project, telemetry, shell completion or restore
+set up claude in a project, shell completion or restore
 
 Usage:
   cld setup [command]
 
 Available Commands:
   project     set claude up in the project in the current directory
-  telemetry   send claude's telemetry through a local OpenTelemetry collector
   completion  set up cld's completion in bash, zsh or fish
   restore     have your systemd run cld restore at login, or at boot
 

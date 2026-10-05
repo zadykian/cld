@@ -81,8 +81,6 @@ makes on its server, then behave as plain tmux.
   join's checks and kill's steps.
 - `internal/project`: `cld setup project`, a project's claude settings, `.mcp.json` and
   `.gitignore` ([decision 19](decisions/0019-project-settings.md)).
-- `internal/telemetry`: `cld setup telemetry`, a local OpenTelemetry Collector in Docker and
-  claude's settings pointed at it ([decision 18](decisions/0018-telemetry.md)).
 - `internal/configfile`: edits in place the files the `setup` commands write. A file keeps what
   cld does not change, byte for byte, so one Claude Code wrote keeps its look.
 - `internal/update`: `cld update` ([decision 21](decisions/0021-self-update.md)).

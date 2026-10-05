@@ -26,7 +26,7 @@ const (
 		"kill\tend session NAME-SUFFIX and its tmux server\n" +
 		"list\tlist cld's sessions; on a terminal, join or kill one\n" + //nolint:dupword // as above
 		"restore\tbring back the sessions that ran when the machine stopped\n" +
-		"setup\tset up claude in a project, telemetry, shell completion or restore\n" +
+		"setup\tset up claude in a project, shell completion or restore\n" +
 		"update\tupdate cld to the latest release\n" + //nolint:dupword // as above
 		"version\tshow the version\n" +
 		offeredCompletion +
@@ -35,13 +35,10 @@ const (
 
 // What __complete offers for setup and its commands.
 const (
-	offeredProject   = "project\tset claude up in the project in the current directory\n"
-	offeredTelemetry = "telemetry\tsend claude's telemetry through a local OpenTelemetry " +
-		"collector\n"
+	offeredProject         = "project\tset claude up in the project in the current directory\n"
 	offeredSetupCompletion = "completion\tset up cld's completion in bash, zsh or fish\n"
 	offeredSetupRestore    = "restore\thave your systemd run cld restore at login, or at boot\n"
-	offeredSetups          = offeredProject + offeredTelemetry + offeredSetupCompletion +
-		offeredSetupRestore
+	offeredSetups          = offeredProject + offeredSetupCompletion + offeredSetupRestore
 
 	offeredSetupZsh    = "zsh\tset up cld's completion in zsh\n"
 	offeredSetupFish   = "fish\tset up cld's completion in fish\n"
@@ -96,10 +93,10 @@ var completeCases = []struct {
 	{[]string{"__complete", "help", "new"}, noFileDirective},
 	// After a command with commands of its own, help takes one of those, and nothing after it.
 	{[]string{"__complete", "help", "setup", ""}, offeredSetups + noFileDirective},
-	{[]string{"__complete", "help", "setup", "t"}, offeredTelemetry + noFileDirective},
+	{[]string{"__complete", "help", "setup", "r"}, offeredSetupRestore + noFileDirective},
+	{[]string{"__complete", "help", "setup", "t"}, noFileDirective},
 	{[]string{"__complete", "help", "setup", "project", ""}, noFileDirective},
 	{[]string{"__complete", "help", "setup", "x"}, noFileDirective},
-	{[]string{"__complete", "help", "setup", "telemetry", ""}, noFileDirective},
 	{[]string{"__complete", "help", "setup", "completion", ""}, offeredShellSetups + noFileDirective},
 	{[]string{"__complete", "help", "setup", "completion", "z"}, offeredSetupZsh + noFileDirective},
 	{[]string{"__complete", "help", "setup", "completion", "zsh", ""}, noFileDirective},
@@ -110,6 +107,7 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "p"}, offeredProject + noFileDirective},
 	{[]string{"__complete", "setup", "c"}, offeredSetupCompletion + noFileDirective},
 	{[]string{"__complete", "setup", "r"}, offeredSetupRestore + noFileDirective},
+	{[]string{"__complete", "setup", "t"}, noFileDirective},
 	{[]string{"__complete", "setup", "restore", ""}, noFileDirective},
 	{[]string{"__complete", "restore", ""}, noFileDirective},
 	{[]string{"__complete", "setup", "completion", ""}, offeredShellSetups + noFileDirective},
@@ -143,14 +141,6 @@ var completeCases = []struct {
 	{[]string{"__completeNoDesc", "setup", "project", "--permissions", ""},
 		"read-only\ncld\nnone\n" + noFileDirective},
 	{[]string{"__complete", "setup", "project", "--permissions", "cld", ""}, noFileDirective},
-	// No URL, port or file name is offered, --collector-config's FILE included.
-	{[]string{"__complete", "setup", "telemetry", "--l"},
-		"--local\twhere traces, metrics and logs go, such as\n" + noFileDirective},
-	{[]string{"__complete", "setup", "telemetry", "--local", ""}, noFileDirective},
-	{[]string{"__complete", "setup", "telemetry", "--port", ""}, noFileDirective},
-	{[]string{"__complete", "setup", "telemetry", "--collector-config", ""}, noFileDirective},
-	{[]string{"__complete", "setup", "telemetry", "--remote", "https://otel.example.com:4317", ""},
-		noFileDirective},
 	{[]string{"__complete", "completion", "bash", ""}, noFileDirective},
 	{[]string{"__complete", "join", "-"}, offeredJoinOptions + noFileDirective},
 	{[]string{"__complete", "detach", "-"}, offeredDetachOptions + noFileDirective},
