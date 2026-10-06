@@ -54,7 +54,7 @@ a release: a binary per platform, `cld.sha256` and `install.sh`.
 
 - Pull requests land on `main` by fast-forward only, as the commits CI checked.
 - Never run `gh pr merge`: the repository and the ruleset on `main` refuse every merge method.
-- Rebase onto `main`, then comment `/fast-forward` on the pull request
+- Rebase onto `main`, then comment `/ff` on the pull request
   (`.github/workflows/fast-forward.yml`). It pushes once `linux`, `macos` and `lint` pass and
   every conversation is resolved.
 - The maintainer pushes a pull request that changes `.github/workflows` by hand,

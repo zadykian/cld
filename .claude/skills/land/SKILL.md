@@ -32,7 +32,7 @@ fast-forwards only: GitHub's merge methods are refused, and `.claude/settings.js
 5. **Land.**
    - A pull request that changes `.github/workflows`: the workflow's token may not push it. Give
      the maintainer `git push origin SHA:main` to run, with the head's SHA, and wait for them.
-   - Any other: `gh pr comment N --body /fast-forward`.
+   - Any other: `gh pr comment N --body /ff`.
 6. **Wait** until `gh pr view N --json state -q .state` says `MERGED`. Where the workflow comments
    that it did not move main, report its reason and stop.
 

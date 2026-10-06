@@ -150,7 +150,7 @@ SIGSTOP. Without cld's check for a waiting byte, that read-late case failed 4 ru
 
 Pull requests land on `main` by fast-forward, so `main` holds the commits CI checked. GitHub's
 merge methods all write commits of their own, so the repository allows merge commits alone, and
-the ruleset on `main` rebase alone, leaving none. A comment `/fast-forward` pushes the head once
+the ruleset on `main` rebase alone, leaving none. A comment `/ff` pushes the head once
 the required checks pass; a change to `.github/workflows` is pushed by hand, as the workflow's
 token may not push it.
 
