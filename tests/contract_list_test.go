@@ -31,7 +31,7 @@ type listContract struct{ name string }
 func (c listContract) join(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	detachedSessions(t, s, "a", "b")
+	probes := detachedSessions(t, s, "a", "b")
 	term := terminal.New(t, c.name, s)
 	list := startList(t, s, term, listScript, nil)
 	waitScreen(t, term, listHints)
@@ -47,6 +47,7 @@ func (c listContract) join(t *testing.T) {
 	if title := term.Title(); title != "✳ cld-b" {
 		t.Errorf("terminal title %q, want %q", title, "✳ cld-b")
 	}
+	waitAnswered(t, s, term, probes["b"])
 	term.Keys("C-q", "d")
 	if code := list.code(t); code != "0" {
 		t.Errorf("exit %s, want 0", code)
@@ -91,6 +92,7 @@ func (c listContract) popup(t *testing.T) {
 	probes := detachedSessions(t, s, "b")
 	term := startCld(t, s, c.name, nil, "join", "-s", "a")
 	waitScreen(t, term, "probe --name cld-a")
+	waitAnswered(t, s, term, claudeOf(t, s, "a"))
 	term.Keys("C-q", "s")
 	waitScreen(t, term, listHints)
 	if selected := selectedRow(term); selected != "a" {
@@ -119,6 +121,8 @@ func (c listContract) popup(t *testing.T) {
 	if !slices.Equal(sessions, []string{"cld-a", "cld-b"}) || !probes["b"].Alive() {
 		t.Errorf("sessions %q, want a and b running", sessions)
 	}
+	// The move attached a client of its own, which tmux queries anew.
+	waitAnswered(t, s, term, probes["b"])
 	term.Keys("C-q", "d")
 	sandbox.WaitFor(t, 10*time.Second, "cld to exit", func() bool { return !term.Running() })
 	if modes := term.Modes(); modes.AltScreen || modes.Mouse {

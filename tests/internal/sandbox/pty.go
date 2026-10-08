@@ -55,6 +55,12 @@ func OpenPty(tb testing.TB) *Pty {
 	return p
 }
 
+// OpenController opens a pseudo-terminal's controller and names its terminal, for a terminal
+// emulator of the tests' to read and write.
+func OpenController() (controller *os.File, path string, err error) {
+	return openPty()
+}
+
 // Output is what was written to the terminal, once every program that had it open has closed it:
 // it closes the test's own Terminal first.
 func (p *Pty) Output() string {

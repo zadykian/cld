@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Builds libghostty-vt, Ghostty's terminal core, into PREFIX for the ghostty driver (decision 54):
+# the static library, its headers and pkg-config files, and Ghostty's terminfo entry compiled into
+# PREFIX/share/terminfo. deps.txt pins Zig and Ghostty's commit; tests/Dockerfile runs it.
+set -euo pipefail
+
+prefix=${1:?usage: build-lib PREFIX}
+here=$(cd "$(dirname "$0")" && pwd)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+export ZIG_GLOBAL_CACHE_DIR=$work/cache
+
+# pin prints the line of deps.txt whose URL contains $1: its SHA-256 or commit, and its URL.
+pin() {
+    grep -v '^#' "$here/deps.txt" | grep -F -- "$1"
+}
+
+read -r sum url < <(pin "zig-$(uname -m)-linux")
+curl -fsSL --retry 3 -o "$work/zig.tar.xz" "$url"
+echo "$sum  $work/zig.tar.xz" | sha256sum -c --quiet -
+mkdir "$work/zig"
+tar -xJf "$work/zig.tar.xz" -C "$work/zig" --strip-components=1
+
+# Ghostty's source at the pinned commit. Its build then finds no repository, as from an archive.
+# tests/Dockerfile sets no GIT_* variable, but git's own go all the same, as tools/run's checkout
+# says why.
+for variable in $(compgen -e); do
+    if [[ $variable == GIT_* ]]; then unset "$variable"; fi
+done
+read -r commit url < <(pin /ghostty-org/ghostty)
+git init -q "$work/ghostty"
+cd "$work/ghostty"
+git fetch -q --depth=1 "$url" "$commit"
+got=$(git rev-parse FETCH_HEAD)
+if [[ $got != "$commit" ]]; then
+    echo "build-lib: $url gave $got, not the pinned $commit" >&2
+    exit 1
+fi
+git checkout -q FETCH_HEAD
+rm -rf .git
+
+# Four jobs keep the build's memory in check. The tests link the static library alone.
+"$work/zig/zig" build -j4 -Demit-lib-vt -Doptimize=ReleaseFast --prefix "$prefix"
+rm -f "$prefix"/lib/libghostty-vt.so*
+
+# The version in build.zig.zon, which the driver answers XTVERSION with: libghostty-vt has a
+# version of its own.
+mkdir -p "$prefix/share/ghostty"
+sed -n 's/^ *\.version = "\(.*\)",$/\1/p' build.zig.zon >"$prefix/share/ghostty/version"
+[[ -s $prefix/share/ghostty/version ]]
+
+cp "$here/terminfo.zig" src/
+"$work/zig/zig" run src/terminfo.zig >"$work/ghostty.terminfo"
+mkdir -p "$prefix/share/terminfo"
+tic -x -o "$prefix/share/terminfo" "$work/ghostty.terminfo"

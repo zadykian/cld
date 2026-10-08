@@ -2,8 +2,9 @@
 // private world per test (see internal/sandbox). A probe stands in for claude, systemctl and
 // loginctl (see probe).
 //
-// CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"):
-// tmux, jediterm (needs a JDK and CLD_JEDITERM_LIB, see jediterm/fetch-deps).
+// CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"): tmux,
+// jediterm and ghostty. jediterm needs a JDK and CLD_JEDITERM_LIB (see jediterm/fetch-deps), and
+// ghostty -tags ghostty, libghostty-vt and CLD_GHOSTTY_DIR (see ghostty/build-lib).
 //
 // The tests run the same from git hooks and git rebase --exec: TestMain unsets the GIT_*
 // variables git sets there, before it runs anything.
@@ -89,6 +90,11 @@ func setup(dir string) error {
 	}
 	if err := os.Symlink(probe, sandbox.FakeTmux); err != nil {
 		return err
+	}
+	if slices.Contains(terminals, "ghostty") {
+		if err := terminal.GhosttyReady(); err != nil {
+			return err
+		}
 	}
 	if slices.Contains(terminals, "jediterm") {
 		return buildJediTerm(dir)

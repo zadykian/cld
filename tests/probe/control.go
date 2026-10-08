@@ -38,7 +38,10 @@ var controls = map[string]func(c *controller, argument string){
 		uri, text, _ := strings.Cut(argument, " ")
 		c.write("\x1b]8;;" + uri + "\x07" + text + "\x1b]8;;\x07\r\n")
 	},
-	"rekey": (*controller).rekey,
+	// beacon TEXT writes TEXT in OSC 7700, which no terminal takes, in tmux passthrough: a beacon
+	// for a test to see in the terminal's output (decision 54.5).
+	"beacon": func(c *controller, text string) { c.write(passthrough("\x1b]7700;" + text + "\x07")) },
+	"rekey":  (*controller).rekey,
 	// inline leaves the alternate screen and turns mouse reporting off, as claude outside
 	// fullscreen draws.
 	"inline": func(c *controller, _ string) {

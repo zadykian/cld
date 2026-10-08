@@ -1,0 +1,6 @@
+# The ghostty driver's dependencies, fetched by ./build-lib (decision 54): SHA-256 and URL of each
+# Zig, by the machine as uname -m names it, and the Ghostty commit that go.mitchellh.com/libghostty
+# pins in go.mod, with its repository. tools/run takes libghostty-vt's headers from that commit.
+70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17  https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz
+34f39002c6e3974b54e6a6d400bd83777c5ea558  https://github.com/ghostty-org/ghostty.git

@@ -8,8 +8,11 @@
 package terminal
 
 import (
+	"errors"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -65,6 +68,29 @@ type Terminal interface {
 	Close()
 }
 
+// newGhostty creates the ghostty terminal, set in a build with the tag ghostty alone (see
+// ghostty.go).
+var newGhostty func(testing.TB, *sandbox.Sandbox) Terminal
+
+// ghosttyDir is CLD_GHOSTTY_DIR, where tests/ghostty/build-lib installs what the ghostty driver
+// reads: Ghostty's version and terminfo entry.
+var ghosttyDir = sync.OnceValues(func() (string, error) {
+	if dir := os.Getenv("CLD_GHOSTTY_DIR"); dir != "" {
+		return dir, nil
+	}
+	return "", errors.New("CLD_GHOSTTY_DIR is unset (see tests/ghostty/build-lib)")
+})
+
+// GhosttyReady says why the ghostty driver cannot run, or returns nil: TestMain checks it once
+// where CLD_TERMINALS lists ghostty.
+func GhosttyReady() error {
+	if newGhostty == nil {
+		return errors.New("ghostty: the tests were built without -tags ghostty, which make test adds")
+	}
+	_, err := ghosttyDir()
+	return err
+}
+
 // New creates the named terminal, and closes it when the test ends.
 func New(tb testing.TB, name string, s *sandbox.Sandbox) Terminal {
 	tb.Helper()
@@ -74,6 +100,8 @@ func New(tb testing.TB, name string, s *sandbox.Sandbox) Terminal {
 		created = newTmux(tb, s)
 	case "jediterm":
 		created = newJediTerm(tb, s)
+	case "ghostty":
+		created = newGhostty(tb, s)
 	default:
 		tb.Fatalf("unknown terminal %q", name)
 	}

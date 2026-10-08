@@ -9,6 +9,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # The bindings move by hand, with the Ghostty commit tests/ghostty/deps.txt pins
+    # (docs/design/decisions/0054-ghostty.md).
+    ignore:
+      - dependency-name: go.mitchellh.com/libghostty
   - package-ecosystem: github-actions
     directory: /
     schedule:

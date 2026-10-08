@@ -1,6 +1,13 @@
 # golangci-lint v2, run by `make golangci-lint` on ./... (cmd, internal, tests, tools).
 version: "2"
 
+run:
+  # The ghostty driver's files too, which build only with the tag ghostty: tools/run gives
+  # golangci-lint libghostty-vt's headers to type-check them, with cgo and a C compiler
+  # (docs/design/decisions/0054-ghostty.md).
+  build-tags:
+    - ghostty
+
 linters:
   default: standard
   enable:

@@ -66,7 +66,16 @@ type expectation struct {
 	features []string
 	// shiftEnter lists what claude may receive for Shift+Enter; plain Enter is always "\r".
 	shiftEnter []string
+	// pasted is what claude receives for TestContractPaste's paste.
+	pasted string
+	// termtype starts what the terminal answers XTVERSION with (#{client_termtype}): empty where
+	// it answers nothing.
+	termtype string
 }
+
+// pasted is TestContractPaste's paste as an xterm sends it: bracketed, a line feed as a carriage
+// return, and the prefix key unchanged.
+const pasted = "\x1b[200~first line\rsecond line \x11d\x1b[201~"
 
 // expectations are each terminal's, by its name in CLD_TERMINALS.
 var expectations = map[string]expectation{
@@ -75,6 +84,8 @@ var expectations = map[string]expectation{
 	"tmux": {
 		features:   []string{"clipboard", "extkeys", "focus", "hyperlinks", "mouse", "title"},
 		shiftEnter: []string{"\x1b[13;2u", "\x1b[27;2;13~"},
+		pasted:     pasted,
+		termtype:   "tmux ",
 	},
 	// JediTerm answers no XTVERSION, so tmux claims clipboard and focus, its defaults for xterm*,
 	// which the emulator ignores (see the skipped tests); cld adds extkeys and hyperlinks. JediTerm
@@ -83,6 +94,18 @@ var expectations = map[string]expectation{
 	"jediterm": {
 		features:   []string{"bpaste", "clipboard", "extkeys", "focus", "hyperlinks", "title"},
 		shiftEnter: []string{"\x1b\r"},
+		pasted:     pasted,
+	},
+	// Ghostty answers XTVERSION, which tmux does not know, so its features come from Ghostty's
+	// terminfo entry, tmux's defaults for xterm* and cld's entry. RGB comes from COLORTERM in tmux
+	// 3.7c, not 3.5a. Ghostty sends Shift+Enter as modifyOtherKeys does, even unasked. A bracketed
+	// paste keeps its line feeds, and a control character becomes a space.
+	"ghostty": {
+		features: []string{"bpaste", "ccolour", "clipboard", "cstyle", "extkeys", "focus",
+			"hyperlinks", "title"},
+		shiftEnter: []string{"\x1b[27;2;13~"},
+		pasted:     "\x1b[200~first line\nsecond line  d\x1b[201~",
+		termtype:   "ghostty ",
 	},
 }
 
@@ -178,4 +201,19 @@ func detachedSessions(
 		return !slices.ContainsFunc(names, func(name string) bool { return probes[name] == nil })
 	})
 	return probes
+}
+
+// claudeOf is the claude of session name, among the probes started so far, once it has started.
+func claudeOf(t *testing.T, s *sandbox.Sandbox, name string) *sandbox.Probe {
+	t.Helper()
+	var found *sandbox.Probe
+	sandbox.WaitFor(t, 10*time.Second, "claude of cld-"+name+" to start", func() bool {
+		for _, probe := range s.Probes() {
+			if len(probe.Argv) > 1 && probe.Argv[1] == "cld-"+name {
+				found = probe
+			}
+		}
+		return found != nil
+	})
+	return found
 }

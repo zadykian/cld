@@ -62,7 +62,7 @@ func TestContractPaste(t *testing.T) {
 		s, term, probe := startContract(t, name)
 		mark := probe.Mark()
 		term.Paste("first line\nsecond line \x11d")
-		probe.WaitInput(mark, "\x1b[200~first line\rsecond line \x11d\x1b[201~")
+		probe.WaitInput(mark, expectations[name].pasted)
 		if !term.Running() || !slices.Equal(s.Sessions(), []string{"cld-contract"}) {
 			t.Error("cld did not stay attached through the paste")
 		}

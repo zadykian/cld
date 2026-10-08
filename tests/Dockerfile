@@ -9,6 +9,17 @@ ARG GO_IMAGE=golang:1.27-bookworm
 
 FROM ${GO_IMAGE} AS go
 
+# libghostty-vt, Ghostty's terminal core, and Ghostty's terminfo entry, for the ghostty driver
+# (docs/design/decisions/0054-ghostty.md): tests/ghostty/deps.txt pins Zig and Ghostty's commit,
+# the one go.mitchellh.com/libghostty pins in go.mod. The final image takes the artefacts.
+FROM ${BASE} AS ghostty
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        bash ca-certificates curl git xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+COPY tests/ghostty/ /tmp/ghostty/
+RUN /tmp/ghostty/build-lib /opt/ghostty
+
 FROM ${BASE}
 # bash-completion, fish and zsh load what cld setup completion writes, in the tests that check it.
 # PACKAGES are more, for a base that has them: ble.sh on Ubuntu, which Debian's trixie lacks
@@ -41,6 +52,12 @@ ENV PATH=/usr/local/go/bin:$PATH \
 
 COPY tests/jediterm/deps.txt tests/jediterm/fetch-deps /opt/jediterm/
 RUN /opt/jediterm/fetch-deps /opt/jediterm/lib
+
+# The ghostty driver links libghostty-vt statically through pkg-config. Its terminfo entry lies
+# where the app's TERMINFO names it, as the app ships it, not in the system's database.
+COPY --from=ghostty /opt/ghostty /opt/ghostty
+ENV PKG_CONFIG_PATH=/opt/ghostty/share/pkgconfig \
+    CLD_GHOSTTY_DIR=/opt/ghostty
 
 COPY go.mod go.sum /tmp/module/
 RUN cd /tmp/module && go mod download && chmod -R a+rX /go && rm -rf /tmp/module

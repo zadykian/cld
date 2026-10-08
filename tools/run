@@ -8,6 +8,11 @@
 # downloads it into .cache/tools and checks its SHA-256. A bump changes a tool's version and its
 # four sums, which the release's checksums file or GitHub's asset digests give. It needs curl,
 # tar, and sha256sum or shasum.
+#
+# libghostty-vt is no program but the C headers that golangci-lint and govulncheck type-check the
+# ghostty driver against, at the commit tests/ghostty/deps.txt pins, fetched with git. -path
+# prints the pkg-config directory that names them, and tools/run golangci-lint adds it to
+# PKG_CONFIG_PATH.
 
 set -eu
 
@@ -134,10 +139,68 @@ pin() {
             10e6b18b11ea07e515a16f0f0518c7b07527bc9977c1fd5698181ce7f3554202 \
             e28d22b087f9ebb8d99da6e740d348c930f559961c7c3f12badda54f882195a2
         ;;
+    libghostty-vt)
+        # No program: libghostty-vt's C headers at the Ghostty commit that tests/ghostty/deps.txt
+        # pins for the ghostty driver (docs/design/decisions/0054-ghostty.md), fetched with git.
+        line=$(grep -F /ghostty-org/ghostty "$root/tests/ghostty/deps.txt") ||
+            die "tests/ghostty/deps.txt pins no Ghostty commit"
+        version=${line%% *}
+        url=${line##* }
+        sum=
+        member=include
+        ;;
     *)
-        die "no tool $1: actionlint, golangci-lint, lychee, shellcheck, shfmt, vale or zizmor"
+        die "no tool $1: actionlint, golangci-lint, libghostty-vt, lychee, shellcheck, shfmt," \
+            "vale or zizmor"
         ;;
     esac
+}
+
+# headers prints the directory of libghostty-vt-static.pc, which names libghostty-vt's headers
+# alone, relative to itself, so that a .cache/tools shared between checkouts keeps working. It
+# writes the file at each run, whole, as an older one named them by an absolute path.
+headers() {
+    pc=${bin%/*}/libghostty-vt-static.pc
+    # shellcheck disable=SC2016 # pkg-config, not the shell, expands ${pcfiledir}
+    printf '%s\n' 'Name: libghostty-vt-static' "Description: libghostty-vt's headers alone" \
+        'Version: 0' 'Cflags: -I${pcfiledir}/libghostty-vt' 'Libs:' >"$pc.$$"
+    mv -f "$pc.$$" "$pc"
+    printf '%s\n' "${bin%/*}"
+}
+
+# checkout fetches the directory $member of the repository $url at the commit $version, checking
+# the commit it got: blobs outside $member stay unfetched. $bin then links to it, a link made whole
+# or not at all, so that a second run at once keeps the first's.
+checkout() {
+    command -v git >/dev/null || die "libghostty-vt's headers need git"
+    # Under git rebase --exec in a linked worktree, GIT_DIR would have git init turn that
+    # worktree's git directory bare (docs/design/findings/environment.md), and a hook's
+    # GIT_INDEX_FILE would take the checkout elsewhere: git's own variables go.
+    for variable in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do
+        unset "$variable"
+    done
+    mkdir -p "${bin%/*}"
+    tmp=$(mktemp -d "${bin%/*}/$member.XXXXXX")
+    trap 'rm -rf "$tmp"' EXIT
+    trap 'exit 1' HUP INT TERM
+    say "fetching $1 $version"
+    git -C "$tmp" init -q
+    git -C "$tmp" remote add origin "$url"
+    git -C "$tmp" fetch -q --depth=1 --filter=blob:none origin "$version" ||
+        die "cannot fetch $version from $url"
+    got=$(git -C "$tmp" rev-parse FETCH_HEAD)
+    [ "$got" = "$version" ] || die "$url gave $got, not $version"
+    git -C "$tmp" checkout -q FETCH_HEAD -- "$member"
+    rm -rf "$tmp/.git"
+    chmod 755 "$tmp"
+    # -n: a link that another run made first is no directory to put this one in.
+    if ln -sn "${tmp##*/}/$member" "$bin" 2>/dev/null; then
+        trap - EXIT HUP INT TERM
+    else
+        [ -d "$bin" ] || die "$bin is broken: remove it"
+        rm -rf "$tmp"
+        trap - EXIT HUP INT TERM
+    fi
 }
 
 # sha256 prints the SHA-256 checksum of the file $1.
@@ -163,6 +226,7 @@ fetch() {
         die "$url does not match the SHA-256 pinned in tools/run"
     if [ -n "$member" ]; then
         tar -xzf "$tmp/download" -C "$tmp" "$member" || die "$url has no $member"
+        rm "$tmp/download"
         mv "$tmp/$member" "$tmp/download"
     fi
     chmod 755 "$tmp/download"
@@ -182,13 +246,24 @@ main() {
     name=$1
     shift
     platform
+    root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
     pin "$name"
-    cache=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)/.cache/tools
+    cache=$root/.cache/tools
     bin=$cache/$name-$version/$name
-    [ -x "$bin" ] || fetch "$name"
-    if $path; then
+    if [ ! -x "$bin" ]; then
+        if [ -n "$sum" ]; then fetch "$name"; else checkout "$name"; fi
+    fi
+    if [ "$name" = libghostty-vt ]; then
+        $path || die "libghostty-vt is headers: tools/run -path libghostty-vt"
+        headers
+    elif $path; then
         printf '%s\n' "$bin"
     else
+        if [ "$name" = golangci-lint ]; then
+            pc=$("$0" -path libghostty-vt) || die "no libghostty-vt headers for golangci-lint"
+            PKG_CONFIG_PATH=$pc${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+            export PKG_CONFIG_PATH
+        fi
         exec "$bin" "$@"
     fi
 }

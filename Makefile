@@ -1,13 +1,17 @@
 PREFIX ?= $(HOME)/.local
-# Terminals the terminal contract runs against: tmux, jediterm (see tests/main_test.go).
+# Terminals the terminal contract runs against: tmux, jediterm, ghostty (see tests/main_test.go).
 TERMINALS ?= tmux
+# ghostty's driver links libghostty-vt, so it builds only with the tag ghostty, added where
+# TERMINALS lists it (docs/design/decisions/0054-ghostty.md).
+comma := ,
+TEST_TAGS = $(if $(filter ghostty,$(subst $(comma), ,$(TERMINALS))),-tags ghostty)
 # Docker checks: tmux release TMUX_VERSION, built from source on BASE. The newest the checks run on
 # is pinned here and in tests/Dockerfile, bumped by hand (docs/design/decisions/0006-versions.md).
 # The oldest, cld's floor, runs as make docker-check TMUX_VERSION=3.5a, as CI's linux-oldest does.
 # Another release builds by hand for a probe: make docker-image TMUX_VERSION=X.
 BASE ?= debian:trixie
 TMUX_VERSION ?= 3.7c
-DOCKER_TERMINALS ?= tmux,jediterm
+DOCKER_TERMINALS ?= tmux,jediterm,ghostty
 IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))-tmux-$(TMUX_VERSION)
 # The completion checks in bash with ble.sh: the same image, on BLESH_BASE, whose package ble.sh
 # the tests load - Ubuntu 26.04's is 0.4.0~git20250806.8060b7a, as CI builds it too.
@@ -18,8 +22,8 @@ VERSION ?= dev
 # The platforms make dist builds cld for, as dist/cld-OS-ARCH.
 PLATFORMS = linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 BUILD = CGO_ENABLED=0 go build -trimpath -ldflags '-X main.version=$(VERSION)'
-# The scripts vet checks, POSIX sh but for fetch-deps, which is bash.
-SCRIPTS = install.sh tests/jediterm/fetch-deps tools/run tools/valecheck \
+# The scripts vet checks, POSIX sh but for fetch-deps and build-lib, which are bash.
+SCRIPTS = install.sh tests/jediterm/fetch-deps tests/ghostty/build-lib tools/run tools/valecheck \
 	.claude/hooks/lint-file.sh .claude/hooks/lint-branch.sh
 # vet's ShellCheck and shfmt: those on the PATH, as the Docker image and Homebrew have them, but
 # the pinned ones under lint.
@@ -46,7 +50,7 @@ vet:
 	@test -z "$$(gofmt -l .)" || { gofmt -d .; exit 1; }
 	go vet ./...
 
-# Every line of every package, as .golangci.yml sets the linters.
+# Every line of every package, the ghostty driver's tagged files too, as .golangci.yml sets it.
 golangci-lint:
 	tools/run golangci-lint run ./...
 
@@ -60,11 +64,14 @@ vale:
 	tools/valecheck $(FILES)
 
 # Any finding fails, as do those govulncheck lists without failing: in packages cld imports but
-# does not call, and in modules it only requires.
-GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.8.0
+# does not call, and in modules it only requires. The ghostty driver's tag brings its bindings in,
+# type-checked against the headers tools/run fetches (docs/design/decisions/0054-ghostty.md).
+GOVULNCHECK = go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -tags ghostty
 govulncheck:
-	$(GOVULNCHECK) -show verbose ./...
-	mkdir -p .cache && $(GOVULNCHECK) -format json ./... >.cache/govulncheck.json
+	pc=$$(tools/run -path libghostty-vt) && \
+		export PKG_CONFIG_PATH="$$pc$${PKG_CONFIG_PATH:+:$$PKG_CONFIG_PATH}" && \
+		$(GOVULNCHECK) -show verbose ./... && \
+		mkdir -p .cache && $(GOVULNCHECK) -format json ./... >.cache/govulncheck.json
 	@! grep -q '"finding"' .cache/govulncheck.json || \
 		{ echo 'govulncheck: the findings above fail the check, called or not'; exit 1; }
 
@@ -83,7 +90,7 @@ lychee:
 		$$(git ls-files --cached --others --exclude-standard '*.md')
 
 test:
-	cd tests && CLD_TERMINALS=$(TERMINALS) go test -count=1 ./...
+	cd tests && CLD_TERMINALS=$(TERMINALS) go test -count=1 $(TEST_TAGS) ./...
 
 docker-image:
 	docker build --build-arg BASE=$(BASE) --build-arg TMUX_VERSION=$(TMUX_VERSION) \

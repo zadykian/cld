@@ -208,21 +208,6 @@ func TestJoinMovesToOneSessionAtOnce(t *testing.T) {
 	}
 }
 
-// claudeOf is the claude of session name, among the probes started so far, once it has started.
-func claudeOf(t *testing.T, s *sandbox.Sandbox, name string) *sandbox.Probe {
-	t.Helper()
-	var found *sandbox.Probe
-	sandbox.WaitFor(t, 10*time.Second, "claude of cld-"+name+" to start", func() bool {
-		for _, probe := range s.Probes() {
-			if len(probe.Argv) > 1 && probe.Argv[1] == "cld-"+name {
-				found = probe
-			}
-		}
-		return found != nil
-	})
-	return found
-}
-
 // paneOf is the TMUX and TMUX_PANE of claude's pane in session name, with which claude runs a
 // command: ! cld join among them.
 func paneOf(t *testing.T, s *sandbox.Sandbox, name string) map[string]string {

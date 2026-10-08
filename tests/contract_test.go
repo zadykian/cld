@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"bytes"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,7 +27,37 @@ func startContract(
 	probe := s.WaitProbes(1)[0]
 	waitClients(t, s, 1)
 	waitScreen(t, term, "probe --name cld-contract")
+	waitAnswered(t, s, term, probe)
 	return s, term, probe
+}
+
+// beacons numbers the beacons of waitAnswered, unique in a test run.
+var beacons atomic.Int64
+
+// waitAnswered waits until the terminal on probe's session has answered tmux's queries, and taken
+// in what tmux wrote at the answers. A test calls it before it types a prefix (decision 54.5).
+func waitAnswered(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal, probe *sandbox.Probe) {
+	t.Helper()
+	server := probe.Argv[1]
+	if want := expectations[term.Name()].termtype; want != "" {
+		sandbox.WaitFor(t, 10*time.Second, "tmux to have the terminal's XTVERSION", func() bool {
+			termtype := s.MustTmux(server, "list-clients", "-F", "#{client_termtype}")
+			return strings.HasPrefix(termtype, want)
+		})
+	}
+	// tmux drops a passthrough while a redraw is due, so the beacon goes again until it arrives.
+	text := "cld-" + strconv.FormatInt(beacons.Add(1), 10)
+	beacon := []byte("\x1b]7700;" + text + "\x07")
+	sandbox.WaitFor(t, 10*time.Second, "claude's beacon in the terminal", func() bool {
+		probe.Send("beacon " + text)
+		for range 20 {
+			if bytes.Contains(term.Output(), beacon) {
+				return true
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		return false
+	})
 }
 
 // C1: the tab shows the session's name after claude's marker, whatever title claude sets: ✳, or ◐
