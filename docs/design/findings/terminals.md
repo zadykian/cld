@@ -20,3 +20,33 @@ probe of its own yet ([decision 8](../decisions/0008-iterm2.md)).
   take them. xterm 411 shows the text alone. WezTerm's `TERM` is `xterm-256color` unless set to
   `wezterm`, and Alacritty's is `alacritty` only where that terminfo entry is installed
   ([decision 30](../decisions/0030-links.md)).
+
+## Ghostty
+
+Ghostty's source at 34f39002, the commit `tests/ghostty/deps.txt` pins, read on 2026-10-08. Its
+`build.zig.zon` says `1.3.2-dev`; the app built there reports `1.3.2-dev+0000000` from an archive,
+`1.3.2-BRANCH+HASH` from a checkout (`src/build/Config.zig`), and libghostty-vt `0.1.0-dev`. Paths
+are in that source. The ghostty driver copies the app ([decision 54](../decisions/0054-ghostty.md)).
+
+- **What the app answers** (`src/termio/stream_handler.zig`). XTVERSION `ghostty VERSION`, DA1
+  `CSI ? 62;22;52 c` and DA2 `CSI > 1;10;0 c`. libghostty-vt alone answers XTVERSION `libghostty`,
+  DA1 `?62;22` and DA2 `>1;0;0`. The app answers each `CSI ?1004h` with its focus state, which the
+  library leaves to its user.
+- **What the app gives a program** (`src/termio/Exec.zig`, `src/Surface.zig`). `TERM` is
+  `xterm-ghostty`, with `TERMINFO` naming the app's own entry, and `COLORTERM` `truecolor`. It sets
+  `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `GHOSTTY_RESOURCES_DIR`, `GHOSTTY_BIN_DIR`, also on the
+  `PATH`, `GHOSTTY_SHELL_FEATURES` and `GHOSTTY_SURFACE_ID`. It drops `VTE_VERSION` and
+  `GHOSTTY_LOG`.
+- **The app's defaults** (`src/config/Config.zig`, `src/termio/Termio.zig`). Modes 2027, grapheme
+  clustering, and 12, a blinking cursor, start on. A notch of the wheel scrolls three rows, reported
+  as three presses.
+- **Keys and pastes** (`src/input/key_encode.zig`, `src/input/paste.zig`; the app and libghostty-vt
+  share them). With the kitty keyboard protocol off, Shift+Enter is `CSI 27;2;13~`, modifyOtherKeys
+  asked for or not. A bracketed paste keeps its line feeds. Sixteen control characters, Ctrl+Q
+  among them, become spaces in any paste.
+- **What the app keeps for itself** (`src/config/Config.zig`, `src/Surface.zig`). A Ctrl+click over
+  a link opens it, and the program gets the press alone. On Linux Ctrl+- shrinks the font, so
+  claude's undo, `C-_`, takes Ctrl+Shift+- or Ctrl+/ there, each sending `0x1f`.
+- **Its terminfo entry** (`src/terminfo/ghostty.zig`, which needs only Zig's standard library).
+  `tests/ghostty/build-lib` prints it with `zig run`, and `tic -x` compiles it. Ubuntu's ncurses
+  names it `ghostty`, which cld's entry for `xterm*` would miss.

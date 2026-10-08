@@ -15,6 +15,18 @@ themselves are in [terminals.md](terminals.md), and claude's side in [claude.md]
 - **A DA1 answer later than the list's wait** (3.7c; the terminal frozen 1.5 s against a one-second
   wait). tmux takes the first answer for its own query, and its own answer then reached claude's
   pane as keys. Other releases were not checked.
+- **Focus reports asked for at each answer** (`tty_send_requests`, `tty_update_features` and the
+  answers' handlers read in 3.5a and 3.7c). tmux asks for DA1, DA2 and XTVERSION, in that order.
+  Each answer it takes writes `CSI ?1004h` again under `focus-events on`, and the XTVERSION answer
+  sets `#{client_termtype}`. Ghostty answers all three, and reports focus at each request. See
+  [decision 54.5](../decisions/0054-ghostty.md).
+- **Passthrough while a redraw is due** (`tty_client_ready` read in 3.5a and 3.7c). Under
+  `allow-passthrough on`, tmux skips a client with a window redraw due, and the sequence never
+  reaches it; `all` writes it anyway. A redraw follows each answer above. See
+  [decision 54.5](../decisions/0054-ghostty.md).
+- **`RGB` from COLORTERM** (`tty-term.c` read in 3.5a and 3.7c; the Ghostty driver on both). 3.7c
+  lists `RGB` for a client whose COLORTERM is `truecolor`. 3.5a goes by terminfo alone, where
+  `xterm-ghostty`'s `setrgbf` and `setrgbb` give 24-bit colour without the feature's name.
 - **Mouse modes as a client attaches** (3.7c; the baseline terminal and JediTerm 3.76). tmux turns
   every mouse mode off and on again several times, the last after the pane's text. A terminal that
   takes that output in pieces, as the JediTerm driver's does, can show the text with mouse reporting
@@ -68,6 +80,11 @@ themselves are in [terminals.md](terminals.md), and claude's side in [claude.md]
   `terminal-features` gave that tmux's client `hyperlinks`.
 
 ## Keys and focus
+
+- **A focus report after the prefix** (`server_client_key_callback` read in 3.5a and 3.7c; 3.7c in
+  the image with the Ghostty driver, 3 runs in 30 under load). A focus-in in the prefix table finds
+  no binding, so tmux returns to the root table, which has none, and drops it. The key after it
+  then went to claude: `C-q d` typed `d`. See [decision 54.5](../decisions/0054-ghostty.md).
 
 - **A dead pane that had focus reporting on** (3.3a, 3.4, 3.5a, 3.7c). 3.3a crashes on
   `kill-session` and detach, and 3.4 on detach and a focus change, taking every session on the

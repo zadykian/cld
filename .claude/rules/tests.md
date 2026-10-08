@@ -32,6 +32,10 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 - A terminal that cannot do something skips with a reason.
 - JediTerm emulates on a thread of its own: wait with `waitModes` for modes that change while
   cld runs. Once `Running` is false, what the terminal shows is final.
+- The ghostty driver builds only with `-tags ghostty`, and copies the Ghostty app faithfully. A
+  test that types a prefix just after a client attaches calls `waitAnswered` first: Ghostty's
+  focus reports to tmux's queries would cancel the prefix
+  ([decision 54.5](../../docs/design/decisions/0054-ghostty.md)).
 - The completion tests skip a shell that is not installed; `CLD_BLESH` makes the ble.sh test fail
   where it would skip, as `make docker-blesh-check` runs it.
 
@@ -73,6 +77,9 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   picks; `install_refusals_test.go`: what it refuses.
 - `update_completion_test.go`: the completion scripts `cld update` writes anew;
   `update_refusals_test.go`: what `cld update` refuses. They share `update_test.go`'s helpers.
+- `pins_test.go`: pins that move together, Ghostty's commit and its bindings
+  ([decision 54.2](../../docs/design/decisions/0054-ghostty.md)). The ghostty driver's own tests
+  are in `internal/terminal/ghostty_test.go`, behind its tag.
 - The helpers that more than one test file uses, a file per topic with no test in it:
   `terminal_test.go`, `tmux_test.go`, `list_test.go` for the interactive list, `entries_test.go`
   for the record's entries, `hooks_test.go`, `files_test.go`, `setup_test.go` and

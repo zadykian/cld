@@ -120,3 +120,4 @@ The `adr` skill in `.claude/skills` adds a record.
   Replaces 18. Amended by 53.
 - [53. A project's settings and the user's](design/decisions/0053-project-and-user-settings.md):
   Accepted (#155).
+- [54. Ghostty](design/decisions/0054-ghostty.md): Accepted (#162).

@@ -93,6 +93,19 @@ Once `Running` is false the screen and modes are final, which C7 and C9 read. Mo
 while cld runs are waited for. So is mouse reporting before a wheel or a click, as tmux turns the
 mouse modes off and on again after it draws. Both races showed only under load.
 
+### Ghostty
+
+libghostty-vt, Ghostty's terminal core at the commit `tests/ghostty/deps.txt` pins, runs headless
+in the test process ([decision 54](decisions/0054-ghostty.md)). The Go bindings link it through
+cgo, so only `-tags ghostty` builds the driver, and the Docker image builds the library. The driver
+feeds the core from a pty of its own, and types through Ghostty's key, mouse, focus and paste
+encoders. It copies what the app adds: its answers, environment, default modes and focus reports
+([terminals findings](findings/terminals.md)). The app's keybindings and link clicks stay a manual
+check. It reads the pty on one goroutine, which answers each request for focus reports before it
+reads on. Once `Running` is false, every byte the program wrote has gone through the core. Its own
+tests cover a request split between two reads, and what the contract leaves out: a resize, a
+freeze, a key held down and the attributes.
+
 ### iTerm2, planned
 
 Not built ([decision 8](decisions/0008-iterm2.md)). It would run the real app on a hosted macOS
@@ -138,9 +151,9 @@ SIGSTOP. Without cld's check for a waiting byte, that read-late case failed 4 ru
 
 ## CI
 
-- Every push and pull request runs the `lint` job, and the contract on tmux and JediTerm in the
-  Docker image, tmux built from source on `debian:trixie`. `blesh` runs the completion tests in
-  bash with ble.sh, in the image built on Ubuntu
+- Every push and pull request runs the `lint` job, and the contract on tmux, JediTerm and Ghostty's
+  core in the Docker image, tmux built from source on `debian:trixie`. `blesh` runs the completion
+  tests in bash with ble.sh, in the image built on Ubuntu
   ([decision 27](decisions/0027-completion-with-blesh.md)). `macos` runs `make check` with
   Homebrew's tmux.
 - The image runs 3.7c (`linux`) and 3.5a, the oldest cld runs on (`linux-oldest`, advisory). A
@@ -167,6 +180,17 @@ JediTerm 3.76, read from its source and confirmed by the contract
   Meta+Enter.
 - Its wheel constants are named the wrong way round, but its UI maps them right.
 - tmux sends claude a focus-in when a client attaches, whatever the terminal supports.
+
+Ghostty at 34f39002, through libghostty-vt and the app's source
+([terminals findings](findings/terminals.md)):
+
+- tmux does not know its XTVERSION answer: `extkeys` and `hyperlinks` come from cld's entry for
+  `xterm*`, which matches `xterm-ghostty`.
+- Shift+Enter arrives as `CSI 27;2;13~`. A paste keeps its line feeds, and Ctrl+Q in it becomes a
+  space.
+- Its focus report at each of tmux's requests once dropped the prefix of `C-q d` under load, 3 runs
+  in 30. A test that types a prefix just after attaching waits for them
+  ([decision 54.5](decisions/0054-ghostty.md)).
 
 tmux 3.3a to 3.7c ([tmux and the terminal](findings/tmux-terminal.md)):
 

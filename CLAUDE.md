@@ -37,7 +37,9 @@ cd tests && go test -count=1 -run 'TestList$' .   # a single test
 cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata/help from cld
 make check TERMINALS=tmux,jediterm      # add JediTerm: needs a JDK and, once,
                                         #   tests/jediterm/fetch-deps tests/jediterm/lib
-make docker-check                       # same as CI: tmux 3.7c built from source, tmux + jediterm
+make check TERMINALS=tmux,ghostty       # add Ghostty: needs tests/ghostty/build-lib DIR's library,
+                                        #   PKG_CONFIG_PATH=DIR/share/pkgconfig, CLD_GHOSTTY_DIR=DIR
+make docker-check                       # same as CI: tmux 3.7c from source, all three terminals
 make docker-check TMUX_VERSION=3.5a     # the same on the oldest tmux cld runs on, as CI does too
 make docker-blesh-check                 # the completion tests in bash with Ubuntu 26.04's ble.sh
 make docker-image TMUX_VERSION=X        # an image with another tmux release, to try it by hand
@@ -45,10 +47,11 @@ make dist VERSION=X.Y.Z                 # dist/cld-OS-ARCH (4 platforms), cld.sh
 make install PREFIX=DIR                 # build cld for the host into DIR/bin (VERSION stamps it)
 ```
 
-Native runs need Go, tmux 3.5a or newer, ShellCheck and shfmt; `make lint` fetches the tools it
-pins. CI (`.github/workflows/ci.yml`) runs `linux` on tmux 3.7c and `linux-oldest` on 3.5a, both
-in Docker, `blesh` with ble.sh, `macos` with Homebrew tmux, and `lint`. A tag `vX.Y.Z` publishes
-a release: a binary per platform, `cld.sha256` and `install.sh`.
+Native runs need Go, tmux 3.5a or newer, ShellCheck and shfmt. `make lint` fetches the tools it
+pins, and needs git, a C compiler and pkg-config to type-check the ghostty driver's cgo. CI
+(`.github/workflows/ci.yml`) runs `linux` on tmux 3.7c and `linux-oldest` on 3.5a, both in
+Docker, `blesh` with ble.sh, `macos` with Homebrew tmux, and `lint`. A tag `vX.Y.Z` publishes a
+release: a binary per platform, `cld.sha256` and `install.sh`.
 
 ## How changes land
 
@@ -89,6 +92,9 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   `internal/update`, which rely on them (decisions
   [20](docs/design/decisions/0020-install-script.md) and
   [21](docs/design/decisions/0021-self-update.md)).
+- The Ghostty commit in `tests/ghostty/deps.txt` and `go.mitchellh.com/libghostty` in `go.mod`,
+  which binds that commit, move together and by hand
+  ([decision 54](docs/design/decisions/0054-ghostty.md)).
 - `setup config project --mcp goland --permissions cld` writes this repository's `.mcp.json` and
   `.claude/settings.json` byte for byte, but for the hooks, which stay the settings' last key.
   Change them with `internal/project` (decisions
