@@ -20,7 +20,9 @@ RUN apt-get update \
 COPY tests/ghostty/ /tmp/ghostty/
 RUN /tmp/ghostty/build-lib /opt/ghostty
 
-FROM ${BASE}
+# Everything but Ghostty. The ble.sh image stops here (`make docker-blesh-image`): the completion
+# tests never use Ghostty, and BuildKit builds only the stages a target needs.
+FROM ${BASE} AS no-ghostty
 # bash-completion, fish and zsh load what cld setup completion writes, in the tests that check it.
 # PACKAGES are more, for a base that has them: ble.sh on Ubuntu, which Debian's trixie lacks
 # (`make docker-blesh-check`).
@@ -53,11 +55,13 @@ ENV PATH=/usr/local/go/bin:$PATH \
 COPY tests/jediterm/deps.txt tests/jediterm/fetch-deps /opt/jediterm/
 RUN /opt/jediterm/fetch-deps /opt/jediterm/lib
 
-# The ghostty driver links libghostty-vt statically through pkg-config. Its terminfo entry lies
-# where the app's TERMINFO names it, as the app ships it, not in the system's database.
+COPY go.mod go.sum /tmp/module/
+RUN cd /tmp/module && go mod download && chmod -R a+rX /go && rm -rf /tmp/module
+
+# The checks' image: no-ghostty, with Ghostty. The ghostty driver links libghostty-vt statically
+# through pkg-config. Its terminfo entry lies where the app's TERMINFO names it, as the app ships
+# it, not in the system's database.
+FROM no-ghostty
 COPY --from=ghostty /opt/ghostty /opt/ghostty
 ENV PKG_CONFIG_PATH=/opt/ghostty/share/pkgconfig \
     CLD_GHOSTTY_DIR=/opt/ghostty
-
-COPY go.mod go.sum /tmp/module/
-RUN cd /tmp/module && go mod download && chmod -R a+rX /go && rm -rf /tmp/module
