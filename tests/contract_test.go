@@ -45,18 +45,13 @@ func waitAnswered(t *testing.T, s *sandbox.Sandbox, term terminal.Terminal, prob
 			return strings.HasPrefix(termtype, want)
 		})
 	}
-	// tmux drops a passthrough while a redraw is due, so the beacon goes again until it arrives.
+	// tmux writes the beacon after what it wrote at the answers, even with a redraw due, which
+	// claude's pane allows (decision 55).
 	text := "cld-" + strconv.FormatInt(beacons.Add(1), 10)
 	beacon := []byte("\x1b]7700;" + text + "\x07")
+	probe.Send("beacon " + text)
 	sandbox.WaitFor(t, 10*time.Second, "claude's beacon in the terminal", func() bool {
-		probe.Send("beacon " + text)
-		for range 20 {
-			if bytes.Contains(term.Output(), beacon) {
-				return true
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		return false
+		return bytes.Contains(term.Output(), beacon)
 	})
 }
 

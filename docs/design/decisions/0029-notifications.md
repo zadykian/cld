@@ -1,7 +1,8 @@
 # 29. Notifications
 
 Status: Accepted (#59). Amended by [53](0053-project-and-user-settings.md), whose
-`setup config user` writes the channel the user names.
+`setup config user` writes the channel the user names, and by
+[55](0055-passthrough-from-claudes-pane.md), which passes them while a redraw is due.
 
 ## Context
 

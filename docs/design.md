@@ -79,7 +79,8 @@ The `adr` skill in `.claude/skills` adds a record.
 - [27. Completion in bash with ble.sh](design/decisions/0027-completion-with-blesh.md): Accepted.
 - [28. Project settings a team can share](design/decisions/0028-shared-project-settings.md):
   Accepted. Amended by 53.
-- [29. Notifications](design/decisions/0029-notifications.md): Accepted (#59). Amended by 53.
+- [29. Notifications](design/decisions/0029-notifications.md): Accepted (#59). Amended by 53 and
+  55.
 - [30. Links](design/decisions/0030-links.md): Accepted (#60).
 - [31. A terminal to attach from](design/decisions/0031-a-terminal-to-attach-from.md): Accepted
   (#63). Amended by 41, 48, 50 and 51.
@@ -120,4 +121,6 @@ The `adr` skill in `.claude/skills` adds a record.
   Replaces 18. Amended by 53.
 - [53. A project's settings and the user's](design/decisions/0053-project-and-user-settings.md):
   Accepted (#155).
-- [54. Ghostty](design/decisions/0054-ghostty.md): Accepted (#162).
+- [54. Ghostty](design/decisions/0054-ghostty.md): Accepted (#162). Amended by 55.
+- [55. Passthrough from claude's pane](design/decisions/0055-passthrough-from-claudes-pane.md):
+  Accepted (#167).
