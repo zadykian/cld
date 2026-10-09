@@ -48,7 +48,8 @@ a terminal gaining or losing support flips a test. Tests cite the checks by numb
   Alt+right-click whole, press and release. Over a main-screen program without mouse reporting,
   the wheel scrolls the pane's history. Evidence: probe input log, tmux.
 - **C5, passthrough.** OSC 52, claude's notifications (OSC 9, 99 and 777) in tmux passthrough, the
-  bell, copies through `tmux load-buffer -w` and claude's OSC 8 links reach the outer terminal.
+  bell, copies through `tmux load-buffer -w` and claude's OSC 8 links reach the outer terminal. A
+  notification does even while a redraw is due, or from a window the terminal does not show.
   Evidence: terminal, terminal output.
 - **C6, environment.** Neither claude nor what it starts through tmux sees a variable that names
   the terminal the session was made in ([decision 33](decisions/0033-terminal-variables.md)).
@@ -103,8 +104,8 @@ encoders. It copies what the app adds: its answers, environment, default modes a
 ([terminals findings](findings/terminals.md)). The app's keybindings and link clicks stay a manual
 check. It reads the pty on one goroutine, which answers each request for focus reports before it
 reads on. Once `Running` is false, every byte the program wrote has gone through the core. Its own
-tests cover a request split between two reads, and what the contract leaves out: a resize, a
-freeze, a key held down and the attributes.
+tests cover a request split between two reads, a freeze, and what the contract leaves out: a
+resize, a key held down and the attributes.
 
 ### iTerm2, planned
 
@@ -200,6 +201,9 @@ tmux 3.3a to 3.7c ([tmux and the terminal](findings/tmux-terminal.md)):
   transcript. `mouse on` adds the wheel scrolling the history over a main-screen program (C4).
 - From 3.6 the wheel goes to a program in the alternate screen, asked for or not; earlier releases
   entered copy mode.
+- Under `allow-passthrough on`, a notification sent while a redraw was due never reached the tmux
+  or Ghostty terminal, 3 runs in 3 on 3.5a and 3.7c. Nor did one sent from a window the terminal
+  did not show, in any terminal ([decision 55](decisions/0055-passthrough-from-claudes-pane.md)).
 
 A `VT10x` once seen came from a probing shell that carried `TERMINAL_EMULATOR`: the leak that
 [decision 33](decisions/0033-terminal-variables.md) closes. From a clean environment claude 2.1.281

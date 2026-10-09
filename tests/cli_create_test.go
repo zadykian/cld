@@ -150,6 +150,7 @@ func createCommand(t *testing.T, s *sandbox.Sandbox, test createCase) []string {
 		"set", "-p", "-t", "=cld-x:", "remain-on-exit", "on", ";",
 		"set", "-p", "-t", "=cld-x:", "remain-on-exit-format", "", ";",
 		"set-hook", "-p", "-t", "=cld-x:", "pane-died", endHook("-s x", run), ";",
+		"set", "-p", "-t", "=cld-x:", "allow-passthrough", "all", ";",
 		"set", "-t", "=cld-x:", "@cld-tmux", sandbox.FakeTmux, ";",
 		"set", "-t", "=cld-x:", "@cld-home", filepath.Join(s.Work, test.home), ";",
 		"set", "-t", "=cld-x:", "@cld-busy", busyMarker, ";",

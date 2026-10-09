@@ -50,7 +50,9 @@ A server gets these as `join` makes it, the reasons here unless a decision holds
   `new-session`: tmux 3.7 applies a new limit to existing panes, earlier releases only to new
   ones.
 - `allow-passthrough on`: claude wraps its OSC 52 copies and notifications in tmux passthrough
-  ([decision 29](decisions/0029-notifications.md)).
+  ([decision 29](decisions/0029-notifications.md)). claude's pane gets `all`, which passes them
+  to a terminal showing another window, or with a redraw due. The other panes, a teammate's claude
+  among them, keep `on` ([decision 55](decisions/0055-passthrough-from-claudes-pane.md)).
 - `status off`: claude keeps the whole tab.
 - `prefix C-q`: claude binds `C-b` and nearly every other Ctrl key, but not `C-q`. `C-q d`
   detaches, `C-q C-q` sends a `C-q`, and `cld detach` serves a terminal that keeps `C-q`
@@ -61,9 +63,9 @@ A server gets these as `join` makes it, the reasons here unless a decision holds
   ([decision 5](decisions/0005-failures-stay-on-screen.md)).
 - The title options on claude's session ([decision 25](decisions/0025-title-follows-status.md)).
 
-What concerns claude alone, the failure's options and hook and the title's, goes on claude's pane
-or session, never its window or the server. The other panes of its window, and the sessions claude
-makes on its server, then behave as plain tmux.
+What concerns claude alone, the failure's options and hook, its passthrough and the title's, goes
+on claude's pane or session, never its window or the server. The other panes of its window, and the
+sessions claude makes on its server, then behave as plain tmux.
 
 ## The packages
 

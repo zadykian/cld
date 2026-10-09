@@ -20,10 +20,6 @@ themselves are in [terminals.md](terminals.md), and claude's side in [claude.md]
   Each answer it takes writes `CSI ?1004h` again under `focus-events on`, and the XTVERSION answer
   sets `#{client_termtype}`. Ghostty answers all three, and reports focus at each request. See
   [decision 54.5](../decisions/0054-ghostty.md).
-- **Passthrough while a redraw is due** (`tty_client_ready` read in 3.5a and 3.7c). Under
-  `allow-passthrough on`, tmux skips a client with a window redraw due, and the sequence never
-  reaches it; `all` writes it anyway. A redraw follows each answer above. See
-  [decision 54.5](../decisions/0054-ghostty.md).
 - **`RGB` from COLORTERM** (`tty-term.c` read in 3.5a and 3.7c; the Ghostty driver on both). 3.7c
   lists `RGB` for a client whose COLORTERM is `truecolor`. 3.5a goes by terminfo alone, where
   `xterm-ghostty`'s `setrgbf` and `setrgbb` give 24-bit colour without the feature's name.
@@ -125,6 +121,32 @@ themselves are in [terminals.md](terminals.md), and claude's side in [claude.md]
   default `bell-action`; with it off, the BEL alone. Sent with no terminal attached, neither reached
   the next one. The pane had tmux's `TERM_PROGRAM`, while `LC_TERMINAL` came through. See
   [decision 29](../decisions/0029-notifications.md).
+- **Passthrough while a redraw is due** (`tty_client_ready` and `screen_write_set_client_cb` read
+  in 3.5a and 3.7c; both in the images, an outer tmux as the terminal). Under `allow-passthrough
+  on`, tmux skips a client with a redraw of its window, or of the pane, due. A redraw that finds
+  output to the terminal pending waits for it. Frozen, with a `refresh-client` deferred so, the
+  terminal never got an OSC 9; under `all` it did. See
+  [decision 55](../decisions/0055-passthrough-from-claudes-pane.md).
+- **What makes a redraw due** (`server_redraw_client` and its callers read in 3.5a and 3.7c;
+  `input.c` in 3.7 and 3.7a, and 3.7c's `CHANGES`). Attaching, each answer to tmux's queries, a
+  resize, and any `set`, of a user option too. Also `refresh-client` without `-S`, and a message,
+  prompt or popup closing. tmux redraws a client that cannot keep up every 100 ms while it discards
+  its output. In 3.7 and from 3.7b, not 3.7a, the end of a pane's synchronized update makes the
+  pane's redraw due. claude draws so where tmux answers DECRQM 2026, from 3.7 (**Synchronized
+  output**; 2.1.295's bundle read too). A frame and an OSC 9 in one write lost the OSC 9 on 3.7c,
+  not on 3.5a.
+- **Panes not shown, and frozen clients** (3.5a and 3.7c, as above). Under `on`, a pane's
+  passthrough goes only to a client showing its window, the pane in the layout. An OSC 9 from a
+  window not shown, or from beside a zoomed pane, never arrived. Read, not run: nor does any reach
+  a client frozen by a message (any on 3.5a, without `-C` from 3.6), a prompt, `display-panes`, or
+  on 3.5a a menu. Under `all`, each went to every client of the session.
+- **What `all` does not pass** (3.5a and 3.7c, as above, and the snap's 3.7c; `input.c` read). A
+  pane in a mode, copy mode say, passes no passthrough: its OSC 9 was lost under `all` too, while
+  its BEL arrived. Neither setting passes it while tmux discards a client's output. The bell goes
+  another way, and arrived with a redraw deferred too.
+- **`all` on one pane** (3.5a and 3.7c, as above). `allow-passthrough` is a window and a pane
+  option. Set to `all` on one pane, with `on` server-wide, it passed that pane's OSC 9 wherever
+  `all` server-wide did.
 - **OSC 8 links** (3.7c, the image; `tty-features.c` and `hyperlinks.c` read; ncurses 6.6; claude
   2.1.283 and 2.1.284's bundles read). claude marks links where `TERM_PROGRAM` is `tmux` 3.4 or
   newer. tmux writes a link only to a terminal with the `hyperlinks` feature, which no ncurses 6.6

@@ -83,7 +83,9 @@ to `tmux`, so `"auto"` sends nothing. Name your terminal's channel in claude's u
 | Ghostty | `"ghostty"` | OSC 777 |
 | Terminal.app, any other | `"terminal_bell"` | the bell |
 
-- Every terminal on the session gets them; a session with none attached shows none, then or later.
+- Every terminal on the session gets them, whatever window of the session it shows. While claude's
+  pane is in copy mode only the bell arrives, and a session with none attached shows none, then or
+  later ([decision 55](../design/decisions/0055-passthrough-from-claudes-pane.md)).
 - The setting serves claude outside cld too, where `"terminal_bell"` rings where `"auto"` sends
   nothing. A session of cld's sets no channel, as the next terminal to join may be another
   ([decision 29](../design/decisions/0029-notifications.md)).
