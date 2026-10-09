@@ -13,8 +13,9 @@ BASE ?= debian:trixie
 TMUX_VERSION ?= 3.7c
 DOCKER_TERMINALS ?= tmux,jediterm,ghostty
 IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BASE)))-tmux-$(TMUX_VERSION)
-# The completion checks in bash with ble.sh: the same image, on BLESH_BASE, whose package ble.sh
-# the tests load - Ubuntu 26.04's is 0.4.0~git20250806.8060b7a, as CI builds it too.
+# The completion checks in bash with ble.sh: the same Dockerfile, on BLESH_BASE, whose package
+# ble.sh the tests load - Ubuntu 26.04's is 0.4.0~git20250806.8060b7a, as CI builds it too. It
+# stops at the stage no-ghostty, as the tests never use Ghostty.
 BLESH_BASE ?= ubuntu:26.04
 BLESH_IMAGE = cld-test:$(subst /,-,$(subst :,-,$(BLESH_BASE)))-blesh-tmux-$(TMUX_VERSION)
 # The version make dist and make install stamp into cld.
@@ -107,7 +108,8 @@ docker-check: docker-image
 
 docker-blesh-image:
 	docker build --build-arg BASE=$(BLESH_BASE) --build-arg PACKAGES=ble.sh \
-		--build-arg TMUX_VERSION=$(TMUX_VERSION) -t $(BLESH_IMAGE) -f tests/Dockerfile .
+		--build-arg TMUX_VERSION=$(TMUX_VERSION) --target no-ghostty -t $(BLESH_IMAGE) \
+		-f tests/Dockerfile .
 
 # The completion tests in an image that is already built, by docker-blesh-image or by CI from its
 # layer cache; with CLD_BLESH, the ble.sh test fails where it would skip without ble.sh.
