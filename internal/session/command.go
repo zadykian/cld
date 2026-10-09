@@ -105,14 +105,16 @@ func (cr *creation) newSession(claude []string) []string {
 }
 
 // sessionOptions follow new-session, which tmux skips where it fails. claude's pane gets the
-// failure's options and hook (decision 5); its session gets the title's (decision 25.4), its home
-// and its tmux. "=NAME:" is the session's active pane, claude's, as set takes a pane.
+// failure's options and hook (decision 5), and passthrough while a redraw is due (decision 55).
+// Its session gets the title's (decision 25.4), its home and its tmux. "=NAME:" is the session's
+// active pane, claude's, as set takes a pane.
 func (cr *creation) sessionOptions() []string {
 	target := "=cld-" + cr.suffix + ":"
 	options := []string{";",
 		"set", "-p", "-t", target, "remain-on-exit", "on", ";",
 		"set", "-p", "-t", target, "remain-on-exit-format", "", ";",
 		"set-hook", "-p", "-t", target, "pane-died", died(cr.suffix, cr.diedRun), ";",
+		"set", "-p", "-t", target, "allow-passthrough", "all", ";",
 		"set", "-t", target, "@cld-tmux", literal(cr.t.path), ";",
 		"set", "-t", target, "@cld-home", literal(cr.home), ";",
 		"set", "-t", target, "@cld-busy", busyMarker, ";",

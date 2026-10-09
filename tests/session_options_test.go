@@ -49,9 +49,10 @@ func checkServerWide(t *testing.T, s *sandbox.Sandbox) {
 	}
 }
 
-// checkClaudesOwn checks that what cld sets for a failed claude goes to claude's pane, and the
-// tab's title and the session's home to its session. The other panes of claude's window, and the
-// sessions claude makes, keep tmux's. show without -v prints an option only where set.
+// checkClaudesOwn checks that what cld sets for a failed claude and its passthrough goes to its
+// pane. The tab's title and the session's home go to its session. The other panes of claude's
+// window, and the sessions claude makes, keep the server's. show without -v prints an option only
+// where set.
 func checkClaudesOwn(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
 	for _, option := range []struct {
@@ -63,6 +64,8 @@ func checkClaudesOwn(t *testing.T, s *sandbox.Sandbox) {
 		{[]string{"-w", "-t", "=cld-0:", "remain-on-exit"}, ""},
 		{[]string{"-w", "-t", "=cld-0:", "remain-on-exit-format"}, ""},
 		{[]string{"-gwv", "remain-on-exit"}, "off"},
+		{[]string{"-pv", "-t", "=cld-0:", "allow-passthrough"}, "all"},
+		{[]string{"-w", "-t", "=cld-0:", "allow-passthrough"}, ""},
 		{[]string{"-v", "-t", "=cld-0:", "set-titles"}, "on"},
 		{[]string{"-v", "-t", "=cld-0:", "set-titles-string"},
 			"#{?pane_dead,✳,#{?#{==:#{@cld-status},busy},#{T:@cld-busy},✳}} cld-0" +

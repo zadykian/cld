@@ -1,6 +1,7 @@
 # 54. Ghostty
 
-Status: Accepted (#162).
+Status: Accepted (#162). Amended by [55](0055-passthrough-from-claudes-pane.md), under which
+54.5's beacon goes once.
 
 ## Context
 

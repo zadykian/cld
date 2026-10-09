@@ -59,6 +59,60 @@ func TestContractNotifications(t *testing.T) {
 	})
 }
 
+// C5: a notification claude sends while tmux has a redraw of the terminal due reaches it all the
+// same (decision 55). The terminal, frozen, leaves tmux's output pending, which defers the redraw.
+func TestContractNotificationDuringRedraw(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) { //nolint:thelper // a subtest, not a helper
+		s, term, probe := startContract(t, name)
+		server := probe.Argv[1]
+		thaw := term.Freeze()
+		deferRedraw(t, s, server)
+		probe.Send("notify iterm2 claude needs you")
+		// tmux reads claude's output in order: once it has the title, it has the notification.
+		probe.Send("title after the notification")
+		sandbox.WaitFor(t, 10*time.Second, "tmux to read the notification", func() bool {
+			return s.Format(server, "#{pane_title}") == "after the notification"
+		})
+		thaw()
+		sandbox.WaitFor(t, 10*time.Second, "the notification in the terminal", func() bool {
+			return bytes.Contains(term.Output(), []byte("\x1b]9;claude needs you\x07"))
+		})
+	})
+}
+
+// C5: a notification claude sends reaches a terminal that shows another window of the session
+// (decision 55).
+func TestContractNotificationFromHiddenWindow(t *testing.T) {
+	forEachTerminal(t, func(t *testing.T, name string) { //nolint:thelper // a subtest, not a helper
+		s, term, probe := startContract(t, name)
+		server := probe.Argv[1]
+		s.MustTmux(server, "new-window", "-t", "="+server+":", "sleep", "600")
+		probe.Send("notify iterm2 claude needs you")
+		sandbox.WaitFor(t, 10*time.Second, "the notification in the terminal", func() bool {
+			return bytes.Contains(term.Output(), []byte("\x1b]9;claude needs you\x07"))
+		})
+	})
+}
+
+// deferRedraw has tmux redraw the frozen terminal on server until a redraw finds output to it still
+// pending. tmux then defers the redraw, and keeps it due until the terminal reads again.
+func deferRedraw(t *testing.T, s *sandbox.Sandbox, server string) {
+	t.Helper()
+	client := s.MustTmux(server, "list-clients", "-F", "#{client_name}")
+	// Each list-clients runs after the redraw that the refresh-client before it asked for, which
+	// writes to the terminal unless deferred.
+	last := ""
+	for range 1000 {
+		written := s.MustTmux(server, "list-clients", "-F", "#{client_written}", ";",
+			"refresh-client", "-t", client)
+		if written == last {
+			return
+		}
+		last = written
+	}
+	t.Fatal("tmux redrew the frozen terminal at each refresh-client")
+}
+
 // C5: an OSC 8 link claude writes reaches the terminal as a link, not only as its text. tmux writes
 // links only to a terminal with the hyperlinks feature, which JediTerm gets from cld's entry for
 // xterm* (decision 30).

@@ -18,6 +18,13 @@ By hand, download your system's binary and `cld.sha256` from a
 
 [Upgrading](../guide.md) says how to upgrade; here is what changed, newest first.
 
+### From cld 0.12.0 and earlier
+
+- **Notifications** reach a terminal that shows another window of the session, and no longer go
+  missing while tmux redraws it. A session made before keeps missing them, until you end it and
+  `cld join` makes it anew
+  ([decision 55](../design/decisions/0055-passthrough-from-claudes-pane.md)).
+
 ### From cld 0.11.0 and earlier
 
 - **`cld setup project`** is now `cld setup config project`, with the same options, and
