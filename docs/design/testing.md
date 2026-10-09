@@ -153,7 +153,7 @@ SIGSTOP. Without cld's check for a waiting byte, that read-late case failed 4 ru
 
 - Every push and pull request runs the `lint` job, and the contract on tmux, JediTerm and Ghostty's
   core in the Docker image, tmux built from source on `debian:trixie`. `blesh` runs the completion
-  tests in bash with ble.sh, in the image built on Ubuntu
+  tests in bash with ble.sh, in the image built on Ubuntu without the Ghostty stage
   ([decision 27](decisions/0027-completion-with-blesh.md)). `macos` runs `make check` with
   Homebrew's tmux.
 - The image runs 3.7c (`linux`) and 3.5a, the oldest cld runs on (`linux-oldest`, advisory). A
