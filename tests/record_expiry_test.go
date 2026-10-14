@@ -31,7 +31,7 @@ func TestRecordWhileRunning(t *testing.T) {
 	month := 31 * 24 * time.Hour
 	var old []string
 	for _, name := range []string{"a", "c"} {
-		for _, ext := range []string{".json", ".env", ".run", ".busy", ".dir"} {
+		for _, ext := range recordFiles {
 			if exists(companionFile(s, name, ext)) {
 				old = append(old, companionFile(s, name, ext))
 			}

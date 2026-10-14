@@ -1,7 +1,8 @@
 // Package picker is cld list on a terminal: the sessions as the table of cld list shows them, one
 // of them selected. Enter joins it as cld join does, bringing back one that has ended. Ctrl+X
-// pressed twice kills it as cld kill does, or forgets one that has ended. Decisions 14 and 15 in
-// docs/design/decisions give the keys, the waits and the footer.
+// pressed twice kills it as cld kill does, or forgets one that has ended. Ctrl+R renames one that
+// has ended, in an editor in the footer. Decisions 14, 15 and 57 in docs/design/decisions give the
+// keys, the waits and the footer.
 //
 // The list reads the sessions only as it opens and after its own actions, never on a timer: no
 // row changes under a key (decision 14.6).
@@ -27,8 +28,8 @@ import (
 	"github.com/zadykian/cld/internal/session"
 )
 
-// Source is where the list reads its rows, looks a session up before joining it, and kills or
-// forgets one. Each gives up once ctx is done.
+// Source is where the list reads its rows, looks a session up before joining it, and kills,
+// forgets or renames one. Each gives up once ctx is done.
 type Source interface {
 	// Sessions reads the sessions to list.
 	Sessions(ctx context.Context) ([]session.Session, error)
@@ -40,6 +41,9 @@ type Source interface {
 	Kill(ctx context.Context, name string, pids []string) error
 	// Forget forgets session NAME, which has ended, and otherwise says why it forgot nothing.
 	Forget(ctx context.Context, name string) error
+	// Rename renames session NAME, which has ended, to TO, and otherwise says why it renamed
+	// nothing.
+	Rename(ctx context.Context, name, to string) error
 }
 
 // Available reports whether stdin and stdout are a terminal the list can run on, TERM set and not
@@ -61,9 +65,9 @@ func Available() bool {
 var endSignals = []os.Signal{syscall.SIGTERM, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT}
 
 // Run shows sessions until the user leaves, or picks one to join or bring back. It returns the
-// session picked, with no name where the user left, and the sessions last read, less one its kill
-// ended or its forget forgot since (see abandon). The terminal is back as before, with the title
-// of a session picked, but where switching: then the session picked goes to another terminal.
+// session picked, with no name where the user left, and the sessions last read, as settle leaves
+// them (see abandon). The terminal is back as before, with the title of a session picked, but
+// where switching: then the session picked goes to another terminal.
 func Run(source Source, sessions []session.Session, switching bool) (
 	picked session.Session, last []session.Session, err error,
 ) {

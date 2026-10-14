@@ -1,7 +1,8 @@
 # 40. A record of the sessions
 
 Status: Accepted (#57). Amended by [44](0044-detach-command.md), [48](0048-restore-after-reboot.md),
-[50](0050-one-command-join.md) and [56](0056-following-claudes-cd.md).
+[50](0050-one-command-join.md), [56](0056-following-claudes-cd.md) and
+[57](0057-renaming-from-the-list.md).
 
 ## Context
 

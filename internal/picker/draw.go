@@ -126,18 +126,21 @@ func embolden(line string, from, count int) string {
 	return line[:start] + bold + line[start:end] + noBold + line[end:]
 }
 
-// footer is the line under the rows: the message, the kill's question once armed, or the hints
-// for the keys, cut at the terminal's width. On a row that has ended, Enter resumes and the kill
-// is a forget.
+// footer is the line under the rows: the editor, the message, the kill's question once armed, or
+// the hints for the keys, cut at the terminal's width. On a row that has ended, Enter resumes, the
+// kill is a forget, and Ctrl+R renames.
 func (l *list) footer() string {
-	if l.message != "" {
-		return cut(strings.Join(strings.Fields(l.message), " "), l.columns)
+	if l.edit != nil {
+		return l.editFooter()
 	}
-	enter, kill, detach := "join", "kill", ""
+	if l.message != "" {
+		return cut(oneLine(l.message), l.columns)
+	}
+	enter, kill, detach, rename := "join", "kill", "", ""
 	if len(l.rows) > 0 {
 		switch row := l.rows[l.selected]; {
 		case row.State == session.Ended:
-			enter, kill = "resume", "forget"
+			enter, kill, rename = "resume", "forget", "ctrl+r to rename · "
 		case row.Attached:
 			detach = " and detach its terminal"
 		}
@@ -147,14 +150,20 @@ func (l *list) footer() string {
 	case l.armed:
 		hints = "ctrl+x again to " + kill + detach + " · esc to keep"
 	case len(l.rows) > 0:
-		// The arrows' hint goes first where the terminal is short of cells for them all: 61 columns
-		// or fewer on a row to join. From 44 columns on, the others then fit whole.
-		hints = "enter to " + enter + " · ctrl+x to " + kill + " · " + hints
+		// The arrows' hint goes first where the terminal is short of cells for them all. That is 61
+		// columns or fewer on a row to join, and 84 on a row that has ended. From 44 and 67 columns
+		// on, the others then fit whole.
+		hints = "enter to " + enter + " · ctrl+x to " + kill + " · " + rename + hints
 		if all := "↑/↓ to navigate · " + hints; cells(all) <= l.columns {
 			hints = all
 		}
 	}
 	return dim + cut(hints, l.columns) + noDim
+}
+
+// oneLine is message on one line, each run of spaces or newlines in it a space.
+func oneLine(message string) string {
+	return strings.Join(strings.Fields(message), " ")
 }
 
 // cells is the number of terminal cells text takes: two for a wide character, none for a

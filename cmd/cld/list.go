@@ -30,11 +30,12 @@ than $CLD_IDLE_DAYS days, 30 where unset or empty, is ended first, as cld kill
 ends it, with a line on stderr; cld join brings its conversation back.
 CLD_IDLE_DAYS=0 ends none.
 
-On a terminal, pick one to join or kill: Up and Down select a session, Enter
-joins it as cld join does, C-x twice within two seconds kills it as cld kill
-does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
-list. On a session that has ended, Enter resumes it as cld join does, and C-x
-twice forgets it. cld list | cat prints the list only.
+On a terminal, pick one to join, kill or rename: Up and Down select a session,
+Enter joins it as cld join does, C-x twice within two seconds kills it as
+cld kill does - Esc after the first C-x keeps it - and Esc or C-c leaves,
+printing the list. On a session that has ended, Enter resumes it as cld join
+does, C-x twice forgets it, and C-r renames it: type the new name, then Enter,
+or Esc to keep the old one. cld list | cat prints the list only.
 
 In a session, C-q s shows the list over it: Enter moves the terminal to the
 session picked, as ! cld join does, and Esc closes the list. So does Enter in
@@ -46,7 +47,7 @@ cld list run in a shell on the session's tmux server.`
 func newList(typed string) *cobra.Command {
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "list cld's sessions; on a terminal, join or kill one",
+		Short: "list cld's sessions; on a terminal, join, kill or rename one",
 		Long:  listLong,
 	}
 	var client, to string
@@ -145,9 +146,9 @@ func table(sessions []session.Session) string {
 	return out.String()
 }
 
-// listSource is what the interactive list reads and acts through (decisions 14.5, 15.4 and 40.3).
-// It gives the sessions, join's checks for Enter, and kill's steps or the forget for the second
-// Ctrl+X. The list names a session whole, as -n does, and takes it from anywhere.
+// listSource is what the interactive list reads and acts through (decisions 14.5, 15.4, 40.3 and
+// 57). It gives the sessions, join's checks for Enter, kill's steps or the forget for the second
+// Ctrl+X, and the rename. The list names a session whole, as -n does, and takes it from anywhere.
 type listSource struct{ tmux *session.Tmux }
 
 func (l listSource) Sessions(ctx context.Context) ([]session.Session, error) {
@@ -170,6 +171,22 @@ func (l listSource) Forget(ctx context.Context, name string) error {
 	unlock := session.Lock()
 	defer unlock()
 	return l.tmux.Forget(ctx, name)
+}
+
+// Rename checks both names, then renames the session under the record's lock, as Forget does. A
+// new name too long is refused without itself, which the footer shows already and would not fit.
+func (l listSource) Rename(ctx context.Context, name, to string) error {
+	if utf8.RuneCountInString(to) > session.MaxName {
+		return fail.Usage(fmt.Sprintf("the name is longer than %d characters", session.MaxName))
+	}
+	for _, checked := range []string{name, to} {
+		if err := naming.CheckName(checked); err != nil {
+			return err
+		}
+	}
+	unlock := session.Lock()
+	defer unlock()
+	return l.tmux.Rename(ctx, name, to)
 }
 
 // Kill is kill's steps, checking that the session still holds one of pids (decision 15.3). What

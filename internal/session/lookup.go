@@ -100,8 +100,8 @@ func noSession(suffix string) error {
 
 // Joinable is the lookup the interactive list's Enter makes while the list owns the terminal, as
 // far as join goes without claude. It returns nil where session cld-SUFFIX runs, or has ended in
-// a directory that can be entered, and otherwise why join refuses it. The list takes a session
-// from anywhere, as -n does. Once ctx is done, its tmux is killed.
+// a directory that can be entered, and otherwise why join refuses it. A server that outlived it
+// gets stillRuns' refusal instead. Once ctx is done, its tmux is killed.
 func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 	server, exists, _, _, err := t.lookup(ctx, suffix)
 	switch {
@@ -110,8 +110,7 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 	case exists:
 		return nil
 	case server:
-		_, refused := t.lingering(ctx, suffix)
-		return refused
+		return t.stillRuns(ctx, suffix)
 	}
 	r, ok := recorded(suffix)
 	if !ok {

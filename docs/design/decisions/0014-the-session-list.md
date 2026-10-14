@@ -2,8 +2,8 @@
 
 Status: Accepted (#23). Amended by [15](0015-killing-from-the-list.md),
 [23](0023-joining-beside-other-terminals.md), [40](0040-session-record.md),
-[49](0049-status-in-the-list.md), [50](0050-one-command-join.md) and
-[51](0051-moving-between-sessions.md).
+[49](0049-status-in-the-list.md), [50](0050-one-command-join.md),
+[51](0051-moving-between-sessions.md) and [57](0057-renaming-from-the-list.md).
 
 ## Context
 

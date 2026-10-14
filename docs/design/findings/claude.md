@@ -233,6 +233,10 @@ is in [tmux-sessions.md](tmux-sessions.md) and [tmux-terminal.md](tmux-terminal.
 - **Hint strings** (2.1.282, read). Hints are lower case but for Enter and Esc in some, dim, and
   joined by ` · `, as in `↑/↓ to navigate · Esc to cancel`
   ([decision 14](../decisions/0014-the-session-list.md)).
+- **Renaming a conversation** (#172; 2.1.299, read). Agent view binds `Ctrl+R` to its rename,
+  `agents:rename`, which offers the current name to edit. The `/resume` picker's footer shows
+  `Ctrl+R rename`. In the prompt, `Ctrl+R` searches the history, and `/rename`, or `/name`, renames
+  the conversation ([decision 57](../decisions/0057-renaming-from-the-list.md)).
 
 ## In a terminal
 

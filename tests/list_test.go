@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
@@ -19,13 +20,14 @@ import (
 // Running the interactive cld list on a terminal under sh, and reading what it shows and leaves.
 
 // The interactive list's footers: its hints, and the kill that Ctrl+X arms on a detached row and on
-// an attached one. On a row that has ended, Ctrl+X arms the forget.
+// an attached one. On a row that has ended, Ctrl+X arms the forget, and Ctrl+R renames.
 const (
 	listHints         = "↑/↓ to navigate · enter to join · ctrl+x to kill · esc to quit"
 	killArmed         = "ctrl+x again to kill · esc to keep"
 	killArmedAttached = "ctrl+x again to kill and detach its terminal · esc to keep"
-	endedHints        = "↑/↓ to navigate · enter to resume · ctrl+x to forget · esc to quit"
-	forgetArmed       = "ctrl+x again to forget · esc to keep"
+	endedHints        = "↑/↓ to navigate · enter to resume · ctrl+x to forget · ctrl+r to rename · " +
+		"esc to quit"
+	forgetArmed = "ctrl+x again to forget · esc to keep"
 )
 
 // listScript runs cld list, as "$@", recording what listRun reads.
@@ -205,4 +207,26 @@ func selectedRow(term terminal.Terminal) string {
 		}
 	}
 	return ""
+}
+
+// renameTo opens the rename's editor on the selected row, types name in place of the row's, and
+// presses Enter.
+func renameTo(term terminal.Terminal, name string) {
+	term.Keys("C-r", "C-u")
+	term.Keys(strings.Split(name, "")...)
+	term.Keys("Enter")
+}
+
+// footer is the list's footer: the last line its terminal shows, without spaces at its end.
+func footer(term terminal.Terminal) string {
+	lines := strings.Split(strings.TrimRight(term.Screen(), " \n"), "\n")
+	return strings.TrimRight(lines[len(lines)-1], " ")
+}
+
+// waitFooter waits until the list's footer is text.
+func waitFooter(t *testing.T, term terminal.Terminal, text string) {
+	t.Helper()
+	sandbox.WaitFor(t, 10*time.Second, fmt.Sprintf("the footer %q", text), func() bool {
+		return footer(term) == text
+	})
 }

@@ -128,8 +128,9 @@ func defaultName() (string, session.Home) {
 // suffix.
 func CheckName(name string) error {
 	if utf8.RuneCountInString(name) > session.MaxName {
-		return fail.Usage(fmt.Sprintf("name '%s' is longer than %d characters (see cld help)",
-			name, session.MaxName))
+		return &fail.Error{Status: 2,
+			Message: fmt.Sprintf("name '%s' is longer than %d characters", name, session.MaxName),
+			Advice:  " (see cld help)"}
 	}
 	if !session.ValidName(name) {
 		return &fail.Error{Status: 2, Message: fmt.Sprintf("invalid name '%s'", name),

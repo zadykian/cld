@@ -15,7 +15,8 @@ findings it rests on, and a finding links back.
 
 - [tmux: servers and sessions](design/findings/tmux-sessions.md): releases, running a program,
   command parsing, targets, clients, options and formats, a pane's environment, dead panes,
-  history, sockets, servers ending and what they cost.
+  history, sockets, servers ending and what they cost. It continues in
+  [tmux-sessions-2.md](design/findings/tmux-sessions-2.md): moving a server's socket.
 - [tmux: the terminal's side](design/findings/tmux-terminal.md): a client starting, the locale, an
   outer tmux, keys, focus, the mouse, notifications, links, titles, messages, popups and
   `detach-client`.
@@ -53,7 +54,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [13. A server per session](design/decisions/0013-a-server-per-session.md): Accepted (#22).
   Replaces 9. Amended by #69, 15, 24, 34, 38, 40 and 51.
 - [14. The session list](design/decisions/0014-the-session-list.md): Accepted (#23). Amended by 15,
-  23, 40, 49, 50 and 51.
+  23, 40, 49, 50, 51 and 57.
 - [15. Killing from the session list](design/decisions/0015-killing-from-the-list.md): Accepted
   (#24). Amended by 23, 40 and 51.
 - [16. Resume](design/decisions/0016-resume.md): Accepted (#26). Amended by 24, 40, 41, 45 and 47.
@@ -96,7 +97,7 @@ The `adr` skill in `.claude/skills` adds a record.
   by 46.
 - [39. What the title's hooks cost](design/decisions/0039-hook-cost.md): Accepted (#81).
 - [40. A record of the sessions](design/decisions/0040-session-record.md): Accepted (#57). Amended
-  by 44, 48, 50 and 56.
+  by 44, 48, 50, 56 and 57.
 - [41. claude's options](design/decisions/0041-claude-options.md): Accepted (#61). Amended by 42,
   45, 47, 48, 50, 51 and 56.
 - [42. Remote Control is claude's own setting](design/decisions/0042-remote-control-is-claudes.md):
@@ -125,3 +126,4 @@ The `adr` skill in `.claude/skills` adds a record.
 - [55. Passthrough from claude's pane](design/decisions/0055-passthrough-from-claudes-pane.md):
   Accepted (#167).
 - [56. Following claude's /cd](design/decisions/0056-following-claudes-cd.md): Accepted (#171).
+- [57. Renaming from the list](design/decisions/0057-renaming-from-the-list.md): Accepted (#172).

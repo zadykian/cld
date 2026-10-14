@@ -4,17 +4,25 @@
 
 - After the first `Ctrl+X`, `Esc`, two seconds or any other key keep the session; that key then
   does what it does. A held `Ctrl+X` stops at one session.
-- The list reads the sessions as it opens and after a kill. `Enter` on a session that ended since
-  brings it back. Where it has gone, or ended before the second `Ctrl+X`, the list says so.
+- The list reads the sessions as it opens and after a kill or a rename. `Enter` on a session that
+  ended since brings it back. Where it has gone, or ended before the second `Ctrl+X`, the list says
+  so.
 - `Ctrl+X` twice on an `ended` row forgets the session, and its conversation stays in claude's
   history. After a kill by mistake, `Enter` on its row brings the session back.
+- `Ctrl+R` on an `ended` row renames the session, and `Enter` then resumes its conversation under
+  the new name. A session that runs is renamed once `Ctrl+X` twice has ended it.
+- A rename takes a whole name: renaming `api-3` to `auth` takes it out of the sessions that `-s`
+  names in repository `api`. A name of an `ended` session stays taken until its row is forgotten.
+- The old name is free at once. A `-w` session's worktree keeps it, so a later
+  `cld join -s OLD -w` opens that worktree again.
 - claude's status shows `waiting` in bold. There is none before claude's first prompt, once claude
   has exited, or without hooks; some changes escape them (see [the tab's title](terminal.md)).
 - `attached` counts terminals only: someone on the session through Remote Control does not show,
   and a kill ends the session for them too.
 - `cld list` prints the table where its input or output is no terminal, `TERM` is unset or `dumb`,
   or it runs in the background. A script that leaves it the terminal gets the list: pipe it.
-- In a JetBrains IDE, `Esc` and `Ctrl+X` reach the list as its keymap says; `Ctrl+C` also leaves.
+- In a JetBrains IDE, `Esc`, `Ctrl+X` and `Ctrl+R` reach the list as its keymap says; `Ctrl+C`
+  also leaves.
 
 ## Moving between sessions
 

@@ -11,13 +11,14 @@ import (
 )
 
 // C10: the session list reads the terminal's own keys, not tmux's, and so does C-q s's popup over
-// a session. Whether a JetBrains IDE passes Esc and Ctrl+X on to its terminal depends on its
-// keymap, which the driver cannot see.
+// a session. Whether a JetBrains IDE passes Esc, Ctrl+X and Ctrl+R on to its terminal depends on
+// its keymap, which the driver cannot see.
 func TestContractList(t *testing.T) {
 	forEachTerminal(t, func(t *testing.T, name string) { //nolint:thelper // a subtest, not a helper
 		c := listContract{name: name}
 		t.Run("join", c.join)
 		t.Run("kill", c.kill)
+		t.Run("rename", c.rename)
 		t.Run("popup", c.popup)
 		t.Run("leave", c.leave)
 	})
@@ -75,6 +76,31 @@ func (c listContract) kill(t *testing.T) {
 	})
 	if !probes["b"].Alive() {
 		t.Error("claude b exited")
+	}
+	term.Keys("Escape")
+	if code := list.code(t); code != "0" {
+		t.Errorf("exit %s, want 0", code)
+	}
+	list.checkRestored(t, term)
+}
+
+// rename has Ctrl+R, Ctrl+U, letters and Enter rename a session that has ended, whose row then
+// shows the new name, selected. Ghostty's driver types no Backspace (see ghosttyKeys).
+func (c listContract) rename(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	writeEntry(t, s, "b", s.Work, firstID)
+	term := terminal.New(t, c.name, s)
+	list := startList(t, s, term, listScript, nil)
+	waitScreen(t, term, endedHints)
+	term.Keys("C-r")
+	waitScreen(t, term, "rename to b ")
+	term.Keys("C-u", "y", "z", "Enter")
+	sandbox.WaitFor(t, 10*time.Second, "the list to show yz as ended, selected", func() bool {
+		return selectedRow(term) == "yz" && strings.Contains(term.Screen(), "> yz    ended")
+	})
+	if got, want := readEntry(s, "yz"), entry("yz", s.Work, firstID); got != want {
+		t.Errorf("yz's entry %q, want %q", got, want)
 	}
 	term.Keys("Escape")
 	if code := list.code(t); code != "0" {

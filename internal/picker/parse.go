@@ -1,17 +1,36 @@
 package picker
 
-// key is what the list makes of the bytes of one key.
+// key is what the list makes of the bytes of one key. Each byte that is none of the keys below is
+// a key that types it, for the editor (see char). Control characters and the bytes beyond ASCII
+// are no exception: the rename checks the name (decision 57.2).
 type key int
 
 const (
-	other key = iota // anything the list does nothing with
+	other key = iota // a sequence the list does nothing with
 	up
 	down
 	enter
 	esc
 	interrupt // Ctrl+C
 	kill      // Ctrl+X
+	rename    // Ctrl+R
+	backspace // Backspace, or Ctrl+H
+	discard   // Ctrl+U, which discards the name typed, as in a shell
+	typed     // the first of the keys that type a byte (see char)
 )
+
+// char is the key that types byte b.
+func char(b byte) key {
+	return typed + key(b)
+}
+
+// text is the byte that k types, and whether it types one.
+func (k key) text() (byte, bool) {
+	if k < typed {
+		return 0, false
+	}
+	return byte(k - typed), true
+}
 
 // parse takes the first key off input, and returns the key and its length in bytes. The length
 // is 0 where input only starts one: an Esc or a sequence that may still be arriving. Terminals
@@ -24,10 +43,16 @@ func parse(input []byte) (key, int) {
 		return interrupt, 1
 	case 0x18: // Ctrl+X in raw mode
 		return kill, 1
+	case 0x12: // Ctrl+R in raw mode
+		return rename, 1
+	case 0x7f, 0x08: // Backspace, as terminals send it, or Ctrl+H
+		return backspace, 1
+	case 0x15: // Ctrl+U in raw mode
+		return discard, 1
 	case 0x1b:
 		return parseEscape(input)
 	}
-	return other, 1
+	return char(input[0]), 1
 }
 
 // parseEscape is parse for input that starts with Esc. The arrows are `ESC [ A` and `ESC [ B`, or

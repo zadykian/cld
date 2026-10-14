@@ -94,25 +94,32 @@ func (t *Tmux) Forget(ctx context.Context, suffix string) error {
 		return err
 	}
 	if exists {
-		return &fail.Error{Status: 1, Message: fmt.Sprintf("session '%s' runs again", suffix),
-			Advice: " (see cld list)"}
+		return runsAgain(suffix)
 	}
 	if starts {
-		return &fail.Error{Status: 1, Message: fmt.Sprintf("session '%s' is starting", suffix),
-			Advice: " (see cld list)"}
+		return isStarting(suffix)
 	}
 	if _, ok := recorded(suffix); !ok {
 		return noSession(suffix)
 	}
 	dir, _ := stateDir() //nolint:errcheck // recorded found the entry there
-	files := []string{entryFile(dir, suffix)}
-	for _, ext := range companions {
-		files = append(files, companion(dir, suffix, ext))
-	}
-	for _, file := range files {
+	for _, file := range sessionFiles(dir, suffix) {
 		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fail.Runtime("cannot forget session '" + suffix + "': " + reason(err).Error())
 		}
 	}
 	return nil
+}
+
+// runsAgain refuses to forget or rename session cld-SUFFIX, which the list showed as ended, as it
+// runs again.
+func runsAgain(suffix string) error {
+	return &fail.Error{Status: 1, Message: fmt.Sprintf("session '%s' runs again", suffix),
+		Advice: " (see cld list)"}
+}
+
+// isStarting refuses to forget or rename session cld-SUFFIX, which another cld is starting.
+func isStarting(suffix string) error {
+	return &fail.Error{Status: 1, Message: fmt.Sprintf("session '%s' is starting", suffix),
+		Advice: " (see cld list)"}
 }

@@ -7,11 +7,12 @@ than $CLD_IDLE_DAYS days, 30 where unset or empty, is ended first, as cld kill
 ends it, with a line on stderr; cld join brings its conversation back.
 CLD_IDLE_DAYS=0 ends none.
 
-On a terminal, pick one to join or kill: Up and Down select a session, Enter
-joins it as cld join does, C-x twice within two seconds kills it as cld kill
-does - Esc after the first C-x keeps it - and Esc or C-c leaves, printing the
-list. On a session that has ended, Enter resumes it as cld join does, and C-x
-twice forgets it. cld list | cat prints the list only.
+On a terminal, pick one to join, kill or rename: Up and Down select a session,
+Enter joins it as cld join does, C-x twice within two seconds kills it as
+cld kill does - Esc after the first C-x keeps it - and Esc or C-c leaves,
+printing the list. On a session that has ended, Enter resumes it as cld join
+does, C-x twice forgets it, and C-r renames it: type the new name, then Enter,
+or Esc to keep the old one. cld list | cat prints the list only.
 
 In a session, C-q s shows the list over it: Enter moves the terminal to the
 session picked, as ! cld join does, and Esc closes the list. So does Enter in

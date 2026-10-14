@@ -36,19 +36,31 @@ type list struct {
 	// then, or another key, Ctrl+X does nothing.
 	hold            <-chan time.Time
 	columns, height int
-	// acting gets the outcome of Enter's lookup, or of the kill or forget, while it runs, and is
-	// nil otherwise. cancel abandons it, and running counts it until it has ended.
+	// edit is the editor of Ctrl+R's rename while open, and nil otherwise (see edit.go).
+	edit *editor
+	// acting gets the outcome of an action while it runs, and is nil otherwise. cancel abandons it,
+	// and running counts it until it has ended.
 	acting  <-chan outcome
 	cancel  context.CancelFunc
 	running sync.WaitGroup
 }
 
-// outcome is the outcome of Enter's lookup of the session on row, or of its kill or forget.
-// refused is why join cannot take the session, or why the kill or forget did nothing; rows are the
+// An action is what runs beside the list: Enter's lookup, the kill or forget, or the rename.
+type action int
+
+const (
+	lookingUp action = iota
+	ending
+	renaming
+)
+
+// outcome is the outcome of an action on the session on row, to the name to for a rename.
+// refused is why join cannot take the session, or why the action did nothing; rows are the
 // sessions read again, or unread why they could not be.
 type outcome struct {
 	row     session.Session
-	kill    bool
+	action  action
+	to      string
 	refused error
 	rows    []session.Session
 	unread  error
@@ -56,7 +68,8 @@ type outcome struct {
 
 // press does what k does, and reports whether the user left. Ctrl+X arms the kill, or the forget
 // on a row that has ended, and kills once armed. Any other key disarms it, then does what it does,
-// but Esc only disarms it. While Enter's lookup, the kill or the forget runs, only leaving acts.
+// but Esc only disarms it. While an action runs, only leaving acts; while the editor is open, the
+// editor takes the key (see typeIn).
 func (l *list) press(k key) bool {
 	// After a kill or forget, Ctrl+X does nothing until none has come for repeatWait.
 	if k == kill && l.hold != nil {
@@ -70,6 +83,9 @@ func (l *list) press(k key) bool {
 	armed := l.armed
 	l.disarm()
 	l.message = ""
+	if l.edit != nil {
+		return l.typeIn(k)
+	}
 	switch k {
 	case up:
 		l.selected = max(l.selected-1, 0)
@@ -91,6 +107,10 @@ func (l *list) press(k key) bool {
 			l.hold = time.After(repeatWait)
 		default:
 			l.armed, l.expiry = true, time.After(armWait)
+		}
+	case rename:
+		if len(l.rows) > 0 {
+			l.openEditor(l.rows[l.selected])
 		}
 	}
 	return false
@@ -115,7 +135,7 @@ func (l *list) start(task func(ctx context.Context) outcome) {
 // when join would refuse it.
 func (l *list) lookUp(row session.Session) {
 	l.start(func(ctx context.Context) outcome {
-		result := outcome{row: row}
+		result := outcome{row: row, action: lookingUp}
 		result.refused = l.source.Joinable(ctx, row.Name)
 		if result.refused != nil {
 			result.rows, result.unread = l.read(ctx)
@@ -129,7 +149,7 @@ func (l *list) lookUp(row session.Session) {
 // session shows as one that has ended (decision 15.5).
 func (l *list) kill(row session.Session) {
 	l.start(func(ctx context.Context) outcome {
-		result := outcome{row: row, kill: true}
+		result := outcome{row: row, action: ending}
 		if row.State == session.Ended {
 			result.refused = l.source.Forget(ctx, row.Name)
 		} else {
@@ -140,8 +160,19 @@ func (l *list) kill(row session.Session) {
 	})
 }
 
-// read reads the sessions again for Enter's lookup or the kill or forget, unless the list has
-// abandoned it: then they are unread, as ctx says.
+// rename starts the rename of the session on row, which has ended, to the name to, and the read of
+// the sessions after it.
+func (l *list) rename(row session.Session, to string) {
+	l.start(func(ctx context.Context) outcome {
+		result := outcome{row: row, action: renaming, to: to}
+		result.refused = l.source.Rename(ctx, row.Name, to)
+		result.rows, result.unread = l.read(ctx)
+		return result
+	})
+}
+
+// read reads the sessions again after an action, unless the list has abandoned it: then they are
+// unread, as ctx says.
 func (l *list) read(ctx context.Context) ([]session.Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -149,18 +180,20 @@ func (l *list) read(ctx context.Context) ([]session.Session, error) {
 	return l.source.Sessions(ctx)
 }
 
-// settle takes the outcome of Enter's lookup or of the kill or forget, and returns the session to
-// join, with no name where there is none. Otherwise it says why join, the kill or the forget was
-// refused, and shows the rows read again, the selection following its session (decision 14.6).
-// Rows it could not read stay, less the session its kill ended or its forget forgot.
+// settle takes the outcome of an action, and returns the session Enter's lookup found to join, or
+// none. Otherwise it says why the action was refused (see reopen), and shows the rows read again,
+// the selection following its session (decision 14.6). Rows it could not read stay, less the one
+// its kill ended or its forget forgot, and with the new name of the one it renamed.
 func (l *list) settle(result outcome) session.Session {
 	l.cancel()
 	l.acting, l.cancel = nil, nil
-	if !result.kill && result.refused == nil {
+	if result.action == lookingUp && result.refused == nil {
 		return result.row
 	}
 	if result.refused != nil {
 		l.message = describe(result.refused)
+	} else if result.action == renaming {
+		l.rows = renamed(l.rows, result.row.Name, result.to)
 	}
 	rows := result.rows
 	if result.unread != nil {
@@ -168,7 +201,7 @@ func (l *list) settle(result outcome) session.Session {
 			l.message = strings.TrimPrefix(l.message+" · "+problem, " · ")
 		}
 		rows = l.rows
-		if result.kill && result.refused == nil {
+		if result.action == ending && result.refused == nil {
 			rows = slices.DeleteFunc(slices.Clone(rows), func(row session.Session) bool {
 				return row.Name == result.row.Name
 			})
@@ -176,12 +209,15 @@ func (l *list) settle(result outcome) session.Session {
 	}
 	l.selected = follow(l.rows, l.selected, rows)
 	l.rows = rows
+	if result.action == renaming && result.refused != nil {
+		l.reopen(result.row, result.to)
+	}
 	return session.Session{}
 }
 
-// abandon ends Enter's lookup, the kill or the forget if one still runs, killing its tmux, and
-// waits for it. Its outcome then counts for the rows as settle takes it, joining nothing. A kill
-// cut short may or may not have ended the session, whose row stays.
+// abandon ends the action if one still runs, killing its tmux, and waits for it. Its outcome then
+// counts for the rows as settle takes it, joining nothing. A kill cut short may or may not have
+// ended the session, whose row stays.
 func (l *list) abandon() {
 	if l.acting == nil {
 		return

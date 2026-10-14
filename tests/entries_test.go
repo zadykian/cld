@@ -87,8 +87,12 @@ func age(t *testing.T, ago time.Duration, paths ...string) {
 	}
 }
 
-// companionFile is the file beside session name's entry in cld's record in s with the extension
-// ext: .run, .busy or .env.
+// recordFiles are the extensions of a session's files in cld's record: its entry, then those
+// beside it.
+var recordFiles = []string{".json", ".env", ".dir", ".run", ".busy", ".start"}
+
+// companionFile is the file of session name in cld's record in s with the extension ext, one of
+// recordFiles. That is the entry, as entryFile has it, or a file beside it.
 func companionFile(s *sandbox.Sandbox, name, ext string) string {
 	return strings.TrimSuffix(entryFile(s, name), ".json") + ext
 }

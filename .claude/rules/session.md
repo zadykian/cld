@@ -46,7 +46,9 @@ works.
   [40](../../docs/design/decisions/0040-session-record.md) and
   [56](../../docs/design/decisions/0056-following-claudes-cd.md)).
 - Each file beside the entry has its extension in `companions`, which expiry and the list's forget
-  remove with the entry ([decision 40](../../docs/design/decisions/0040-session-record.md)).
+  remove with the entry, and the list's rename moves (decisions
+  [40](../../docs/design/decisions/0040-session-record.md) and
+  [57](../../docs/design/decisions/0057-renaming-from-the-list.md)).
 - The entry and the environment are written before tmux, and after the terminal check, so that a
   refusal writes nothing ([decision 40](../../docs/design/decisions/0040-session-record.md)).
 - A `run-shell` after `new-session`, in the same command, makes the run mark and removes the busy
@@ -63,11 +65,17 @@ works.
   comes back where claude was last, where that can be entered outside `.claude/worktrees`
   ([decision 56](../../docs/design/decisions/0056-following-claudes-cd.md)).
 - `join` holds the record's lock from the lookup to tmux, `restore` for each session it brings back,
-  and the list's forget too (decisions [40](../../docs/design/decisions/0040-session-record.md) and
-  [50](../../docs/design/decisions/0050-one-command-join.md)).
+  and the list's forget and rename too (decisions
+  [40](../../docs/design/decisions/0040-session-record.md),
+  [50](../../docs/design/decisions/0050-one-command-join.md) and
+  [57](../../docs/design/decisions/0057-renaming-from-the-list.md)).
 - A live start mark younger than 10 s, read before a lookup that finds no session, makes `join` wait
-  and `restore` pass the session by. The list's forget refuses it
-  ([decision 50](../../docs/design/decisions/0050-one-command-join.md)).
+  and `restore` pass the session by. The list's forget and rename refuse it (decisions
+  [50](../../docs/design/decisions/0050-one-command-join.md) and
+  [57](../../docs/design/decisions/0057-renaming-from-the-list.md)).
+- The rename links each file beside the entry under the new name, never replacing one, and keeps
+  its time. It gives the old name's index again, which the moved entry no longer counts
+  ([decision 57](../../docs/design/decisions/0057-renaming-from-the-list.md)).
 - A new session's index is above those of the running sessions, the entries and the indexes given
   (decisions [24](../../docs/design/decisions/0024-names-from-the-repository.md) and
   [40](../../docs/design/decisions/0040-session-record.md)).

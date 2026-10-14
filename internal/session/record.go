@@ -69,8 +69,9 @@ const (
 	lastDir     = ".dir"
 )
 
-// companions are the extensions of the files beside an entry, which go with it.
-var companions = []string{runMark, busyMark, startMark, lastDir, environment}
+// companions are the extensions of all the files beside an entry, which go with it. Expiry and the
+// list's forget remove them, and its rename moves them (decisions 40.6 and 57).
+var companions = []string{environment, lastDir, runMark, busyMark, startMark}
 
 // stateDir is the directory of cld's record: cld in $XDG_STATE_HOME or, where that is unset or
 // relative, in ~/.local/state (decision 40.1). A relative path would name another directory in
@@ -96,6 +97,16 @@ func entryFile(dir, suffix string) string {
 // record's directory dir.
 func companion(dir, suffix, ext string) string {
 	return filepath.Join(dir, "sessions", suffix+ext)
+}
+
+// sessionFiles are the files of session cld-SUFFIX in the record's directory dir: its entry, then
+// those beside it (see companions).
+func sessionFiles(dir, suffix string) []string {
+	files := []string{entryFile(dir, suffix)}
+	for _, ext := range companions {
+		files = append(files, companion(dir, suffix, ext))
+	}
+	return files
 }
 
 // sessionFile splits the name of a file in the record's sessions directory into the NAME of its

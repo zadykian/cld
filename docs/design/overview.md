@@ -80,7 +80,7 @@ sessions claude makes on its server, then behave as plain tmux.
   `switch_*.go` move a terminal between servers, `record.go` and `record_*.go` keep the record and
   `restore.go` is `cld restore`.
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
-  join's checks and kill's steps.
+  join's checks, kill's steps, and the forget and the rename.
 - `internal/project`: `cld setup config project`, a project's claude settings, `.mcp.json` and
   `.gitignore` ([decision 19](decisions/0019-project-settings.md)), and `cld setup config user`,
   the user's settings ([decision 53](decisions/0053-project-and-user-settings.md)).
@@ -198,7 +198,9 @@ directory, then asks the servers that answer, eight at a time
 
 The entry stays after each of these. `list` shows the session as `ended`, and `join` brings it
 back, until its entry expires or the list forgets it
-([decision 15](decisions/0015-killing-from-the-list.md)).
+([decision 15](decisions/0015-killing-from-the-list.md)). The list's rename moves the entry and
+the files beside it to the new name, keeping their times
+([decision 57](decisions/0057-renaming-from-the-list.md)).
 
 ### After a reboot
 

@@ -116,6 +116,18 @@ func (t *Tmux) lingering(ctx context.Context, suffix string) (outlived bool, ref
 	return true, refusal
 }
 
+// stillRuns is how the list's Enter and rename refuse session cld-SUFFIX, whose server runs
+// without it: lingering's refusal. Where kill ends that server, the message points at cld kill
+// instead (decision 57.4).
+func (t *Tmux) stillRuns(ctx context.Context, suffix string) error {
+	outlived, refused := t.lingering(ctx, suffix)
+	if !outlived {
+		return refused
+	}
+	return fail.Runtime(fmt.Sprintf("tmux server cld-%s still runs; end it with cld kill %s",
+		suffix, Options(suffix)))
+}
+
 // notClds refuses server cld-SUFFIX, which cld did not start (see mark), with advice.
 func notClds(suffix, advice string) error {
 	return &fail.Error{Status: 1,

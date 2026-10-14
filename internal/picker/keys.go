@@ -148,7 +148,7 @@ func (w *waiter) escaped(time.Time) step {
 	return step{done: w.list.press(w.typing.expire())}
 }
 
-// settled takes the outcome of Enter's lookup, or of the kill or forget (see settle).
+// settled takes the outcome of an action (see settle).
 func (w *waiter) settled(result outcome) step {
 	picked := w.list.settle(result)
 	return step{picked: picked, done: picked.Name != ""}

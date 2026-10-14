@@ -48,6 +48,9 @@ overrides cobra.
   ([decision 50](../../docs/design/decisions/0050-one-command-join.md)). Its Ctrl+X, twice on an
   `ended` row, forgets the entry, which `kill` never does
   ([decision 40](../../docs/design/decisions/0040-session-record.md)).
+- The list's Ctrl+R renames an `ended` row only; no command renames. Its editor keeps each byte
+  that is none of its keys, control characters included, and the rename refuses an invalid name
+  whole ([decision 57](../../docs/design/decisions/0057-renaming-from-the-list.md)).
 
 ## The help
 

@@ -137,7 +137,8 @@ func listJoinEnded(t *testing.T) {
 }
 
 // listJoinLingering checks that Enter leaves a session whose server outlived it unjoined, as cld
-// join refuses it, and shows it as ended.
+// join refuses it, and shows it as ended. The footer points at cld kill, as the rename's refusal
+// does (decision 57.4).
 func listJoinLingering(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -159,7 +160,7 @@ func listJoinLingering(t *testing.T) {
 		"> b     ended     -            "+s.Work,
 		"  c     detached  now          "+s.Work,
 		"",
-		"session 'b' has ended, but its tmux server still runs")
+		"tmux server cld-b still runs; end it with cld kill -s b")
 	if clients := s.Clients(); len(clients) != 0 {
 		t.Errorf("clients attached to %q, want none", clients)
 	}

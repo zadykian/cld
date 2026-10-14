@@ -58,7 +58,7 @@ func write(
 		run = companion(dir, r.Name, runMark)
 	}
 	forgetExpired(dir, runs)
-	indexErr := giveIndex(dir, r.Name)
+	indexErr := giveIndex(dir, r.Name, false)
 	return file, run, cmp.Or(dirErr, err, indexErr)
 }
 
@@ -106,12 +106,13 @@ func pastExpiry(file fs.DirEntry) bool {
 }
 
 // giveIndex records the index that name ends in, if one does, as given in indexes.json, which
-// keeps no index given longer ago than expiry.
-func giveIndex(dir, name string) error {
+// keeps no index given longer ago than expiry. One below the highest given records nothing, unless
+// renew: as indexes.json keeps the highest alone, that is given again (decision 57.5).
+func giveIndex(dir, name string, renew bool) error {
 	highest := indexes(dir)
 	if prefix, index, ok := indexOf(name); ok {
-		if g, found := highest[prefix]; !found || index >= g.Index {
-			highest[prefix] = given{Index: index, Time: time.Now().UTC()}
+		if g := highest[prefix]; renew || index >= g.Index {
+			highest[prefix] = given{Index: max(index, g.Index), Time: time.Now().UTC()}
 		}
 	}
 	data, err := json.Marshal(highest)
@@ -131,25 +132,36 @@ func entryLine(r entry) []byte {
 	return line.Bytes()
 }
 
-// replace replaces file with data: written to a temporary file beside it, readable by the user
-// alone, then renamed over it. That way no reader sees it half written (decision 40.1).
+// replace replaces file with data: written to a temporary file beside it (see writeTemp), then
+// renamed over it. That way no reader sees it half written (decision 40.1).
 func replace(file string, data []byte) error {
-	temp, err := os.CreateTemp(filepath.Dir(file), filepath.Base(file)+".*")
+	temp, err := writeTemp(file, data)
 	if err != nil {
 		return reason(err)
+	}
+	if err := os.Rename(temp, file); err != nil {
+		_ = os.Remove(temp) //nolint:errcheck // best effort: the failure is returned
+		return reason(err)
+	}
+	return nil
+}
+
+// writeTemp writes data to a new temporary file beside file, readable by the user alone, and
+// returns its name. Where the write fails, the file goes.
+func writeTemp(file string, data []byte) (string, error) {
+	temp, err := os.CreateTemp(filepath.Dir(file), filepath.Base(file)+".*")
+	if err != nil {
+		return "", err
 	}
 	_, err = temp.Write(data)
 	if closeErr := temp.Close(); err == nil {
 		err = closeErr
 	}
-	if err == nil {
-		err = os.Rename(temp.Name(), file)
-	}
 	if err != nil {
 		_ = os.Remove(temp.Name()) //nolint:errcheck // best effort: the failure is returned
-		return reason(err)
+		return "", err
 	}
-	return nil
+	return temp.Name(), nil
 }
 
 // reason is err as the system says it, with the path it names.

@@ -22,9 +22,10 @@ const (
 	//nolint:dupword // the word, then its description
 	offeredDetach     = "detach\tdetach the terminals attached to session NAME-SUFFIX\n"
 	offeredCompletion = "completion\tprint the completion script for a shell\n"
-	offeredCommands   = offeredJoin + offeredDetach +
-		"kill\tend session NAME-SUFFIX and its tmux server\n" +
-		"list\tlist cld's sessions; on a terminal, join or kill one\n" + //nolint:dupword // as above
+	//nolint:dupword // as above
+	offeredList     = "list\tlist cld's sessions; on a terminal, join, kill or rename one\n"
+	offeredCommands = offeredJoin + offeredDetach +
+		"kill\tend session NAME-SUFFIX and its tmux server\n" + offeredList +
 		"restore\tbring back the sessions that ran when the machine stopped\n" +
 		"setup\tset up claude's settings, shell completion or restore\n" +
 		"update\tupdate cld to the latest release\n" + //nolint:dupword // as above

@@ -47,7 +47,7 @@ index, for a new session. In a repository `api`, `cld join` twice makes the sess
 | `cld join` | attach to a session, bringing it back where it has ended, or creating it |
 | `cld detach` | detach the terminals from a session |
 | `cld kill` | end a session, its claude and its tmux server |
-| `cld list` | list the sessions and claude's status in each; on a terminal, join or kill one |
+| `cld list` | list the sessions and claude's status in each; on a terminal, join, kill or rename one |
 | `cld restore` | bring back the sessions that ran when the machine stopped |
 | `cld setup` | set up claude's settings, shell completion, or a restore at login |
 | `cld update` | update cld to the latest release |

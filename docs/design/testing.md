@@ -64,9 +64,10 @@ a terminal gaining or losing support flips a test. Tests cite the checks by numb
   keeps its session, with its message and how to end it. Evidence: terminal, tmux.
 - **C10, the session list.** `cld list` on a terminal reads the terminal's own keys. Down and Enter
   join the second session, titled `✳ cld-NAME`. Ctrl+X twice kills the selected session, whose row
-  stays, selected, as `ended`. Esc puts the terminal back: the main screen, no mouse reporting,
-  the cursor visible and the same `stty -g`. In `C-q s`'s popup, Esc closes the list, and Down and
-  Enter move the terminal to the second session
+  stays, selected, as `ended`. Ctrl+R, Ctrl+U, letters and Enter rename an `ended` session
+  ([decision 57](decisions/0057-renaming-from-the-list.md)). Esc puts the terminal back: the main
+  screen, no mouse reporting, the cursor visible and the same `stty -g`. In `C-q s`'s popup, Esc
+  closes the list, and Down and Enter move the terminal to the second session
   ([decision 51](decisions/0051-moving-between-sessions.md)).
   Evidence: terminal, probe, tmux.
 

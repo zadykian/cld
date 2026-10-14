@@ -3,8 +3,8 @@
 What tmux does with servers, sessions, clients, sockets, command lists, options, formats, hooks and
 panes, as probed for cld. Probed on Linux unless an entry says otherwise, and on tmux 3.6 where an
 entry names no release. The images are those `tests/Dockerfile` builds, one per tmux release, and
-the snap is Ubuntu's tmux 3.7c snap. What tmux does at the terminal is in
-[tmux-terminal.md](tmux-terminal.md).
+the snap is Ubuntu's tmux 3.7c snap. This file continues in [its second part](tmux-sessions-2.md).
+What tmux does at the terminal is in [tmux-terminal.md](tmux-terminal.md).
 
 ## Releases
 
