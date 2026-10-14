@@ -50,3 +50,8 @@ are in that source. The ghostty driver copies the app ([decision 54](../decision
 - **Its terminfo entry** (`src/terminfo/ghostty.zig`, which needs only Zig's standard library).
   `tests/ghostty/build-lib` prints it with `zig run`, and `tic -x` compiles it. Ubuntu's ncurses
   names it `ghostty`, which cld's entry for `xterm*` would miss.
+- **Zig's default CPU** (Zig 0.16.0; CI on 2026-10-09; the dev host's EPYC Milan, without
+  AVX-512). `zig build` with no `-Dcpu` builds for the host's CPU. CI's cached library, built on a
+  runner with AVX-512, died with SIGILL in `ghostty_terminal_new` on runners without it. Built
+  here for `x86_64_v4`, it died the same way. With `-Dcpu=baseline`, as Ghostty's `PACKAGING.md`
+  tells packagers, it held no `zmm` instruction, against 49, and the contract passed.

@@ -39,8 +39,10 @@ fi
 git checkout -q FETCH_HEAD
 rm -rf .git
 
-# Four jobs keep the build's memory in check. The tests link the static library alone.
-"$work/zig/zig" build -j4 -Demit-lib-vt -Doptimize=ReleaseFast --prefix "$prefix"
+# Four jobs keep the build's memory in check. The tests link the static library alone. Zig builds
+# for the host's CPU unless told otherwise, and CI's layer cache takes the library to other
+# runners: the baseline CPU runs on all (docs/design/findings/terminals.md).
+"$work/zig/zig" build -j4 -Demit-lib-vt -Doptimize=ReleaseFast -Dcpu=baseline --prefix "$prefix"
 rm -f "$prefix"/lib/libghostty-vt.so*
 
 # The version in build.zig.zon, which the driver answers XTVERSION with: libghostty-vt has a
