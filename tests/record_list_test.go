@@ -15,8 +15,9 @@ import (
 // forgets it (decision 40.3).
 
 // endedSessions makes sessions a, running, and b, which has ended in the conversation firstID. b
-// ran in another directory, whose name leaves nothing of a session's name, which it returns.
-func endedSessions(t *testing.T, s *sandbox.Sandbox) string {
+// ran in another directory, whose name leaves nothing of a session's name, which it returns. Where
+// moved is not "", b's claude moves there before the kill, as /cd moves it.
+func endedSessions(t *testing.T, s *sandbox.Sandbox, moved string) string {
 	t.Helper()
 	detachedSessions(t, s, "a")
 	dir := filepath.Join(s.Root, "other", "_")
@@ -26,6 +27,9 @@ func endedSessions(t *testing.T, s *sandbox.Sandbox) string {
 	term := startCldIn(t, s, "tmux", dir, nil, "join", "-s", "b")
 	b := s.WaitProbes(2)[1]
 	b.Hook("SessionStart", `{"session_id":"`+firstID+`","source":"startup"}`)
+	if moved != "" {
+		moveClaude(t, s, "b", b, moved)
+	}
 	if result := s.RunCld(nil, "kill", "-s", "b"); result.Code != 0 {
 		t.Fatalf("kill: exit %d, stderr %q", result.Code, result.Stderr)
 	}
@@ -51,13 +55,14 @@ func endedRows(s *sandbox.Sandbox, dir, selected string) []string {
 }
 
 // In the interactive list, a session that has ended has hints of its own. Enter resumes it as
-// join does, and Ctrl+X twice forgets it, taking its row and entry away. A session whose
-// directory has gone is refused, and the list stays open.
+// join does, where its claude was last, and Ctrl+X twice forgets it, taking its row and entry
+// away. A session whose directory has gone is refused, and the list stays open.
 func TestListEnded(t *testing.T) {
 	t.Parallel()
 	t.Run("resume", testListEndedResume)
 	t.Run("forget", testListEndedForget)
 	t.Run("directory gone", testListEndedGone)
+	t.Run("moved", testListEndedMoved)
 }
 
 // testListEndedResume is TestListEnded's Enter, which resumes b by its conversation's ID, in the
@@ -65,7 +70,7 @@ func TestListEnded(t *testing.T) {
 func testListEndedResume(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	dir := endedSessions(t, s)
+	dir := endedSessions(t, s, "")
 	term := terminal.New(t, "tmux", s)
 	list := startList(t, s, term, listScript, nil)
 	waitLines(t, term, append(endedRows(s, dir, "a"), listHints)...)
@@ -96,7 +101,7 @@ func testListEndedResume(t *testing.T) {
 func testListEndedForget(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	dir := endedSessions(t, s)
+	dir := endedSessions(t, s, "")
 	term := terminal.New(t, "tmux", s)
 	list := startList(t, s, term, listScript, nil)
 	waitLines(t, term, append(endedRows(s, dir, "a"), listHints)...)
@@ -112,8 +117,10 @@ func testListEndedForget(t *testing.T) {
 	if entry := readEntry(s, "b"); entry != "" {
 		t.Errorf("b's entry %q after the forget, want none", entry)
 	}
-	if exists(companionFile(s, "b", ".env")) {
-		t.Error("b's environment stays after the forget")
+	for _, ext := range []string{".env", ".dir"} {
+		if exists(companionFile(s, "b", ext)) {
+			t.Errorf("b%s stays after the forget", ext)
+		}
 	}
 	term.Keys("Escape")
 	if code := list.code(t); code != "0" {
@@ -127,7 +134,7 @@ func testListEndedForget(t *testing.T) {
 func testListEndedGone(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	dir := endedSessions(t, s)
+	dir := endedSessions(t, s, "")
 	if err := os.Remove(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -140,5 +147,35 @@ func testListEndedGone(t *testing.T) {
 	if list.exited() || len(s.Probes()) != 2 {
 		t.Errorf("list exited: %v, %d claude processes; want the list open and the first two",
 			list.exited(), len(s.Probes()))
+	}
+}
+
+// testListEndedMoved is TestListEnded's Enter on b, whose claude moved before the kill, once the
+// directory b was made in has gone. b's row shows where its claude was, and Enter resumes it there
+// (decision 56.4).
+func testListEndedMoved(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	moved := filepath.Join(s.Root, "moved")
+	makeDirs(t, moved)
+	dir := endedSessions(t, s, moved)
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	term := terminal.New(t, "tmux", s)
+	list := startList(t, s, term, listScript, nil)
+	waitLines(t, term, append(endedRows(s, moved, "a"), listHints)...)
+	term.Keys("Down", "Enter")
+	waitScreen(t, term, "probe --name cld-b")
+	resumed := s.WaitProbes(3)[2]
+	want := []string{"--name", "cld-b", "--settings", sessionSettings(s, "cld-b", dir),
+		"--resume", firstID}
+	if !slices.Equal(resumed.Argv, want) || resumed.Cwd != moved || resumed.Env["PWD"] != moved {
+		t.Errorf("claude arguments %q in %s, PWD %q, want %q in %s",
+			resumed.Argv, resumed.Cwd, resumed.Env["PWD"], want, moved)
+	}
+	term.Keys("C-q", "d")
+	if code := list.code(t); code != "0" {
+		t.Errorf("exit %s, want 0", code)
 	}
 }

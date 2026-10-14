@@ -2,7 +2,8 @@
 
 Status: Accepted (#61). Amended by [42](0042-remote-control-is-claudes.md),
 [45](0045-resuming-a-copy.md), [47](0047-agent-view-off.md), [48](0048-restore-after-reboot.md),
-[50](0050-one-command-join.md) and [51](0051-moving-between-sessions.md).
+[50](0050-one-command-join.md), [51](0051-moving-between-sessions.md) and
+[56](0056-following-claudes-cd.md).
 
 ## Context
 

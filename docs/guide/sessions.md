@@ -26,7 +26,8 @@ says where.
 - The repository's worktrees and subdirectories count as its own.
 - cld takes a session from anywhere with `-n`, and a session of cld 0.8.2 or earlier, which
   recorded no directory, without it.
-- An ended session comes back from any repository of its name, in the directory it ran in.
+- An ended session comes back from any repository of its name, in the directory claude was last
+  in ([Resuming](resuming.md#the-record)).
 
 ## claude's environment
 

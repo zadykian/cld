@@ -53,6 +53,8 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 - `record_test.go`: the record's entries, their hooks and place, and the helpers the `record_*`
   files share; `record_ended_test.go` and `record_list_test.go`: `ended` sessions, in `join` and
   the interactive list.
+- `record_moved_test.go`: claude's last directory, the hooks and the kill that write it;
+  `record_moved_join_test.go`: where an ended session shows and comes back by it.
 - `record_expiry_test.go`: the record's indexes and expiry; `record_lock_test.go`: its lock and
   the start mark.
 - `restore_test.go`: `restore` after a reboot, and the helpers the `restore_*` files share;

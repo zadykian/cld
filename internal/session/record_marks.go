@@ -72,3 +72,16 @@ func unmark(suffix string) string {
 	}
 	return unexpanded(`rm -f ` + shellWord(companion(dir, suffix, runMark)) + ` 2>/dev/null || true`)
 }
+
+// leaving is unmark for a command that ends session cld-SUFFIX with kill-session, given to
+// run-shell with -t claudePane. It first writes claude's directory beside the entry, as tmux has it
+// in that pane (decision 56.3). tmux puts that in single quotes for sh, escaping each quote in it,
+// so no character of a path runs. Where cld has no record's directory, leaving is "".
+func leaving(suffix string) string {
+	dir, err := stateDir()
+	if err != nil {
+		return ""
+	}
+	value := `'#{s/'/'\\''/:pane_current_path}'`
+	return dirWriter(entryFile(dir, suffix), value, unexpanded) + `; ` + unmark(suffix)
+}

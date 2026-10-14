@@ -96,9 +96,9 @@ The `adr` skill in `.claude/skills` adds a record.
   by 46.
 - [39. What the title's hooks cost](design/decisions/0039-hook-cost.md): Accepted (#81).
 - [40. A record of the sessions](design/decisions/0040-session-record.md): Accepted (#57). Amended
-  by 44, 48 and 50.
+  by 44, 48, 50 and 56.
 - [41. claude's options](design/decisions/0041-claude-options.md): Accepted (#61). Amended by 42,
-  45, 47, 48, 50 and 51.
+  45, 47, 48, 50, 51 and 56.
 - [42. Remote Control is claude's own setting](design/decisions/0042-remote-control-is-claudes.md):
   Accepted (#62). Amended by 47.
 - [43. Inside your own tmux](design/decisions/0043-inside-your-own-tmux.md): Accepted (#68). Amended
@@ -124,3 +124,4 @@ The `adr` skill in `.claude/skills` adds a record.
 - [54. Ghostty](design/decisions/0054-ghostty.md): Accepted (#162). Amended by 55.
 - [55. Passthrough from claude's pane](design/decisions/0055-passthrough-from-claudes-pane.md):
   Accepted (#167).
+- [56. Following claude's /cd](design/decisions/0056-following-claudes-cd.md): Accepted (#171).

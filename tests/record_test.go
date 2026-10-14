@@ -47,6 +47,27 @@ func killAndWait(
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !claude.Alive() })
 }
 
+// checkLastDirectory reports a directory beside session name's entry in s other than want, after
+// what.
+func checkLastDirectory(t *testing.T, s *sandbox.Sandbox, name, after, want string) {
+	t.Helper()
+	data, err := os.ReadFile(companionFile(s, name, ".dir"))
+	if err != nil || string(data) != want+"\n" {
+		t.Errorf("claude's directory after %s: %q, %v, want %q", after, data, err, want+"\n")
+	}
+}
+
+// moveClaude moves session name's claude to dir, as /cd moves it, and waits for tmux to see it
+// move. tmux 3.5a writes a control character in a directory as an escape.
+func moveClaude(t *testing.T, s *sandbox.Sandbox, name string, claude *sandbox.Probe, dir string) {
+	t.Helper()
+	before := s.Format("cld-"+name, "#{pane_current_path}")
+	claude.Send("cd " + dir)
+	sandbox.WaitFor(t, 10*time.Second, "claude to move", func() bool {
+		return s.Format("cld-"+name, "#{pane_current_path}") != before
+	})
+}
+
 // sessionStartInputs are inputs of claude's SessionStart hook, each with the conversation the
 // entry has after it: an ID that is no conversation's, or none, leaves the entry unchanged.
 var sessionStartInputs = []struct{ input, conversation string }{

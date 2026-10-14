@@ -7,10 +7,10 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The --settings that join gives claude, as the tests expect it word for word. It turns agent view
-// off (decision 47). Its hooks keep claude's status and worktree, its record entry and the run and
-// busy marks (decisions 25, 26, 40 and 48). Decision 39 sets their timeouts. See TestStatusHooks,
-// TestWorktreeHooks, TestHooksOutsideThePane, TestRecordHooks and TestBusyMark.
+// The --settings join gives claude, as the tests expect it word for word. It turns agent view off
+// (decision 47). Its hooks, timed by decision 39, keep claude's status and worktree, its entry,
+// marks and last directory (decisions 25, 26, 40, 48 and 56). See TestStatusHooks, TestBusyMark,
+// TestWorktreeHooks, TestHooksOutsideThePane, TestRecordHooks and TestLastDirectoryHooks.
 
 // sessionSettings is the --settings the claude of session name, started in dir, gets in s from a
 // cld that finds the sandbox's tmux and git (see settings).
@@ -22,11 +22,12 @@ func sessionSettings(s *sandbox.Sandbox, name, dir string) string {
 // a cld that found tmux and git at those paths. With fromHead, join -w's worktree branches from
 // HEAD. Nothing else: no remoteControlAtStartup, which is the user's own (decision 42).
 func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) string {
-	set := tmuxSetter(tmux, filepath.Join(s.SocketDir(), name), name)
+	socket := filepath.Join(s.SocketDir(), name)
+	set := tmuxSetter(tmux, socket, name)
 	status := func(value string) string { return set("@cld-status", value) }
 	worktree := worktreeCommand(git, set)
-	r := newRecordCommands(entryFile(s, strings.TrimPrefix(name, "cld-")),
-		strings.TrimPrefix(name, "cld-"), dir)
+	suffix := strings.TrimPrefix(name, "cld-")
+	r := newRecordCommands(entryFile(s, suffix), suffix, dir, tmux, socket)
 	interrupt := `if grep -Eq '\"is_interrupt\": *true'; then ` + status("idle") + `; else ` +
 		status("busy") + `; fi`
 	base := ""
@@ -41,9 +42,10 @@ func settings(s *sandbox.Sandbox, tmux, git, name, dir string, fromHead bool) st
 		onEvent("PermissionRequest", "", status("waiting")),
 		onEvent("PostToolUse", "", status("busy")),
 		onEvent("PostToolUseFailure", "", interrupt, r.interrupted),
-		hookEvent("SessionEnd", hookGroup("", r.touch, "")),
+		hookEvent("SessionEnd", hookGroup("", r.touch, ""), hookGroup("", r.lastDir, "")),
 		onEvent("SessionStart", "", worktree, r.record),
-		onEvent("Stop", "", status("idle"), r.stop),
+		hookEvent("Stop", hookGroup("", status("idle"), waited), hookGroup("", r.stop, waited),
+			hookGroup("", r.lastDir, inTheBackground)),
 		onEvent("StopFailure", "", status("idle"), r.idle),
 		onEvent("UserPromptSubmit", "", status("busy"), r.busyMark),
 	}, ",") + `}}`
@@ -68,17 +70,19 @@ func worktreeCommand(git string, set func(option, value string) string) string {
 		set("@cld-worktree", "$w")
 }
 
-// recordCommands are the hooks' commands that keep session's entry in cld's record, and its busy
-// and run marks beside it, as the settings' JSON has them.
+// recordCommands are the hooks' commands that keep session's entry in cld's record and the files
+// beside it, as the settings' JSON has them.
 type recordCommands struct {
-	record, touch, idle, busyMark, interrupted, stop string
+	record, touch, idle, busyMark, interrupted, stop, lastDir string
 }
 
-// newRecordCommands is the recordCommands of session, started in dir, whose entry is file.
-func newRecordCommands(file, session, dir string) recordCommands {
+// newRecordCommands is the recordCommands of session, made in dir, whose entry is file. claude's
+// directory is read with the tmux at tmux, on the server of socket.
+func newRecordCommands(file, session, dir, tmux, socket string) recordCommands {
 	head := `{"name":` + jsonText(session) + `,"directory":` + jsonText(dir) + `,"conversation":"`
 	temp := `'` + file + `'.$$`
 	busy := `'` + strings.TrimSuffix(file, ".json") + `.busy'`
+	last := `'` + strings.TrimSuffix(file, ".json") + `.dir'`
 	return recordCommands{
 		record: jsonEscaped(`id=$(sed -n 's/.*"session_id" *: *"\([0-9A-Za-z-]*\)".*/\1/p' | ` +
 			`head -n 1); if [ -n "$id" ]; then printf '%s%s"}\n' '` + head + `' "$id" >` + temp +
@@ -89,6 +93,10 @@ func newRecordCommands(file, session, dir string) recordCommands {
 			strings.TrimSuffix(file, ".json") + `.run'`),
 		interrupted: jsonEscaped(`if grep -Eq '"is_interrupt": *true'; then rm -f ` + busy + `; fi`),
 		stop:        jsonEscaped(`rm -f ` + busy + `; touch -c '` + file + `'`),
+		lastDir: jsonEscaped(`{ [ -e '` + file + `' ] && d=$('` + tmux + `' -u -S '` + socket +
+			`' display -p -t %0 '#{pane_current_path}') && ` +
+			`[ -d "$d" ] && printf '%s\n' "$d" >` + last + `.$$ && mv -f ` + last + `.$$ ` + last +
+			`; } 2>/dev/null || true`),
 	}
 }
 
@@ -115,16 +123,22 @@ func hookEvent(event string, groups ...string) string {
 	return `"` + event + `":[` + strings.Join(groups, ",") + `]`
 }
 
+// How claude runs a hook: waited for 5 s at most, or in the background, going on at once.
+const (
+	waited          = `"timeout":5`
+	inTheBackground = `"async":true`
+)
+
 // onEvent runs each of commands, in a group of its own, and claude waits for it 5 s at most.
 func onEvent(event, matcher string, commands ...string) string {
 	var groups []string
 	for _, command := range commands {
-		groups = append(groups, hookGroup(matcher, command, `"timeout":5`))
+		groups = append(groups, hookGroup(matcher, command, waited))
 	}
 	return hookEvent(event, groups...)
 }
 
 // inBackground runs command, and claude goes on.
 func inBackground(event, command string) string {
-	return hookEvent(event, hookGroup("", command, `"async":true`))
+	return hookEvent(event, hookGroup("", command, inTheBackground))
 }

@@ -140,10 +140,10 @@ func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool, sw *Swi
 		if err := j.lost(suffix, true); err != nil {
 			return err
 		}
-		if err := enter(r); err != nil {
+		if _, err := enter(r); err != nil {
 			return err
 		}
-		l = resumed(suffix, l)
+		l = resumed(r, l)
 	}
 	c, err := CheckClaude()
 	if err != nil {
@@ -169,14 +169,15 @@ func (t *Tmux) settled(suffix string) (unlock func(), server, exists bool, made 
 	}
 }
 
-// resumed is l with claude resuming the conversation of session cld-SUFFIX, which has ended. claude
-// resumes the one its entry names by ID, or else the one named cld-SUFFIX (decision 40.4). join
-// and restore resume it so.
-func resumed(suffix string, l launch) launch {
-	l.resume, l.id = []string{"--resume", "cld-" + suffix}, ""
-	if r, ok := recorded(suffix); ok && r.Conversation != "" {
+// resumed is l with claude resuming the conversation of the session of entry r, which has ended.
+// claude resumes the one the entry names by ID, or else the one named as the session is (decision
+// 40.4). The new entry keeps r's directory (decision 56.4). join and restore resume it so.
+func resumed(r entry, l launch) launch {
+	l.resume, l.id = []string{"--resume", "cld-" + r.Name}, ""
+	if r.Conversation != "" {
 		l.resume, l.id = []string{"--resume", r.Conversation}, r.Conversation
 	}
+	l.entryDir = r.Directory
 	return l
 }
 

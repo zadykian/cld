@@ -277,6 +277,9 @@ the maintainer's to run or allow.
   ran under such a locale.
 - The record ([40](decisions/0040-session-record.md)): hook input read in 2.1.232 to 2.1.284. Not
   `/resume`, `/rename` or background conversations keeping the ID, nor macOS's file system.
+- Following `/cd` ([56](decisions/0056-following-claudes-cd.md)): read in 2.1.299, the probe's `cd`
+  standing in, and a probe for a teammate. A real `/cd` in a session, then `kill` and `join`, has
+  not run, nor a real teammate's hooks.
 - Words after `--` ([41](decisions/0041-claude-options.md)): `--help` 2.1.284 was run, the rest
   read.
 - User settings ([53](decisions/0053-project-and-user-settings.md)): the keys and values

@@ -137,7 +137,7 @@ func checkIdleKill(t *testing.T, s *sandbox.Sandbox, started time.Time, limit ti
 	}
 	idle := "#{&&:#{==:#{session_attached},0},#{&&:#{e|<:#{session_activity}," + cutoff[1] +
 		"},#{e|<:#{session_last_attached}," + cutoff[1] + "}}}"
-	kill := "run-shell '" + strings.ReplaceAll(unmarkCommand(s, "a"), "'", `'\''`) +
+	kill := "run-shell -t %0 '" + strings.ReplaceAll(leavingCommand(s, "a"), "'", `'\''`) +
 		"' ; if -F -t =cld-a: '" + idle + "' 'kill-session -t =cld-a ; kill-server' " +
 		"'display-message -p kept'"
 	want := []string{"-L", "cld-a", "if", "-F", "-t", "=cld-a:", idle, kill,

@@ -1,15 +1,16 @@
 package session
 
 // The record is what cld keeps of its sessions beside tmux, which forgets a session with its
-// server (decision 40). A session's entry, sessions/NAME.json, has its environment and its run,
-// busy and start marks beside it (decisions 48 and 50.4). docs/design/overview.md follows the
-// record through a session's life.
+// server (decision 40). A session's entry, sessions/NAME.json, has its environment, its run, busy
+// and start marks and claude's last directory beside it (decisions 48, 50.4 and 56).
+// docs/design/overview.md follows the record through a session's life.
 
 import (
 	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,8 +34,8 @@ const Ended = "ended"
 type entry struct {
 	// Name is the session's NAME, without "cld-".
 	Name string `json:"name"`
-	// Directory is the directory claude started in: where join ran, or the entry's where join
-	// resumed the session's conversation.
+	// Directory is the directory join made the session in, which a session brought back keeps.
+	// claude may have moved since (see backIn).
 	Directory string `json:"directory"`
 	// Conversation is the ID of the conversation claude had last in the session, as its
 	// SessionStart hook wrote it, or "" before then.
@@ -65,7 +66,11 @@ const (
 	runMark     = ".run"
 	busyMark    = ".busy"
 	startMark   = ".start"
+	lastDir     = ".dir"
 )
+
+// companions are the extensions of the files beside an entry, which go with it.
+var companions = []string{runMark, busyMark, startMark, lastDir, environment}
 
 // stateDir is the directory of cld's record: cld in $XDG_STATE_HOME or, where that is unset or
 // relative, in ~/.local/state (decision 40.1). A relative path would name another directory in
@@ -97,7 +102,7 @@ func companion(dir, suffix, ext string) string {
 // session and its extension, the entry's or a companion's. It returns false for any other file, as
 // a temporary file that a write cut short leaves.
 func sessionFile(name string) (suffix, ext string, ok bool) {
-	for _, ext := range []string{".json", environment, runMark, busyMark, startMark} {
+	for _, ext := range slices.Concat([]string{".json"}, companions) {
 		if suffix, found := strings.CutSuffix(name, ext); found && ValidName(suffix) {
 			return suffix, ext, true
 		}

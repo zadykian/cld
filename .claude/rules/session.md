@@ -41,17 +41,27 @@ works.
 
 ## The record
 
-- The record lives in `$XDG_STATE_HOME/cld`: an entry per session, with its environment and its run,
-  busy and start marks beside it
-  ([decision 40](../../docs/design/decisions/0040-session-record.md)).
+- The record lives in `$XDG_STATE_HOME/cld`: an entry per session, with its environment, its run,
+  busy and start marks and claude's last directory beside it (decisions
+  [40](../../docs/design/decisions/0040-session-record.md) and
+  [56](../../docs/design/decisions/0056-following-claudes-cd.md)).
+- Each file beside the entry has its extension in `companions`, which expiry and the list's forget
+  remove with the entry ([decision 40](../../docs/design/decisions/0040-session-record.md)).
 - The entry and the environment are written before tmux, and after the terminal check, so that a
   refusal writes nothing ([decision 40](../../docs/design/decisions/0040-session-record.md)).
 - A `run-shell` after `new-session`, in the same command, makes the run mark and removes the busy
   and start marks; a failed `new-session` cuts it short
   ([decision 48](../../docs/design/decisions/0048-restore-after-reboot.md)).
-- `kill`, the list's Ctrl+X and the idle sweep remove the run mark in their tmux command, before
-  `kill-session`, while the session holds its name
-  ([decision 48](../../docs/design/decisions/0048-restore-after-reboot.md)).
+- `kill`, the list's Ctrl+X and the idle sweep write claude's directory and remove the run mark
+  before `kill-session`, while the session holds its name. A `run-shell` in their tmux command does
+  both (decisions [48](../../docs/design/decisions/0048-restore-after-reboot.md) and
+  [56](../../docs/design/decisions/0056-following-claudes-cd.md)).
+- A path that tmux expands into a `run-shell`'s command goes in single quotes, by
+  `#{s/'/'\\''/:...}`; `#{q:}` leaves a newline that ends sh's command
+  ([decision 56](../../docs/design/decisions/0056-following-claudes-cd.md)).
+- The entry and the session's home keep the directory `join` made the session in. An ended session
+  comes back where claude was last, where that can be entered outside `.claude/worktrees`
+  ([decision 56](../../docs/design/decisions/0056-following-claudes-cd.md)).
 - `join` holds the record's lock from the lookup to tmux, `restore` for each session it brings back,
   and the list's forget too (decisions [40](../../docs/design/decisions/0040-session-record.md) and
   [50](../../docs/design/decisions/0050-one-command-join.md)).
@@ -77,9 +87,14 @@ works.
   joins ([decision 29](../../docs/design/decisions/0029-notifications.md)).
 - Every hook event and setting cld passes, `async` and `timeout` among them, must exist in the
   oldest claude cld runs ([decision 6](../../docs/design/decisions/0006-versions.md)).
-- claude waits 5 s at most for a hook, but for `CwdChanged`'s, which runs `async`, and the record's
-  `SessionEnd`, which claude ends at 1.5 s
-  ([decision 39](../../docs/design/decisions/0039-hook-cost.md)).
+- claude waits 5 s at most for a hook. `CwdChanged`'s, and the record's directory on `Stop`, run
+  `async`, and claude ends the record's `SessionEnd` hooks at 1.5 s (decisions
+  [39](../../docs/design/decisions/0039-hook-cost.md) and
+  [56](../../docs/design/decisions/0056-following-claudes-cd.md)).
+- What reads claude's own pane takes `%0`, its server's first: the active pane `=cld-NAME:` can be
+  another, of a split window, and a hook's `TMUX_PANE` a teammate's. The record's directory is
+  written only where it exists, beside an entry that does
+  ([decision 56](../../docs/design/decisions/0056-following-claudes-cd.md)).
 - A status hook names the server's socket and the session, since a conversation in the background
   runs it without `TMUX`; it prints nothing
   ([decision 25](../../docs/design/decisions/0025-title-follows-status.md)).

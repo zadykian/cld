@@ -30,9 +30,9 @@ type hookCommand struct {
 	Timeout int    `json:"timeout,omitempty"`
 }
 
-// hookTimeout is how many seconds claude waits for a hook of statusHooks that it does not run in
-// the background, and for those of recordHooks but SessionEnd's. claude's own default is 600 (30
-// for UserPromptSubmit; decision 39.2).
+// hookTimeout is how many seconds claude waits for a hook of statusHooks or recordHooks that it
+// does not run in the background, but for SessionEnd's. claude's own default is 600 (30 for
+// UserPromptSubmit; decision 39.2).
 const hookTimeout = 5
 
 // statusHooks are the hooks that keep claude's status in @cld-status on session cld-SUFFIX, for the

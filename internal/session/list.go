@@ -89,16 +89,20 @@ func (t *Tmux) ask(ctx context.Context, suffixes []string) ([]Session, error) {
 	return sessions, nil
 }
 
+// exited is the state of a session whose claude has exited, its pane kept (decision 5).
+const exited = "exited"
+
 // The fields of the line session reads, apart at tabs. claude's status shares the state's field,
 // after a space, where tmux writes only the hooks' words (decision 49.3). The times share a field
 // (decision 46.5), and the home's length goes before the home and the directory (decision 37.5).
 const (
 	statusFormat = "#{?#{==:#{@cld-status},busy},busy," +
 		"#{?#{==:#{@cld-status},waiting},waiting,#{?#{==:#{@cld-status},idle},idle,}}}"
-	stateFormat = "#{?pane_dead,exited,#{?session_attached,attached,detached} " +
+	stateFormat = "#{?pane_dead," + exited + ",#{?session_attached,attached,detached} " +
 		statusFormat + "}"
 	timesFormat = "#{session_activity} #{session_last_attached}"
-	// The directory claude is in now, or once it has exited, where its session started.
+	// The directory claude is in now, or once it has exited, where its session started; session
+	// puts claude's last directory from the record in its place (decision 56.4).
 	pathFormat    = "#{n:@cld-home}\t#{@cld-home}#{?pane_dead,#{session_path},#{pane_current_path}}"
 	sessionFormat = "#{session_name}\t" + stateFormat + "\t#{session_attached}\t" + panePIDs +
 		"\t" + timesFormat + "\t" + pathFormat
@@ -127,6 +131,9 @@ func (t *Tmux) session(ctx context.Context, suffix string) (*Session, error) {
 	s := &Session{Name: suffix, Attached: clients > 0, PIDs: strings.Fields(field[3]),
 		Directory: directory, Home: home}
 	s.State, s.Status, _ = strings.Cut(field[1], " ")
+	if s.State == exited {
+		s.Directory = lastDirectory(suffix, s.Directory)
+	}
 	if !s.Attached {
 		s.Idle = idleSince(read, strings.Fields(field[4]))
 	}

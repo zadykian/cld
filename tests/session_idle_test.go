@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -10,10 +11,10 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// list first ends each session idle past CLD_IDLE_DAYS days, as kill ends it, with a note on
-// stderr, and shows it ended (decision 46). 0.0001 days is 8.64 s. A terminal attached keeps a
-// session, and so does a key: c, detached by tmux's detach-client, which moves neither time, stays
-// for the key alone. With 0 list ends none, nor do completion and join -s.
+// list first ends each session idle past CLD_IDLE_DAYS days, as kill ends it, noting it on stderr,
+// and shows it ended where claude moved (decisions 46 and 56.3). 0.0001 days is 8.64 s. A terminal
+// attached keeps a session, and so does a key: c, detached by detach-client, which moves neither
+// time, stays for the key alone. With 0 list ends none, nor do completion and join -s.
 func TestEndsIdleSessions(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -33,12 +34,17 @@ func TestEndsIdleSessions(t *testing.T) {
 	probes["c"].WaitInput(mark, "z")
 	s.MustTmux("cld-c", "detach-client", "-s", "=cld-c")
 	sandbox.WaitFor(t, 10*time.Second, "cld to detach", func() bool { return !joined.Running() })
+	// Characters of sh and of tmux's formats: the sweep passes the kill's sh through tmux once more.
+	moved := filepath.Join(s.Root, `it's "#{moved}" $x`)
+	makeDirs(t, moved)
+	moveClaude(t, s, "a", probes["a"], moved)
 	want := "NAME  STATE     LAST ACTIVE  DIRECTORY\n" +
-		"a     ended     -            " + s.Work + "\n" +
+		"a     ended     -            " + moved + "\n" +
 		"b     attached  now          " + s.Work + "\n" +
 		"c     detached  now          " + s.Work + "\n" +
 		"d     attached  now          " + s.Work + "\n"
 	checkEndedIdle(t, s.RunCld(idle, "list"), want)
+	checkLastDirectory(t, s, "a", "the sweep", moved)
 	sandbox.WaitFor(t, 10*time.Second, "claude a to exit", func() bool {
 		return !probes["a"].Alive()
 	})

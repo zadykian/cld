@@ -117,7 +117,8 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 	if !ok {
 		return noSession(suffix)
 	}
-	return enterable(r)
+	_, err = enterable(r)
+	return err
 }
 
 // foreign is how command, one of join, detach and kill, refuses session cld-SUFFIX, made in the

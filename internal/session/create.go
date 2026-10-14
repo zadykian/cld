@@ -15,9 +15,10 @@ type launch struct {
 	// worktree has claude work in git worktree cld-SUFFIX.
 	worktree bool
 	// resume is claude's --resume and what goes with it, and id the conversation's ID where it
-	// came from the session's entry.
-	resume []string
-	id     string
+	// came from the session's entry, whose directory entryDir keeps (see resumed).
+	resume   []string
+	id       string
+	entryDir string
 	// args are the words for claude, which go after cld's own arguments.
 	args []string
 	// env is the environment of tmux, which its server and claude keep: where nil, cld's own
@@ -37,19 +38,20 @@ type launch struct {
 }
 
 // creation is what create has worked out for tmux's command that makes session cld-SUFFIX. It
-// holds the claude CheckClaude checked, claude's directory, the session's home (see Home) and the
-// server's socket by an absolute path. It also holds the keys that move the terminal (see
-// switchKeys), and the run mark that the pane-died hook removes (see died).
+// holds the claude CheckClaude checked, claude's directory, the entry's (see entry), the session's
+// home (see Home) and the server's socket by an absolute path. It also holds the keys that move the
+// terminal (see switchKeys), and the run mark that the pane-died hook removes (see died).
 type creation struct {
-	t       *Tmux
-	claude  string
-	suffix  string
-	dir     string
-	home    string
-	socket  string
-	keys    []string
-	diedRun string
-	l       launch
+	t        *Tmux
+	claude   string
+	suffix   string
+	dir      string
+	entryDir string
+	home     string
+	socket   string
+	keys     []string
+	diedRun  string
+	l        launch
 }
 
 // create makes session cld-SUFFIX for join and restore, as l asks, under the record's lock, which
@@ -82,7 +84,7 @@ func (t *Tmux) create(c *Claude, suffix string, l launch) error {
 	if cr.l.detached {
 		env = withTmuxTmpdir(env)
 	}
-	file, run := remember(entry{Name: suffix, Directory: cr.dir, Conversation: cr.l.id},
+	file, run := remember(entry{Name: suffix, Directory: cr.entryDir, Conversation: cr.l.id}, cr.dir,
 		started{Claude: c.path, Environment: cr.l.env}, t.runs)
 	if file != plannedFile || run != cr.diedRun {
 		if argv, _, err = cr.command(file, run); err != nil {
@@ -121,7 +123,16 @@ func (t *Tmux) prepare(c *Claude, suffix string, l launch) (*creation, string, e
 	if err != nil {
 		return nil, "", err
 	}
-	_, home := DefaultName()
+	// A session brought back keeps the directory join made it in, and its home there while that
+	// can be entered (decision 56.4).
+	entryDir, homeDir := dir, dir
+	if l.entryDir != "" {
+		entryDir = l.entryDir
+	}
+	if canEnter(entryDir) == nil {
+		homeDir = entryDir
+	}
+	_, home := DefaultName(homeDir)
 	if l.worktree {
 		if err := workTree(); err != nil {
 			return nil, "", err
@@ -131,8 +142,8 @@ func (t *Tmux) prepare(c *Claude, suffix string, l launch) (*creation, string, e
 	if err != nil {
 		return nil, "", fail.Runtime(err.Error())
 	}
-	cr := &creation{t: t, claude: c.path, suffix: suffix, dir: dir, home: home.Dir, socket: socket,
-		l: l}
+	cr := &creation{t: t, claude: c.path, suffix: suffix, dir: dir, entryDir: entryDir,
+		home: home.Dir, socket: socket, l: l}
 	// The pane-died hook removes the run mark even where cld writes none: the session can have one
 	// from before, a reboot's (decision 48.2).
 	plannedFile := ""

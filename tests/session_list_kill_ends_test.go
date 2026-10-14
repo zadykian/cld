@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -201,19 +202,23 @@ func listKillLingering(t *testing.T) {
 
 // listKillSplitWindow checks that the kill goes by the pids of all the session's panes, as tmux
 // reports only the active one's. claude's window, split by hand with its other pane selected since
-// the list read the sessions, is still the session on the row.
+// the list read the sessions, is still the session on the row. The kill keeps the directory claude
+// moved to, not the other pane's (decision 56.2).
 func listKillSplitWindow(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
+	moved, other := filepath.Join(s.Root, "moved"), filepath.Join(s.Root, "other")
+	makeDirs(t, moved, other)
 	probes := detachedSessions(t, s, "a", "b")
+	moveClaude(t, s, "a", probes["a"], moved)
 	term := startCld(t, s, "tmux", nil, "list")
 	waitScreen(t, term, listHints)
-	s.MustTmux("cld-a", "split-window", "-d", "-t", "=cld-a:", "sleep", "600")
+	s.MustTmux("cld-a", "split-window", "-d", "-t", "=cld-a:", "-c", other, "sleep", "600")
 	s.MustTmux("cld-a", "select-pane", "-t", "=cld-a:.1")
 	term.Keys("C-x", "C-x")
 	waitLines(t, term,
 		"  NAME  STATE     LAST ACTIVE  DIRECTORY",
-		"> a     ended     -            "+s.Work,
+		"> a     ended     -            "+moved,
 		"  b     detached  now          "+s.Work,
 		"",
 		endedHints)
@@ -223,6 +228,7 @@ func listKillSplitWindow(t *testing.T) {
 	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-b"}) {
 		t.Errorf("sessions %q, want [cld-b]", sessions)
 	}
+	checkLastDirectory(t, s, "a", "the kill of a split window", moved)
 }
 
 // killElsewhere kills session name, as from elsewhere than the list.

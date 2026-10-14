@@ -21,8 +21,8 @@ type Session struct {
 	// PIDs are the process ids of the programs in the session's panes, claude's among them. A pane
 	// keeps its pid once its program has exited, and a session made again has others (see End).
 	PIDs []string
-	// Directory is the directory claude is in now, or once claude has exited, the one its session
-	// started in. A session that has ended has the one its entry names.
+	// Directory is the directory claude is in now. Once claude has exited, or its session has
+	// ended, it names the one claude was last in, else where the session started (decision 56.4).
 	Directory string
 	// Home is where join made the session, as @cld-home has it (see Home). A session that has ended
 	// has "", as does one of a cld that recorded none, 0.8.2 or earlier.
@@ -58,9 +58,10 @@ func (s Session) LastActive() string {
 	return strconv.Itoa(int(s.Idle/(24*time.Hour))) + "d"
 }
 
-// endedSession is the session of entry r as Sessions reads it once it has ended.
+// endedSession is the session of entry r as Sessions reads it once it has ended, in the directory
+// it comes back in.
 func endedSession(r entry) Session {
-	return Session{Name: r.Name, State: Ended, Directory: r.Directory}
+	return Session{Name: r.Name, State: Ended, Directory: backIn(r)}
 }
 
 // EndedSession is session cld-SUFFIX as Sessions would read it now that the idle sweep has ended

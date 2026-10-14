@@ -125,17 +125,19 @@ line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cl
 
 tmux forgets a session with its server, so cld keeps a record of its own in `$XDG_STATE_HOME/cld`,
 by default `~/.local/state/cld` ([decision 40](decisions/0040-session-record.md)). A session's
-entry holds its name, the directory claude started in and its conversation's ID; the file's time
+entry holds its name, the directory `join` made it in and its conversation's ID; the file's time
 is the entry's. Beside the entry are the claude and environment the server started with, the run
 mark, the busy mark and the start mark ([decision 48](decisions/0048-restore-after-reboot.md),
-[decision 50.4](decisions/0050-one-command-join.md)). Also kept: the highest index given each
+[decision 50.4](decisions/0050-one-command-join.md)). So is the directory claude was last in
+([decision 56](decisions/0056-following-claudes-cd.md)). Also kept: the highest index given each
 `NAME-`, and a lock.
 
 - `join` writes the entry and the environment once nothing is left to refuse, before tmux. A
   `run-shell` after `new-session`, in the same tmux command, makes the run mark and removes the
   busy and the start mark, so a failed `new-session` leaves no mark.
-- claude's hooks write the conversation's ID into the entry and keep the busy mark. cld reads none
-  of claude's transcripts.
+- claude's hooks write the conversation's ID into the entry and keep the busy mark. Its `Stop` and
+  `SessionEnd` hooks, and the kill, write the directory claude is in, as tmux reads it. cld reads
+  none of claude's transcripts.
 - An entry or index older than 30 days, claude's default `cleanupPeriodDays`, goes, but for a
   session whose server runs.
 - Where cld cannot write the record, it warns and makes the session all the same.
@@ -155,8 +157,9 @@ checks the terminal last ([decision 31](decisions/0031-a-terminal-to-attach-from
   ([decision 23](decisions/0023-joining-beside-other-terminals.md)). It moves neither claude nor
   the session, where the bash function's `new-session -A` honours `-c` on tmux 3.7: a reattach
   from another directory moved the session's directory for new windows.
-- A session that has ended comes back, claude resuming the entry's conversation in the entry's
-  directory ([decision 16](decisions/0016-resume.md)).
+- A session that has ended comes back, claude resuming the entry's conversation in its last
+  directory, else in the entry's (decisions [16](decisions/0016-resume.md) and
+  [56](decisions/0056-following-claudes-cd.md)).
 - Otherwise `join` makes the session. claude goes to tmux as separate words, by the path cld
   checked, so tmux runs it directly, not through `sh -c`. claude's `--settings` carry cld's hooks
   and turn agent view off ([decision 47](decisions/0047-agent-view-off.md)).
@@ -185,8 +188,9 @@ directory, then asks the servers that answer, eight at a time
 
 - claude exiting with status 0 ends its session; a failure stays on screen
   ([decision 5](decisions/0005-failures-stay-on-screen.md)).
-- In one tmux command, `kill` removes the run mark, then ends the session and its server. It does
-  not wait for claude's `SessionEnd` hooks ([decision 32](decisions/0032-what-a-kill-does.md)).
+- In one tmux command, `kill` writes claude's directory and removes the run mark, then ends the
+  session and its server. It does not wait for claude's `SessionEnd` hooks
+  ([decision 32](decisions/0032-what-a-kill-does.md)).
 - A server that outlives its session is refused, or ended by `kill`
   ([decision 13](decisions/0013-a-server-per-session.md)).
 - `list`, and `join` without `-s`, end sessions idle past `CLD_IDLE_DAYS`

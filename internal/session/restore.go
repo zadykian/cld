@@ -79,25 +79,25 @@ func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
 	if err != nil {
 		return nil, fail.Runtime("cld keeps no environment of it: " + err.Error())
 	}
-	// As join does: the directory is where tmux starts claude, and where the session's home comes
-	// from (see DefaultName).
-	if err := enter(r); err != nil {
+	// As join does: tmux starts claude where the session comes back in (see enter).
+	back, err := enter(r)
+	if err != nil {
 		return nil, err
 	}
 	env := slices.DeleteFunc(slices.Clone(s.Environment), func(variable string) bool {
 		return strings.HasPrefix(variable, "PWD=")
 	})
-	env = append(env, "PWD="+r.Directory)
-	c, err := checkClaude(s.Claude, r.Directory, env)
+	env = append(env, "PWD="+back)
+	c, err := checkClaude(s.Claude, back, env)
 	if err != nil {
 		return nil, err
 	}
-	restored := &Restored{Directory: r.Directory}
+	restored := &Restored{Directory: back}
 	l := launch{env: env, detached: true, restored: true}
 	if _, err := os.Stat(companion(dir, suffix, busyMark)); err == nil {
 		restored.Busy, l.args = true, []string{ContinuePrompt}
 	}
-	if err := t.create(c, suffix, resumed(suffix, l)); err != nil {
+	if err := t.create(c, suffix, resumed(r, l)); err != nil {
 		return nil, err
 	}
 	return restored, nil

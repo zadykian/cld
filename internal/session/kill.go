@@ -62,12 +62,12 @@ func holdsAny(found, pids []string) bool {
 }
 
 // sessionKill is the tmux command that ends session cld-SUFFIX and then its server, so that a
-// terminal attached exits with status 0 (decision 13). It first removes the run mark, while the
-// session holds its name (decision 48.1).
+// terminal attached exits with status 0 (decision 13). It first writes claude's directory and
+// removes the run mark, while the session holds its name (decisions 48.1 and 56.3).
 func sessionKill(suffix string) []string {
 	kill := []string{"kill-session", "-t", "=cld-" + suffix, ";", "kill-server"}
-	if rm := unmark(suffix); rm != "" {
-		return append([]string{"run-shell", rm, ";"}, kill...)
+	if sh := leaving(suffix); sh != "" {
+		return append([]string{"run-shell", "-t", claudePane, sh, ";"}, kill...)
 	}
 	return kill
 }
@@ -84,7 +84,7 @@ func outlivedKill(suffix string) []string {
 }
 
 // Forget forgets session cld-SUFFIX, which has ended, for the list's Ctrl+X. Its entry goes with
-// its environment and marks, but the index its name ends in stays given (decision 40). The caller
+// the files beside it, but the index its name ends in stays given (decision 40). The caller
 // holds the record's lock (decision 48.6), and a session another cld is starting is refused
 // (decision 50.4). Once ctx is done, its tmux is killed.
 func (t *Tmux) Forget(ctx context.Context, suffix string) error {
@@ -105,9 +105,10 @@ func (t *Tmux) Forget(ctx context.Context, suffix string) error {
 		return noSession(suffix)
 	}
 	dir, _ := stateDir() //nolint:errcheck // recorded found the entry there
-	files := []string{entryFile(dir, suffix), companion(dir, suffix, runMark),
-		companion(dir, suffix, busyMark), companion(dir, suffix, startMark),
-		companion(dir, suffix, environment)}
+	files := []string{entryFile(dir, suffix)}
+	for _, ext := range companions {
+		files = append(files, companion(dir, suffix, ext))
+	}
 	for _, file := range files {
 		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fail.Runtime("cannot forget session '" + suffix + "': " + reason(err).Error())

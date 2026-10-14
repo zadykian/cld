@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -12,12 +13,14 @@ import (
 	"github.com/zadykian/cld/internal/output"
 )
 
-// remember writes r, the entry of the session create is about to make, and s, what its server
-// starts with, under the lock the caller holds. It returns r's file and the run mark tmux makes
-// (see setMarks). Both are "" where r failed, and the mark where the environment did, as restore
-// could not start the session again. A failure is a warning (decisions 40.7 and 48.4).
-func remember(r entry, s started, runs func(suffix string) bool) (file, run string) {
-	file, run, err := write(r, s, runs)
+// remember writes r, the entry of the session create is about to make, under the caller's lock.
+// Beside it go claudeDir, where its claude starts, and s, what its server starts with. It returns
+// r's file and the run mark tmux makes (see setMarks): "" where r failed, and the mark where s did,
+// as restore could not start the session again. A failure is a warning (decisions 40.7 and 48.4).
+func remember(
+	r entry, claudeDir string, s started, runs func(suffix string) bool,
+) (file, run string) {
+	file, run, err := write(r, claudeDir, s, runs)
 	if err != nil {
 		output.Warn("cannot record session '" + r.Name + "': " + err.Error())
 	}
@@ -26,8 +29,10 @@ func remember(r entry, s started, runs func(suffix string) bool) (file, run stri
 
 // write is remember's work, returning the first failure. It also forgets what has expired, but
 // for the entries of the sessions whose servers run, as runs says, and gives the index r's name
-// ends in. A failed environment leaves those to do all the same.
-func write(r entry, s started, runs func(suffix string) bool) (file, run string, err error) {
+// ends in. A failed environment, or claude's directory, leaves those to do all the same.
+func write(
+	r entry, claudeDir string, s started, runs func(suffix string) bool,
+) (file, run string, err error) {
 	dir, err := stateDir()
 	if err != nil {
 		return "", "", err
@@ -39,6 +44,13 @@ func write(r entry, s started, runs func(suffix string) bool) (file, run string,
 	if err := replace(file, entryLine(r)); err != nil {
 		return "", "", err
 	}
+	// claude's directory replaces one that an earlier session of the name left, which goes where
+	// it cannot (decision 56.1).
+	last := companion(dir, r.Name, lastDir)
+	dirErr := replace(last, []byte(claudeDir+"\n"))
+	if dirErr != nil {
+		_ = os.Remove(last) //nolint:errcheck // best effort: the failure is returned
+	}
 	// Before tmux makes the session, and so its run mark, as restore needs the environment of
 	// any session it finds marked (decision 48.4).
 	err = writeStarted(dir, r.Name, s)
@@ -47,10 +59,7 @@ func write(r entry, s started, runs func(suffix string) bool) (file, run string,
 	}
 	forgetExpired(dir, runs)
 	indexErr := giveIndex(dir, r.Name)
-	if err == nil {
-		err = indexErr
-	}
-	return file, run, err
+	return file, run, cmp.Or(dirErr, err, indexErr)
 }
 
 // writeStarted writes s as session cld-SUFFIX's NAME.env in the record's directory dir.

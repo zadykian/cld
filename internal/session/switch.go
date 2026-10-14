@@ -95,7 +95,7 @@ func (t *Tmux) switchJoin(sw *Switch, suffix string, j Joining) error {
 			if err := j.lost(suffix, true); err != nil {
 				return err
 			}
-			if err := enterable(r); err != nil {
+			if _, err := enterable(r); err != nil {
 				return err
 			}
 		} else if j.Worktree {

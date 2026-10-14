@@ -56,6 +56,18 @@ func unmarkCommand(s *sandbox.Sandbox, name string) string {
 	return strings.ReplaceAll("rm -f "+shellQuoted(run)+" 2>/dev/null || true", "#", "##")
 }
 
+// leavingCommand is how kill and the idle sweep write claude's directory beside session name's
+// entry in s, then remove its run mark (decision 56.3). run-shell takes it with -t %0, claude's
+// pane, and tmux quotes the directory for sh.
+func leavingCommand(s *sandbox.Sandbox, name string) string {
+	file := entryFile(s, name)
+	last := shellQuoted(strings.TrimSuffix(file, ".json") + ".dir")
+	fixed := func(text string) string { return strings.ReplaceAll(text, "#", "##") }
+	return fixed("{ [ -e "+shellQuoted(file)+" ] && d=") + `'#{s/'/'\\''/:pane_current_path}'` +
+		fixed(` && [ -d "$d" ] && printf '%s\n' "$d" >`+last+`.$$ && mv -f `+last+`.$$ `+last+
+			`; } 2>/dev/null; `) + unmarkCommand(s, name)
+}
+
 // endHook is the pane-died hook join sets (decision 48.2). For status 0 it removes the run mark,
 // the file run, and closes the pane, as tmux would. Otherwise it keeps endText on the pane's border
 // and shows endHint to a terminal on claude's window. The path goes quoted for sh and for tmux.

@@ -54,8 +54,9 @@ the snap is Ubuntu's tmux 3.7c snap. What tmux does at the terminal is in
   16364 for them. One byte more fails with status 1, after starting a server that ends and leaves
   its socket. cld's own words measured 5967 bytes in the image, with tmux at a path of 97
   characters, and 5029 at the sandbox's paths. Counted, they came to about 8.1 KB in the image by
-  decision 51, and some 7 KB at the sandbox's paths. See
-  [decision 41.5](../decisions/0041-claude-options.md).
+  decision 51. At the sandbox's paths they came to 7.8 KB, and 8.8 KB with decision 56's hooks.
+  There, tmux at a path of 97 characters made it 9.8 KB. See decisions
+  [41.5](../decisions/0041-claude-options.md) and [56.2](../decisions/0056-following-claudes-cd.md).
 
 ## Command lists
 
@@ -71,6 +72,11 @@ the snap is Ubuntu's tmux 3.7c snap. What tmux does at the terminal is in
   name while the shell runs, so a `new-session` of the name fails. After it, the server serves other
   clients without the session until `kill-server`, which ends a session made meanwhile. An idle
   sweep that checks again after its `run-shell` keeps a session attached meanwhile.
+- **A directory in a `run-shell`'s command** (3.7c, run; 3.5a's `format.c` and `server-client.c`,
+  read). `run-shell -t` expands the pane's `#{pane_current_path}` raw: 3.5a escapes control
+  characters only as a client prints them. `#{q:}` escapes no newline, but
+  `'#{s/'/'\\''/:pane_current_path}'` hands sh any path whole. See
+  [decision 56.3](../decisions/0056-following-claudes-cd.md).
 - **The idle kill under `if -F`** (#79; 3.5a and 3.7c in the images, the snap).
   `if -F -t =S: COND 'kill-session -t =S ; kill-server'` ends both only where the condition holds;
   without session `S` the condition expands with no session and fails. A failing command in the

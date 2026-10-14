@@ -13,7 +13,7 @@ import (
 
 // The indexes join gives, and what in the record expires after 30 days (decision 40.6).
 
-// The entry of a session whose server runs stays at any age, with its environment and marks.
+// The entry of a session whose server runs stays at any age, with the files beside it.
 // claude's hooks touch it again, and it shows as ended once the session has. An entry that old
 // without its server goes, with the files beside it, as do the files of an entry gone.
 func TestRecordWhileRunning(t *testing.T) {
@@ -25,12 +25,13 @@ func TestRecordWhileRunning(t *testing.T) {
 	checkMarks(t, s, "after join", map[string]bool{"a": true})
 	writeRestorable(t, s, "c", s.Work, firstID, filepath.Join(sandbox.ProbeBin, "claude"), nil)
 	s.WriteFile(companionFile(s, "c", ".busy"), "")
+	s.WriteFile(companionFile(s, "c", ".dir"), s.Work+"\n")
 	// o's busy mark is one a hook made as its entry was forgotten.
 	s.WriteFile(companionFile(s, "o", ".busy"), "")
 	month := 31 * 24 * time.Hour
 	var old []string
 	for _, name := range []string{"a", "c"} {
-		for _, ext := range []string{".json", ".env", ".run", ".busy"} {
+		for _, ext := range []string{".json", ".env", ".run", ".busy", ".dir"} {
 			if exists(companionFile(s, name, ext)) {
 				old = append(old, companionFile(s, name, ext))
 			}
@@ -60,14 +61,14 @@ func checkExpiredWhileRunning(t *testing.T, s *sandbox.Sandbox) {
 	if readEntry(s, "a") != entry("a", s.Work, "") {
 		t.Errorf("a's entry %q after another join, want it kept", readEntry(s, "a"))
 	}
-	for _, ext := range []string{".env", ".run"} {
+	for _, ext := range []string{".env", ".run", ".dir"} {
 		if !exists(companionFile(s, "a", ext)) {
 			t.Errorf("a%s removed with a's server running, want it kept", ext)
 		}
 	}
 	for _, file := range []string{
 		entryFile(s, "c"), companionFile(s, "c", ".env"), companionFile(s, "c", ".run"),
-		companionFile(s, "c", ".busy"), companionFile(s, "o", ".busy"),
+		companionFile(s, "c", ".busy"), companionFile(s, "c", ".dir"), companionFile(s, "o", ".busy"),
 	} {
 		if _, err := os.Stat(file); !os.IsNotExist(err) {
 			t.Errorf("%s: %v, want it removed", filepath.Base(file), err)

@@ -1,8 +1,9 @@
 # Resuming a conversation
 
-cld's record of a session, in `$XDG_STATE_HOME/cld`, holds claude's directory and the
-conversation's ID. A hook writes the ID as claude starts the conversation, and after `/clear` or
-`/resume`. The ID finds the conversation whatever its name has become.
+cld's record of a session, in `$XDG_STATE_HOME/cld`, holds the directory `cld join` made it in,
+the one claude was last in, and the conversation's ID. A hook writes the ID as claude starts the
+conversation, and after `/clear` or `/resume`. The ID finds the conversation whatever its name has
+become.
 
 ## The record
 
@@ -10,8 +11,12 @@ conversation's ID. A hook writes the ID as claude starts the conversation, and a
   default `cleanupPeriodDays`. A value of your own is not read.
 - A running server keeps the record. `cld kill` does not forget a session; `Ctrl+X` twice in
   `cld list` does.
-- Where the directory has gone, `cld join` refuses, naming the `--resume ID` that resumes the
-  conversation from here.
+- An ended session comes back in the directory claude was last in, after `/cd` too. cld records it
+  after each answer, at `/exit` and as cld ends the session. A reboot after a `/cd`, before claude's
+  next answer, loses it.
+- A session whose last directory has gone, or is a worktree claude made, comes back where
+  `cld join` made it. Where that has gone too, `cld join` refuses, naming the `--resume ID` that
+  resumes the conversation from here.
 - Without a record, from an older cld or forgotten, `cld join` starts a new conversation.
   `--resume cld-S` resumes the old one by name.
 - A record without an ID, where claude or tmux failed first, resumes by the name `cld-S`.

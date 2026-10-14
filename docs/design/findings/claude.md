@@ -101,6 +101,25 @@ is in [tmux-sessions.md](tmux-sessions.md) and [tmux-terminal.md](tmux-terminal.
   ([decision 40](../decisions/0040-session-record.md),
   [decision 46](../decisions/0046-idle-sessions.md)).
 
+## Moving a conversation
+
+- **`/cd`** (the changelog, read 2026-10-14). It came in 2.1.169, so every claude cld runs has it.
+  From 2.1.246 the new directory's settings, hooks and MCP servers take effect at once, not at the
+  next `--resume` ([decision 56](../decisions/0056-following-claudes-cd.md)).
+- **What `/cd` does** (2.1.299, read). It calls `process.chdir`, and sets the session's directory
+  and its original one. It moves the transcript to the new directory's project, appending a line of
+  type `relocated` that names it. It fires neither `SessionStart` nor `CwdChanged`, and hands its
+  notice back without a turn. The hooks' `cwd` follows it, and a shell `cd` too, which alone fires
+  `CwdChanged` ([decision 56](../decisions/0056-following-claudes-cd.md)).
+- **`/cd` in a cld session** (2.1.289, a transcript on the maintainer's host, read). The session
+  moved from one repository to another, its transcript too, with a `relocated` line. Its records'
+  `cwd` had also followed shell `cd`s into a subdirectory of the first.
+- **`--resume ID` from another directory** (the
+  [sessions docs](https://code.claude.com/docs/en/sessions), read 2026-10-14). claude looks for the
+  ID in the current project and its worktrees, then in every other project. It resumes the
+  conversation where exactly one holds it
+  ([decision 56](../decisions/0056-following-claudes-cd.md)).
+
 ## Settings
 
 - **`remoteControlAtStartup`** (2.1.282, read: a live check would connect to claude.ai). The first
@@ -265,6 +284,10 @@ claude's OSC 8 links under tmux and its reading of the locale are in
 - **Agent teams in tmux** (2.1.284, read). Where `teammateMode` picks tmux, the first teammate
   splits claude's own pane, so claude's window can hold more panes than claude's
   ([decision 5](../decisions/0005-failures-stay-on-screen.md)).
+- **A teammate's settings** (2.1.299, read). claude passes each teammate in tmux its own
+  `--settings`, and starts it by `cd DIR && env ... claude ...` in its pane. So cld's hooks run in
+  the teammate's pane too, in its directory, with its `TMUX_PANE`
+  ([decision 56](../decisions/0056-following-claudes-cd.md)).
 - **claude's memory** (#79: 2.1.284, `ps -o rss` on the maintainer's host). Each of a conversation's
   four processes held 225 to 540 MB, where a session's tmux server holds 4 to 5 MB
   ([decision 46](../decisions/0046-idle-sessions.md)).

@@ -116,7 +116,7 @@ func (o Options) Resolve(tmux *session.Tmux) (string, session.Home, error) {
 // are taken from (decision 37). The home is none where NAME is "", as in the root directory,
 // where -s names any session whole.
 func defaultName() (string, session.Home) {
-	name, home := session.DefaultName()
+	name, home := session.DefaultName("")
 	if name == "" {
 		return "", session.Home{}
 	}

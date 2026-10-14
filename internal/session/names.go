@@ -48,22 +48,24 @@ func (h Home) Takes(made string) bool {
 	return err == nil && os.SameFile(here, there)
 }
 
-// DefaultName is the NAME of NAME-SUFFIX where -n gives none, and the home it comes from. It takes
-// the name of the repository (see repository) or of the current directory, made a NAME (see
-// asName). Where nothing is left of the name, as for "/", the NAME is "", and SUFFIX is the whole
-// name.
-func DefaultName() (string, Home) {
-	name, dir, found := repository()
-	if !found {
+// DefaultName is the NAME of NAME-SUFFIX where -n gives none, and the home it comes from, for the
+// directory dir, the current one where dir is "". It takes the name of the repository (see
+// repository) or of the directory, made a NAME (see asName). Where nothing is left of the name, as
+// for "/", the NAME is "", and SUFFIX is the whole name.
+func DefaultName(dir string) (string, Home) {
+	if dir == "" {
 		// Getwd gives the directory as PWD names it: the name pwd shows, not that of the
 		// directory a symbolic link leads to.
 		var err error
 		if dir, err = os.Getwd(); err != nil {
 			return "", Home{}
 		}
-		name = filepath.Base(dir)
 	}
-	return asName(name), Home{Dir: dir, Repository: found}
+	name, home, found := repository(dir)
+	if !found {
+		name, home = filepath.Base(dir), dir
+	}
+	return asName(name), Home{Dir: home, Repository: found}
 }
 
 // Options is how -n and -s name session NAME on cld's command line. They split it at its last "-",
@@ -84,16 +86,16 @@ func asName(name string) string {
 	return strings.Trim(notInName.ReplaceAllString(name, "-"), "-_")
 }
 
-// repository is the name and the directory of the git repository the current directory is in,
-// and whether there is one. The directory holds the common .git, or is the git directory of a bare
-// repository's worktree or a submodule, named without ".git" (decision 24.3). Outside a work tree,
-// without git, or where git fails, there is none.
-func repository() (name, dir string, found bool) {
+// repository is the name and the directory of the git repository directory dir is in, and whether
+// there is one. The directory holds the common .git, or is the git directory of a bare repository's
+// worktree or a submodule, named without ".git" (decision 24.3). Outside a work tree, without git,
+// or where git fails, there is none.
+func repository(dir string) (name, root string, found bool) {
 	git, err := tool.Command("git", "rev-parse", "--is-inside-work-tree", "--git-common-dir")
 	if err != nil {
 		return "", "", false
 	}
-	git.Stderr = nil
+	git.Dir, git.Stderr = dir, nil
 	out, err := git.Output()
 	if err != nil {
 		return "", "", false
@@ -103,16 +105,12 @@ func repository() (name, dir string, found bool) {
 		return "", "", false
 	}
 	if !filepath.IsAbs(common) {
-		current, err := os.Getwd()
-		if err != nil {
-			return "", "", false
-		}
-		common = filepath.Join(current, common)
+		common = filepath.Join(dir, common)
 	}
 	common = filepath.Clean(common)
 	if filepath.Base(common) == ".git" {
-		dir = filepath.Dir(common)
-		return filepath.Base(dir), dir, true
+		root = filepath.Dir(common)
+		return filepath.Base(root), root, true
 	}
 	return strings.TrimSuffix(filepath.Base(common), ".git"), common, true
 }

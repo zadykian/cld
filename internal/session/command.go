@@ -54,7 +54,7 @@ func (cr *creation) claudeWords(file string) ([]string, error) {
 	given := settings{DisableAgentView: true,
 		Hooks: statusHooks(cr.t.path, git, cr.socket, cr.suffix)}
 	if file != "" {
-		for event, hooks := range recordHooks(file, cr.suffix, cr.dir) {
+		for event, hooks := range recordHooks(file, cr.suffix, cr.entryDir, cr.t.path, cr.socket) {
 			given.Hooks[event] = append(given.Hooks[event], hooks...)
 		}
 	}
