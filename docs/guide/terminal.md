@@ -17,7 +17,7 @@ Each hook starts a tmux client, and a busy title has each terminal start three p
 With Ubuntu's tmux snap, claude waits a tenth of a second and more at each event, and a busy title
 takes some 14% of a core per terminal.
 
-The ` [w]` follows claude's working directory, not a shell command's `cd`, and needs git on your
+The `[w]` follows claude's working directory, not a shell command's `cd`, and needs git on your
 `PATH` as the session starts. A worktree entered and left within one answer can leave it stale
 until claude next changes directory.
 

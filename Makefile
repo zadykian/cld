@@ -32,8 +32,11 @@ SHELLCHECK = shellcheck
 SHFMT = shfmt
 # The files sizecheck and vale check, every one when empty: make vale FILES='README.md'.
 FILES =
+# The Markdown files rumdl and lychee check: those git lists, new ones included.
+MARKDOWN = $$(git ls-files --cached --others --exclude-standard '*.md')
 
-.PHONY: check lint vet golangci-lint sizecheck vale govulncheck actionlint zizmor lychee test \
+.PHONY: check lint vet golangci-lint sizecheck vale rumdl govulncheck actionlint zizmor lychee \
+	commits test \
 	docker-image docker-test docker-check docker-blesh-image docker-blesh-test docker-blesh-check \
 	dist install uninstall
 
@@ -43,7 +46,7 @@ check: vet test
 # tools pinned there into .cache/tools; check keeps to vet, whose tools the Docker image has.
 lint: SHELLCHECK = tools/run shellcheck
 lint: SHFMT = tools/run shfmt
-lint: vet golangci-lint sizecheck vale govulncheck actionlint zizmor lychee
+lint: vet golangci-lint sizecheck vale rumdl govulncheck actionlint zizmor lychee commits
 
 vet:
 	$(SHELLCHECK) $(SCRIPTS)
@@ -63,6 +66,10 @@ sizecheck:
 # Vale. tools/valecheck.txt is empty: no file may fail it.
 vale:
 	tools/valecheck $(FILES)
+
+# The Markdown's structure, as .rumdl.toml sets it; a warning about that file fails too.
+rumdl:
+	tools/run rumdl check --deny-config-warnings $(MARKDOWN)
 
 # Any finding fails, as do those govulncheck lists without failing: in packages cld imports but
 # does not call, and in modules it only requires. The ghostty driver's tag brings its bindings in,
@@ -85,10 +92,13 @@ actionlint:
 zizmor:
 	tools/run zizmor .
 
-# Links to files and their headings in the Markdown files git lists, new ones included.
+# Links to files and their headings.
 lychee:
-	tools/run lychee --offline --include-fragments --no-progress \
-		$$(git ls-files --cached --others --exclude-standard '*.md')
+	tools/run lychee --offline --include-fragments --no-progress $(MARKDOWN)
+
+# The messages of the commits HEAD adds to origin/main, as CLAUDE.md's Commits has them.
+commits:
+	go run ./tools/commitcheck
 
 test:
 	cd tests && CLD_TERMINALS=$(TERMINALS) go test -count=1 $(TEST_TAGS) ./...

@@ -43,7 +43,7 @@ help. Where it lives nowhere else, keep it, or move it to where it belongs.
 
 ## Check
 
-- `make vale FILES='PATHS'`, `make sizecheck FILES='PATHS'`, `make lychee`.
+- `make vale FILES='PATHS'`, `make sizecheck FILES='PATHS'`, `make rumdl`, `make lychee`.
 - For Go files, also `gofmt -l .` and `make golangci-lint`: a changed comment line must fit in
   100 columns.
 - Commit as `docs(scope): ...` for docs, or `refactor(scope): ...` for comments.

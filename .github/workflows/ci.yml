@@ -96,8 +96,8 @@ jobs:
       - run: tmux -V && make check
 
   # Every gate of `make lint`, with the tools it pins (tools/run): the checks `make check` runs
-  # besides the tests, golangci-lint, the size caps, Vale, govulncheck, actionlint, zizmor and
-  # lychee.
+  # besides the tests, golangci-lint, the size caps, Vale, rumdl, govulncheck, actionlint, zizmor,
+  # lychee and the commit messages.
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -105,6 +105,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history and origin/main, whose commits `make commits` leaves out.
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod

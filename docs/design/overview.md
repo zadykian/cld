@@ -104,7 +104,7 @@ Only `main` exits. An error carries its exit status up, with the message to prin
 has printed its own. A tmux command that fails ends cld with tmux's status; a session lookup that
 fails ends it with status 1. A program that cannot run ends cld with 127 or 126, as a failed
 `execve` does. A failed write of cld's output is one of these ends too, so output cut short never
-passes for whole. An error keeps the advice for the command line, such as ` (see cld help)`,
+passes for whole. An error keeps the advice for the command line, such as `(see cld help)`,
 apart from its message: the list's footer shows the message alone.
 
 ### The command line on cobra

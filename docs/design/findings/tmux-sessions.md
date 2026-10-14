@@ -134,8 +134,8 @@ the snap is Ubuntu's tmux 3.7c snap. What tmux does at the terminal is in
   [decision 37](../decisions/0037-sessions-of-another-repository.md).
 - **Spaces in a `list-sessions -F` conditional** (#113; 3.5a, 3.7c). A space in a branch of
   `#{?...}` stays, in nested conditionals and an empty last branch too. cld's state field thus read
-  `detached busy` and the like, `detached ` for an unknown status, and `exited` alone for a dead
-  pane. See [decision 49](../decisions/0049-status-in-the-list.md).
+  `detached busy` and the like, `detached` and a space for an unknown status, and `exited` alone
+  for a dead pane. See [decision 49](../decisions/0049-status-in-the-list.md).
 - **`#{session_created}`, `#{session_id}` and `#{pane_pid}`** (3.3a, 3.4, 3.5a, 3.7c). The first
   counts whole seconds, and ids start again at `$0` on a new server, so neither tells a session made
   again from the killed one. A session's `pane_pid` is its active pane's, a dead pane's too;

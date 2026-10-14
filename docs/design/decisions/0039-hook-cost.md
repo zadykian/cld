@@ -32,7 +32,7 @@ not claude's default of 600 s (30 s for `UserPromptSubmit`).
 
 It runs with `async`, and no timeout, as claude ends no background hook at one. It asks git about
 the directory claude started it in. Only two changes in one answer could land out of order, leaving
-` [w]` behind until the next. `async` predates the claude release [decision 6](0006-versions.md)
+`[w]` behind until the next. `async` predates the claude release [decision 6](0006-versions.md)
 requires, which stands.
 
 ### 39.4 The turning stays at a second

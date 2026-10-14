@@ -7,8 +7,9 @@ probe stands in for claude, and for the programs that would reach outside the sa
 ## Layers
 
 1. **Static.** `make vet` runs gofmt, go vet, ShellCheck and shfmt. `make lint`, CI's `lint` job,
-   adds golangci-lint, the size caps, Vale, govulncheck, the workflow linters and lychee. Each
-   checks every file, and any finding fails it, warnings included.
+   adds golangci-lint, the size caps, Vale, rumdl, govulncheck, the workflow linters, lychee and the
+   commit messages' style. Each checks every file or commit, and any finding fails it, warnings
+   included.
 2. **Behaviour against real tmux.** The probe replaces claude, `tmux -V` for the version check,
    and `systemctl` and `loginctl` for `setup restore`
    ([decision 48](decisions/0048-restore-after-reboot.md)). As claude it sets the terminal modes
@@ -35,7 +36,7 @@ A result that rightly differs per terminal is an expectation of that terminal, n
 a terminal gaining or losing support flips a test. Tests cite the checks by number.
 
 - **C1, title.** The tab's title is `✳ cld-NAME`, with `◐` and `◑` in turn while claude is busy,
-  and ` [w]` after it while claude works in a linked git worktree. It survives claude's own title
+  and `✳ cld-NAME [w]` while claude works in a linked git worktree. It survives claude's own title
   changes. Evidence: terminal, probe.
 - **C2, the client.** tmux's view of the client: `#{client_termtype}` and
   `#{client_termfeatures}` (`extkeys`, `focus`, `mouse`, `clipboard`, `hyperlinks`). Evidence:

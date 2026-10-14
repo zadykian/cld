@@ -27,7 +27,7 @@ your tmux keeps C-b and Shift+Enter: see "Inside your own tmux" in cld's guide
 
 These lines in `~/.tmux.conf` bring back all but the prefix and those notifications:
 
-```
+```text
 set -s extended-keys on
 set -as terminal-features 'xterm*:extkeys:hyperlinks'
 set -s set-clipboard on

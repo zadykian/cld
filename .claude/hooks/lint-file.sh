@@ -62,6 +62,10 @@ main() {
         ;;
     *.md)
         gate tools/run lychee --offline --include-fragments --no-progress "$path"
+        # A branch from before rumdl's gate has no .rumdl.toml, and its tools/run no rumdl.
+        if [ -f .rumdl.toml ]; then
+            gate tools/run rumdl check --deny-config-warnings "$path"
+        fi
         ;;
     esac
     gate go run ./tools/sizecheck "$path"

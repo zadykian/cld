@@ -32,6 +32,7 @@ make check                              # vet + test, natively (baseline termina
 make vet                                # gofmt, go vet; shellcheck, shfmt -i 4 on the scripts
 make lint                               # vet + gates, as CI's lint job; tools/run pins the tools
 make vale FILES=README.md               # one gate of lint's alone; sizecheck and vale take FILES
+make commits                            # lint's check of the messages HEAD adds to origin/main
 make test                               # cd tests && go test -count=1 ./...
 cd tests && go test -count=1 -run 'TestList$' .   # a single test
 cd tests && go test -count=1 -run 'TestHelpText$' . -update   # rewrite testdata/help from cld
@@ -125,6 +126,8 @@ Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org
   the tmux and claude versions checked, and what the tests cover.
 - A breaking change takes `!` before the colon and a `BREAKING CHANGE:` footer saying what users
   must change.
+- `make commits`, in `make lint`, checks the header's form and the 72 columns
+  ([tools/commitcheck](tools/commitcheck/main.go)); review checks the rest.
 
 ## Where else to look
 

@@ -1,0 +1,10 @@
+# rumdl, run by `make rumdl` on the Markdown files git lists: their structure, as Vale checks
+# their prose. Lines are 100 columns at most, as .claude/rules/writing.md wraps prose, but in code
+# blocks and tables. The files are few, so nothing is cached.
+[global]
+line-length = 100
+cache = false
+
+[MD013]
+code-blocks = false
+tables = false

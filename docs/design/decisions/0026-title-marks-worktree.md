@@ -4,11 +4,11 @@ Status: Accepted. Amended by [39](0039-hook-cost.md).
 
 ## Context
 
-The title ends in ` [w]` while claude works in a linked git worktree, whichever way it got there,
-following claude as the status of [decision 25](0025-title-follows-status.md) does. claude runs a
-hook in its own directory, and fires `CwdChanged` as `--worktree`, a worktree's entry or exit, or a
-resume moves it. A shell `cd` fires it too, and claude then moves the shell back without an event
-(claude 2.1.283; [claude findings](../findings/claude.md)).
+The title reads `✳ cld-NAME [w]` while claude works in a linked git worktree, whichever way it got
+there, following claude as the status of [decision 25](0025-title-follows-status.md) does. claude
+runs a hook in its own directory, and fires `CwdChanged` as `--worktree`, a worktree's entry or
+exit, or a resume moves it. A shell `cd` fires it too, and claude then moves the shell back without
+an event (claude 2.1.283; [claude findings](../findings/claude.md)).
 
 ## Decision
 

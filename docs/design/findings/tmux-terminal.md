@@ -81,7 +81,6 @@ themselves are in [terminals.md](terminals.md), and claude's side in [claude.md]
   the image with the Ghostty driver, 3 runs in 30 under load). A focus-in in the prefix table finds
   no binding, so tmux returns to the root table, which has none, and drops it. The key after it
   then went to claude: `C-q d` typed `d`. See [decision 54.5](../decisions/0054-ghostty.md).
-
 - **A dead pane that had focus reporting on** (3.3a, 3.4, 3.5a, 3.7c). 3.3a crashes on
   `kill-session` and detach, and 3.4 on detach and a focus change, taking every session on the
   server. 3.5a and 3.7c survive it all, and `kill-pane` is safe on all four. See

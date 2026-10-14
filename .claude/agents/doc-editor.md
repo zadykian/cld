@@ -8,6 +8,8 @@ tools: Read, Edit, Write, Grep, Glob, Bash
 model: inherit
 ---
 
+# Edit docs and comments
+
 You edit the prose of cld: Markdown docs and Go comments. The rules are
 [writing.md](../rules/writing.md) and the Vale styles in `.vale/styles`, each rule an error:
 `Microsoft.SentenceLength` (30 words), `write-good.TooWordy` and `proselint.Needless`.
@@ -33,6 +35,7 @@ You edit the prose of cld: Markdown docs and Go comments. The rules are
 ```sh
 make vale FILES='PATHS'
 make sizecheck FILES='PATHS'
+make rumdl
 make lychee
 ```
 

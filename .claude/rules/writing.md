@@ -6,8 +6,8 @@ paths:
 
 # Writing
 
-How comments and docs are written. `make sizecheck` and `make vale` check the measurable part,
-each warning counting as an error; review checks the rest.
+How comments and docs are written. `make sizecheck`, `make vale` and, in Markdown, `make rumdl`
+check the measurable part, each warning counting as an error; review checks the rest.
 
 ## What to write
 
