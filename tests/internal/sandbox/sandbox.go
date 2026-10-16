@@ -19,8 +19,9 @@ import (
 var (
 	// Cld is the cld binary under test; built by TestMain.
 	Cld string
-	// ProbeBin is the directory holding the probe installed as "claude", and as "systemctl" and
-	// "loginctl", the fake systemd (see SystemdCalls); set by TestMain.
+	// ProbeBin is the directory of the fakes, first on every sandbox's PATH; set by TestMain. The
+	// probe is "claude" there, and "systemctl" and "loginctl" (see SystemdCalls), and "osascript",
+	// "ps" and "ssh" (see OsascriptCalls). "open" and "ghostty" are sh fakes.
 	ProbeBin string
 	// FakeTmux is the probe installed as "tmux"; set by TestMain.
 	FakeTmux string
@@ -130,10 +131,29 @@ func (s *Sandbox) RunCld(extra map[string]string, args ...string) Result {
 // RunCldIn runs cld as RunCld does, in the directory dir.
 func (s *Sandbox) RunCldIn(dir string, extra map[string]string, args ...string) Result {
 	s.t.Helper()
+	return s.runCld(dir, nil, extra, args)
+}
+
+// RunCldWithInput runs cld as RunCld does, with stdin as its standard input: a model pane's pty,
+// say, which cld then takes for the pane it runs in. stdin is no controlling terminal of cld's,
+// and nil gives cld none, as RunCld does.
+func (s *Sandbox) RunCldWithInput(stdin *os.File, extra map[string]string, args ...string) Result {
+	s.t.Helper()
+	return s.runCld(s.Work, stdin, extra, args)
+}
+
+// runCld runs cld with args in dir, with stdin, unless nil, as its standard input, and its stdout
+// and stderr captured. It fails the test where cld cannot start.
+func (s *Sandbox) runCld(
+	dir string, stdin *os.File, extra map[string]string, args []string,
+) Result {
+	s.t.Helper()
 	argv := s.CldArgv(args...)
 	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Env = s.Environ(extra)
-	cmd.Dir = dir
+	cmd.Env, cmd.Dir = s.Environ(extra), dir
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
@@ -149,26 +169,41 @@ func (s *Sandbox) RunCldIn(dir string, extra map[string]string, args ...string) 
 }
 
 // Tools creates a directory holding only the named tools, for a PATH that lacks the others.
-// "tmux" is the fake tmux, "claude" the probe, and "systemctl" and "loginctl" the fake systemd;
-// any other name links the real tool.
+// "tmux" is the fake tmux, and "claude", "systemctl", "loginctl", "osascript", "ps", "ssh",
+// "open" and "ghostty" the fakes of ProbeBin; any other name links the real tool.
 func (s *Sandbox) Tools(names ...string) string {
+	s.t.Helper()
+	return s.link(names, func(name string) (string, error) {
+		switch name {
+		case "tmux":
+			return FakeTmux, nil
+		case "claude", "systemctl", "loginctl", "osascript", "ps", "ssh", "open", "ghostty":
+			return filepath.Join(ProbeBin, name), nil
+		}
+		return exec.LookPath(name)
+	})
+}
+
+// RealTools creates a directory as Tools does, but of the real tools whatever their names: the
+// first each name finds on the tests' own PATH, which holds no fake.
+func (s *Sandbox) RealTools(names ...string) string {
+	s.t.Helper()
+	return s.link(names, exec.LookPath)
+}
+
+// link creates a directory of a link per name, to the program that target finds for it.
+func (s *Sandbox) link(names []string, target func(string) (string, error)) string {
 	s.t.Helper()
 	dir, err := os.MkdirTemp(s.Root, "tools.")
 	if err != nil {
 		s.t.Fatal(err)
 	}
 	for _, name := range names {
-		target := FakeTmux
-		switch name {
-		case "claude", "systemctl", "loginctl":
-			target = filepath.Join(ProbeBin, name)
-		case "tmux":
-		default:
-			if target, err = exec.LookPath(name); err != nil {
-				s.t.Fatal(err)
-			}
+		path, err := target(name)
+		if err != nil {
+			s.t.Fatal(err)
 		}
-		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+		if err := os.Symlink(path, filepath.Join(dir, name)); err != nil {
 			s.t.Fatal(err)
 		}
 	}
