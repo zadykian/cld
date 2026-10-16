@@ -1,7 +1,8 @@
 # 48. Sessions come back after a reboot
 
-Status: Accepted (#115). Amended by [50](0050-one-command-join.md) and
-[52](0052-telemetry-outside-cld.md).
+Status: Accepted (#115). Amended by [50](0050-one-command-join.md),
+[52](0052-telemetry-outside-cld.md) and [59](0059-ghostty-tabs.md), under which `restore` takes the
+command `tabs`.
 
 ## Context
 

@@ -8,10 +8,16 @@ and is told to continue the turn it was in, if any. A session not started or
 given a prompt for longer than $CLD_IDLE_DAYS days stays ended, with a note. A
 session that cannot come back is a warning, and the status 1. cld setup
 restore has your systemd run cld restore as it starts; cld join attaches to a
-session.
+session. cld restore tabs keeps a record of a Mac's Ghostty tabs.
 
 Usage:
   cld restore [flags]
+  cld restore [command]
+
+Available Commands:
+  tabs        keep a record of a Mac's Ghostty windows, tabs and splits
 
 Flags:
   -h, --help   help for restore
+
+Use "cld restore [command] --help" for more information about a command.

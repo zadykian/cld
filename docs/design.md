@@ -23,7 +23,8 @@ findings it rests on, and a finding links back.
   `detach-client`.
 - [claude](design/findings/claude.md): its versions and command line, exiting, worktrees, resuming,
   settings, hooks, agent view and background sessions, and what it does in a terminal.
-- [Terminals](design/findings/terminals.md): JediTerm, VS Code, iTerm2 and the other terminals.
+- [Terminals](design/findings/terminals.md): JediTerm, VS Code, iTerm2 and the other terminals,
+  and Ghostty's AppleScript on macOS.
 - [Environment](design/findings/environment.md): shells, completion, cobra, `install.sh` and
   GitHub, git, Go and Linux, telemetry, JetBrains IDEs and systemd.
 
@@ -75,9 +76,9 @@ The `adr` skill in `.claude/skills` adds a record.
 - [24. Names from the repository](design/decisions/0024-names-from-the-repository.md): Accepted.
   Amended by 37, 38, 40, 49 and 50.
 - [25. The tab's title follows claude's status](design/decisions/0025-title-follows-status.md):
-  Accepted. Amended by 26, 39 and 49.
+  Accepted. Amended by 26, 39, 49 and 59.
 - [26. The tab marks a worktree](design/decisions/0026-title-marks-worktree.md): Accepted. Amended
-  by 39.
+  by 39 and 59.
 - [27. Completion in bash with ble.sh](design/decisions/0027-completion-with-blesh.md): Accepted.
 - [28. Project settings a team can share](design/decisions/0028-shared-project-settings.md):
   Accepted. Amended by 53.
@@ -113,7 +114,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [47. Agent view is off in cld's sessions](design/decisions/0047-agent-view-off.md): Accepted
   (#111). Amended by 50.
 - [48. Sessions come back after a reboot](design/decisions/0048-restore-after-reboot.md): Accepted
-  (#115). Amended by 50 and 52.
+  (#115). Amended by 50, 52 and 59.
 - [49. claude's status in the list](design/decisions/0049-status-in-the-list.md): Accepted (#113).
   Amended by 50.
 - [50. One command for a session](design/decisions/0050-one-command-join.md): Accepted (#114).
@@ -130,3 +131,4 @@ The `adr` skill in `.claude/skills` adds a record.
 - [57. Renaming from the list](design/decisions/0057-renaming-from-the-list.md): Accepted (#172).
 - [58. Joining only a session that
   exists](design/decisions/0058-joining-only-a-session-that-exists.md): Accepted (#175).
+- [59. Ghostty's tabs on a Mac](design/decisions/0059-ghostty-tabs.md): Accepted (#176).

@@ -10,11 +10,11 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The tools cld looks for on the PATH: tmux, claude and git.
+// The tools cld looks for on the PATH: tmux, claude, git and osascript.
 
-// join needs tmux, claude where it starts claude, and git with -w; the other commands need only
-// tmux. The fake tmux finds no session, so detach and kill get as far as saying so, and join as
-// far as the claude it would start.
+// join needs tmux, claude where it starts claude, and git with -w; restore tabs needs osascript,
+// and the other commands only tmux. The fake tmux finds no session, so detach and kill get as far
+// as saying so, and join as far as the claude it would start.
 func TestRequiresTools(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -36,6 +36,8 @@ func TestRequiresTools(t *testing.T) {
 		{[]string{"detach", "-s", "x"}, []string{"claude"}, "cld: tmux is not installed\n"},
 		{[]string{"detach", "-s", "x"}, []string{"tmux"}, "cld: no session 'x' (see cld list)\n"},
 		{[]string{"list"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"restore", "tabs", "--dry-run"}, nil,
+			"cld: restore tabs runs on a Mac: osascript is not installed\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {
 			t.Parallel()

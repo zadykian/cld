@@ -28,7 +28,7 @@ func leaveStartMark(file string) {
 // mark is then younger than lockWait and names a process that runs, as any answer of kill but ESRCH
 // says. One older, as a failed new-session can leave, may name another process by now.
 func starting(suffix string) bool {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return false
 	}
@@ -66,7 +66,7 @@ func setMarks(file, run string) []string {
 // record's directory, unmark is "". The command prints nothing and exits 0, as the session ends
 // all the same, and has every "#" doubled, as run-shell expands a format.
 func unmark(suffix string) string {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return ""
 	}
@@ -78,7 +78,7 @@ func unmark(suffix string) string {
 // in that pane (decision 56.3). tmux puts that in single quotes for sh, escaping each quote in it,
 // so no character of a path runs. Where cld has no record's directory, leaving is "".
 func leaving(suffix string) string {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return ""
 	}

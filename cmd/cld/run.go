@@ -23,9 +23,9 @@ var commands = map[string]string{
 	cobra.ShellCompNoDescRequestCmd: cobra.ShellCompNoDescRequestCmd,
 }
 
-// run runs cld with args, checking the command before cobra sees it, and where setup runs, the
-// one after setup (see docs/design/overview.md, "The command line on cobra"). Any other word is
-// an unknown command, new and resume among them (decision 50.6).
+// run runs cld with args. It checks the command before cobra sees it, and where setup or restore
+// runs, the word after it (see docs/design/overview.md, "The command line on cobra"). Any other
+// word is an unknown command, new and resume among them (decision 50.6).
 func run(args []string) error {
 	if len(args) == 0 || args[0] == "" {
 		return fail.Usage("missing command: cld join attaches to a session, creating or " +
@@ -38,6 +38,11 @@ func run(args []string) error {
 	}
 	if command == "setup" {
 		if err := setupCommand(args[1:]); err != nil {
+			return err
+		}
+	}
+	if command == "restore" {
+		if err := restoreCommand(args[1:]); err != nil {
 			return err
 		}
 	}

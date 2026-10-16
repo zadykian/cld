@@ -18,14 +18,15 @@ overrides cobra.
 
 ## The command line
 
-- Keep cobra's defaults overridden: the first argument, and the one after `setup` and
-  `setup config`, checked before cobra. Options are read up to the first argument, and the commands
-  stay unsorted (decisions [11](../../docs/design/decisions/0011-go-and-cobra.md) and
-  [53.2](../../docs/design/decisions/0053-project-and-user-settings.md)).
+- Keep cobra's defaults overridden: the first argument, and the one after `setup`, `setup config`
+  and `restore`, checked before cobra. Options are read up to the first argument, and the commands
+  stay unsorted (decisions [11](../../docs/design/decisions/0011-go-and-cobra.md),
+  [53.2](../../docs/design/decisions/0053-project-and-user-settings.md) and
+  [59.1](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - cld's output goes through `output.Print`, cobra's help and completion included, so that a failed
   write is an error ([decision 11](../../docs/design/decisions/0011-go-and-cobra.md)).
-- `help` takes one of cld's commands, a command of `setup` or `completion` after it, a command
-  after `setup config` and a shell after `setup completion`; it refuses anything else
+- `help` takes one of cld's commands, a command of `setup`, `restore` or `completion` after it, a
+  command after `setup config` and a shell after `setup completion`; it refuses anything else
   ([decision 12](../../docs/design/decisions/0012-help-from-cobra.md)).
 - A usage error ends with status 2 before any tool runs; what `join` would lose ends with status 1
   ([decision 50](../../docs/design/decisions/0050-one-command-join.md)).
@@ -38,6 +39,9 @@ overrides cobra.
   [50](../../docs/design/decisions/0050-one-command-join.md)).
 - `join --existing` stays in every later release with its meaning, as another machine's cld types it
   ([decision 58](../../docs/design/decisions/0058-joining-only-a-session-that-exists.md)).
+- `restore tabs --watch` and its hidden `--watching` stay in every later release with their
+  meanings, as ssh's config and the watcher's own exec name them
+  ([decision 59.11](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - `join` refuses a word after `--` that cld gives claude itself, that resumes a conversation, or
   with which claude leaves the session (`claudeOptions` in `cmdline`;
   [decision 41](../../docs/design/decisions/0041-claude-options.md)).

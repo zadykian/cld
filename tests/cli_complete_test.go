@@ -41,6 +41,11 @@ const (
 	offeredSetupRestore    = "restore\thave your systemd run cld restore at login, or at boot\n"
 	offeredSetups          = offeredConfig + offeredSetupCompletion + offeredSetupRestore
 
+	offeredRestoreTabs = "tabs\tkeep a record of a Mac's Ghostty windows, tabs and splits\n"
+	offeredTabsOptions = "--dry-run\tprint what the record holds, and do nothing\n" +
+		"--help\thelp for tabs\n" +
+		"--watch\tkeep the record: start, unless one runs, a process that\n"
+
 	offeredProject = "project\tset claude up in the project in the current directory\n"
 	offeredUser    = "user\tset claude up in your own settings, for every project\n"
 
@@ -133,7 +138,13 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "r"}, offeredSetupRestore + noFileDirective},
 	{[]string{"__complete", "setup", "t"}, noFileDirective},
 	{[]string{"__complete", "setup", "restore", ""}, noFileDirective},
-	{[]string{"__complete", "restore", ""}, noFileDirective},
+	{[]string{"__complete", "restore", ""}, offeredRestoreTabs + noFileDirective},
+	{[]string{"__complete", "restore", "t"}, offeredRestoreTabs + noFileDirective},
+	{[]string{"__complete", "restore", "x"}, noFileDirective},
+	{[]string{"__complete", "restore", "tabs", ""}, noFileDirective},
+	// --watching, which --watch runs, is hidden.
+	{[]string{"__complete", "restore", "tabs", "--"}, offeredTabsOptions + noFileDirective},
+	{[]string{"__complete", "help", "restore", ""}, offeredRestoreTabs + noFileDirective},
 	{[]string{"__complete", "setup", "completion", ""}, offeredShellSetups + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "f"}, offeredSetupFish + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "bash", ""}, noFileDirective},
