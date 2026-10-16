@@ -36,7 +36,7 @@ func (s *Sandbox) Probes() []*Probe {
 	for _, path := range s.glob(filepath.Join(s.ProbeDir, "*.json")) {
 		pid, err := strconv.Atoi(strings.TrimSuffix(filepath.Base(path), ".json"))
 		if err != nil {
-			continue // tmux.json
+			continue // tmux.json, ghostty.json
 		}
 		probe := &Probe{t: s.t, PID: pid, base: strings.TrimSuffix(path, ".json")}
 		readJSON(s.t, path, &probe.Record)

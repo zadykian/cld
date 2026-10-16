@@ -1,6 +1,6 @@
-// Command probe stands in for claude in cld's tests, and for tmux, systemctl and loginctl where a
-// test checks cld's calls. The name it runs under picks which. The reasons behind the fakes are in
-// docs/design/testing.md and testing-2.md.
+// Command probe stands in for claude in cld's tests, and for the tools cld runs where a test checks
+// its calls: tmux, systemctl, loginctl, osascript, ps and ssh. The name it runs under picks which.
+// The fakes' reasons are in docs/design/testing.md and testing-2.md; the Mac's model, internal/mac.
 //
 // As claude it enters the terminal modes claude enters, and records what cld and the terminal
 // hand it in $CLD_PROBE_DIR, in files named after its PID:
@@ -28,6 +28,12 @@ func main() {
 		err = fakeTmux()
 	case "systemctl", "loginctl":
 		err = fakeSystemd()
+	case "osascript":
+		err = fakeOsascript()
+	case "ps":
+		err = fakePs()
+	case "ssh":
+		err = fakeSSH()
 	default:
 		err = claude()
 	}

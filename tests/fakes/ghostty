@@ -1,0 +1,33 @@
+#!/bin/sh
+# The fake ghostty of cld's tests, in the probe's directory, first on each sandbox's PATH
+# (tests/main_test.go), for Ghostty's CLI actions. It appends its arguments to ghostty.log in
+# $CLD_PROBE_DIR. "+show-config" prints the file show-config there, where it exists.
+# "+ssh-cache --host=KEY" exits 0 where the file ssh-cache there has a line KEY, else 1. Anything
+# else exits 2. It runs only the shell's builtins, as a test's PATH may hold nothing else.
+
+set -eu
+
+dir=$CLD_PROBE_DIR
+printf '%s\n' "$*" >>"$dir/ghostty.log"
+case $#:${1-} in
+1:+show-config)
+    [ -f "$dir/show-config" ] || exit 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        printf '%s\n' "$line"
+    done <"$dir/show-config"
+    ;;
+2:+ssh-cache)
+    case $2 in
+    --host=?*) key=${2#--host=} ;;
+    *) exit 2 ;;
+    esac
+    [ -f "$dir/ssh-cache" ] || exit 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ "$line" != "$key" ] || exit 0
+    done <"$dir/ssh-cache"
+    exit 1
+    ;;
+*)
+    exit 2
+    ;;
+esac

@@ -1,8 +1,6 @@
 package tests
 
 import (
-	"bytes"
-	"errors"
 	"maps"
 	"os"
 	"os/exec"
@@ -31,22 +29,7 @@ func startCldAsync(
 	argv := s.CldArgv(args...)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env, cmd.Dir = s.Environ(extra), dir
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	return func() sandbox.Result {
-		t.Helper()
-		err := cmd.Wait()
-		var exit *exec.ExitError
-		if err != nil && !errors.As(err, &exit) {
-			t.Fatalf("run cld: %v", err)
-		}
-		return sandbox.Result{
-			Code: cmd.ProcessState.ExitCode(), Stdout: stdout.String(), Stderr: stderr.String(),
-		}
-	}
+	return startCommand(t, cmd)
 }
 
 // checkExit reports a run of cld, named by what, that did not exit with code and write stdout
