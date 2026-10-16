@@ -82,6 +82,8 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   ([decision 1](docs/design/decisions/0001-naming.md)).
 - Address a session as `=cld-NAME`: a bare target prefix-matches, `cld-rev` finding `cld-review`
   ([decision 3](docs/design/decisions/0003-commands.md)).
+- `join --existing` keeps its meaning in every later release, as another machine's cld types it
+  ([decision 58](docs/design/decisions/0058-joining-only-a-session-that-exists.md)).
 - One tmux server per session, marked as cld's; an unmarked server `cld-NAME` is the user's, and cld
   never ends it (decisions [13](docs/design/decisions/0013-a-server-per-session.md) and
   [34](docs/design/decisions/0034-servers-are-marked.md)).

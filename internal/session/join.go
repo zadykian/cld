@@ -33,6 +33,9 @@ type Joining struct {
 	// Typed are the words given after join, which join passes on where it moves a terminal instead
 	// of attaching this one (see Tmux.move).
 	Typed []string
+	// Existing makes no session, and resumes an ended one only where a stop ended it (see
+	// unmarked).
+	Existing bool
 }
 
 // launch is how create makes session cld-SUFFIX for a join that makes it, with kept, the keys the
@@ -91,8 +94,8 @@ func (t *Tmux) Create(c *Claude, suffix string, j Joining, kept []string) error 
 
 // Join is cld join with -s, once the caller has readied the client, which gave kept or sw. It
 // attaches to session cld-SUFFIX where it runs, brings it back where it has ended, and makes it
-// otherwise (decision 50.1). With sw, it moves that terminal instead (see switchJoin). It returns
-// only when it does not get as far.
+// otherwise, but for Existing (decisions 50.1 and 58.1). With sw, it moves that terminal instead
+// (see switchJoin). It returns only when it does not get as far.
 func (t *Tmux) Join(suffix string, j Joining, kept []string, sw *Switch) error {
 	return t.join(suffix, j, kept, true, sw)
 }
@@ -134,6 +137,9 @@ func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool, sw *Swi
 	if !ended && !makes {
 		return noSession(suffix)
 	}
+	if err := j.unmarked(suffix, ended); err != nil {
+		return err
+	}
 	l := j.launch(kept)
 	l.looked = true
 	if ended && !j.New && j.Conversation == "" {
@@ -150,6 +156,22 @@ func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool, sw *Swi
 		return err
 	}
 	return t.create(c, suffix, l)
+}
+
+// unmarked refuses session cld-SUFFIX, which does not run, for join --existing: where there is
+// none, and where it has ended without its run mark. restore needs that mark too (decisions 48.1
+// and 58.1).
+func (j Joining) unmarked(suffix string, ended bool) error {
+	switch {
+	case !j.Existing:
+		return nil
+	case !ended:
+		return noSession(suffix)
+	}
+	if dir, err := stateDir(); err == nil && marked(dir, suffix) {
+		return nil
+	}
+	return hasEnded(suffix, ": cld join "+Options(suffix)+" resumes it")
 }
 
 // settled takes the record's lock and looks session cld-SUFFIX up under it, returning what lets

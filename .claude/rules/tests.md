@@ -52,7 +52,7 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   such as `session_cells_test.go` for the screen's attributes.
 - `record_test.go`: the record's entries, their hooks and place, and the helpers the `record_*`
   files share; `record_ended_test.go` and `record_list_test.go`: `ended` sessions, in `join` and
-  the interactive list.
+  the interactive list; `record_existing_test.go`: `join --existing` on sessions that do not run.
 - `record_moved_test.go`: claude's last directory, the hooks and the kill that write it;
   `record_moved_join_test.go`: where an ended session shows and comes back by it.
 - `record_rename_test.go`: the list's rename; `record_rename_refusals_test.go` and

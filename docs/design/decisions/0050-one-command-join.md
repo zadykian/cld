@@ -1,7 +1,8 @@
 # 50. One command for a session
 
 Status: Accepted (#114). Replaces `new` and `join` of [3](0003-commands.md) and `resume` of
-[16](0016-resume.md). Amended by [51](0051-moving-between-sessions.md).
+[16](0016-resume.md). Amended by [51](0051-moving-between-sessions.md) and
+[58](0058-joining-only-a-session-that-exists.md).
 
 ## Context
 

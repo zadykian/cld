@@ -163,6 +163,8 @@ checks the terminal last ([decision 31](decisions/0031-a-terminal-to-attach-from
 - Otherwise `join` makes the session. claude goes to tmux as separate words, by the path cld
   checked, so tmux runs it directly, not through `sh -c`. claude's `--settings` carry cld's hooks
   and turn agent view off ([decision 47](decisions/0047-agent-view-off.md)).
+- With `--existing`, `join` makes no session, and brings an ended one back only while its run mark
+  remains ([decision 58](decisions/0058-joining-only-a-session-that-exists.md)).
 - tmux takes a command of 16364 bytes at most, which the words after `--` count against
   ([decision 41](decisions/0041-claude-options.md)).
 

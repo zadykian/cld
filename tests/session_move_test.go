@@ -208,6 +208,46 @@ func TestJoinMovesToOneSessionAtOnce(t *testing.T) {
 	}
 }
 
+// join --existing in claude's pane refuses, before the move, a session there is none of and one
+// ended on purpose: the terminal stays on its session (decision 58.5). A session that runs takes
+// the terminal. The terminal's cld join keeps --existing, and refuses there too.
+func TestJoinExistingMoves(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	detachedSessions(t, s, "b")
+	term := startCld(t, s, "tmux", nil, "join", "-s", "a")
+	waitClients(t, s, 1)
+	waitScreen(t, term, "probe --name cld-a")
+	writeEntry(t, s, "e", s.Work, firstID)
+	inA := paneOf(t, s, "a")
+	for _, test := range []struct{ suffix, want string }{
+		{"x", "cld: no session 'x' (see cld list)\n"},
+		{"e", "cld: session 'e' has ended: cld join -s e resumes it\n"},
+	} {
+		checkJoinRefused(t, "join --existing -s "+test.suffix+" in a's pane",
+			s.RunCld(inA, "join", "--existing", "-s", test.suffix), test.want)
+	}
+	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-a"}) || !term.Running() {
+		t.Errorf("clients attached to %q, want the terminal on cld-a still", clients)
+	}
+	checkMoved(t, "join --existing -s b in a's pane", s.RunCld(inA, "join", "--existing", "-s", "b"))
+	waitScreen(t, term, "probe --name cld-b")
+	waitClients(t, s, 1)
+	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-b"}) {
+		t.Errorf("clients attached to %q, want the terminal on cld-b", clients)
+	}
+	value := moved(s.Work, "--existing", "-s", "x")
+	checkJoinRefused(t, "the moved join --existing -s x",
+		s.RunCld(nil, "join", "--switched-from", "a", "--moved="+value),
+		"cld: no session 'x' (see cld list)\n")
+	if probes := s.Probes(); len(probes) != 2 {
+		t.Errorf("%d claudes started, want 2: a's and b's", len(probes))
+	}
+	if sessions := s.Sessions(); !slices.Equal(sessions, []string{"cld-a", "cld-b"}) {
+		t.Errorf("sessions %q, want [cld-a cld-b]", sessions)
+	}
+}
+
 // paneOf is the TMUX and TMUX_PANE of claude's pane in session name, with which claude runs a
 // command: ! cld join among them.
 func paneOf(t *testing.T, s *sandbox.Sandbox, name string) map[string]string {

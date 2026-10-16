@@ -175,8 +175,7 @@ func TestJoinAsTmuxMakesTheSession(t *testing.T) {
 func TestJoinPassesOverAStaleStartMark(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	unknown := map[string]string{"TERM": "cld-no-such-terminal"}
-	if result := s.RunCldOnTerminal(unknown, "join", "-s", "y"); result.Code == 0 {
+	if result := s.RunCldOnTerminal(unknownTerminal, "join", "-s", "y"); result.Code == 0 {
 		t.Errorf("join with TERM unknown to tmux: exit 0, stderr %q, want tmux to fail", result.Stderr)
 	}
 	if !exists(companionFile(s, "y", ".start")) {

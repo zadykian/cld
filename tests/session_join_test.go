@@ -96,8 +96,9 @@ func TestJoinFindsOnlyItsSession(t *testing.T) {
 }
 
 // join acts by the session's state (decision 50.1). It attaches to one that runs, detached (a),
-// attached (b) or with claude exited (c), starting no claude. It resumes an ended one (d) by its
-// entry's ID, where it ran, and creates one where there is none, or without -s.
+// attached (b) or with claude exited (c), starting no claude, and so does join --existing
+// (decision 58.1). It resumes an ended one (d) by its entry's ID, where it ran, and creates one
+// where there is none, or without -s.
 func TestJoinStates(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -117,6 +118,7 @@ func TestJoinStates(t *testing.T) {
 
 	for _, test := range []joinStateCase{
 		{"detached", "a", []string{"join", "-s", "a"}, 1, nil, ""},
+		{"--existing", "a", []string{"join", "--existing", "-s", "a"}, 2, nil, ""},
 		{"attached", "b", []string{"join", "-s", "b"}, 2, nil, ""},
 		{"exited", "c", []string{"join", "-s", "c"}, 1, nil, ""},
 		{"ended", "d", []string{"join", "-s", "d"}, 1, []string{"--resume", firstID}, elsewhere},

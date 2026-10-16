@@ -21,6 +21,10 @@ const (
 	secondID = "7e6d5c4b-3a29-4817-a6f5-e4d3c2b1a098"
 )
 
+// unknownTerminal is a TERM that tmux cannot open. A join that goes on as far as tmux fails there,
+// having written the record's files.
+var unknownTerminal = map[string]string{"TERM": "cld-no-such-terminal"}
+
 // entryFile is the file of session name's entry in cld's record, in s's home directory.
 func entryFile(s *sandbox.Sandbox, name string) string {
 	return filepath.Join(s.Home, ".local", "state", "cld", "sessions", name+".json")

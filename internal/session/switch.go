@@ -91,20 +91,31 @@ func (t *Tmux) switchJoin(sw *Switch, suffix string, j Joining) error {
 		_, refused := t.lingering(context.Background(), suffix)
 		return refused
 	default:
-		if r, ended := recorded(suffix); ended && !j.New && j.Conversation == "" {
-			if err := j.lost(suffix, true); err != nil {
-				return err
-			}
-			if _, err := enterable(r); err != nil {
-				return err
-			}
-		} else if j.Worktree {
-			if err := workTree(); err != nil {
-				return err
-			}
+		if err := j.notRunning(suffix); err != nil {
+			return err
 		}
 	}
 	return t.move(sw, j)
+}
+
+// notRunning refuses, for switchJoin, what join refuses before claude starts of session cld-SUFFIX,
+// which does not run. --existing refuses here too, before the move (decision 58.5).
+func (j Joining) notRunning(suffix string) error {
+	r, ended := recorded(suffix)
+	if err := j.unmarked(suffix, ended); err != nil {
+		return err
+	}
+	if ended && !j.New && j.Conversation == "" {
+		if err := j.lost(suffix, true); err != nil {
+			return err
+		}
+		_, err := enterable(r)
+		return err
+	}
+	if j.Worktree {
+		return workTree()
+	}
+	return nil
 }
 
 // move moves the terminal of sw as a join with the words Typed asks, run in a pane of sw's server.

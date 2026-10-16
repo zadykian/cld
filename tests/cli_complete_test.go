@@ -74,6 +74,7 @@ const (
 		"powershell\tprint the completion script for powershell\n"
 	// cobra describes an option by the first line of its usage, backquotes included.
 	offeredJoinOptions = "--detach-others\tdetach any other terminal attached to the session\n" +
+		"--existing\tjoin only a session that runs, or that a stop ended:\n" +
 		"--fork\twith --resume, resume a copy of SESSION under a new\n" +
 		"--help\thelp for join\n-h\thelp for join\n" +
 		"--name\tthe session's `NAME`, before -SUFFIX: by default the\n" +

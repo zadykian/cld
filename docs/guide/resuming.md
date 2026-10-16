@@ -23,6 +23,19 @@ become.
 - claude finds a name in the directory or any checkout of its repository, and a session ID from
   anywhere. It looks in the history of the shell's `CLAUDE_CONFIG_DIR`.
 
+## Joining only a session that exists
+
+`cld join --existing -s S` is for a script, or another machine, that joins a session by its name
+([decision 58](../design/decisions/0058-joining-only-a-session-that-exists.md)).
+
+- It resumes what `cld restore` would ([After a reboot](after-a-reboot.md)), and a session idle for
+  longer than `CLD_IDLE_DAYS` too. It refuses one that `/exit`, `cld kill`, a kill in `cld list` or
+  the idle sweep ended, which `cld join` without `--existing` resumes.
+- It goes by the name alone. A session made again under the name, by `cld join -s S`, or by a bare
+  `cld join` once the index has expired after 30 days, is joined all the same.
+- An older cld refuses `--existing` with status 2, as an option it does not know, and creates
+  nothing.
+
 ## By name
 
 - claude resumes by name where exactly one conversation has it, in any case. `/clear` keeps the name
