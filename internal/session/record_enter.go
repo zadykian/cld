@@ -49,7 +49,7 @@ func backIn(r entry) string {
 // takes only a whole path that can be entered, in no worktree claude made (decision 56.5). Else it
 // gives dir, as for a cld before decision 56, and where NAME.dir names dir by another path.
 func lastDirectory(suffix, dir string) string {
-	state, err := stateDir()
+	state, err := StateDir()
 	if err != nil {
 		return dir
 	}

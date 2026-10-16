@@ -16,6 +16,10 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
   `.mcp.json` and `.gitignore`, and claude's user settings.
 - `internal/completion`: `cld setup completion`, the script where bash, zsh or fish reads it.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`.
+- `internal/ghostty`: Ghostty on a Mac through osascript: the JXA scripts, the snapshot, Ghostty's
+  errors, and its CLI's `+show-config`.
+- `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, its merge, the watcher and the
+  dry-run.
 - `internal/update`: `cld update`, which replaces cld with the latest release.
 - `internal/configfile`: edits in place the files the `setup` commands write.
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld when one cannot run.
@@ -82,8 +86,12 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   ([decision 1](docs/design/decisions/0001-naming.md)).
 - Address a session as `=cld-NAME`: a bare target prefix-matches, `cld-rev` finding `cld-review`
   ([decision 3](docs/design/decisions/0003-commands.md)).
-- `join --existing` keeps its meaning in every later release, as another machine's cld types it
-  ([decision 58](docs/design/decisions/0058-joining-only-a-session-that-exists.md)).
+- cld's title, `<marker> cld-NAME` and `[w]` in a worktree, is a contract with another machine's
+  cld: the marker may change, the rest may not. `join --existing`, `restore tabs --watch` and
+  `--watching` keep their meanings in every later release, as another machine's cld, ssh's config
+  or the watcher's own exec types them (decisions
+  [58](docs/design/decisions/0058-joining-only-a-session-that-exists.md) and
+  [59](docs/design/decisions/0059-ghostty-tabs.md)).
 - One tmux server per session, marked as cld's; an unmarked server `cld-NAME` is the user's, and cld
   never ends it (decisions [13](docs/design/decisions/0013-a-server-per-session.md) and
   [34](docs/design/decisions/0034-servers-are-marked.md)).

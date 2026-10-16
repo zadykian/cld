@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -26,16 +28,33 @@ and is told to continue the turn it was in, if any. A session not started or
 given a prompt for longer than $CLD_IDLE_DAYS days stays ended, with a note. A
 session that cannot come back is a warning, and the status 1. cld setup
 restore has your systemd run cld restore as it starts; cld join attaches to a
-session.`
+session. cld restore tabs keeps a record of a Mac's Ghostty tabs.`
 
-// newRestore is cld restore, which brings back the sessions a reboot ended (decision 48.5).
-func newRestore() *cobra.Command {
-	return &cobra.Command{
+// newRestore is cld restore, which brings back the sessions a reboot ended (decision 48.5), and
+// its command tabs, for a Mac's Ghostty tabs (decision 59.1).
+func newRestore(typed string) *cobra.Command {
+	restore := &cobra.Command{
 		Use:   "restore",
 		Short: "bring back the sessions that ran when the machine stopped",
 		Long:  restoreLong,
 		RunE:  func(*cobra.Command, []string) error { return restoreAll() },
 	}
+	restore.AddCommand(restoreTabs(typed + " tabs"))
+	return restore
+}
+
+// restoreCommand checks the argument after restore before cobra sees it, as setupCommand checks
+// setup's (decision 59.1): none, tabs, or -h or --help. cobra would run tabs for restore
+// --help=false tabs.
+func restoreCommand(args []string) error {
+	const hint = "cld restore or cld restore tabs (see cld help)"
+	switch {
+	case len(args) == 0 || slices.Contains([]string{"tabs", "-h", "--help"}, args[0]):
+		return nil
+	case args[0] == "" || strings.HasPrefix(args[0], "-"):
+		return cmdline.Unexpected("restore", args[0])
+	}
+	return fail.Usage(fmt.Sprintf("restore: unknown command '%s': %s", args[0], hint))
 }
 
 // restoreAll brings back each session with a run mark, checking tmux as every command does and

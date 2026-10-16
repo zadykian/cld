@@ -233,6 +233,9 @@ Checked with the probe or by hand, with what is left:
   looked into.
 - The list's status ([49](decisions/0049-status-in-the-list.md)): format probed on 3.5a and 3.7c;
   bold `waiting` seen only in tmux's rendering.
+- `restore tabs` ([59](decisions/0059-ghostty-tabs.md)): run against fakes of osascript, ps and
+  ghostty, and its scripts' own logic against a mock Ghostty, on the macos job only. Ghostty's real
+  answers to them come only from #177's spike, still to come.
 
 Read in claude's bundle or docs rather than run. A run that would reach the API or claude.ai is
 the maintainer's to run or allow.

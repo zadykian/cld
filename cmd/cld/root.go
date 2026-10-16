@@ -40,7 +40,7 @@ func commandLine(typed string, words []string, out io.Writer) *cobra.Command {
 
 	help, versionCommand := newHelp(typed), newVersion()
 	root.AddCommand(newJoin(typed, words), newDetach(typed), newKill(typed), newList(typed),
-		newRestore(), newSetup(typed), newUpdate(), versionCommand)
+		newRestore(typed), newSetup(typed), newUpdate(), versionCommand)
 	readOptions(root, typed, append(tree(root), help))
 	root.SetHelpCommand(help)
 	completionCommand(root)
