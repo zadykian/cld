@@ -36,6 +36,8 @@ overrides cobra.
   [6](../../docs/design/decisions/0006-versions.md),
   [31](../../docs/design/decisions/0031-a-terminal-to-attach-from.md) and
   [50](../../docs/design/decisions/0050-one-command-join.md)).
+- `join --existing` stays in every later release with its meaning, as another machine's cld types it
+  ([decision 58](../../docs/design/decisions/0058-joining-only-a-session-that-exists.md)).
 - `join` refuses a word after `--` that cld gives claude itself, that resumes a conversation, or
   with which claude leaves the session (`claudeOptions` in `cmdline`;
   [decision 41](../../docs/design/decisions/0041-claude-options.md)).

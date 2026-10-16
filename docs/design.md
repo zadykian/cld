@@ -116,7 +116,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [49. claude's status in the list](design/decisions/0049-status-in-the-list.md): Accepted (#113).
   Amended by 50.
 - [50. One command for a session](design/decisions/0050-one-command-join.md): Accepted (#114).
-  Replaces `new` and `join` of 3 and `resume` of 16. Amended by 51.
+  Replaces `new` and `join` of 3 and `resume` of 16. Amended by 51 and 58.
 - [51. Moving between sessions](design/decisions/0051-moving-between-sessions.md): Accepted (#112).
 - [52. Telemetry outside cld](design/decisions/0052-telemetry-outside-cld.md): Accepted (#158).
   Replaces 18. Amended by 53.
@@ -127,3 +127,5 @@ The `adr` skill in `.claude/skills` adds a record.
   Accepted (#167).
 - [56. Following claude's /cd](design/decisions/0056-following-claudes-cd.md): Accepted (#171).
 - [57. Renaming from the list](design/decisions/0057-renaming-from-the-list.md): Accepted (#172).
+- [58. Joining only a session that
+  exists](design/decisions/0058-joining-only-a-session-that-exists.md): Accepted (#175).

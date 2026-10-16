@@ -16,7 +16,7 @@ import (
 )
 
 // joinUse names "[flags]" before ARGS, where cobra would add it at the end, and leaves --new,
-// --fork and --detach-others to it, for 80 columns.
+// --fork, --existing and --detach-others to it, for 80 columns.
 const joinUse = "join [-n NAME] [-s SUFFIX] [-w] [--resume SESSION] [flags] [-- ARGS...]"
 
 // joinLong is join's help, which says what join does by the session's state (decision 50.6).
@@ -54,6 +54,11 @@ goes only to a new conversation, as claude takes one it resumes back to its
 worktree itself: where the session has ended, it needs --new, and it excludes
 --resume, as --new does.
 
+With --existing, join never creates a session, and resumes one that has ended
+only where a reboot, a crash or tmux kill-server ended it, whatever its idle
+time: it refuses any other. --existing needs -s, and excludes -w, --new,
+--resume, --fork and ARGS.
+
 In a session - ! cld join in claude, or a shell on the session's tmux server -
 join moves the terminal attached to that session, or of several the one used
 last, as cld detach finds it: the terminal leaves the session, which runs on,
@@ -77,8 +82,8 @@ type joinCommand struct {
 	words []string
 	names naming.Options
 
-	worktree, fresh, fork, detachOthers bool
-	conversation                        string
+	worktree, fresh, fork, detachOthers, existing bool
+	conversation                                  string
 	// The command a terminal runs as it moves gives these, not the user (decisions 51.3 and
 	// 51.4).
 	switchedFrom, moved string
@@ -111,6 +116,9 @@ func newJoin(typed string, words []string) *cobra.Command {
 		"session ID, leaving SESSION as it is (claude\n--fork-session)")
 	flags.BoolVar(&j.detachOthers, "detach-others", false,
 		"detach any other terminal attached to the session")
+	// Another machine's cld types --existing, which stays unchanged (decision 58.4).
+	flags.BoolVar(&j.existing, "existing", false,
+		"join only a session that runs, or that a stop ended:\nnever create one")
 	flags.StringVar(&j.switchedFrom, "switched-from", "", "")
 	flags.StringVar(&j.moved, "moved", "", "")
 	cmdline.Hide(flags, "switched-from", "moved")
@@ -128,13 +136,13 @@ func (j *joinCommand) run(c *cobra.Command, args []string) error {
 	if c.Flags().Changed("moved") {
 		return j.runMoved(c, args)
 	}
-	if err := j.check(c); err != nil {
+	claudeWords := cmdline.ClaudeWords(c, args)
+	if err := j.check(c, len(claudeWords) > 0); err != nil {
 		return err
 	}
-	claudeWords := cmdline.ClaudeWords(c, args)
 	joining := session.Joining{DetachOthers: j.detachOthers, Worktree: j.worktree, New: j.fresh,
 		Conversation: j.conversation, Fork: j.fork, Args: claudeWords,
-		SwitchedFrom: j.switchedFrom, Typed: j.words}
+		SwitchedFrom: j.switchedFrom, Typed: j.words, Existing: j.existing}
 	// Without -s, join creates the session under the next index and sweeps every server; with
 	// -s it reads its session's server only (decision 50.3).
 	next := !j.names.SuffixGiven()

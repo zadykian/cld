@@ -143,8 +143,7 @@ func TestNoSessionNoMark(t *testing.T) {
 			t.Errorf("join without a terminal left x%s", ext)
 		}
 	}
-	unknown := map[string]string{"TERM": "cld-no-such-terminal"}
-	if result := s.RunCldOnTerminal(unknown, "join", "-s", "y"); result.Code == 0 {
+	if result := s.RunCldOnTerminal(unknownTerminal, "join", "-s", "y"); result.Code == 0 {
 		t.Errorf("join with TERM unknown to tmux: exit 0, stderr %q, want tmux to fail", result.Stderr)
 	}
 	if got, want := readEntry(s, "y"), entry("y", s.Work, ""); got != want {
@@ -156,7 +155,7 @@ func TestNoSessionNoMark(t *testing.T) {
 	checkMarks(t, s, "after join", map[string]bool{"z": true})
 	mustKill(t, s, "z")
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !z.Alive() })
-	if result := s.RunCldOnTerminal(unknown, "join", "-s", "z"); result.Code == 0 {
+	if result := s.RunCldOnTerminal(unknownTerminal, "join", "-s", "z"); result.Code == 0 {
 		t.Errorf("join of z with TERM unknown to tmux: exit 0, stderr %q, want tmux to fail",
 			result.Stderr)
 	}

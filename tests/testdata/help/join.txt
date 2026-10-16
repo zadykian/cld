@@ -32,6 +32,11 @@ goes only to a new conversation, as claude takes one it resumes back to its
 worktree itself: where the session has ended, it needs --new, and it excludes
 --resume, as --new does.
 
+With --existing, join never creates a session, and resumes one that has ended
+only where a reboot, a crash or tmux kill-server ended it, whatever its idle
+time: it refuses any other. --existing needs -s, and excludes -w, --new,
+--resume, --fork and ARGS.
+
 In a session - ! cld join in claude, or a shell on the session's tmux server -
 join moves the terminal attached to that session, or of several the one used
 last, as cld detach finds it: the terminal leaves the session, which runs on,
@@ -53,6 +58,8 @@ Usage:
 
 Flags:
       --detach-others    detach any other terminal attached to the session
+      --existing         join only a session that runs, or that a stop ended:
+                         never create one
       --fork             with --resume, resume a copy of SESSION under a new
                          session ID, leaving SESSION as it is (claude
                          --fork-session)

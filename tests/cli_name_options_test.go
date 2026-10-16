@@ -43,6 +43,16 @@ const (
 		"claude takes a conversation back to its worktree itself (see cld help)\n"
 )
 
+// existingNeedsSuffix is the message for --existing without -s.
+const existingNeedsSuffix = "cld: join: --existing needs -s SUFFIX, the session to join " +
+	"(see cld help)\n"
+
+// existingWith is the message for --existing given with option.
+func existingWith(option string) string {
+	return "cld: join: --existing and " + option + " exclude each other: " +
+		"--existing creates no session, and resumes one as it was (see cld help)\n"
+}
+
 // readAsOption is the message for a SESSION that claude would read as an option.
 func readAsOption(session string) string {
 	return "cld: invalid SESSION '" + session + "' for --resume: " +
@@ -88,6 +98,16 @@ var nameOptionCases = []struct {
 	{[]string{"list", "--switch", "/dev/pts/0", "--to", "up"},
 		"cld: invalid value 'up' for --to: previous, next or last (see cld help)\n"},
 	{[]string{"list", "--switch", ""}, "cld: option '--switch' needs a value (see cld help)\n"},
+	{[]string{"join", "--existing"}, existingNeedsSuffix},
+	{[]string{"join", "--existing", "-n", "api", "--new"}, existingNeedsSuffix},
+	{[]string{"join", "--existing", "-s", "a.b"}, invalidName("suffix", "a.b")},
+	{[]string{"join", "--existing", "-s", "x", "--new"}, existingWith("--new")},
+	{[]string{"join", "-s", "x", "--resume", "other", "--existing"}, existingWith("--resume")},
+	{[]string{"join", "--existing", "-s", "x", "--fork"}, existingWith("--fork")},
+	{[]string{"join", "--existing", "-s", "x", "--fork", "--resume", "y"}, existingWith("--resume")},
+	{[]string{"join", "-w", "--existing", "-n", "api", "-s", "x"}, existingWith("-w")},
+	{[]string{"join", "--existing", "-s", "x", "--", "--model", "opus"},
+		existingWith("the words after --")},
 	{[]string{"join", "--new", "--resume", "x"}, newWithResume},
 	{[]string{"join", "--resume", "x", "-w", "-s", "y"}, worktreeWithResume},
 	{[]string{"join", "--resume", "x", "--fork", "--new"}, newWithResume},
@@ -113,9 +133,9 @@ var nameOptionCases = []struct {
 }
 
 // Mistakes with -n, -s and join's options exit with status 2 before any tool is looked for: the
-// PATH has none here. Both kill and detach, outside cld's panes, need -s. Names are checked -n
-// first, each by its length and then its characters (decision 24.2). Decisions 50.2 and 45.1 say
-// what join's --resume and --fork take; TestForkOwnName has the names a default makes.
+// PATH has none here. kill, detach outside cld's panes and join --existing need -s. Names are
+// checked -n first, by length, then characters (decision 24.2). Decisions 50.2, 45.1 and 58.2 say
+// what join's options take; TestForkOwnName has the names a default makes.
 func TestNameOptions(t *testing.T) {
 	t.Parallel()
 	for _, test := range nameOptionCases {

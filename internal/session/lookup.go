@@ -81,14 +81,19 @@ func (t *Tmux) taken(suffix, made string) error {
 }
 
 // ended is how detach and kill refuse session cld-SUFFIX, which has ended, where cld's record has
-// its entry: join brings its conversation back (decision 40.5). The advice for the command line is
-// kept apart (fail.Error's Advice). nil where there is no entry.
+// its entry: join brings its conversation back (decision 40.5). nil where there is no entry.
 func ended(suffix string) error {
 	if _, ok := recorded(suffix); !ok {
 		return nil
 	}
+	return hasEnded(suffix, "; resume it with cld join "+Options(suffix))
+}
+
+// hasEnded refuses session cld-SUFFIX, which has ended, with advice for the command line kept
+// apart (fail.Error's Advice).
+func hasEnded(suffix, advice string) error {
 	return &fail.Error{Status: 1, Message: fmt.Sprintf("session '%s' has ended", suffix),
-		Advice: "; resume it with cld join " + Options(suffix)}
+		Advice: advice}
 }
 
 // noSession refuses session cld-SUFFIX, which neither runs nor has ended, with the advice for the

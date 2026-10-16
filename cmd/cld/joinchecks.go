@@ -9,12 +9,17 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// check refuses, with status 2, what the command line alone refuses (decision 50.2).
-func (j *joinCommand) check(c *cobra.Command) error {
+// check refuses, with status 2, what the command line alone refuses (decision 50.2), claudeArgs
+// telling whether words for claude follow "--".
+func (j *joinCommand) check(c *cobra.Command, claudeArgs bool) error {
 	if err := j.names.Check(j.typed, ""); err != nil {
 		return err
 	}
-	if err := j.together(c.Flags().Changed("resume")); err != nil {
+	resuming := c.Flags().Changed("resume")
+	if err := j.onlyExisting(resuming, claudeArgs); err != nil {
+		return err
+	}
+	if err := j.together(resuming); err != nil {
 		return err
 	}
 	// -n and -s may give the copy SESSION's own name (decision 45.1).
@@ -45,6 +50,35 @@ func (j *joinCommand) together(resuming bool) error {
 			"conversation back to its worktree itself (see cld help)")
 	}
 	return nil
+}
+
+// onlyExisting refuses --existing without -s, as join would then create a session under the next
+// index (decision 58.2). It refuses the options that go only to a session join creates or makes
+// anew, and words for claude. resuming tells whether --resume was given, and claudeArgs whether
+// words follow "--".
+func (j *joinCommand) onlyExisting(resuming, claudeArgs bool) error {
+	var option string
+	switch {
+	case !j.existing:
+		return nil
+	case !j.names.SuffixGiven():
+		return fail.Usage(j.typed + ": --existing needs -s SUFFIX, the session to join " +
+			"(see cld help)")
+	case j.fresh:
+		option = "--new"
+	case resuming:
+		option = "--resume"
+	case j.fork:
+		option = "--fork"
+	case j.worktree:
+		option = "-w"
+	case claudeArgs:
+		option = "the words after --"
+	default:
+		return nil
+	}
+	return fail.Usage(j.typed + ": --existing and " + option + " exclude each other: " +
+		"--existing creates no session, and resumes one as it was (see cld help)")
 }
 
 // forkName refuses, with status 1, a copy given SESSION's own name by the name join resolved

@@ -117,6 +117,7 @@ var argumentCases = []struct {
 	{[]string{"join", "--detach-others=maybe"}, unexpected("join", "--detach-others=maybe")},
 	{[]string{"join", "--detach-others", "a"}, unexpected("join", "a")},
 	{[]string{"join", "--new=maybe"}, unexpected("join", "--new=maybe")},
+	{[]string{"join", "--existing=maybe", "-s", "x"}, unexpected("join", "--existing=maybe")},
 	{[]string{"join", "--resume", "a", "b"}, unexpected("join", "b")},
 	{[]string{"join", "--resume", "a", "b", "--", "-p"}, unexpected("join", "b")},
 	{[]string{"join", "x", "-n", "y"}, unexpected("join", "x")},
