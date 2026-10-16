@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Pty is a pseudo-terminal of the test's, for cld to run on where a test needs a terminal but no
@@ -59,6 +62,30 @@ func OpenPty(tb testing.TB) *Pty {
 // emulator of the tests' to read and write.
 func OpenController() (controller *os.File, path string, err error) {
 	return openPty()
+}
+
+// SetSize sets the terminal's size, in cells and in pixels, as a terminal emulator sets a pane's
+// with TIOCSWINSZ. A program reads it back with TIOCGWINSZ while the test holds the pty open.
+func (p *Pty) SetSize(rows, cols, width, height int) {
+	p.t.Helper()
+	for _, n := range []int{rows, cols, width, height} {
+		if n < 0 || n > math.MaxUint16 {
+			p.t.Fatalf("set the size of %s: %d is out of range", p.Path, n)
+		}
+	}
+	size := &unix.Winsize{Row: uint16(rows), Col: uint16(cols), Xpixel: uint16(width),
+		Ypixel: uint16(height)}
+	conn, err := p.Terminal.SyscallConn()
+	if err == nil {
+		var set error
+		err = conn.Control(func(fd uintptr) {
+			set = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, size)
+		})
+		err = errors.Join(err, set)
+	}
+	if err != nil {
+		p.t.Fatalf("set the size of %s: %v", p.Path, err)
+	}
 }
 
 // Output is what was written to the terminal, once every program that had it open has closed it:

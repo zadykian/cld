@@ -202,15 +202,28 @@ func checkAsked(t *testing.T, r *releases, want ...string) {
 // runCommand runs cmd, which does not start with a terminal, for what it ends with.
 func runCommand(t *testing.T, cmd *exec.Cmd) sandbox.Result {
 	t.Helper()
+	return startCommand(t, cmd)()
+}
+
+// startCommand starts cmd, which does not start with a terminal, with its output captured, and
+// returns what waits for it to exit.
+func startCommand(t *testing.T, cmd *exec.Cmd) func() sandbox.Result {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
-	var exit *exec.ExitError
-	if err != nil && !errors.As(err, &exit) {
-		t.Fatalf("run %s: %v", cmd.Path, err)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
 	}
-	return sandbox.Result{
-		Code: cmd.ProcessState.ExitCode(), Stdout: stdout.String(), Stderr: stderr.String(),
+	return func() sandbox.Result {
+		t.Helper()
+		err := cmd.Wait()
+		var exit *exec.ExitError
+		if err != nil && !errors.As(err, &exit) {
+			t.Fatalf("run %s: %v", cmd.Path, err)
+		}
+		return sandbox.Result{
+			Code: cmd.ProcessState.ExitCode(), Stdout: stdout.String(), Stderr: stderr.String(),
+		}
 	}
 }
 

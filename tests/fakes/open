@@ -1,0 +1,17 @@
+#!/bin/sh
+# The fake open of cld's tests, in the probe's directory, first on each sandbox's PATH
+# (tests/main_test.go). It appends its arguments to open.log in $CLD_PROBE_DIR. Where
+# ghostty.next.json there holds a model Ghostty, it copies that over ghostty.json and empties it:
+# the Ghostty that starts, with the windows it brings back (tests/internal/mac). It runs only the
+# shell's builtins, as a test's PATH may hold nothing else.
+
+set -eu
+
+dir=$CLD_PROBE_DIR
+printf '%s\n' "$*" >>"$dir/open.log"
+if [ -s "$dir/ghostty.next.json" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        printf '%s\n' "$line"
+    done <"$dir/ghostty.next.json" >"$dir/ghostty.json"
+    : >"$dir/ghostty.next.json"
+fi

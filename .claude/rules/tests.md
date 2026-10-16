@@ -12,9 +12,10 @@ harness. Each helper's doc comment says how it works.
 ## What runs
 
 - Tests build cld and run it against real tmux. The probe, `tests/probe`, stands in for claude,
-  and for systemctl and loginctl.
-- No test reaches the user's systemd or the user's own cld sessions: each runs in a sandbox of its
-  own (`internal/sandbox`), in parallel.
+  and for systemctl and loginctl. It stands in for osascript, ps and ssh too, on a model Mac
+  (`internal/mac`), and sh fakes in `tests/fakes` for open and ghostty.
+- No test reaches the user's systemd, Ghostty or own cld sessions, a real host or `open`. Each
+  runs in a sandbox of its own (`internal/sandbox`), in parallel, whose PATH holds the fakes first.
 - The sandbox's `TMUX_TMPDIR` stays short, as socket paths hit the `sun_path` limit of about 108
   bytes ([decision 13](../../docs/design/decisions/0013-a-server-per-session.md)).
 - The sandbox's work directory is `_`, of which nothing is left in a name: there `-s x` names the
@@ -65,6 +66,11 @@ harness. Each helper's doc comment says how it works.
   `restore_failures_test.go`: what `restore` leaves or cannot bring back; `restore_race_test.go`,
   `restore_forget_test.go` and `restore_rename_test.go`: the races; `restore_setup_test.go`:
   `setup restore`.
+- `tabs_fakes_test.go`: the probe's osascript against the model Ghostty in `internal/mac`, its
+  snapshot, and the helpers the `tabs_fakes_*` files share. `tabs_fakes_failures_test.go`: its
+  failure modes, its delay file and the arguments it refuses; `tabs_fakes_apply_test.go`: its
+  apply. `tabs_fakes_ssh_test.go`: the probe's ssh, on real tmux; `tabs_fakes_tools_test.go`: its
+  ps, the sh fakes of open and ghostty, a pty's size, and the pty as cld's input.
 - `cli_TOPIC_test.go`: arguments, errors, tool and version checks, the help and the completion
   scripts, a file per topic; `cli_fake_tmux_test.go` has the helpers they share.
 - `completion_test.go`: `setup completion` where nothing was; `completion_files_test.go`: files

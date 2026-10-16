@@ -1,6 +1,7 @@
 // Package tests holds cld's tests. They build cld and run it against real tmux servers, one
 // private world per test (see internal/sandbox). A probe stands in for claude, systemctl and
-// loginctl (see probe).
+// loginctl, and for osascript, ps and ssh on a model Mac (see probe and internal/mac). The sh
+// fakes in fakes stand in for open and ghostty.
 //
 // CLD_TERMINALS lists the terminals the terminal contract runs against (default "tmux"): tmux,
 // jediterm and ghostty. jediterm needs a JDK and CLD_JEDITERM_LIB (see jediterm/fetch-deps), and
@@ -77,12 +78,8 @@ func setup(dir string) error {
 	if err := run("go", "build", "-o", probe, "./probe"); err != nil {
 		return err
 	}
-	// The fake systemd is on every sandbox's PATH, before the real one: no test reaches the user's
-	// systemd.
-	for _, name := range []string{"systemctl", "loginctl"} {
-		if err := os.Symlink("claude", filepath.Join(sandbox.ProbeBin, name)); err != nil {
-			return err
-		}
+	if err := installFakes(); err != nil {
+		return err
 	}
 	sandbox.FakeTmux = filepath.Join(dir, "fake", "tmux")
 	if err := os.Mkdir(filepath.Dir(sandbox.FakeTmux), 0o755); err != nil {
@@ -98,6 +95,32 @@ func setup(dir string) error {
 	}
 	if slices.Contains(terminals, "jediterm") {
 		return buildJediTerm(dir)
+	}
+	return nil
+}
+
+// installFakes puts the fakes in sandbox.ProbeBin, first on every sandbox's PATH. So no test
+// reaches the user's systemd or Ghostty, a real host over ssh, or open. The probe plays systemctl,
+// loginctl, osascript, ps and ssh, and the sh fakes open and ghostty.
+func installFakes() error {
+	for _, name := range []string{"systemctl", "loginctl", "osascript", "ps", "ssh"} {
+		if err := os.Symlink("claude", filepath.Join(sandbox.ProbeBin, name)); err != nil {
+			return err
+		}
+	}
+	for _, name := range []string{"open", "ghostty"} {
+		script, err := os.ReadFile(filepath.Join("fakes", name))
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(sandbox.ProbeBin, name)
+		if err := os.WriteFile(path, script, 0o755); err != nil {
+			return err
+		}
+		// Whatever the umask, as a test run as root runs cld as another user.
+		if err := os.Chmod(path, 0o755); err != nil {
+			return err
+		}
 	}
 	return nil
 }
