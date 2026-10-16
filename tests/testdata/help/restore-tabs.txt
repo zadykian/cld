@@ -1,0 +1,15 @@
+keep, on a Mac, a record of Ghostty's windows, tabs and splits, and of the ssh
+host and cld session each pane shows: --watch starts, unless one runs, a
+process that reads Ghostty every 5 s and ends as Ghostty quits, and --dry-run
+shows what the record holds. Run --watch in a Ghostty pane, from ssh's
+LocalCommand or your shell's startup file. Needs Ghostty 1.4 or newer with
+macos-applescript on.
+
+Usage:
+  cld restore tabs [flags]
+
+Flags:
+      --dry-run   print what the record holds, and do nothing
+  -h, --help      help for tabs
+      --watch     keep the record: start, unless one runs, a process that
+                  reads Ghostty's tabs every 5 s and ends as Ghostty quits

@@ -33,7 +33,7 @@ func remember(
 func write(
 	r entry, claudeDir string, s started, runs func(suffix string) bool,
 ) (file, run string, err error) {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return "", "", err
 	}
@@ -94,19 +94,19 @@ func entryStays(dir, suffix string, runs func(suffix string) bool, stays map[str
 		return kept
 	}
 	info, err := os.Stat(entryFile(dir, suffix))
-	kept := err == nil && (time.Since(info.ModTime()) <= expiry || runs(suffix))
+	kept := err == nil && (time.Since(info.ModTime()) <= Expiry || runs(suffix))
 	stays[suffix] = kept
 	return kept
 }
 
-// pastExpiry reports whether file is older than expiry.
+// pastExpiry reports whether file is older than Expiry.
 func pastExpiry(file fs.DirEntry) bool {
 	info, err := file.Info()
-	return err == nil && time.Since(info.ModTime()) > expiry
+	return err == nil && time.Since(info.ModTime()) > Expiry
 }
 
 // giveIndex records the index that name ends in, if one does, as given in indexes.json, which
-// keeps no index given longer ago than expiry. One below the highest given records nothing, unless
+// keeps no index given longer ago than Expiry. One below the highest given records nothing, unless
 // renew: as indexes.json keeps the highest alone, that is given again (decision 57.5).
 func giveIndex(dir, name string, renew bool) error {
 	highest := indexes(dir)

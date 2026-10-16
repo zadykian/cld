@@ -29,6 +29,19 @@
   ([upgrade notes](install-and-upgrade.md#from-cld-0130-and-earlier)).
 - **`File name too long`.** The socket's path, `$TMUX_TMPDIR/tmux-UID/cld-S` with links resolved,
   must fit in 103 bytes on macOS and 107 on Linux. Use a shorter name.
+- **`macOS denies control of Ghostty`.** `cld restore tabs` needs the grant of the app it runs in:
+  allow Ghostty under that app in System Settings › Privacy & Security › Automation. In Ghostty's
+  panes, that app is Ghostty itself. As a last resort there, `tccutil reset AppleEvents
+  com.mitchellh.ghostty` asks again, but resets every Automation grant Ghostty holds.
+- **`Ghostty says: AppleScript is disabled by the macos-applescript configuration`.** Set
+  `macos-applescript = true` in Ghostty's config, and reload it.
+- **A pane's session missing from `cld restore tabs --dry-run`.** A `title` in Ghostty's config, or
+  a title set by hand, hides cld's title. Remove the `title` line. An empty name in Change Terminal
+  Title…, or a `name override` set to `""`, hands the title back to the pane's programs.
+- **`restore tabs needs Ghostty 1.4 or newer`.** Update Ghostty: 1.3.1's AppleScript does not tell
+  what runs in a pane ([Ghostty's tabs](ghostty-tabs.md)).
+- **`tabs.json has format N, which this cld cannot read`.** A newer cld wrote the record of
+  Ghostty's tabs. Run `cld update`.
 - **`missing or unsuitable terminal: xterm-ghostty`** from tmux on a host, or another program
   there that does not know `xterm-ghostty`. The host lacks Ghostty's terminfo: see
   [another machine](another-host.md#terminfo).

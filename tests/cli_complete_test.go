@@ -26,7 +26,7 @@ const (
 	offeredList     = "list\tlist cld's sessions; on a terminal, join, kill or rename one\n"
 	offeredCommands = offeredJoin + offeredDetach +
 		"kill\tend session NAME-SUFFIX and its tmux server\n" + offeredList +
-		"restore\tbring back the sessions that ran when the machine stopped\n" +
+		"restore\tbring back the sessions a reboot ended, or a Mac's Ghostty tabs\n" +
 		"setup\tset up claude's settings, shell completion or restore\n" +
 		"update\tupdate cld to the latest release\n" + //nolint:dupword // as above
 		"version\tshow the version\n" +
@@ -44,6 +44,12 @@ const (
 
 	offeredRestoreSessions = "sessions\tbring back the sessions that ran when the machine " +
 		"stopped\n"
+
+	offeredRestoreTabs = "tabs\tkeep a record of a Mac's Ghostty windows, tabs and splits\n"
+	offeredRestores    = offeredRestoreSessions + offeredRestoreTabs
+	offeredTabsOptions = "--dry-run\tprint what the record holds, and do nothing\n" +
+		"--help\thelp for tabs\n" +
+		"--watch\tkeep the record: start, unless one runs, a process that\n"
 
 	offeredProject = "project\tset claude up in the project in the current directory\n"
 	offeredUser    = "user\tset claude up in your own settings, for every project\n"
@@ -140,13 +146,17 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "r"}, offeredSetupRestore + noFileDirective},
 	{[]string{"__complete", "setup", "t"}, noFileDirective},
 	{[]string{"__complete", "setup", "restore", ""}, noFileDirective},
-	{[]string{"__complete", "restore", ""}, offeredRestoreSessions + noFileDirective},
+	{[]string{"__complete", "restore", ""}, offeredRestores + noFileDirective},
 	{[]string{"__complete", "restore", "s"}, offeredRestoreSessions + noFileDirective},
+	{[]string{"__complete", "restore", "t"}, offeredRestoreTabs + noFileDirective},
 	{[]string{"__complete", "restore", "x"}, noFileDirective},
 	{[]string{"__complete", "restore", "sessions", ""}, noFileDirective},
 	{[]string{"__complete", "restore", "sessions", "-"},
 		"--help\thelp for sessions\n-h\thelp for sessions\n" + offeredHost + noFileDirective},
-	{[]string{"__complete", "help", "restore", ""}, offeredRestoreSessions + noFileDirective},
+	{[]string{"__complete", "restore", "tabs", ""}, noFileDirective},
+	// --watching, which --watch runs, is hidden.
+	{[]string{"__complete", "restore", "tabs", "--"}, offeredTabsOptions + noFileDirective},
+	{[]string{"__complete", "help", "restore", ""}, offeredRestores + noFileDirective},
 	{[]string{"__complete", "setup", "completion", ""}, offeredShellSetups + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "f"}, offeredSetupFish + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "bash", ""}, noFileDirective},
