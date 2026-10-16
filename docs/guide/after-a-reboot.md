@@ -17,5 +17,7 @@
   run `systemctl --user disable cld-restore.service` and remove the unit.
 - Not checked yet: a real reboot. The tests end each server instead, and a transient unit stands
   for your systemd's.
+- On a Mac, Ghostty's tabs of ssh and cld sessions have a record of their own:
+  [Ghostty's tabs on a Mac](ghostty-tabs.md).
 - Neither tmux-resurrect nor tmux-continuum brings a session of cld's back. tmux-continuum takes
   cld's servers for your own tmux's, and saves and restores nothing while one runs.

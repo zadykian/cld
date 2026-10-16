@@ -147,7 +147,7 @@ func (t *Tmux) prepare(c *Claude, suffix string, l launch) (*creation, string, e
 	// The pane-died hook removes the run mark even where cld writes none: the session can have one
 	// from before, a reboot's (decision 48.2).
 	plannedFile := ""
-	if state, err := stateDir(); err == nil {
+	if state, err := StateDir(); err == nil {
 		plannedFile, cr.diedRun = entryFile(state, suffix), companion(state, suffix, runMark)
 	}
 	cld, _ := self() //nolint:errcheck // without its file, tmux's own keys stay (see switchKeys)
