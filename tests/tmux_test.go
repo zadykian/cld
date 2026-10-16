@@ -174,7 +174,7 @@ func lookupPattern(name string) string {
 
 // staleSocket makes the sandbox's socket of server as a server that has died leaves it. That is a
 // socket nothing listens on, where the real tmux says that no server is running. A plain file will
-// not do on macOS (see docs/design/testing.md).
+// not do on macOS (see docs/design/testing-2.md).
 func staleSocket(t *testing.T, s *sandbox.Sandbox, server string) {
 	t.Helper()
 	if err := os.MkdirAll(s.SocketDir(), 0o700); err != nil {

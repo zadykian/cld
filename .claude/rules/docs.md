@@ -20,7 +20,7 @@ What each document holds. How to write them is in [writing.md](writing.md).
 - [docs/design.md](../../docs/design.md) indexes the design docs in `docs/design/`:
   - `overview.md`: the packages, cld's record, a session's life and the distribution.
   - `testing.md`: the test layers, the terminal contract, the drivers, CI, what the tests found,
-    and what is not checked yet.
+    and what is not checked yet. `testing-2.md` continues it: the harness.
   - `findings/`: probed behaviour of tmux, claude, the terminals and the environment, with the
     versions checked. A file that would pass 300 lines continues in `NAME-2.md`.
   - `decisions/NNNN-slug.md`: a record per decision, which the `adr` skill adds or amends.
