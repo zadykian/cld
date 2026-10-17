@@ -9,26 +9,31 @@ import (
 
 // The word after restore.
 
-// restoreCommands ends the message for an unknown word after restore.
-const restoreCommands = "cld restore or cld restore tabs (see cld help)\n"
+// restoreCommands ends the message for a missing or unknown word after restore.
+const restoreCommands = "cld restore sessions or cld restore tabs (see cld help)\n"
 
-// restore takes no word but its command tabs, checked before cobra sees it, as setup's are
-// (decision 59.1). An option before tabs is no option of restore's: cobra would run tabs for
-// restore --help=false tabs.
-func TestRestoreRequiresTabs(t *testing.T) {
+// restore runs nothing itself: sessions or tabs follows it, checked before cobra sees it, as
+// setup's commands are (decision 60.1). An option before one is no option of restore's: cobra
+// would run tabs for restore --help=false tabs.
+func TestRestoreRequiresCommand(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		args []string
 		want string
 	}{
+		{[]string{"restore"}, "cld: restore: missing command: " + restoreCommands},
+		{[]string{"restore", ""}, "cld: restore: missing command: " + restoreCommands},
+		{[]string{"restore", "", "sessions"}, "cld: restore: missing command: " + restoreCommands},
 		{[]string{"restore", "x"}, "cld: restore: unknown command 'x': " + restoreCommands},
 		{[]string{"restore", "Tabs"}, "cld: restore: unknown command 'Tabs': " + restoreCommands},
+		{[]string{"restore", "session"},
+			"cld: restore: unknown command 'session': " + restoreCommands},
 		{[]string{"restore", "x", "tabs"}, "cld: restore: unknown command 'x': " + restoreCommands},
 		{[]string{"restore", "-x"}, unexpected("restore", "-x")},
 		{[]string{"restore", "--help=false", "tabs"}, unexpected("restore", "--help=false")},
+		{[]string{"restore", "--help=false", "sessions"}, unexpected("restore", "--help=false")},
 		{[]string{"restore", "--"}, unexpected("restore", "--")},
-		{[]string{"restore", "--", "tabs"}, unexpected("restore", "--")},
-		{[]string{"restore", ""}, unexpected("restore", "")},
+		{[]string{"restore", "--", "sessions"}, unexpected("restore", "--")},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()

@@ -30,7 +30,7 @@ type secondCld struct {
 func TestRestoreAtOnce(t *testing.T) {
 	t.Parallel()
 	for _, second := range []secondCld{
-		{"restore", []string{"restore"}, 0, "", ""},
+		{"restore", []string{"restore", "sessions"}, 0, "", ""},
 		{"join", []string{"join", "-s", "x"}, 1, "",
 			"cld: join needs a terminal, and its input is not one\n"},
 	} {
@@ -50,7 +50,7 @@ func restoreAtOnce(t *testing.T, second secondCld) {
 		s.Environ(nil))
 	tmux := holdTmux(t, s, "restore's tmux making cld-x", "*' new-session -d -s cld-x '*")
 	tmux.start(t)
-	first := startCldAsync(t, s, s.Work, tmux.env, "restore")
+	first := startCldAsync(t, s, s.Work, tmux.env, "restore", "sessions")
 	tmux.held(t)
 	other := startCldAsync(t, s, s.Work, tmux.env, second.args...)
 	waitForLock(t, s, "the second "+second.name+" to wait for the record's lock")
@@ -108,7 +108,7 @@ func TestJoinRacingRestore(t *testing.T) {
 // and returns the join's terminal.
 func restoreBeforeJoin(t *testing.T, s *sandbox.Sandbox, tmux heldTmux) terminal.Terminal {
 	t.Helper()
-	restore := startCldAsync(t, s, s.Work, tmux.env, "restore")
+	restore := startCldAsync(t, s, s.Work, tmux.env, "restore", "sessions")
 	tmux.held(t)
 	term := startCld(t, s, "tmux", tmux.env, "join", "-s", "x")
 	waitForLock(t, s, "join to wait for the record's lock")
@@ -126,7 +126,7 @@ func joinBeforeRestore(t *testing.T, s *sandbox.Sandbox, tmux heldTmux) terminal
 	if !exists(companionFile(s, "x", ".start")) {
 		t.Error("join left no start mark as it became tmux")
 	}
-	result := startCldAsync(t, s, s.Work, tmux.env, "restore")()
+	result := startCldAsync(t, s, s.Work, tmux.env, "restore", "sessions")()
 	tmux.release(t)
 	checkExit(t, "restore", result, 0, "", "")
 	return term

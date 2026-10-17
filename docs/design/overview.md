@@ -78,7 +78,7 @@ sessions claude makes on its server, then behave as plain tmux.
     ([decision 46](decisions/0046-idle-sessions.md)).
 - `internal/session`: the tmux side, and cld's record of its sessions. `switch.go` and
   `switch_*.go` move a terminal between servers, `record.go` and `record_*.go` keep the record and
-  `restore.go` is `cld restore`.
+  `restore.go` is `cld restore sessions`.
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
   join's checks, kill's steps, and the forget and the rename.
 - `internal/project`: `cld setup config project`, a project's claude settings, `.mcp.json` and
@@ -89,8 +89,9 @@ sessions claude makes on its server, then behave as plain tmux.
 - `internal/update`: `cld update` ([decision 21](decisions/0021-self-update.md)).
 - `internal/completion`: `cld setup completion`, and the scripts `cld update` writes anew
   ([decision 22](decisions/0022-setting-completion-up.md)).
-- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`
-  ([decision 48](decisions/0048-restore-after-reboot.md)).
+- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore sessions`
+  (decisions [48](decisions/0048-restore-after-reboot.md) and
+  [60](decisions/0060-a-command-for-each-restore.md)).
 - `internal/ghostty`: Ghostty on a Mac, for `cld restore tabs`: the JXA scripts osascript runs,
   the snapshot and the apply, Ghostty's errors and their advice, and its CLI's `+show-config` and
   `+ssh-cache` ([decision 59](decisions/0059-ghostty-tabs.md)).
@@ -122,7 +123,8 @@ line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cl
 - cld checks the first argument before cobra, which takes an unknown command for an argument of
   the root and runs `cld -n x join` as `join -n x`. It checks the word after `setup`, after
   `setup config` and after `restore` the same way (decisions
-  [53.2](decisions/0053-project-and-user-settings.md) and [59.1](decisions/0059-ghostty-tabs.md)).
+  [53.2](decisions/0053-project-and-user-settings.md) and
+  [60.1](decisions/0060-a-command-for-each-restore.md)).
 - Each command reads options only up to its first argument, where pflag would read them all.
 - cobra's output goes to a buffer that cld prints, as cobra drops the error of a failed write.
 - `version` is a command, `completion` is cld's own, and completion offers no file names
@@ -217,8 +219,8 @@ the files beside it to the new name, keeping their times
 
 ### After a reboot
 
-A reboot ends every server without running a hook, so the run marks stay. `cld restore`, run by
-the user's systemd at its start, brings back each entry with a run mark and no server, detached,
+A reboot ends every server without running a hook, so the run marks stay. `cld restore sessions`,
+run by the user's systemd at its start, brings back each entry with a run mark and no server, detached,
 with the claude and environment it started with. A busy one gets a prompt to continue. A session
 whose run mark is older than `CLD_IDLE_DAYS` stays ended, since tmux's idle times start again at a
 restore ([decision 48](decisions/0048-restore-after-reboot.md)).

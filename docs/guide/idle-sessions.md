@@ -16,4 +16,4 @@ A claude holds some 0.2 to 0.5 GB of memory while its session runs, used or not:
 - Claude Code removes a transcript 30 days after its last write by default (`cleanupPeriodDays`).
   So a session idle for 30 days can lose its conversation soon after: raise `cleanupPeriodDays`,
   or lower `CLD_IDLE_DAYS`.
-- `cld restore` goes by the last start or prompt instead (see [after a reboot](after-a-reboot.md)).
+- `cld restore sessions` goes by the last start or prompt instead (see [after a reboot](after-a-reboot.md)).

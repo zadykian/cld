@@ -1,7 +1,7 @@
-// Package restore is cld setup restore, which has the user's systemd run cld restore as it
-// starts (decision 48.9). cld restore brings back the sessions a reboot ended (see Tmux.Restore
-// in internal/session). Setup runs these steps in this order, so that nothing is written where it
-// would not run:
+// Package restore is cld setup restore, which has the user's systemd run cld restore sessions as
+// it starts (decisions 48.9 and 60.2). cld restore sessions brings back the sessions a reboot ended
+// (see Tmux.Restore in internal/session). Setup runs these steps in this order, so that nothing is
+// written where it would not run:
 //
 //   - checks: systemctl on the PATH (see tool.LookPath), then the user's systemd answering
 //     systemctl --user show-environment; cld refuses any system but Linux before (see Supported)
@@ -29,7 +29,7 @@ import (
 	"github.com/zadykian/cld/internal/tool"
 )
 
-// Unit is the name of the systemd user unit that runs cld restore.
+// Unit is the name of the systemd user unit that runs cld restore sessions.
 const Unit = "cld-restore.service"
 
 // Supported refuses setup restore on any system but Linux, the one with systemd.
@@ -40,13 +40,13 @@ func Supported() error {
 	return nil
 }
 
-// variables are the variables of cld's environment the unit gives cld restore where they are set
-// (decision 48.9); PATH goes whether set or not.
+// variables are the variables of cld's environment the unit gives cld restore sessions where they
+// are set (decision 48.9); PATH goes whether set or not.
 var variables = []string{"PATH", "TMUX_TMPDIR", "XDG_STATE_HOME", "CLD_IDLE_DAYS"}
 
-// unit is the unit file that runs cld, the file at that path, as cld restore. A oneshot unit, it
-// stays active once run, leaves the tmux servers in its cgroup when stopped, and gives cld restore
-// the variables it needs (decision 48.9).
+// unit is the unit file that runs cld, the file at that path, as cld restore sessions. A oneshot
+// unit, it stays active once run, leaves the tmux servers in its cgroup when stopped, and gives cld
+// the variables it needs (decisions 48.9 and 60.2).
 func unit(cld string) []byte {
 	var environment strings.Builder
 	for _, name := range variables {
@@ -54,8 +54,8 @@ func unit(cld string) []byte {
 			environment.WriteString("Environment=" + quoted(name+"="+value, false) + "\n")
 		}
 	}
-	return []byte(`# Written by cld setup restore: at login, or at boot with lingering on, cld restore
-# brings back the sessions of cld that ran when the machine stopped.
+	return []byte(`# Written by cld setup restore: at login, or at boot with lingering on,
+# cld restore sessions brings back the sessions of cld that ran when the machine stopped.
 [Unit]
 Description=Restore cld's sessions
 
@@ -63,7 +63,7 @@ Description=Restore cld's sessions
 Type=oneshot
 RemainAfterExit=yes
 KillMode=process
-` + environment.String() + `ExecStart=` + quoted(cld, true) + ` restore
+` + environment.String() + `ExecStart=` + quoted(cld, true) + ` restore sessions
 
 [Install]
 WantedBy=default.target
@@ -93,8 +93,8 @@ func quoted(value string, command bool) string {
 	return word.String()
 }
 
-// Setup has the user's systemd run cld, the file at that path, as cld restore as it starts, and
-// returns what it did.
+// Setup has the user's systemd run cld, the file at that path, as cld restore sessions as it
+// starts, and returns what it did.
 func Setup(cld string) (string, error) {
 	if _, err := tool.LookPath("systemctl"); err != nil {
 		return "", fail.Runtime("setup restore needs systemd, and systemctl is not installed")
@@ -135,7 +135,7 @@ func Setup(cld string) (string, error) {
 	if _, err := run("systemctl", "--user", "enable", Unit); err != nil {
 		return "", fail.Runtime(err.Error() + written)
 	}
-	report.WriteString("Enabled " + Unit + ": your systemd runs cld restore as it starts\n")
+	report.WriteString("Enabled " + Unit + ": your systemd runs cld restore sessions as it starts\n")
 	report.WriteString(lingering())
 	return report.String(), nil
 }
@@ -143,15 +143,15 @@ func Setup(cld string) (string, error) {
 // lingering is the report's line on lingering, without which the user's systemd starts at the
 // first login, and stops at the last logout (decision 48.9).
 func lingering() string {
-	const without = "your systemd starts, and cld restore with it, at your first login, " +
-		"and at your last logout ends the sessions cld restore brought back; " +
+	const without = "your systemd starts, and cld restore sessions with it, at your first " +
+		"login, and at your last logout ends the sessions cld restore sessions brought back; " +
 		"loginctl enable-linger has it start at boot, and keeps them\n"
 	uid := strconv.Itoa(os.Getuid())
 	switch linger, err := run("loginctl", "show-user", uid, "--property=Linger", "--value"); {
 	case err != nil:
 		return "Cannot tell whether lingering is on (" + err.Error() + "): without it, " + without
 	case linger == "yes":
-		return "Lingering is on: your systemd starts at boot, and cld restore with it\n"
+		return "Lingering is on: your systemd starts at boot, and cld restore sessions with it\n"
 	}
 	return "Lingering is off: " + without
 }

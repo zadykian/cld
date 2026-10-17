@@ -1,6 +1,6 @@
 # 59. Ghostty's tabs on a Mac
 
-Status: Accepted (#176).
+Status: Accepted (#176). Amended by [60](0060-a-command-for-each-restore.md), `restore sessions`.
 
 ## Context
 

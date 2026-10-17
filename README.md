@@ -49,7 +49,7 @@ index, for a new session. In a repository `api`, `cld join` twice makes the sess
 | `cld detach` | detach the terminals from a session |
 | `cld kill` | end a session, its claude and its tmux server |
 | `cld list` | list the sessions and claude's status in each; on a terminal, join, kill or rename one |
-| `cld restore` | bring back the sessions that ran when the machine stopped; on a Mac, `cld restore tabs` reopens Ghostty's tabs |
+| `cld restore` | `sessions` brings back the sessions that ran when the machine stopped; on a Mac, `tabs` reopens Ghostty's tabs |
 | `cld setup` | set up claude's settings, shell completion, or a restore at login |
 | `cld update` | update cld to the latest release |
 
@@ -86,8 +86,8 @@ detaches it (see [terminals that keep C-q](docs/guide/terminal.md#terminals-that
 - **Resuming.** cld keeps a record of each session for 30 days. `cld join` brings an ended session
   back, its conversation resumed in the directory it ran in. `--resume` takes another
   conversation, and `--fork` a copy. See [resuming a conversation](docs/guide/resuming.md).
-- **After a reboot**, `cld restore` brings back the sessions that ran, detached, and continues a
-  turn the reboot cut off. On Linux, `cld setup restore` has your systemd run it. See
+- **After a reboot**, `cld restore sessions` brings back the sessions that ran, detached, and
+  continues a turn the reboot cut off. On Linux, `cld setup restore` has your systemd run it. See
   [after a reboot](docs/guide/after-a-reboot.md).
 - **Ghostty's tabs on a Mac.** `cld restore tabs --watch` keeps a record of the ssh host and cld
   session in each of Ghostty's panes. After a quit or a closed window, `cld restore tabs` joins

@@ -43,9 +43,11 @@ the decision that gives its reasons. CLAUDE.md says where they may run.
 
 - `setup restore` runs on Linux with systemd alone, where `systemctl --user show-environment`
   answers ([decision 48](../../docs/design/decisions/0048-restore-after-reboot.md)).
-- `setup restore` refuses a `CLD_IDLE_DAYS` that `restore` would refuse, and runs `daemon-reload`
-  only where the unit changed
+- `setup restore` refuses a `CLD_IDLE_DAYS` that `restore sessions` would refuse, and runs
+  `daemon-reload` only where the unit changed
   ([decision 48](../../docs/design/decisions/0048-restore-after-reboot.md)).
+- The unit keeps its name, `cld-restore.service`, and runs `restore sessions`
+  ([decision 60.2](../../docs/design/decisions/0060-a-command-for-each-restore.md)).
 
 ## update and install.sh
 

@@ -60,11 +60,11 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   `record_rename_failures_test.go`: what it refuses, and its failures.
 - `record_expiry_test.go`: the record's indexes and expiry; `record_lock_test.go`: its lock and
   the start mark.
-- `restore_test.go`: `restore` after a reboot, and the helpers the `restore_*` files share;
-  `restore_marks_test.go` and `restore_unmark_test.go`: the run and busy marks;
-  `restore_failures_test.go`: what `restore` leaves or cannot bring back; `restore_race_test.go`,
-  `restore_forget_test.go` and `restore_rename_test.go`: the races; `restore_setup_test.go`:
-  `setup restore`.
+- `restore_test.go`: `restore sessions` after a reboot, and the helpers the `restore_*` files
+  share; `restore_marks_test.go` and `restore_unmark_test.go`: the run and busy marks;
+  `restore_failures_test.go`: what `restore sessions` leaves or cannot bring back;
+  `restore_race_test.go`, `restore_forget_test.go` and `restore_rename_test.go`: the races;
+  `restore_setup_test.go`: `setup restore`.
 - `tabs_fakes_test.go`: the probe's osascript against the model Ghostty in `internal/mac`, its
   snapshot, and the helpers the `tabs_fakes_*` files share. `tabs_fakes_failures_test.go`: its
   failure modes, its delay files and the arguments it refuses; `tabs_fakes_apply_test.go`: its

@@ -54,8 +54,8 @@ func candidate(l *Loss, closed bool) bool {
 	return false
 }
 
-// byDefault reports whether a plain restore of r at time now reopens loss l: lost in the last
-// recentSpan, or the quit of the run before, whatever its age.
+// byDefault reports whether a restore of r without options at time now reopens loss l: lost in the
+// last recentSpan, or the quit of the run before, whatever its age.
 func byDefault(r *Record, l *Loss, now time.Time) bool {
 	recent := now.Sub(l.At) <= recentSpan
 	return recent || (l.Cause == CauseQuit && r.Previous != "" && l.Run == r.Previous)
