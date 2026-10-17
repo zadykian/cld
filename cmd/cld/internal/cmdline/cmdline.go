@@ -1,7 +1,7 @@
 // Package cmdline holds what cld's commands share in reading their command line. It has the
 // checks of their arguments, cld's messages for pflag's errors, and cld's -h and --help. It also
-// has the words join gives claude, and the commands of setup that run on Linux alone. Errors name
-// a command as typed.
+// has the words join gives claude, -C's directory, and the commands of setup that run on Linux
+// alone. Errors name a command as typed.
 package cmdline
 
 import (

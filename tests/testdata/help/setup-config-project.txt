@@ -1,8 +1,8 @@
-set claude up in the project in the current directory: .claude/settings.json
-holds the settings the project shares through git - what claude may do without
-asking, which --permissions sets, and where claude keeps its plans - and
-.claude/settings.local.json, holding its $schema alone, is for your own.
-.gitignore gets /.claude/settings.local.json, /.claude/plans/ and
+set claude up in the project in the current directory, or in DIR with -C:
+.claude/settings.json holds the settings the project shares through git - what
+claude may do without asking, which --permissions sets, and where claude keeps
+its plans - and .claude/settings.local.json, holding its $schema alone, is for
+your own. .gitignore gets /.claude/settings.local.json, /.claude/plans/ and
 /.claude/worktrees/: git ignores those, and adds what the project shares in
 .claude, such as its commands, agents and skills. With --mcp, cld adds MCP
 servers to .mcp.json, and the settings enable them and allow their tools as
@@ -16,9 +16,11 @@ project shares under .claude that git ignores. Review the changes before you
 commit them: whoever trusts the project's folder gives claude what they allow.
 
 Usage:
-  cld setup config project [--mcp SERVER] [--permissions SET] [flags]
+  cld setup config project [-C DIR] [--mcp SERVER] [--permissions SET] [flags]
 
 Flags:
+  -C, --directory DIR     set up the project in DIR, rather than in the
+                          current directory
   -h, --help              help for project
       --mcp SERVER        an MCP SERVER for claude in the project: goland or
                           rider, the IDE's own server on 127.0.0.1, at the port

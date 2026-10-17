@@ -72,7 +72,9 @@ sessions claude makes on its server, then behave as plain tmux.
 - `cmd/cld`: the command line on cobra, a file per command with its help text, and which checks
   run in which order. What the commands share is in `cmd/cld/internal`:
   - `cmdline`: the checks of arguments and options, cld's messages for pflag's errors, `-h` and
-    `--help`, the words `join` gives claude, and the `setup` commands that run on Linux alone.
+    `--help`, the words `join` gives claude, `-C`'s directory
+    ([decision 61](decisions/0061-running-in-another-directory.md)), and the `setup` commands that
+    run on Linux alone.
   - `naming`: `-n` and `-s`, the session's name they make, and their completion.
   - `idle`: `CLD_IDLE_DAYS` and the sweep that ends idle sessions
     ([decision 46](decisions/0046-idle-sessions.md)).

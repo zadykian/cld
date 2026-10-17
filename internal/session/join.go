@@ -31,8 +31,10 @@ type Joining struct {
 	// records for C-q L (decision 51.4).
 	SwitchedFrom string
 	// Typed are the words given after join, which join passes on where it moves a terminal instead
-	// of attaching this one (see Tmux.move).
+	// of attaching this one (see Tmux.move). From is the directory join ran in, where -C was given:
+	// the words, -C's among them, run there again (decision 61.3).
 	Typed []string
+	From  string
 	// Existing makes no session, and resumes an ended one only where a stop ended it (see
 	// unmarked).
 	Existing bool
@@ -146,7 +148,7 @@ func (t *Tmux) join(suffix string, j Joining, kept []string, makes bool, sw *Swi
 		if err := j.lost(suffix, true); err != nil {
 			return err
 		}
-		if _, err := enter(r); err != nil {
+		if _, err := enter(r, j.From != ""); err != nil {
 			return err
 		}
 		l = resumed(r, l)

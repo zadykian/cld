@@ -103,6 +103,18 @@ func tree(t *testing.T, dir string) map[string]string {
 	return entries
 }
 
+// directoryNeedsValue is the message for a -C without its DIR, or with an empty one.
+const directoryNeedsValue = "cld: option '-C' needs a value (see cld help)\n"
+
+// withRoot is args with each ROOT in them made s's root.
+func withRoot(s *sandbox.Sandbox, args []string) []string {
+	rooted := make([]string, len(args))
+	for i, arg := range args {
+		rooted[i] = strings.ReplaceAll(arg, "ROOT", s.Root)
+	}
+	return rooted
+}
+
 // longPath makes the directories of a file of the name given whose path in the sandbox is 4095
 // bytes, the most Linux takes, and returns that path. A temporary file beside it has a longer one.
 func longPath(t *testing.T, s *sandbox.Sandbox, name string) string {

@@ -80,7 +80,7 @@ func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
 		return nil, fail.Runtime("cld keeps no environment of it: " + err.Error())
 	}
 	// As join does: tmux starts claude where the session comes back in (see enter).
-	back, err := enter(r)
+	back, err := enter(r, false)
 	if err != nil {
 		return nil, err
 	}

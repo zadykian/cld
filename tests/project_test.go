@@ -66,8 +66,14 @@ func checkFile(t *testing.T, s *sandbox.Sandbox, name, want string) {
 // sorted: "?? PATH" for one that git add would add, "!! PATH" for one it ignores.
 func gitStatus(t *testing.T, s *sandbox.Sandbox) []string {
 	t.Helper()
+	return gitStatusIn(t, s, s.Work)
+}
+
+// gitStatusIn is gitStatus of the work tree in dir.
+func gitStatusIn(t *testing.T, s *sandbox.Sandbox, dir string) []string {
+	t.Helper()
 	cmd := exec.Command("git", "status", "--porcelain", "--untracked-files=all", "--ignored")
-	cmd.Dir, cmd.Env = s.Work, s.Environ(nil)
+	cmd.Dir, cmd.Env = dir, s.Environ(nil)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git status: %v", err)
@@ -204,5 +210,40 @@ func (test projectFresh) again(t *testing.T, s *sandbox.Sandbox) {
 	}
 	if after := tree(t, s.Work); !maps.Equal(before, after) {
 		t.Errorf("again, the files changed: %q, were %q", after, before)
+	}
+}
+
+// With -C DIR, setup config project sets up the project in DIR, a relative one from the current
+// directory. It writes nothing in the current directory, a repository too (decision 61.1).
+func TestSetupConfigProjectInDirectory(t *testing.T) {
+	t.Parallel()
+	for _, option := range [][]string{
+		{"-C", "../project"}, {"-CROOT/project"}, {"--directory=../project"},
+	} {
+		t.Run(strings.Join(option, " "), func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			gitInit(t, s)
+			dir := filepath.Join(s.Root, "project")
+			runGit(t, s, s.Root, "init", "-q", dir)
+			args := append(withRoot(s, option), "--mcp", "goland")
+			test := projectFresh{args, "read-only", []string{"goland"}}
+			result := s.RunCld(nil, test.command()...)
+			if want := test.report("Created", ""); result.Code != 0 || result.Stdout != want ||
+				result.Stderr != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q, want exit 0, stdout %q",
+					result.Code, result.Stdout, result.Stderr, want)
+			}
+			files, status := test.files(t)
+			if got := tree(t, dir); !maps.Equal(got, files) {
+				t.Errorf("%s holds %q, want %q", dir, got, files)
+			}
+			if got := gitStatusIn(t, s, dir); !slices.Equal(got, status) {
+				t.Errorf("git status in %s %q, want %q", dir, got, status)
+			}
+			if got := tree(t, s.Work); len(got) != 0 {
+				t.Errorf("the work directory holds %q, want nothing", got)
+			}
+		})
 	}
 }

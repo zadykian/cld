@@ -130,12 +130,21 @@ var nameOptionCases = []struct {
 		sessionTooLong(strings.Repeat("n", 62) + "-ab")},
 	{[]string{"kill", "-s", strings.Repeat("s", 30), "-n", strings.Repeat("n", 34)},
 		sessionTooLong(strings.Repeat("n", 34) + "-" + strings.Repeat("s", 30))},
+	{[]string{"join", "-C", ""}, directoryNeedsValue},
+	{[]string{"join", "-s", "x", "-C"}, directoryNeedsValue},
+	{[]string{"join", "--directory=", "-s", "x"}, directoryNeedsValue},
+	{[]string{"join", "-n", "a.b", "-C", ""}, invalidName("name", "a.b")},
+	{[]string{"join", "-C", "", "-s", "a b"}, invalidName("suffix", "a b")},
+	{[]string{"join", "-C", "", "--fork"}, forkNeedsResume},
+	{[]string{"join", "-C", "", "--resume", "-p"}, readAsOption("-p")},
+	{[]string{"join", "-C", "missing", "--existing"}, existingNeedsSuffix},
+	{[]string{"join", "-C", "missing", "-n", "a.b"}, invalidName("name", "a.b")},
 }
 
 // Mistakes with -n, -s and join's options exit with status 2 before any tool is looked for: the
 // PATH has none here. kill, detach outside cld's panes and join --existing need -s. Names are
-// checked -n first, by length, then characters (decision 24.2). Decisions 50.2, 45.1 and 58.2 say
-// what join's options take; TestForkOwnName has the names a default makes.
+// checked -n first, by length, then characters (decision 24.2). Decisions 50.2, 45.1, 58.2 and
+// 61.2 say what join's options take; TestForkOwnName has the names a default makes.
 func TestNameOptions(t *testing.T) {
 	t.Parallel()
 	for _, test := range nameOptionCases {

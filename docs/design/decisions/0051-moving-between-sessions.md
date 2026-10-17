@@ -1,6 +1,6 @@
 # 51. Moving between sessions
 
-Status: Accepted (#112).
+Status: Accepted (#112). Amended by [61](0061-running-in-another-directory.md).
 
 ## Context
 

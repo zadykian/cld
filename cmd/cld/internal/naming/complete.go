@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zadykian/cld/cmd/cld/internal/cmdline"
 	"github.com/zadykian/cld/internal/session"
 )
 
@@ -63,7 +64,7 @@ func Suffixes(all bool) cobra.CompletionFunc {
 		if c.Flags().Changed("name") {
 			name, _ = c.Flags().GetString("name") //nolint:errcheck // -n is a string option
 		} else {
-			name, home = defaultName()
+			name, home = defaultName(completedDirectory(c))
 		}
 		if name != "" {
 			name += "-"
@@ -102,4 +103,21 @@ func listed(all bool) []session.Session {
 	}
 	ended := func(s session.Session) bool { return s.State == session.Ended }
 	return slices.DeleteFunc(sessions, ended)
+}
+
+// completedDirectory is the directory -C names, where the command line being completed gives
+// one, and else "", the current directory: NAME's default comes from it (decision 61.1).
+func completedDirectory(c *cobra.Command) string {
+	if !c.Flags().Changed("directory") {
+		return ""
+	}
+	dir, _ := c.Flags().GetString("directory") //nolint:errcheck // -C is a string option
+	if dir == "" {
+		return ""
+	}
+	target, _, err := cmdline.Path(dir)
+	if err != nil {
+		return ""
+	}
+	return target
 }

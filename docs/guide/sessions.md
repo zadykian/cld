@@ -9,6 +9,10 @@ name, `NAME-SUFFIX`.
   subdirectories share it. A submodule, or a worktree of a bare repository, takes the git
   directory's name without `.git`.
 - Outside a repository, `NAME` is the directory's name as `pwd` shows it, a symbolic link's own.
+- `-C DIR` enters DIR as `cd DIR` would, so `NAME` is the one `cd DIR && cld join` gives, `..`
+  after a link going back to its parent. The shell expands `~` at a word's start alone: write
+  `-C ~/api`, not `--directory=~/api`
+  ([decision 61](../design/decisions/0061-running-in-another-directory.md)).
 - Characters a name cannot have become `-`, and `-` and `_` go from either end: `my.site` gives
   `my-site-0`. Where nothing is left, as in `/`, the session is `SUFFIX` alone.
 - cld's messages split `S` at its last `-` into `-n NAME -s SUFFIX`. A name without a `-` takes

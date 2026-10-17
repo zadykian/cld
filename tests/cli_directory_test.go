@@ -63,6 +63,47 @@ func TestJoinRefusesARemovedDirectory(t *testing.T) {
 	}
 }
 
+// A relative -C goes from the current directory, which a removed one cannot give: join and setup
+// config project refuse it with status 1. An absolute -C needs none, and each runs in DIR
+// (decision 61.2). Linux only, as TestJoinRefusesARemovedDirectory.
+func TestDirectoryFromARemovedDirectory(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("getcwd in a removed directory is checked on Linux only")
+	}
+	s := sandbox.New(t)
+	dir := filepath.Join(s.Root, "api")
+	runGit(t, s, s.Root, "init", "-q", dir)
+	inRemoved := func(args ...string) *exec.Cmd {
+		script := `mkdir "$1" && cd "$1" && rmdir "$1" && shift && exec "$0" "$@"`
+		cmd := exec.Command("/bin/sh", append([]string{"-c", script, sandbox.Cld,
+			filepath.Join(s.Work, "removed")}, args...)...)
+		cmd.Env = s.Environ(fakeTmuxEnv(s, nil))
+		return cmd
+	}
+	cannot := "cld: the current directory no longer exists\n"
+	checkFailed(t, runCommand(t, inRemoved("join", "-C", "../../api")), 1, cannot)
+	checkFailed(t, runCommand(t, inRemoved("setup", "config", "project", "-C", ".")), 1, cannot)
+	if fakeTmuxRan(s) {
+		t.Error("cld handed over to tmux")
+	}
+	join := inRemoved("join", "-C", dir)
+	join.Stdin = sandbox.OpenPty(t).Terminal
+	join.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
+	if result := runCommand(t, join); result.Code != 0 || result.Stderr != "" {
+		t.Fatalf("join -C %s: exit %d, stderr %q", dir, result.Code, result.Stderr)
+	}
+	checkTmuxServer(t, s, "api-0")
+	if record := s.FakeTmuxRecord(); record.Cwd != dir || !optionFollowedBy(record.Argv, "-c", dir) {
+		t.Errorf("tmux in %s, arguments %q, want it in %s, -c there", record.Cwd, record.Argv, dir)
+	}
+	result := runCommand(t, inRemoved("setup", "config", "project", "-C", dir))
+	if result.Code != 0 || result.Stderr != "" {
+		t.Errorf("setup config project -C %s: exit %d, stderr %q", dir, result.Code, result.Stderr)
+	}
+	checkSettings(t, filepath.Join(dir, ".gitignore"), ignoreLines)
+}
+
 // join refuses a working directory it can no longer enter, or whose parent it cannot, with PWD set
 // or not (decision 11.10). Otherwise tmux would start claude in the home directory, where claude
 // --version fails. The test's sh enters the directory, takes the permissions away and runs cld

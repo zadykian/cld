@@ -121,7 +121,7 @@ func (t *Tmux) Joinable(ctx context.Context, suffix string) error {
 	if !ok {
 		return noSession(suffix)
 	}
-	_, err = enterable(r)
+	_, err = enterable(r, false)
 	return err
 }
 
