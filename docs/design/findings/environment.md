@@ -33,6 +33,12 @@ up to 0.3.0, a bash script that ended in `exec tmux`.
   as escapes, so `x\'; echo INJECTED #`, quoted as `sh` quotes it, ran `echo INJECTED` in fish. A
   word with each `'` and `\` outside the quotes, after a `\`, reached all four unchanged
   ([decision 51](../decisions/0051-moving-between-sessions.md)).
+- **`~` and `..` in a directory option** (#186; bash 5.3.9, git 2.53.0 and GNU Make 4.4.1 on
+  Ubuntu 26.04, run). bash expanded `~` at a word's start alone: `-C ~/api` reached the program as
+  `/root/api`, and `-C~/api` and `--directory=~/api` as typed. `git -C '~/x'` took `~` as a name,
+  where `make -C` expanded it. From a symbolic link `l` to `a/b`, `cd ..` went back to the link's
+  parent, and `git -C l/..` to `a`
+  ([decision 61](../decisions/0061-running-in-another-directory.md)).
 
 ## Completion
 

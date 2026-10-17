@@ -13,11 +13,11 @@ import (
 )
 
 // projectLong is setup config project's help.
-const projectLong = `set claude up in the project in the current directory: .claude/settings.json
-holds the settings the project shares through git - what claude may do without
-asking, which --permissions sets, and where claude keeps its plans - and
-.claude/settings.local.json, holding its $schema alone, is for your own.
-.gitignore gets /.claude/settings.local.json, /.claude/plans/ and
+const projectLong = `set claude up in the project in the current directory, or in DIR with -C:
+.claude/settings.json holds the settings the project shares through git - what
+claude may do without asking, which --permissions sets, and where claude keeps
+its plans - and .claude/settings.local.json, holding its $schema alone, is for
+your own. .gitignore gets /.claude/settings.local.json, /.claude/plans/ and
 /.claude/worktrees/: git ignores those, and adds what the project shares in
 .claude, such as its commands, agents and skills. With --mcp, cld adds MCP
 servers to .mcp.json, and the settings enable them and allow their tools as
@@ -33,12 +33,15 @@ commit them: whoever trusts the project's folder gives claude what they allow.`
 // setupProject is cld setup config project (decision 19), named in its messages as typed.
 func setupProject(typed string) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "project [--mcp SERVER] [--permissions SET]",
+		Use:   "project [-C DIR] [--mcp SERVER] [--permissions SET]",
 		Short: "set claude up in the project in the current directory",
 		Long:  projectLong,
 		Args:  cmdline.NoArguments(typed),
 	}
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
+	var dir string
+	cmdline.Directory(command, &dir, "set up the project in `DIR`, rather than in the\n"+
+		"current directory")
 	flags := command.Flags()
 	mcp := flags.StringArray("mcp", nil, "an MCP `SERVER` for claude in the project: goland or\n"+
 		"rider, the IDE's own server on 127.0.0.1, at the port\n"+
@@ -61,6 +64,9 @@ func setupProject(typed string) *cobra.Command {
 		}
 		set, err := permissionSet(c.Flags().Changed("permissions"), *permissions)
 		if err != nil {
+			return err
+		}
+		if _, err := cmdline.Enter(c, dir); err != nil {
 			return err
 		}
 		return project.Setup(servers, set)

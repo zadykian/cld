@@ -109,7 +109,7 @@ func (j Joining) notRunning(suffix string) error {
 		if err := j.lost(suffix, true); err != nil {
 			return err
 		}
-		_, err := enterable(r)
+		_, err := enterable(r, j.From != "")
 		return err
 	}
 	if j.Worktree {
@@ -119,12 +119,15 @@ func (j Joining) notRunning(suffix string) error {
 }
 
 // move moves the terminal of sw as a join with the words Typed asks, run in a pane of sw's server.
-// The terminal's cld join --moved runs those words in the directory this join runs in, which has
-// to be there (decision 51.3).
+// The terminal's cld join --moved runs them in the directory this join ran in (decisions 51.3 and
+// 61.3). That is From where -C left one, and else the current directory, which has to be there.
 func (t *Tmux) move(sw *Switch, j Joining) error {
-	dir, err := workingDirectory()
-	if err != nil {
-		return err
+	dir := j.From
+	if dir == "" {
+		var err error
+		if dir, err = workingDirectory(); err != nil {
+			return err
+		}
 	}
 	return t.switchTerminal(sw, "--moved="+encodeMove(dir, j.Typed))
 }

@@ -84,6 +84,26 @@ func (test projectRefusal) run(t *testing.T) {
 	}
 }
 
+// setup config project refuses a DIR it cannot enter with status 1, naming it as given, and writes
+// nothing, in DIR or in the current directory (decision 61.2).
+func TestSetupConfigProjectCannotEnter(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	gitInit(t, s)
+	s.WriteFile(filepath.Join(s.Work, "file"), "")
+	for _, test := range []struct{ dir, want string }{
+		{"missing", "no such file or directory"},
+		{"file", "not a directory"},
+		{filepath.Join(s.Root, "missing"), "no such file or directory"},
+	} {
+		result := s.RunCld(nil, "setup", "config", "project", "--mcp", "goland", "-C", test.dir)
+		checkFailed(t, result, 1, "cld: cannot enter "+test.dir+": "+test.want+"\n")
+	}
+	if got := tree(t, s.Work); !maps.Equal(got, map[string]string{"file": ""}) {
+		t.Errorf("the work directory holds %q, want file alone", got)
+	}
+}
+
 // A write that fails ends cld, which names the files it wrote before (decision 19.6). Here
 // .gitignore is a symbolic link to a path of 4095 bytes, the most Linux takes, so the temporary
 // file beside it has a longer one.
@@ -154,11 +174,19 @@ var projectUsages = []projectUsage{
 	{[]string{"--"}, "cld: setup config project: unexpected argument '--' (see cld help)\n"},
 	{[]string{"--bogus"}, "cld: setup config project: unexpected argument '--bogus' (see cld help)\n"},
 	{[]string{"-n", "x"}, "cld: setup config project: unexpected argument '-n' (see cld help)\n"},
+	{[]string{"-C", ""}, directoryNeedsValue},
+	{[]string{"--permissions", "cld", "-C"}, directoryNeedsValue},
+	{[]string{"-C", "", "--mcp", "idea"}, "cld: invalid MCP server 'idea' for --mcp" + mcpUsage},
+	{[]string{"-C", "missing", "--permissions", "all"},
+		"cld: invalid permissions 'all' for --permissions" + permissionsUsage},
+	{[]string{"-C", "missing", "x"},
+		"cld: setup config project: unexpected argument 'x' (see cld help)\n"},
 }
 
 // setup config project's mistakes are usage errors, read left to right as other commands' are. A
 // server --mcp does not take comes first, the empty one included, then a set --permissions does not
-// take, an argument, or an option cld does not know. Nothing is written.
+// take, an argument, or an option cld does not know. An empty -C, and one cld cannot enter, come
+// after them (decision 61.2). Nothing is written.
 func TestSetupConfigProjectRejectsArguments(t *testing.T) {
 	t.Parallel()
 	for _, test := range projectUsages {

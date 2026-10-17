@@ -25,6 +25,7 @@ Each adds what the settings lack, and keeps the values they have.
 - cld fails where git ignores `.claude/settings.json`, naming the pattern, and warns of the other
   shared files git ignores. A directory counts even with files added by `git add -f`, as git
   ignores a new one there.
+- `-C DIR` takes DIR as `cld join -C` does (see [names](sessions.md#names)).
 
 ## Your own: claude's user settings
 
