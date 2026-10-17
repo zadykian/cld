@@ -141,3 +141,38 @@ func opposite(split string) string {
 	}
 	return splitLeft
 }
+
+// pruneWindow is window w less the leaves drop holds. A tab left with none goes, and false means
+// none is left.
+func pruneWindow(w Window, drop func(id string) bool) (Window, bool) {
+	var tabs []Tab
+	for _, tab := range w.Tabs {
+		if tab.Tree = prune(tab.Tree, drop); tab.Tree != nil {
+			tabs = append(tabs, tab)
+		}
+	}
+	return Window{Tabs: tabs}, len(tabs) > 0
+}
+
+// prune is tree n less the leaves drop holds, and those with no pane: a split left with one half
+// becomes that half. nil means no leaf is left. n itself does not change.
+func prune(n *Node, drop func(id string) bool) *Node {
+	switch {
+	case n == nil:
+		return nil
+	case isLeaf(n) && (n.Pane == "" || drop(n.Pane)):
+		return nil
+	case isLeaf(n):
+		return n
+	}
+	first, second := prune(n.First, drop), prune(n.Second, drop)
+	switch {
+	case first == nil:
+		return second
+	case second == nil:
+		return first
+	}
+	c := *n
+	c.First, c.Second = first, second
+	return &c
+}

@@ -36,7 +36,11 @@ func TestRequiresTools(t *testing.T) {
 		{[]string{"detach", "-s", "x"}, []string{"claude"}, "cld: tmux is not installed\n"},
 		{[]string{"detach", "-s", "x"}, []string{"tmux"}, "cld: no session 'x' (see cld list)\n"},
 		{[]string{"list"}, []string{"claude"}, "cld: tmux is not installed\n"},
+		{[]string{"restore", "tabs"}, nil,
+			"cld: restore tabs runs on a Mac: osascript is not installed\n"},
 		{[]string{"restore", "tabs", "--dry-run"}, nil,
+			"cld: restore tabs runs on a Mac: osascript is not installed\n"},
+		{[]string{"restore", "tabs", "--older", "--closed"}, nil,
 			"cld: restore tabs runs on a Mac: osascript is not installed\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {

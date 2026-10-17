@@ -18,10 +18,11 @@ import (
 // realOsascript is macOS's osascript, by its path: a sandbox's PATH finds the fake first.
 const realOsascript = "/usr/bin/osascript"
 
-// mockedResult is what a script run against the mock Ghostty printed, with the Apple Events it
-// sent.
+// mockedResult is what a script run against the mock Ghostty printed, the model it left, and the
+// Apple Events it sent.
 type mockedResult struct {
 	Result json.RawMessage `json:"result"`
+	Model  *mac.Model      `json:"model"`
 	Log    []string        `json:"log"`
 }
 
@@ -93,6 +94,7 @@ func TestTabsScriptsMocked(t *testing.T) {
 			}
 		})
 	}
+	t.Run("apply.js", testMockedApply)
 	t.Run("1.3.1", func(t *testing.T) {
 		t.Parallel()
 		m := windowsModel()

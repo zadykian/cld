@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"slices"
@@ -190,4 +191,31 @@ func relaunch(m *mac.Model, pid int, start time.Time, back ...string) *mac.Model
 		}
 	}
 	return n
+}
+
+// stoppedMac is a Ghostty that quit, of two windows, each a pane on ws: a on session app, and x's.
+// The record holds them, and its run ended at ended. The Ghostty that open starts next brings a
+// back at its prompt, and not x's window. It returns a's id.
+func stoppedMac(t *testing.T, s *sandbox.Sandbox) (a string, ended time.Time) {
+	t.Helper()
+	m := ghosttyApp(t, s)
+	a, x := addPane(m, "✳ cld-app", ssh("ws")), addPane(m, "✳ cld-x", ssh("ws"))
+	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(x))}
+	r := tick(t, s, m)
+	r.Run.Ended = time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	writeRecord(t, s, r)
+	quitGhostty(m)
+	saveModel(t, s, &mac.Model{})
+	saveNext(t, s, relaunch(m, 4242, relaunched, a))
+	return a, r.Run.Ended
+}
+
+// saveNext saves m as the Ghostty that the fake open starts in s.
+func saveNext(t *testing.T, s *sandbox.Sandbox, m *mac.Model) {
+	t.Helper()
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.WriteProbeFile(mac.NextFile, string(data))
 }

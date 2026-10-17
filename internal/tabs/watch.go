@@ -139,7 +139,7 @@ func (w *watcher) merge(o *Observation, before os.FileInfo) error {
 		w.log.line(warning)
 	}
 	Merge(r, o, last)
-	if err := save(w.dir, r, old); err != nil {
+	if _, err := save(w.dir, r, old); err != nil {
 		return w.failed(err)
 	}
 	now := time.Now()
@@ -182,7 +182,8 @@ func (w *watcher) noteEnd() error {
 		return nil
 	}
 	r.Run.Ended = time.Now().UTC().Truncate(time.Second)
-	return save(w.dir, r, old)
+	_, err = save(w.dir, r, old)
+	return err
 }
 
 // restartIfReplaced runs the new cld in the watcher's process, where cld update has renamed one

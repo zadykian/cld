@@ -16,10 +16,10 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
   `.mcp.json` and `.gitignore`, and claude's user settings.
 - `internal/completion`: `cld setup completion`, the script where bash, zsh or fish reads it.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`.
-- `internal/ghostty`: Ghostty on a Mac through osascript: the JXA scripts, the snapshot, Ghostty's
-  errors, and its CLI's `+show-config`.
-- `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, its merge, the watcher and the
-  dry-run.
+- `internal/ghostty`: Ghostty on a Mac through osascript: the JXA scripts, the snapshot and the
+  apply, Ghostty's errors, and its CLI's `+show-config` and `+ssh-cache`.
+- `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, its merge, the watcher, and the
+  restore: its plan, typed lines, record and report.
 - `internal/update`: `cld update`, which replaces cld with the latest release.
 - `internal/configfile`: edits in place the files the `setup` commands write.
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld when one cannot run.

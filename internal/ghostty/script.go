@@ -16,6 +16,11 @@ import (
 //go:embed scripts/snapshot.js
 var snapshotJS string
 
+// applyJS is apply.js, which types into panes and builds windows, tabs and splits for Apply.
+//
+//go:embed scripts/apply.js
+var applyJS string
+
 // run runs script under osascript as JavaScript with input, encoded as one JSON argument, and
 // decodes the one JSON document the script prints into out. osascript missing, the deadline of
 // limit, a failed run or output that is no JSON document is an *Error; ctx ending otherwise is
