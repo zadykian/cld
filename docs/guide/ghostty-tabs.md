@@ -84,8 +84,21 @@ starts an ssh goes out 0.3 s after the one before, with 2 s more after every 8.
 
 - Their frame, size and place on the screen, their fullscreen state, and their tabs' titles and
   colours. Windows that Ghostty restores itself keep them.
-- A tab's splits come back as cld built them, or else as a row, left to right. Their sizes are
-  evened out.
+- A tab's splits come back as cld built them, or as their panes' sizes lay them out, and their
+  sizes are evened out. A tab keeps the layout cld last saw while a split is zoomed, and the rest
+  of it as panes close. Where the sizes fit no layout, as in a resize cld read halfway, it keeps it
+  too, or else comes back as a row, left to right.
+- A tab first seen with a split zoomed, or in a resize cld read halfway, can take another layout
+  until its sizes are whole again. A split dragged elsewhere in a tab cld built stays as built
+  where the panes' new sizes fit that layout too.
+- **Even sizes** can fit more than one layout, so cld takes the one nearest 1.4 times as wide as
+  tall. In a window over 1.4 times as tall as wide, or 2.8 times as wide as tall, half the tabs of
+  even sizes come back in another layout. So do a few others. In a window taller than wide, or over
+  twice as wide as tall, so can a tab of four panes or more whose sizes Ghostty evened out. Panes of
+  one size can come back in another order, such as a grid of four with the top right and bottom left
+  ones swapped.
+- With `window-padding-balance`, or a `window-padding-x` or `-y` over 4 points, a tab of three
+  panes or more may come back as a row, or in another layout.
 - **The fullscreen cascade.** A new window opens in native fullscreen where Ghostty's main window
   is in it. So once one is, each rebuilt window opens fullscreen, in a Space of its own. A tab
   rebuilt into a window in non-native fullscreen fails with Ghostty's `Failed to create tab.` Leave
@@ -172,4 +185,4 @@ No test runs Ghostty. What cld relies on was read in Ghostty's source, 1.3.1 and
 ([findings](../design/findings/terminals.md#ghosttys-applescript-on-macos)), and the tests run cld
 against a model of it. A run on a real Mac is still to come (#177): the prompt, the watcher's grant
 after its pane closes, and Ghostty's answers. Among them are a restore's typing, its tab moves and
-its spacing.
+its spacing, and the panes' sizes that give a tab's layout.

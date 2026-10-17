@@ -22,14 +22,7 @@ var ownEnv = map[string]string{"TZ": "UTC", "CLD_FAKE_SSH_EXIT": "0", "TERM": "x
 // runs in. cld runs in front of the pane's shell.
 func onPty(t *testing.T, m *mac.Model, id string) *sandbox.Pty {
 	t.Helper()
-	p := sandbox.OpenPty(t)
-	old, tty := strings.TrimPrefix(m.Terminals[id].TTY, "/dev/"), strings.TrimPrefix(p.Path, "/dev/")
-	m.Terminals[id].TTY = p.Path
-	for i := range m.Processes {
-		if m.Processes[i].TTY == old {
-			m.Processes[i].TTY = tty
-		}
-	}
+	p := ptyPane(t, m, id)
 	front(m, id, []string{"cld", "restore", "tabs"})
 	return p
 }
