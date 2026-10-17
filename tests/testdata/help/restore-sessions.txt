@@ -14,4 +14,6 @@ Usage:
   cld restore sessions [flags]
 
 Flags:
-  -h, --help   help for sessions
+  -h, --help        help for sessions
+      --host HOST   run on HOST instead, an ssh destination: ssh
+                    HOST runs cld there (see cld help)

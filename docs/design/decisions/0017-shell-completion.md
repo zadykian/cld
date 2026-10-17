@@ -5,7 +5,8 @@ Status: Accepted (#25). Amended by [18](0018-telemetry.md), [19](0019-project-se
 [27](0027-completion-with-blesh.md), [28](0028-shared-project-settings.md),
 [37](0037-sessions-of-another-repository.md), [40](0040-session-record.md),
 [44](0044-detach-command.md), [49](0049-status-in-the-list.md), [50](0050-one-command-join.md),
-[52](0052-telemetry-outside-cld.md) and [53](0053-project-and-user-settings.md).
+[52](0052-telemetry-outside-cld.md), [53](0053-project-and-user-settings.md) and
+[62](0062-commands-on-another-host.md), under which `-n` and `-s` complete nothing after `--host`.
 
 ## Context
 

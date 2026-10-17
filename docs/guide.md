@@ -13,6 +13,8 @@ yet, troubleshooting and upgrading. How cld works, and why, is in [design.md](de
 - [Resuming a conversation](guide/resuming.md): the record, `join --existing`, names, copies,
   agent view's moves
 - [After a reboot](guide/after-a-reboot.md): `cld restore sessions` and `cld setup restore`
+- [From another machine](guide/another-host.md): `--host`, what each machine needs, terminfo and
+  ssh's connections
 - [claude's options and worktrees](guide/claude-options.md): the words after `--`, and `-w`
 - [claude's settings](guide/project-settings.md): a project's permission sets and IDE port, and
   your own settings

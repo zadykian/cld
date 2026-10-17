@@ -50,9 +50,10 @@ processes, in a file of the probe directory.
 - A delay file holds the next snapshot back once it has read the model. So a test can keep a stale
   snapshot in flight while it changes the model. Tests write both files by a rename: a watcher that
   read one half written would miss the failure, or fail on the delay.
-- The probe plays ps from the model's processes, and ssh to a host that is the sandbox itself. The
-  fake ssh runs the remote command with the real bash in `HOME`, `SHELL` set to that bash, as sshd
-  sets the login shell. So a line cld types runs against the sandbox's real tmux, as on the host.
+- The probe plays ps from the model's processes, and ssh to a host that is the sandbox itself, for
+  `restore tabs` and `--host`. The fake ssh runs the remote command with the real bash in `HOME`,
+  `SHELL` set to that bash, as sshd sets the login shell. So a line cld types runs against the
+  sandbox's real tmux, as on the host.
 - `CLD_FAKE_SSH_EXIT` plays a dropped connection only where ssh would connect. `ssh -G` never
   connects, and cld's check of Ghostty's terminfo cache reads it whatever the connection does.
 - The sandbox's `~/.profile` puts the tools under test first on a login shell's PATH. The login

@@ -69,6 +69,7 @@ func restoreSessions(typed string) *cobra.Command {
 		RunE:  func(*cobra.Command, []string) error { return restoreAll() },
 	}
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
+	onHost{}.add(command, typed)
 	return command
 }
 
@@ -156,5 +157,6 @@ moving cld, or to change those variables. Needs systemd; Linux only.`,
 		},
 	}
 	cmdline.LinuxOnly(command, typed, restore.Supported)
+	onHost{}.add(command, typed)
 	return command
 }

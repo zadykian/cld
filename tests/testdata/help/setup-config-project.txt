@@ -22,6 +22,8 @@ Flags:
   -C, --directory DIR     set up the project in DIR, rather than in the
                           current directory
   -h, --help              help for project
+      --host HOST         run on HOST instead, an ssh destination: ssh
+                          HOST runs cld there (see cld help)
       --mcp SERVER        an MCP SERVER for claude in the project: goland or
                           rider, the IDE's own server on 127.0.0.1, at the port
                           in GOLAND_MCP_PORT or RIDER_MCP_PORT where claude

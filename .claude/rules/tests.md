@@ -71,6 +71,9 @@ harness. Each helper's doc comment says how it works.
   failure modes, its delay file and the arguments it refuses; `tabs_fakes_apply_test.go`: its
   apply. `tabs_fakes_ssh_test.go`: the probe's ssh, on real tmux; `tabs_fakes_tools_test.go`: its
   ps, the sh fakes of open and ghostty, a pty's size, and the pty as cld's input.
+- `cli_host_test.go`: `--host`'s ssh, its words, `__host` and completion, and the helpers the host
+  tests share; `cli_host_refusals_test.go`: what `--host` refuses; `session_host_test.go`: sessions
+  on the host through the fake ssh.
 - `cli_TOPIC_test.go`: arguments, errors, tool and version checks, the help and the completion
   scripts, a file per topic; `cli_fake_tmux_test.go` has the helpers they share.
 - `completion_test.go`: `setup completion` where nothing was; `completion_files_test.go`: files

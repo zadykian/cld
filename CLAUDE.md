@@ -17,6 +17,7 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
 - `internal/completion`: `cld setup completion`, the script where bash, zsh or fish reads it.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore sessions`.
 - `internal/update`: `cld update`, which replaces cld with the latest release.
+- `internal/remote`: `--host`, the ssh that runs a command through cld on another host.
 - `internal/configfile`: edits in place the files the `setup` commands write.
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld when one cannot run.
 - `internal/fail`: carries exit statuses up to `main`.

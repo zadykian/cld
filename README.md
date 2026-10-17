@@ -34,6 +34,7 @@ cld needs:
 - Claude Code 2.1.232 or newer, as `claude` on the `PATH`.
 - git, for `cld join -w` and to name sessions after their repository.
 - On Linux, systemd for `cld setup restore`.
+- For `--host` alone, ssh in place of tmux and claude, which run on the host.
 
 ## Usage
 
@@ -88,6 +89,9 @@ detaches it (see [terminals that keep C-q](docs/guide/terminal.md#terminals-that
 - **After a reboot**, `cld restore sessions` brings back the sessions that ran, detached, and
   continues a turn the reboot cut off. On Linux, `cld setup restore` has your systemd run it. See
   [after a reboot](docs/guide/after-a-reboot.md).
+- **Another machine.** `--host HOST` runs a command on HOST through ssh, as in
+  `cld join --host ws -n api -s 1`, with cld doing the work there. See
+  [from another machine](docs/guide/another-host.md).
 - **claude's options.** The words after `--` go to claude, as in
   `cld join -- --model opus "review the diff"`. `cld join -w` has claude work in a git worktree
   named after the session. See [claude's options and worktrees](docs/guide/claude-options.md).

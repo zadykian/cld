@@ -95,6 +95,8 @@ sessions claude makes on its server, then behave as plain tmux.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore sessions`
   (decisions [48](decisions/0048-restore-after-reboot.md) and
   [60](decisions/0060-a-command-for-each-restore.md)).
+- `internal/remote`: `--host`, the ssh that runs a command through cld on another host, and the
+  words it carries there ([decision 62](decisions/0062-commands-on-another-host.md)).
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld as a shell would when
   one cannot run ([decision 11.5 and 11.9](decisions/0011-go-and-cobra.md)).
 - `internal/fail`: carries exit statuses up to `main`, the only place that exits.
@@ -122,6 +124,8 @@ line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cl
   `setup config` and after `restore` the same way (decisions
   [53.2](decisions/0053-project-and-user-settings.md) and
   [60.1](decisions/0060-a-command-for-each-restore.md)).
+- A first word `__host` is not cobra's: another host's cld sends a command's words in its value,
+  which cld runs as typed ([decision 62.4](decisions/0062-commands-on-another-host.md)).
 - Each command reads options only up to its first argument, where pflag would read them all.
 - cobra's output goes to a buffer that cld prints, as cobra drops the error of a failed write.
 - `version` is a command, `completion` is cld's own, and completion offers no file names
@@ -154,10 +158,11 @@ mark, the busy mark and the start mark ([decision 48](decisions/0048-restore-aft
 
 `join` is the one command for a session ([decision 50](decisions/0050-one-command-join.md)). It
 refuses bad combinations with status 2 before looking for any tool. In a pane of cld's servers it
-moves the terminal instead ([decision 51](decisions/0051-moving-between-sessions.md)). Otherwise
-it takes the record's lock and looks the session up on server `cld-NAME`, by its exact name. It
-runs `claude --version` only where claude starts ([decision 6](decisions/0006-versions.md)), and
-checks the terminal last ([decision 31](decisions/0031-a-terminal-to-attach-from.md)).
+moves the terminal instead ([decision 51](decisions/0051-moving-between-sessions.md)). With
+`--host`, it becomes ssh, and the host's cld joins
+([decision 62](decisions/0062-commands-on-another-host.md)). Otherwise it takes the record's lock
+and looks the session up on server `cld-NAME`, by its exact name. It runs `claude --version` only
+where claude starts ([decision 6](decisions/0006-versions.md)), and checks the terminal last ([decision 31](decisions/0031-a-terminal-to-attach-from.md)).
 
 - A session that runs is attached with `attach-session`, beside the other terminals
   ([decision 23](decisions/0023-joining-beside-other-terminals.md)). It moves neither claude nor

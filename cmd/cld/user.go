@@ -62,6 +62,7 @@ func setupUser(typed string) *cobra.Command {
 	}
 	cmdline.CompleteWith(command, "permissions", permissionSets)
 	cmdline.CompleteWith(command, "notifications", channelNames)
+	onHost{}.add(command, typed)
 	return command
 }
 

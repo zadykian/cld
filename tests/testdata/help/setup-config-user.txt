@@ -14,6 +14,8 @@ Usage:
 
 Flags:
   -h, --help                    help for user
+      --host HOST               run on HOST instead, an ssh destination: ssh
+                                HOST runs cld there (see cld help)
       --notifications CHANNEL   the CHANNEL claude notifies on: auto, claude's
                                 default; iterm2 or iterm2_with_bell for iTerm2;
                                 kitty for kitty; ghostty for Ghostty;

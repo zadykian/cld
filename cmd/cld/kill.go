@@ -39,5 +39,6 @@ func newKill(typed string) *cobra.Command {
 		}
 		return tmux.Kill(suffix, home)
 	}
+	onHost{needs: hostNeeds(typed, "-n NAME", "name")}.add(kill, typed)
 	return kill
 }

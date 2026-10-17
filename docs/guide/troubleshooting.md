@@ -29,6 +29,9 @@
   ([upgrade notes](install-and-upgrade.md#from-cld-0130-and-earlier)).
 - **`File name too long`.** The socket's path, `$TMUX_TMPDIR/tmux-UID/cld-S` with links resolved,
   must fit in 103 bytes on macOS and 107 on Linux. Use a shorter name.
+- **`missing or unsuitable terminal: xterm-ghostty`** from tmux on a host, or another program
+  there that does not know `xterm-ghostty`. The host lacks Ghostty's terminfo: see
+  [another machine](another-host.md#terminfo).
 - **A slow cld.** Each run of tmux takes 6-20 ms built from source or most packages, and 100-200 ms
   from Ubuntu's snap.
   - `cld list`, a TAB and `cld join` without `-s` ask every running server, eight at a time: over

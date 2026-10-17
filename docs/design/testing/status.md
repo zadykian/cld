@@ -49,6 +49,9 @@ Each entry says what is left.
   looked into.
 - The list's status ([49](../decisions/0049-status-in-the-list.md)): format probed on 3.5a and 3.7c;
   bold `waiting` seen only in tmux's rendering.
+- `--host` ([62](../decisions/0062-commands-on-another-host.md)): run against the fake ssh, whose
+  host is the sandbox itself, with bash as the login shell. Not a real sshd, ssh's own `-t`,
+  `LogLevel` and `RemoteCommand=none`, nor a login shell other than bash.
 
 ## Read rather than run
 
