@@ -83,5 +83,10 @@ func completedSuffixes(work, sub, other string) []suffixCase {
 		{work, []string{"-n", "w"}, "work-\t1 session\nwork\t3 sessions\n:4\n",
 			"work-\t1 session\nwork\t2 sessions\n:4\n"},
 		{work, []string{"-s", "0", "-n", ""}, names, running},
+		// With --host, nothing: these sessions are not the host's (decision 62.6).
+		{work, []string{"--host", "ws", "-n", ""}, ":4\n", ":4\n"},
+		{work, []string{"--host=ws", "-s", ""}, ":4\n", ":4\n"},
+		{work, []string{"-n", "other", "--host", "ws", "-s", ""}, ":4\n", ":4\n"},
+		{work, []string{"--host", ""}, ":4\n", ":4\n"},
 	}
 }

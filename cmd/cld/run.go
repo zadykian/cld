@@ -9,6 +9,7 @@ import (
 
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/output"
+	"github.com/zadykian/cld/internal/remote"
 )
 
 // commands maps each command, and each alias of one, to the command it runs. They are cld's,
@@ -32,6 +33,10 @@ func run(args []string) error {
 			"resuming it first (see cld help)")
 	}
 	typed := args[0]
+	// Not a command of cobra's: what another host's cld runs as its first word (decision 62.4).
+	if typed == remote.Command {
+		return fromHost(args[1:])
+	}
 	command, known := commands[typed]
 	if !known {
 		return fail.Usage(fmt.Sprintf("unknown command '%s' (see cld help)", typed))

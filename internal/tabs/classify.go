@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/zadykian/cld/internal/ghostty"
+	"github.com/zadykian/cld/internal/remote"
 	"github.com/zadykian/cld/internal/session"
 )
 
@@ -83,10 +84,11 @@ func wraps(leader Process, name string) bool {
 	return isShell(name) && len(leader.Args) > 1 && path.Base(leader.Args[1]) == "ws-join"
 }
 
-// sshSeen is an ssh pane, with ssh's words after its name. A host that hostOK refuses is no host.
+// sshSeen is an ssh pane, with ssh's words after its name. A host --host would refuse is no host:
+// a restore types it unchanged, and never sanitises one.
 func sshSeen(args []string) Seen {
 	host, ok := sshHost(args)
-	if !ok || !hostOK(host) {
+	if !ok || !remote.ValidHost(host) {
 		return Seen{Kind: KindSSH}
 	}
 	return Seen{Kind: KindSSH, Host: host}
@@ -159,10 +161,3 @@ var shells = []string{"sh", "bash", "zsh", "fish", "ksh", "dash", "tcsh", "csh",
 
 // isShell reports whether the program named name is a shell.
 func isShell(name string) bool { return slices.Contains(shells, name) }
-
-// hostRE matches a host as a restore may type it into a shell.
-var hostRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]*$`)
-
-// hostOK reports whether host can be typed unchanged. A pane's host is never sanitised: one that
-// fails leaves the pane ssh with no host, which a restore passes by.
-func hostOK(host string) bool { return len(host) <= 255 && hostRE.MatchString(host) }

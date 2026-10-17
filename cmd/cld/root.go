@@ -25,7 +25,11 @@ Enter moves the terminal to the session picked, and Esc closes it; C-q ( and
 C-q ) move the terminal to the previous and the next session, C-q L back to
 the one it came from, and ! cld join in claude to the session it names. A
 session whose claude fails stays, showing why, until cld kill ends it, or it
-has been idle for longer than $CLD_IDLE_DAYS days (see cld help list).`
+has been idle for longer than $CLD_IDLE_DAYS days (see cld help list).
+
+Most commands take --host HOST, which runs them on HOST instead: cld runs ssh
+HOST, where a login shell runs cld with the same words. HOST is an ssh
+destination, such as a Host of ~/.ssh/config, and needs cld on its PATH.`
 
 // commandLine is cld's commands, for a command typed as typed with words after it: messages name
 // it as typed, "-V" for version, say. What cobra prints goes to out. cobra's defaults give way to
@@ -40,7 +44,7 @@ func commandLine(typed string, words []string, out io.Writer) *cobra.Command {
 
 	help, versionCommand := newHelp(typed), newVersion()
 	root.AddCommand(newJoin(typed, words), newDetach(typed), newKill(typed), newList(typed),
-		newRestore(typed), newSetup(typed), newUpdate(), versionCommand)
+		newRestore(typed), newSetup(typed), newUpdate(typed), versionCommand)
 	readOptions(root, typed, append(tree(root), help))
 	root.SetHelpCommand(help)
 	completionCommand(root)

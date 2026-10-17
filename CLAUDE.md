@@ -21,6 +21,7 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
 - `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, its merge, the watcher, and the
   restore: its plan, typed lines, record and report.
 - `internal/update`: `cld update`, which replaces cld with the latest release.
+- `internal/remote`: `--host`, the ssh that runs a command through cld on another host.
 - `internal/configfile`: edits in place the files the `setup` commands write.
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld when one cannot run.
 - `internal/fail`: carries exit statuses up to `main`.

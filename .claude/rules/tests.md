@@ -90,6 +90,9 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   and the real ps; `tabs_scripts_mocked_test.go`: the scripts against a mock Ghostty on macOS,
   with apply.js's cases in `tabs_scripts_apply_test.go`.
 - `cli_restore_test.go`: the word after `restore`.
+- `cli_host_test.go`: `--host`'s ssh, its words, `__host` and completion, and the helpers the host
+  tests share; `cli_host_refusals_test.go`: what `--host` refuses; `session_host_test.go`: sessions
+  on the host through the fake ssh.
 - `cli_TOPIC_test.go`: arguments, errors, tool and version checks, the help and the completion
   scripts, a file per topic; `cli_fake_tmux_test.go` has the helpers they share.
 - `completion_test.go`: `setup completion` where nothing was; `completion_files_test.go`: files

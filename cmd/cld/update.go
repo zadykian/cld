@@ -16,10 +16,10 @@ Where cld is the latest release already, or newer, nothing changes; a cld built
 from source, cld dev, is not updated. Once cld is replaced, the scripts that
 cld setup completion wrote are written anew where the new cld prints others.`
 
-// newUpdate is cld update (decision 21), which runs neither tmux nor claude, so makes none of
-// their checks (decision 21.5).
-func newUpdate() *cobra.Command {
-	return &cobra.Command{
+// newUpdate is cld update (decision 21), typed as typed, which runs neither tmux nor claude, so
+// makes none of their checks (decision 21.5).
+func newUpdate(typed string) *cobra.Command {
+	command := &cobra.Command{
 		Use:   "update",
 		Short: "update cld to the latest release",
 		Long:  updateLong,
@@ -43,6 +43,8 @@ func newUpdate() *cobra.Command {
 			return output.Print(report)
 		},
 	}
+	onHost{}.add(command, typed)
+	return command
 }
 
 // newVersion is cld version. cobra's help lists commands only, so its Long names its other

@@ -236,6 +236,9 @@ Checked with the probe or by hand, with what is left:
 - `restore tabs` ([59](decisions/0059-ghostty-tabs.md)): run against fakes of osascript, ps, ssh,
   open and ghostty, and its scripts' own logic against a mock Ghostty, on the macos job only.
   Ghostty's real answers to them come only from #177's spike, still to come.
+- `--host` ([62](decisions/0062-commands-on-another-host.md)): run against the fake ssh, whose host
+  is the sandbox itself, with bash as the login shell. Not a real sshd, ssh's own `-t`, `LogLevel`
+  and `RemoteCommand=none`, nor a login shell other than bash.
 
 Read in claude's bundle or docs rather than run. A run that would reach the API or claude.ai is
 the maintainer's to run or allow.

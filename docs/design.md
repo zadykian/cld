@@ -26,7 +26,7 @@ findings it rests on, and a finding links back.
 - [Terminals](design/findings/terminals.md): JediTerm, VS Code, iTerm2 and the other terminals,
   and Ghostty's AppleScript on macOS.
 - [Environment](design/findings/environment.md): shells, completion, cobra, `install.sh` and
-  GitHub, git, Go and Linux, telemetry, JetBrains IDEs and systemd.
+  GitHub, git, Go and Linux, telemetry, JetBrains IDEs, systemd and ssh.
 
 ## Decisions
 
@@ -62,7 +62,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [16. Resume](design/decisions/0016-resume.md): Accepted (#26). Amended by 24, 40, 41, 45 and 47.
   Superseded by 50.
 - [17. Shell completion](design/decisions/0017-shell-completion.md): Accepted (#25). Amended by 18,
-  19, 22, 24, 27, 28, 37, 40, 44, 49, 50, 52 and 53.
+  19, 22, 24, 27, 28, 37, 40, 44, 49, 50, 52, 53 and 62.
 - [18. Telemetry](design/decisions/0018-telemetry.md): Accepted (#30). Amended by 19, 22 and 48.
   Superseded by 52.
 - [19. Project settings](design/decisions/0019-project-settings.md): Accepted. Amended by 28, 52
@@ -114,13 +114,13 @@ The `adr` skill in `.claude/skills` adds a record.
 - [47. Agent view is off in cld's sessions](design/decisions/0047-agent-view-off.md): Accepted
   (#111). Amended by 50.
 - [48. Sessions come back after a reboot](design/decisions/0048-restore-after-reboot.md): Accepted
-  (#115). Amended by 50, 52, 59 and 60.
+  (#115). Amended by 50, 52, 59, 60 and 62.
 - [49. claude's status in the list](design/decisions/0049-status-in-the-list.md): Accepted (#113).
   Amended by 50.
 - [50. One command for a session](design/decisions/0050-one-command-join.md): Accepted (#114).
   Replaces `new` and `join` of 3 and `resume` of 16. Amended by 51 and 58.
 - [51. Moving between sessions](design/decisions/0051-moving-between-sessions.md): Accepted (#112).
-  Amended by 61.
+  Amended by 61 and 62.
 - [52. Telemetry outside cld](design/decisions/0052-telemetry-outside-cld.md): Accepted (#158).
   Replaces 18. Amended by 53.
 - [53. A project's settings and the user's](design/decisions/0053-project-and-user-settings.md):
@@ -138,3 +138,5 @@ The `adr` skill in `.claude/skills` adds a record.
   (#185).
 - [61. Running in another directory](design/decisions/0061-running-in-another-directory.md):
   Accepted (#186).
+- [62. Commands on another host](design/decisions/0062-commands-on-another-host.md): Accepted
+  (#186).

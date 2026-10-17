@@ -22,4 +22,6 @@ Usage:
   cld list [flags]
 
 Flags:
-  -h, --help   help for list
+  -h, --help        help for list
+      --host HOST   run on HOST instead, an ssh destination: ssh
+                    HOST runs cld there (see cld help)
