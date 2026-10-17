@@ -42,20 +42,24 @@ processes, in a file of the probe directory.
   throw, so that a plan the script cannot run fails the tests too.
 - The model can have Ghostty fail to make one terminal of an apply. Its build then fails partway
   and keeps the keys of what it made, as apply.js reports it. The fake's texts for such errors
-  stand in for JXA's until #177's spike, so cld must not rely on them.
+  stand in for JXA's until #177's spike, so cld must not rely on them. The model can also have
+  Ghostty drop a tab's first moves.
 - A failure mode comes from a file in the probe directory before the environment, as a watcher's
   environment is fixed once it starts. Each mode answers as the script would against such a
-  Ghostty: the error documents cld tells apart, osascript's own failure, an apply that fails
-  midway, and a hang. Where Ghostty does not run, the scripts answer before any Apple Event.
+  Ghostty: the error documents cld tells apart, osascript's own failure, and a hang. An apply may
+  also fail midway, or answer short. Where Ghostty does not run, the scripts answer before any
+  Apple Event.
 - A delay file holds the next snapshot back once it has read the model. So a test can keep a stale
-  snapshot in flight while it changes the model. Tests write both files by a rename: a watcher that
-  read one half written would miss the failure, or fail on the delay.
+  snapshot in flight while it changes the model. Another holds the next apply back once it has
+  built, while the restore holds the record's lock. Tests write these files by a rename: a watcher
+  that read one half written would miss the failure, or fail on the delay.
 - The probe plays ps from the model's processes, and ssh to a host that is the sandbox itself, for
   `restore tabs` and `--host`. The fake ssh runs the remote command with the real bash in `HOME`,
   `SHELL` set to that bash, as sshd sets the login shell. So a line cld types runs against the
   sandbox's real tmux, as on the host.
 - `CLD_FAKE_SSH_EXIT` plays a dropped connection only where ssh would connect. `ssh -G` never
-  connects, and cld's check of Ghostty's terminfo cache reads it whatever the connection does.
+  connects, and cld's check of Ghostty's terminfo cache reads it whatever the connection does. A
+  file of the probe directory gives a host the hostname and port that `ssh -G` prints.
 - The sandbox's `~/.profile` puts the tools under test first on a login shell's PATH. The login
   shell reads `/etc/profile` before it, where macOS's `path_helper` reorders the PATH. The fake ssh
   refuses a remote shell without it, which would run the developer's cld, or the real ssh.

@@ -1,15 +1,27 @@
-keep, on a Mac, a record of Ghostty's windows, tabs and splits, and of the ssh
-host and cld session each pane shows: --watch starts, unless one runs, a
-process that reads Ghostty every 5 s and ends as Ghostty quits, and --dry-run
-shows what the record holds. Run --watch in a Ghostty pane, from ssh's
+reopen, on a Mac, the Ghostty windows, tabs and splits that showed ssh and cld
+sessions, from the record cld restore tabs --watch keeps, and join those
+sessions again. In each pane Ghostty brought back after it quit, cld types what
+you would: ssh -t HOST, with cld join --existing for the session the pane
+showed last. Then the windows closed in the last 15 minutes, and those Ghostty
+did not bring back after it quit, open again with their tabs and splits, each
+pane typing its own line. A session you have joined again since is not joined
+twice, and one that HOST no longer runs, or that ended there on purpose, stays
+gone, with cld's message in its pane. Run --watch in a Ghostty pane, from ssh's
 LocalCommand or your shell's startup file. Needs Ghostty 1.4 or newer with
-macos-applescript on.
+macos-applescript on; with window-save-state = always, Ghostty brings its own
+windows back.
 
 Usage:
   cld restore tabs [flags]
 
 Flags:
-      --dry-run   print what the record holds, and do nothing
+      --all       reopen every window lost in this run of Ghostty and the
+                  one before
+      --closed    also reopen the tabs and splits closed one at a time
+      --dry-run   print what would reopen and what would be typed, and do
+                  nothing
   -h, --help      help for tabs
+      --older     reopen the windows lost before those reopened last, one
+                  burst at a time
       --watch     keep the record: start, unless one runs, a process that
                   reads Ghostty's tabs every 5 s and ends as Ghostty quits

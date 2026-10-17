@@ -15,33 +15,46 @@ import (
 )
 
 // tabsLong is restore tabs's help.
-const tabsLong = `keep, on a Mac, a record of Ghostty's windows, tabs and splits, and of the ssh
-host and cld session each pane shows: --watch starts, unless one runs, a
-process that reads Ghostty every 5 s and ends as Ghostty quits, and --dry-run
-shows what the record holds. Run --watch in a Ghostty pane, from ssh's
+const tabsLong = `reopen, on a Mac, the Ghostty windows, tabs and splits that showed ssh and cld
+sessions, from the record cld restore tabs --watch keeps, and join those
+sessions again. In each pane Ghostty brought back after it quit, cld types what
+you would: ssh -t HOST, with cld join --existing for the session the pane
+showed last. Then the windows closed in the last 15 minutes, and those Ghostty
+did not bring back after it quit, open again with their tabs and splits, each
+pane typing its own line. A session you have joined again since is not joined
+twice, and one that HOST no longer runs, or that ended there on purpose, stays
+gone, with cld's message in its pane. Run --watch in a Ghostty pane, from ssh's
 LocalCommand or your shell's startup file. Needs Ghostty 1.4 or newer with
-macos-applescript on.`
+macos-applescript on; with window-save-state = always, Ghostty brings its own
+windows back.`
 
 // tabsCommand is cld restore tabs, named in its messages as typed, and its options (decision
 // 59.11). --watching is the watcher that --watch starts, hidden.
 type tabsCommand struct {
 	typed                   string
 	watch, watching, dryRun bool
+	older, all, closed      bool
 }
 
-// restoreTabs is cld restore tabs, which keeps a record of Ghostty's tabs on a Mac (decision 59).
+// restoreTabs is cld restore tabs, which reopens Ghostty's tabs on a Mac (decision 59).
 func restoreTabs(typed string) *cobra.Command {
 	t := &tabsCommand{typed: typed}
 	command := &cobra.Command{
 		Use:   "tabs",
-		Short: "keep a record of a Mac's Ghostty windows, tabs and splits",
+		Short: "reopen a Mac's Ghostty windows, tabs and splits of cld sessions",
 		Long:  tabsLong,
 		Args:  cmdline.NoArguments(typed),
 		RunE:  t.run,
 	}
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
 	flags := command.Flags()
-	flags.BoolVar(&t.dryRun, "dry-run", false, "print what the record holds, and do nothing")
+	flags.BoolVar(&t.all, "all", false, "reopen every window lost in this run of Ghostty and the\n"+
+		"one before")
+	flags.BoolVar(&t.closed, "closed", false, "also reopen the tabs and splits closed one at a time")
+	flags.BoolVar(&t.dryRun, "dry-run", false, "print what would reopen and what would be typed, "+
+		"and do\nnothing")
+	flags.BoolVar(&t.older, "older", false, "reopen the windows lost before those reopened last, "+
+		"one\nburst at a time")
 	flags.BoolVar(&t.watch, "watch", false, "keep the record: start, unless one runs, a process "+
 		"that\nreads Ghostty's tabs every 5 s and ends as Ghostty quits")
 	flags.BoolVar(&t.watching, "watching", false, "")
@@ -49,7 +62,7 @@ func restoreTabs(typed string) *cobra.Command {
 	return command
 }
 
-// run runs restore tabs: the watcher, its start, or the dry-run. A usage error ends it before any
+// run runs restore tabs: the watcher, its start, or the restore. A usage error ends it before any
 // tool runs. Then osascript, which only a Mac has, must be on the PATH.
 func (t *tabsCommand) run(*cobra.Command, []string) error {
 	if err := t.together(); err != nil {
@@ -65,30 +78,56 @@ func (t *tabsCommand) run(*cobra.Command, []string) error {
 		_, err := tabs.Start()
 		return err
 	}
-	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun})
+	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun,
+		Older: t.older, All: t.all, Closed: t.closed})
 	if err != nil {
 		return err
 	}
-	return printReport(report)
-}
-
-// together refuses the options that exclude each other, and a run with neither --watch nor
-// --dry-run, which reopens nothing yet.
-func (t *tabsCommand) together() error {
-	switch {
-	case t.watching && (t.watch || t.dryRun):
-		return fail.Usage(t.typed + ": --watching takes no other option (see cld help)")
-	case t.watch && t.dryRun:
-		return fail.Usage(t.typed + ": --watch and --dry-run exclude each other: --watch only " +
-			"starts the record's watcher (see cld help)")
-	case !t.watch && !t.watching && !t.dryRun:
-		return fail.Usage(t.typed + ": give --watch or --dry-run (see cld help)")
+	if err := printReport(report); err != nil {
+		return err
+	}
+	if own := report.Own; own != nil {
+		// A failed step's status is lost to the exec, its warnings out first (decision 59.9).
+		if err := output.Print(own.Joining() + "\n"); err != nil {
+			return err
+		}
+		return own.Exec()
+	}
+	if report.Failed {
+		return fail.Status(1)
 	}
 	return nil
 }
 
-// printReport prints report: its lines, then its warnings and notes. A failed step makes the
-// status 1, after them (decision 48.8).
+// together refuses the options that exclude each other: --watching takes none, --watch only
+// starts the watcher, and --all reopens what --older would.
+func (t *tabsCommand) together() error {
+	restoring := []struct {
+		set  bool
+		name string
+	}{{t.dryRun, "--dry-run"}, {t.older, "--older"}, {t.all, "--all"}, {t.closed, "--closed"}}
+	for _, option := range restoring {
+		switch {
+		case !option.set:
+		case t.watching:
+			return fail.Usage(t.typed + ": --watching takes no other option (see cld help)")
+		case t.watch:
+			return fail.Usage(t.typed + ": --watch and " + option.name + " exclude each other: " +
+				"--watch only starts the record's watcher (see cld help)")
+		}
+	}
+	switch {
+	case t.watching && t.watch:
+		return fail.Usage(t.typed + ": --watching takes no other option (see cld help)")
+	case t.older && t.all:
+		return fail.Usage(t.typed + ": --older and --all exclude each other: --all reopens every " +
+			"burst (see cld help)")
+	}
+	return nil
+}
+
+// printReport prints report: its lines, then its warnings and notes. Its error is only that of a
+// write that failed.
 func printReport(report *tabs.Report) error {
 	if len(report.Lines) > 0 {
 		if err := output.Print(strings.Join(report.Lines, "\n") + "\n"); err != nil {
@@ -100,9 +139,6 @@ func printReport(report *tabs.Report) error {
 	}
 	for _, note := range report.Notes {
 		output.Note(note)
-	}
-	if report.Failed {
-		return fail.Status(1)
 	}
 	return nil
 }

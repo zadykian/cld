@@ -1,0 +1,198 @@
+package tabs
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/zadykian/cld/internal/ghostty"
+)
+
+// dryRun reports what a restore with opts would do of plan p, made against the record in dir as
+// seen, and what it would leave (decision 59.6). Ghostty and the watcher come first. Then come the
+// panes to type into, what would reopen, what waits for Ghostty's undo, and what is left. Notes on
+// the plan and on Ghostty's config end it.
+func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []*Loss,
+	opts Options, report *Report,
+) {
+	c := newClock()
+	r := seen.record
+	report.Lines = append(report.Lines, c.ghostty(seen))
+	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)
+	c.wouldType(r, p, report)
+	c.wouldReopen(p, report)
+	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
+	var lines []string
+	for _, l := range left {
+		lines = append(lines, "  "+size(l)+", "+c.when(l)+": "+reopenWith(r, l, opts, c.now))
+	}
+	report.section("Left:", lines)
+	for _, l := range r.Losses {
+		if l.Cause == CauseQuit && len(l.Windows) == 0 {
+			report.Lines = append(report.Lines,
+				"Ghostty brought back every window as it quit at "+c.at(l.At))
+		}
+	}
+	var notes []string
+	for _, note := range p.notes(c) {
+		notes = append(notes, "  "+note)
+	}
+	report.section("Notes:", append(notes, settingsNotes(ctx, seen.app)...))
+}
+
+// ghostty is the report's first line: Ghostty's version, pid and start, or that none runs.
+func (c clock) ghostty(seen *observed) string {
+	if seen.o == nil {
+		return "Ghostty is not running: cld restore tabs opens it, and reopens what it does not" +
+			" bring back"
+	}
+	line := "Ghostty"
+	if seen.o.Version != "" {
+		line += " " + seen.o.Version
+	}
+	line += fmt.Sprintf(", pid %d", seen.app.PID)
+	if seen.app.Launched > 0 {
+		return line + ", started " + c.at(time.UnixMilli(int64(seen.app.Launched*1000)))
+	}
+	if p, ok := seen.o.Procs.ByPID(seen.app.PID); ok {
+		return line + ", started " + c.at(p.Start)
+	}
+	return line
+}
+
+// watcher is the watcher's lines: its pid and last tick, or that none runs, and its last line.
+func (c clock) watcher(s Status) []string {
+	line := "The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one"
+	if s.PID != 0 {
+		line = fmt.Sprintf("The watcher: pid %d, last read at %s", s.PID, c.atSecond(s.LastTick))
+	}
+	if s.LastLine == "" {
+		return []string{line}
+	}
+	return []string{line, "The watcher's last line: " + s.LastLine}
+}
+
+// wouldType adds a line per pane Ghostty kept that plan p joins again: its directory, what cut its
+// binding, and the line typed. cld's own pane is joined by exec, here.
+func (c clock) wouldType(r *Record, p *Planned, report *Report) {
+	var lines []string
+	pane := func(where, id, line string) {
+		if p := r.Panes[id]; p != nil && p.Last != nil {
+			where += ", " + c.cut(p.Last)
+		}
+		lines = append(lines, "  "+where+": "+line)
+	}
+	for i, j := range p.typed {
+		pane("in "+c.dir(paneCwd(r, j.pane)), j.pane, p.script.Typed[i].Line)
+	}
+	if j := p.own; j != nil {
+		pane("here, in "+c.dir(paneCwd(r, j.pane)), j.pane, Line(j.binding, j.cached))
+	}
+	report.section("Would type into "+count(len(lines), "pane")+":", lines)
+}
+
+// cut is what ended last's binding: a typed line that left the pane at its prompt, or a quit.
+func (c clock) cut(last *Last) string {
+	switch {
+	case last.Typed != nil:
+		return "typed at " + c.at(*last.Typed) + " and back at its prompt"
+	case last.Cut == CutQuit:
+		return "as Ghostty quit at " + c.at(last.At)
+	}
+	return "as it closed at " + c.at(last.At)
+}
+
+// wouldReopen adds a section per loss that plan p rebuilds: where it goes back, then a line per
+// window, tab or split. Each pane shows what its line joins, or a shell in its directory.
+func (c clock) wouldReopen(p *Planned, report *Report) {
+	for i := 0; i < len(p.builds); {
+		l, b := p.builds[i].loss, p.script.Builds[i]
+		var lines []string
+		n := i
+		for ; n < len(p.builds) && p.builds[n].loss == l; n++ {
+			lines = append(lines, "  "+c.panes(p.script.Builds[n], p.builds[n]))
+		}
+		what := count(n-i, "window")
+		switch {
+		case l.Cause == CauseTab && b.Kind == buildTab && b.Index > 0:
+			what = fmt.Sprintf("a tab at %d in its window", b.Index)
+		case l.Cause == CauseTab && b.Kind == buildTab && b.Anchor != "":
+			what = "a tab in its window"
+		case l.Cause == CausePane && b.Kind == buildPane:
+			what = "a split beside its pane"
+		case l.Cause == CauseTab || l.Cause == CausePane:
+			what = noun(l) + " as a window"
+		}
+		report.section("Would reopen "+what+", "+c.when(l)+":", lines)
+		i = n
+	}
+}
+
+// panes is what build b of info's loss makes: its tabs, each its panes split by |. A pane names
+// the session or host its line joins, or a shell in its directory.
+func (c clock) panes(b ghostty.Build, info building) string {
+	var tabs []string
+	for _, tab := range b.Tabs {
+		var panes []string
+		for _, leaf := range buildLeaves(tab.Tree) {
+			if bind, ok := info.bindings[leaf.Key]; ok {
+				panes = append(panes, bind.String())
+			} else {
+				panes = append(panes, "a shell in "+c.dir(leaf.Cwd))
+			}
+		}
+		tabs = append(tabs, strings.Join(panes, " | "))
+	}
+	if b.Kind != buildWindow {
+		return strings.Join(tabs, ", ")
+	}
+	return count(len(tabs), "tab") + ": " + strings.Join(tabs, ", ")
+}
+
+// losses is a line per loss not restored, with its size and time, but for a quit that lost
+// nothing.
+func (c clock) losses(list []*Loss) []string {
+	var lines []string
+	for _, l := range list {
+		if l.Restored == nil && len(l.Windows) > 0 {
+			lines = append(lines, "  "+size(l)+", "+c.when(l))
+		}
+	}
+	return lines
+}
+
+// settingsNotes are the notes on the settings in Ghostty's config that keep a restore from working
+// as it should, as ghostty +show-config gives them. app is the Ghostty that runs, if any.
+func settingsNotes(ctx context.Context, app ghostty.App) []string {
+	bin, ok := ghostty.Binary(app)
+	if !ok {
+		return []string{"  cld cannot read Ghostty's config: ghostty is not installed"}
+	}
+	s, err := ghostty.ReadSettings(ctx, bin)
+	if err != nil {
+		return []string{"  cld cannot read Ghostty's config: " + err.Error()}
+	}
+	var notes []string
+	switch s.SaveState {
+	case "always":
+	case "default":
+		notes = append(notes, "  window-save-state is default: whether Ghostty brings back its"+
+			" windows after Cmd+Q rests on macOS's own setting; set it to always")
+	default:
+		notes = append(notes, "  window-save-state is "+s.SaveState+
+			": Ghostty brings back no window after Cmd+Q")
+	}
+	if s.Title {
+		notes = append(notes, "  title is set in Ghostty's config: it hides cld's title,"+
+			" and with it each pane's session")
+	}
+	if !s.SSHTerminfo {
+		notes = append(notes, "  shell-integration-features lacks ssh-terminfo: cld types"+
+			" TERM="+fallbackTerm+" for hosts Ghostty has no terminfo cached for")
+	}
+	if s.HiddenTitlebar {
+		notes = append(notes, "  macos-titlebar-style is hidden: rebuilt tabs open as windows")
+	}
+	return notes
+}
