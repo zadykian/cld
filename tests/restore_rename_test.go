@@ -22,7 +22,7 @@ func TestRenameRacingRestore(t *testing.T) {
 		s.Environ(nil))
 	tmux := holdTmux(t, s, "restore's tmux making cld-x", "*' new-session -d -s cld-x '*")
 	tmux.start(t)
-	restore := startCldAsync(t, s, s.Work, tmux.env, "restore")
+	restore := startCldAsync(t, s, s.Work, tmux.env, "restore", "sessions")
 	tmux.held(t)
 	term := terminal.New(t, "tmux", s)
 	list := startList(t, s, term, listScript, nil)

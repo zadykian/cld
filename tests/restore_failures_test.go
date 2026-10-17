@@ -10,8 +10,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The sessions cld restore leaves ended or alone, and those it cannot bring back (decisions 48.5
-// and 48.8).
+// The sessions cld restore sessions leaves ended or alone, and those it cannot bring back
+// (decisions 48.5 and 48.8).
 
 // restore leaves ended, with a note, a session whose run mark is older than CLD_IDLE_DAYS, and
 // removes the mark. It brings back one used within the limit, keeping its mark's time, which
@@ -26,11 +26,12 @@ func TestRestoreIdle(t *testing.T) {
 	age(t, 3*24*time.Hour+time.Minute, companionFile(s, "stale", ".run"))
 
 	checkExit(t, "restore, CLD_IDLE_DAYS=2d",
-		s.RunCld(map[string]string{"CLD_IDLE_DAYS": "2d"}, "restore"), 1, "",
+		s.RunCld(map[string]string{"CLD_IDLE_DAYS": "2d"}, "restore", "sessions"), 1, "",
 		"cld: CLD_IDLE_DAYS is not a number of days: '2d'\n")
 	checkMarks(t, s, "after the refusal", map[string]bool{"fresh": true, "stale": true})
 
-	checkExit(t, "restore", s.RunCld(map[string]string{"CLD_IDLE_DAYS": "2"}, "restore"), 0,
+	checkExit(t, "restore",
+		s.RunCld(map[string]string{"CLD_IDLE_DAYS": "2"}, "restore", "sessions"), 0,
 		"Restored session 'fresh' in "+s.Work+"\n",
 		"cld: left session 'stale' ended, idle for 3 days\n")
 	claude := s.WaitProbes(1)[0]
@@ -79,7 +80,8 @@ func TestRestoreFailures(t *testing.T) {
 	writeRestorable(t, s, "old", s.Work, "", old, env)
 	writeEntry(t, s, "unmarked", s.Work, "")
 
-	checkExit(t, "restore", s.RunCld(nil, "restore"), 1, "Restored session 'ok' in "+s.Work+"\n",
+	checkExit(t, "restore", s.RunCld(nil, "restore", "sessions"), 1,
+		"Restored session 'ok' in "+s.Work+"\n",
 		"cld: warning: cannot restore session 'gone': session 'gone' ran in "+gone+
 			", which no longer exists; resume it from here with cld join -s gone --resume "+
 			firstID+"\n"+
@@ -122,7 +124,7 @@ func TestRestoreBesideServers(t *testing.T) {
 
 	tmux := holdTmux(t, s, "restore's tmux making cld-x", "*' new-session -d -s cld-x '*")
 	tmux.start(t)
-	first := startCldAsync(t, s, s.Work, tmux.env, "restore")
+	first := startCldAsync(t, s, s.Work, tmux.env, "restore", "sessions")
 	tmux.held(t)
 	s.MustTmux("cld-x", "-f", "/dev/null", "new-session", "-d", "-s", "cld-x")
 	tmux.release(t)
@@ -138,7 +140,7 @@ func TestRestoreBesideServers(t *testing.T) {
 
 	s.MustTmux("cld-x", "kill-server")
 	waitServerExit(t, s, "x")
-	checkExit(t, "restore again", s.RunCld(nil, "restore"), 0,
+	checkExit(t, "restore again", s.RunCld(nil, "restore", "sessions"), 0,
 		"Restored session 'x' in "+s.Work+", continuing its turn\n", "")
 	claude := s.WaitProbes(1)[0]
 	want := []string{"--name", "cld-x", "--settings", sessionSettings(s, "cld-x", s.Work),

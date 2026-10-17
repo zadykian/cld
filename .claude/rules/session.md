@@ -64,13 +64,13 @@ works.
 - The entry and the session's home keep the directory `join` made the session in. An ended session
   comes back where claude was last, where that can be entered outside `.claude/worktrees`
   ([decision 56](../../docs/design/decisions/0056-following-claudes-cd.md)).
-- `join` holds the record's lock from the lookup to tmux, `restore` for each session it brings back,
-  and the list's forget and rename too (decisions
+- `join` holds the record's lock from the lookup to tmux, `restore sessions` for each session it
+  brings back, and the list's forget and rename too (decisions
   [40](../../docs/design/decisions/0040-session-record.md),
   [50](../../docs/design/decisions/0050-one-command-join.md) and
   [57](../../docs/design/decisions/0057-renaming-from-the-list.md)).
 - A live start mark younger than 10 s, read before a lookup that finds no session, makes `join` wait
-  and `restore` pass the session by. The list's forget and rename refuse it (decisions
+  and `restore sessions` pass the session by. The list's forget and rename refuse it (decisions
   [50](../../docs/design/decisions/0050-one-command-join.md) and
   [57](../../docs/design/decisions/0057-renaming-from-the-list.md)).
 - The rename links each file beside the entry under the new name, never replacing one, and keeps
@@ -85,8 +85,8 @@ works.
   ([decision 40](../../docs/design/decisions/0040-session-record.md)).
 - cld reads none of claude's transcripts
   ([decision 40](../../docs/design/decisions/0040-session-record.md)).
-- `restore` brings a session back detached, with the claude and environment of `NAME.env` but cld's
-  `TMUX_TMPDIR`; it never replays the words after `--`
+- `restore sessions` brings a session back detached, with the claude and environment of `NAME.env`
+  but cld's `TMUX_TMPDIR`; it never replays the words after `--`
   ([decision 48](../../docs/design/decisions/0048-restore-after-reboot.md)).
 
 ## claude's settings and hooks

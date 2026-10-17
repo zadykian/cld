@@ -22,7 +22,7 @@ overrides cobra.
   and `restore`, checked before cobra. Options are read up to the first argument, and the commands
   stay unsorted (decisions [11](../../docs/design/decisions/0011-go-and-cobra.md),
   [53.2](../../docs/design/decisions/0053-project-and-user-settings.md) and
-  [59.1](../../docs/design/decisions/0059-ghostty-tabs.md)).
+  [60.1](../../docs/design/decisions/0060-a-command-for-each-restore.md)).
 - cld's output goes through `output.Print`, cobra's help and completion included, so that a failed
   write is an error ([decision 11](../../docs/design/decisions/0011-go-and-cobra.md)).
 - `help` takes one of cld's commands, a command of `setup`, `restore` or `completion` after it, a

@@ -18,6 +18,13 @@ By hand, download your system's binary and `cld.sha256` from a
 
 [Upgrading](../guide.md) says how to upgrade; here is what changed, newest first.
 
+### From cld 0.13.0 and earlier
+
+- **`cld restore`** is now `cld restore sessions`, and plain `cld restore` fails as a missing
+  command ([decision 60](../design/decisions/0060-a-command-for-each-restore.md)).
+- On Linux, run `cld setup restore` once more. The unit an older cld wrote runs `cld restore`, which
+  fails as your systemd starts. Its sessions stay ended, and `cld restore sessions` brings them back.
+
 ### From cld 0.12.0 and earlier
 
 - **Notifications** reach a terminal that shows another window of the session, and no longer go

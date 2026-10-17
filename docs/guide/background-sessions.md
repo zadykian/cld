@@ -15,7 +15,7 @@ docs say what changed since.
 | Coming back | claude as you left it, in the renderer `/tui` chose | always fullscreen; scrollback and copy mode see only the screen |
 | Idle | claude runs until you end it, or 30 days without a terminal (see [idle sessions](idle-sessions.md)) | the supervisor stops claude after about an hour done and unattached, unless pinned (`Ctrl+T`) |
 | claude crashes | the session stays, with claude's last screen, `exited` in `cld list` | the supervisor starts claude again; `claude logs ID` shows its output |
-| Reboot | `cld restore` resumes each conversation, and continues a turn the reboot cut off | the session shows failed (stopped after 48 hours); attaching resumes it |
+| Reboot | `cld restore sessions` resumes each conversation, and continues a turn the reboot cut off | the session shows failed (stopped after 48 hours); attaching resumes it |
 | Listing | `cld list`: name, state, claude's status, last activity, directory | `claude agents`: state, activity, age; attach, peek, reply, dispatch, stop |
 
 - Agent view does not show a cld session, nor does `cld list` show background sessions.

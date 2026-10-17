@@ -103,7 +103,8 @@ func TestRestoreLastDirectory(t *testing.T) {
 	writeRestorable(t, s, "a", s.Work, firstID, filepath.Join(sandbox.ProbeBin, "claude"),
 		s.Environ(nil))
 	s.WriteFile(companionFile(s, "a", ".dir"), moved+"\n")
-	checkExit(t, "restore", s.RunCld(nil, "restore"), 0, "Restored session 'a' in "+moved+"\n", "")
+	checkExit(t, "restore", s.RunCld(nil, "restore", "sessions"), 0,
+		"Restored session 'a' in "+moved+"\n", "")
 	claude := s.WaitProbes(1)[0]
 	want := []string{"--name", "cld-a", "--settings", sessionSettings(s, "cld-a", s.Work),
 		"--resume", firstID}

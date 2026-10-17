@@ -17,7 +17,7 @@ const recordWait = 10 * time.Second
 // Options are what cld restore tabs is asked to do.
 type Options struct {
 	DryRun bool // report what a restore would do, and change nothing in Ghostty
-	Older  bool // reopen also the newest burst of the losses a plain restore leaves
+	Older  bool // reopen also the newest burst of the losses a restore without options leaves
 	All    bool // reopen every loss
 	Closed bool // reopen the tabs and splits closed alone too
 }

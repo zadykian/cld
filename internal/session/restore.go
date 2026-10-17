@@ -1,9 +1,9 @@
 package session
 
-// cld restore brings back the sessions a reboot ended, the record's entries with a run mark and no
-// server (see the top of record.go; decision 48). A reboot leaves the mark, which kill, the list's
-// Ctrl+X, the idle sweep and claude's exit with status 0 remove (see unmark and died). cld setup
-// restore has the user's systemd run restore at startup (see internal/restore).
+// cld restore sessions brings back the sessions a reboot ended, the record's entries with a run
+// mark and no server (see the top of record.go; decision 48). A reboot leaves the mark, which kill,
+// the list's Ctrl+X, the idle sweep and claude's exit with status 0 remove (see unmark and died).
+// cld setup restore has the user's systemd run it at startup (see internal/restore).
 
 import (
 	"context"

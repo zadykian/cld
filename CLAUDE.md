@@ -10,12 +10,12 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
 - `cmd/cld`: the command line, a file per command with its help text.
 - `cmd/cld/internal`: what the commands share. `cmdline` holds the checks of arguments and
   options and their errors, `naming` the `-n` and `-s`, and `idle` `CLD_IDLE_DAYS` and the sweep.
-- `internal/session`: the tmux side, cld's record of its sessions, and `cld restore`.
+- `internal/session`: the tmux side, cld's record of its sessions, and `cld restore sessions`.
 - `internal/picker`: the interactive `cld list` on a terminal.
 - `internal/project`: `cld setup config project` and `user`: a project's `.claude` settings,
   `.mcp.json` and `.gitignore`, and claude's user settings.
 - `internal/completion`: `cld setup completion`, the script where bash, zsh or fish reads it.
-- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`.
+- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore sessions`.
 - `internal/ghostty`: Ghostty on a Mac through osascript: the JXA scripts, the snapshot and the
   apply, Ghostty's errors, and its CLI's `+show-config` and `+ssh-cache`.
 - `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, its merge, the watcher, and the

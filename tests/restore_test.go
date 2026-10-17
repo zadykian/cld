@@ -13,8 +13,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// cld restore after a reboot, each server killed with kill-server, which runs no hook; and the
-// helpers the restore_*_test.go files share (decision 48).
+// cld restore sessions after a reboot, each server killed with kill-server, which runs no hook; and
+// the helpers the restore_*_test.go files share (decision 48).
 
 // continuePrompt is what restore gives the claude of a session that was in a turn.
 const continuePrompt = "The machine restarted while you were working; " +
@@ -130,7 +130,8 @@ func TestRestore(t *testing.T) {
 	marks := map[string]bool{"a": true, "b": true, "c": false, "d": false}
 	checkMarks(t, s, "before restore", marks)
 
-	result := s.RunCldIn(elsewhere, map[string]string{"CLD_TEST_ORIGIN": "restore"}, "restore")
+	result := s.RunCldIn(elsewhere, map[string]string{"CLD_TEST_ORIGIN": "restore"},
+		"restore", "sessions")
 	checkExit(t, "restore", result, 0, "Restored session 'a' in "+dir+"\n"+
 		"Restored session 'b' in "+dir+", continuing its turn\n", "")
 	checkRestoredClaudes(t, s, dir, claudes)
@@ -147,7 +148,7 @@ func TestRestore(t *testing.T) {
 	if got, want := readEntry(s, "b"), entry("b", dir, secondID); got != want {
 		t.Errorf("b's entry %q, want %q", got, want)
 	}
-	checkExit(t, "restore again", s.RunCldIn(elsewhere, nil, "restore"), 0, "", "")
+	checkExit(t, "restore again", s.RunCldIn(elsewhere, nil, "restore", "sessions"), 0, "", "")
 	if probes := s.Probes(); len(probes) != 6 {
 		t.Errorf("%d claudes started after restore again, want 6", len(probes))
 	}

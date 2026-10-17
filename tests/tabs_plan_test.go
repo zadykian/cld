@@ -61,10 +61,10 @@ type selectCase struct {
 	left            string
 }
 
-// A plain restore reopens the windows lost in the last 15 minutes, 14 minutes ago but not 16, and
-// the run before's quit at any age. --older adds a burst at each run, those within 10 minutes of
-// the newest left, and --all every one; tabs and splits closed alone wait for --closed. A restored
-// loss stays closed, so a second plain restore reopens nothing. Each run notes what it leaves.
+// A restore without options reopens the windows lost in the last 15 minutes, 14 minutes ago but
+// not 16, and the run before's quit at any age. --older adds a burst at each run, those within 10
+// minutes of the newest left, and --all every one; --closed the tabs and splits closed alone. A
+// restored loss stays closed, so a second such restore reopens nothing. Each notes what it leaves.
 func TestTabsPlanSelects(t *testing.T) {
 	t.Parallel()
 	for _, test := range []selectCase{
@@ -123,8 +123,8 @@ func checkSelects(t *testing.T, test selectCase) {
 	}
 }
 
-// The dry-run lists what a plain restore would reopen, and each loss it leaves with the option
-// that reopens it.
+// The dry-run lists what a restore without options would reopen, and each loss it leaves with the
+// option that reopens it.
 func TestTabsPlanLeft(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

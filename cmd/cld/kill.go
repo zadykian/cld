@@ -14,7 +14,7 @@ server running after claude has exited. claude runs its SessionEnd hooks with
 the reason "other", and may still run them when cld kill returns. Without -n,
 a session made in another repository or directory of the same name is refused.
 After a kill, cld list shows the session as ended, and cld join brings its
-conversation back; cld restore leaves it ended.`
+conversation back; cld restore sessions leaves it ended.`
 
 // newKill is cld kill, which ends a session and its server (decision 32), and needs -s
 // (decision 24.5).

@@ -28,9 +28,9 @@ become.
 `cld join --existing -s S` is for a script, or another machine, that joins a session by its name
 ([decision 58](../design/decisions/0058-joining-only-a-session-that-exists.md)).
 
-- It resumes what `cld restore` would ([After a reboot](after-a-reboot.md)), and a session idle for
-  longer than `CLD_IDLE_DAYS` too. It refuses one that `/exit`, `cld kill`, a kill in `cld list` or
-  the idle sweep ended, which `cld join` without `--existing` resumes.
+- It resumes what `cld restore sessions` would ([After a reboot](after-a-reboot.md)), and a session
+  idle for longer than `CLD_IDLE_DAYS` too. It refuses one that `/exit`, `cld kill`, a kill in
+  `cld list` or the idle sweep ended, which `cld join` without `--existing` resumes.
 - It goes by the name alone. A session made again under the name, by `cld join -s S`, or by a bare
   `cld join` once the index has expired after 30 days, is joined all the same.
 - An older cld refuses `--existing` with status 2, as an option it does not know, and creates

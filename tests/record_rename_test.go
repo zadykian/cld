@@ -211,7 +211,7 @@ func TestListRenameRestore(t *testing.T) {
 		t.Errorf("list: exit %s, want 0", code)
 	}
 	checkRenamed(t, s, "x", "y", entry("y", s.Work, firstID), times)
-	checkExit(t, "restore", s.RunCld(nil, "restore"), 0,
+	checkExit(t, "restore", s.RunCld(nil, "restore", "sessions"), 0,
 		"Restored session 'y' in "+moved+", continuing its turn\n", "")
 	restored := s.WaitProbes(1)[0]
 	want := []string{"--name", "cld-y", "--settings", sessionSettings(s, "cld-y", s.Work),
