@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
@@ -61,7 +62,7 @@ const (
 )
 
 // ssh -G DEST, as cld runs it, prints the user of user@host, else $USER or me, the host in lower
-// case, as ssh does, and port 22.
+// case, as ssh does, and port 22. A line of ssh-hosts gives a host another hostname and port.
 func testSSHConfig(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -81,6 +82,10 @@ func testSSHConfig(t *testing.T) {
 		checkExit(t, "ssh -G "+test.dest, runFake(t, s, extra, "ssh", "-G", test.dest), 0,
 			"user "+test.user+"\nhostname "+test.host+"\nport 22\n", "")
 	}
+	s := sandbox.New(t)
+	s.WriteProbeFile(mac.SSHHosts, "ws3 ws3.lan 2222\nv6 fe80::1 2200\n")
+	checkExit(t, "ssh -G bob@v6", runFake(t, s, nil, "ssh", "-G", "bob@v6"), 0,
+		"user bob\nhostname fe80::1\nport 2200\n", "")
 }
 
 // A remote command runs in HOME, by the bash first on the PATH with SHELL set to it, as sshd runs

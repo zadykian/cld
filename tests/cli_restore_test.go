@@ -13,9 +13,8 @@ import (
 const restoreCommands = "cld restore sessions or cld restore tabs (see cld help)\n"
 
 // restore runs nothing itself: sessions or tabs follows it, checked before cobra sees it, as
-// setup's commands are (decisions 59.1 and 60.1). cobra would run tabs for restore --help=false
-// tabs. restore tabs reopens nothing yet, and asks for --watch or --dry-run before it looks for
-// osascript.
+// setup's commands are (decisions 59.1 and 60.1). An option before one is no option of restore's:
+// cobra would run tabs for restore --help=false tabs.
 func TestRestoreRequiresCommand(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -35,8 +34,6 @@ func TestRestoreRequiresCommand(t *testing.T) {
 		{[]string{"restore", "--help=false", "sessions"}, unexpected("restore", "--help=false")},
 		{[]string{"restore", "--"}, unexpected("restore", "--")},
 		{[]string{"restore", "--", "sessions"}, unexpected("restore", "--")},
-		{[]string{"restore", "tabs"},
-			"cld: restore tabs: give --watch or --dry-run (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()

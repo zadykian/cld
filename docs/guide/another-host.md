@@ -37,8 +37,8 @@ ssh hands your `TERM` to the host. In Ghostty that is `xterm-ghostty`, and tmux 
 `missing or unsuitable terminal: xterm-ghostty` where the host lacks its terminfo. Ghostty's
 `ssh-terminfo` installs it only through an `ssh` you type in Ghostty's shell, not one cld runs.
 
-Type `ssh HOST` once in a Ghostty pane with `ssh-terminfo` on, and leave with `exit`. Or run
-`TERM=xterm-256color cld join --host HOST …`.
+Type `ssh HOST` once in a Ghostty pane with `ssh-terminfo` on, and leave with `exit`
+([Ghostty's tabs](ghostty-tabs.md#terminfo)). Or run `TERM=xterm-256color cld join --host HOST …`.
 
 ## ssh's connections
 

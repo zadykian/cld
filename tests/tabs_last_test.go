@@ -97,7 +97,7 @@ func TestTabsLastNotWithinARun(t *testing.T) {
 			t.Errorf("pane %s is %+v, want local with no last", id, p)
 		}
 	}
-	if result := dryRun(t, s); strings.Contains(result.Stdout, "Panes to join again") {
-		t.Errorf("restore tabs --dry-run printed\n%s\nwant no pane to join again", result.Stdout)
+	if result := dryRun(t, s); strings.Contains(result.Stdout, "Would type") {
+		t.Errorf("restore tabs --dry-run printed\n%s\nwant no pane to type into", result.Stdout)
 	}
 }
