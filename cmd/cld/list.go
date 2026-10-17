@@ -63,6 +63,7 @@ func newList(typed string) *cobra.Command {
 		}
 		return listSessions()
 	}
+	onHost{terminal: terminals}.add(list, typed)
 	return list
 }
 

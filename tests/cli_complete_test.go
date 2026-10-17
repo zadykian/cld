@@ -85,12 +85,13 @@ const (
 		"fish\tprint the completion script for fish\n" +
 		"powershell\tprint the completion script for powershell\n"
 	// cobra describes an option by the first line of its usage, backquotes included.
+	offeredHost        = "--host\trun on `HOST` instead, an ssh destination: ssh\n"
 	offeredJoinOptions = "--detach-others\tdetach any other terminal attached to the session\n" +
 		"--directory\trun as if in `DIR`: join makes the session there,\n" +
 		"-C\trun as if in `DIR`: join makes the session there,\n" +
 		"--existing\tjoin only a session that runs, or that a stop ended:\n" +
 		"--fork\twith --resume, resume a copy of SESSION under a new\n" +
-		"--help\thelp for join\n-h\thelp for join\n" +
+		"--help\thelp for join\n-h\thelp for join\n" + offeredHost +
 		"--name\tthe session's `NAME`, before -SUFFIX: by default the\n" +
 		"-n\tthe session's `NAME`, before -SUFFIX: by default the\n" +
 		"--new\tcreate a session that has ended anew, with a new\n" +
@@ -99,7 +100,7 @@ const (
 		"-s\tthe session's `SUFFIX`, after NAME-: by default the index\n" +
 		"--worktree\tcreate the session with claude in git worktree\n" +
 		"-w\tcreate the session with claude in git worktree\n"
-	offeredDetachOptions = "--help\thelp for detach\n-h\thelp for detach\n" +
+	offeredDetachOptions = "--help\thelp for detach\n-h\thelp for detach\n" + offeredHost +
 		"--name\tthe session's `NAME`, before -SUFFIX: by default the\n" +
 		"-n\tthe session's `NAME`, before -SUFFIX: by default the\n" +
 		"--suffix\tthe session's `SUFFIX`, after NAME-\n" +
@@ -153,7 +154,7 @@ var completeCases = []struct {
 	{[]string{"__complete", "restore", "x"}, noFileDirective},
 	{[]string{"__complete", "restore", "sessions", ""}, noFileDirective},
 	{[]string{"__complete", "restore", "sessions", "-"},
-		"--help\thelp for sessions\n-h\thelp for sessions\n" + noFileDirective},
+		"--help\thelp for sessions\n-h\thelp for sessions\n" + offeredHost + noFileDirective},
 	{[]string{"__complete", "restore", "tabs", ""}, noFileDirective},
 	// --watching, which --watch runs, is hidden.
 	{[]string{"__complete", "restore", "tabs", "--"}, offeredTabsOptions + noFileDirective},
@@ -164,7 +165,7 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "config", "project", "-"},
 		"--directory\tset up the project in `DIR`, rather than in the\n" +
 			"-C\tset up the project in `DIR`, rather than in the\n" +
-			"--help\thelp for project\n-h\thelp for project\n" +
+			"--help\thelp for project\n-h\thelp for project\n" + offeredHost +
 			"--mcp\tan MCP `SERVER` for claude in the project: goland or\n" +
 			"--permissions\twhat claude may do in the project without asking:\n" + noFileDirective},
 	// --mcp offers its servers; after a comma, those the list does not have, after it.

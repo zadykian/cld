@@ -2,8 +2,8 @@
 
 What the programs around cld do, apart from tmux, claude and the terminals. That takes in shells and
 their completion, cobra, the install script and GitHub, git, and Go and Linux. It also takes in
-Docker and the collector, JetBrains IDEs and systemd. The shell entries on "the script" describe cld
-up to 0.3.0, a bash script that ended in `exec tmux`.
+Docker and the collector, JetBrains IDEs, systemd and ssh. The shell entries on "the script"
+describe cld up to 0.3.0, a bash script that ended in `exec tmux`.
 
 ## Shells
 
@@ -216,3 +216,13 @@ plugin 2.1.5 in GoLand 2026.2.3, all run; the entries serve
 
 tmux-resurrect and tmux-continuum, which decision 48 passes over, are in
 [tmux-sessions.md](tmux-sessions.md).
+
+## ssh
+
+- **A command beside a `RemoteCommand` of ssh's config** (OpenSSH 10.2p1 on Ubuntu 26.04, run with
+  `-F` and a `HostName` that does not resolve). ssh refused it before connecting, with
+  `Cannot execute command-line and remote command.` and status 255. Given `-o RemoteCommand=none`,
+  it went on to connect ([decision 62](../decisions/0062-commands-on-another-host.md)).
+- **Options after the host** (OpenSSH 10.2p1, `ssh -G`). ssh read them too:
+  `ssh -G HOST -p 2222` printed port 2222. After `--`, it read none past the host, and printed port
+  22 ([decision 62](../decisions/0062-commands-on-another-host.md)).

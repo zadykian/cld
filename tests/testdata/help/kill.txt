@@ -11,6 +11,8 @@ Usage:
 
 Flags:
   -h, --help            help for kill
+      --host HOST       run on HOST instead, an ssh destination: ssh
+                        HOST runs cld there (see cld help)
   -n, --name NAME       the session's NAME, before -SUFFIX: by default the
                         git repository's name here, or else the directory's
   -s, --suffix SUFFIX   the session's SUFFIX, after NAME-

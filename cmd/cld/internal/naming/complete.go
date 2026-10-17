@@ -17,8 +17,12 @@ import (
 // the last "-" as cld's messages split a name, comes once, in list's order, described by the
 // number of its sessions.
 func Names(all bool) cobra.CompletionFunc {
-	return func(_ *cobra.Command, _ []string, typed string) ([]cobra.Completion,
+	return func(c *cobra.Command, _ []string, typed string) ([]cobra.Completion,
 		cobra.ShellCompDirective) {
+		// The sessions list shows are this machine's, not --host's (decision 62.6).
+		if cmdline.OnHost(c) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
 		var names []string
 		counts := map[string]int{}
 		for _, s := range listed(all) {
@@ -59,6 +63,10 @@ func splitName(whole string) (string, bool) {
 func Suffixes(all bool) cobra.CompletionFunc {
 	return func(c *cobra.Command, _ []string, typed string) ([]cobra.Completion,
 		cobra.ShellCompDirective) {
+		// The sessions list shows are this machine's, not --host's (decision 62.6).
+		if cmdline.OnHost(c) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
 		var name string
 		var home session.Home
 		if c.Flags().Changed("name") {

@@ -73,6 +73,8 @@ func setupProject(typed string) *cobra.Command {
 	}
 	cmdline.CompleteWith(command, "mcp", serverNames)
 	cmdline.CompleteWith(command, "permissions", permissionSets)
+	onHost{needs: hostNeeds(typed, "-C DIR, the project's directory there", "directory")}.add(
+		command, typed)
 	return command
 }
 

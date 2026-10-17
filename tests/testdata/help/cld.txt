@@ -14,6 +14,10 @@ the one it came from, and ! cld join in claude to the session it names. A
 session whose claude fails stays, showing why, until cld kill ends it, or it
 has been idle for longer than $CLD_IDLE_DAYS days (see cld help list).
 
+Most commands take --host HOST, which runs them on HOST instead: cld runs ssh
+HOST, where a login shell runs cld with the same words. HOST is an ssh
+destination, such as a Host of ~/.ssh/config, and needs cld on its PATH.
+
 Usage:
   cld [command]
 

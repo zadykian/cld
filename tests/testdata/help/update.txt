@@ -9,4 +9,6 @@ Usage:
   cld update [flags]
 
 Flags:
-  -h, --help   help for update
+  -h, --help        help for update
+      --host HOST   run on HOST instead, an ssh destination: ssh
+                    HOST runs cld there (see cld help)

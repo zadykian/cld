@@ -52,9 +52,10 @@ in a file of the probe directory.
   snapshot in flight while it changes the model. Another holds the next apply back once it has
   built, while the restore holds the record's lock. Tests write these files by a rename: a watcher
   that read one half written would miss the failure, or fail on the delay.
-- The probe plays ps from the model's processes, and ssh to a host that is the sandbox itself. The
-  fake ssh runs the remote command with the real bash in `HOME`, `SHELL` set to that bash, as sshd
-  sets the login shell. So a line cld types runs against the sandbox's real tmux, as on the host.
+- The probe plays ps from the model's processes, and ssh to a host that is the sandbox itself, for
+  `restore tabs` and `--host`. The fake ssh runs the remote command with the real bash in `HOME`,
+  `SHELL` set to that bash, as sshd sets the login shell. So a line cld types runs against the
+  sandbox's real tmux, as on the host.
 - `CLD_FAKE_SSH_EXIT` plays a dropped connection only where ssh would connect. `ssh -G` never
   connects, and cld's check of Ghostty's terminfo cache reads it whatever the connection does. A
   file of the probe directory gives a host the hostname and port that `ssh -G` prints.

@@ -51,5 +51,6 @@ func newDetach(typed string) *cobra.Command {
 	}
 	cmdline.CompleteWith(detach, "name", naming.Names(false))
 	cmdline.CompleteWith(detach, "suffix", naming.Suffixes(false))
+	onHost{needs: hostNeeds(typed, "-n NAME", "name")}.add(detach, typed)
 	return detach
 }
