@@ -84,7 +84,8 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   record the restore cannot write. `tabs_apply_runs_test.go`: an apply that stops, a Ghostty the
   restore opens, the watcher it starts, the record's lock and a stale tick. `tabs_lines_test.go`:
   each typed line, and its run through the fake ssh on real tmux; `tabs_own_test.go`: the exec in
-  cld's own pane.
+  cld's own pane. `tabs_layout_test.go`: split trees from the panes' sizes, on real ptys;
+  `tabs_layout_kept_test.go`: a tree kept or revised from tick to tick, and a restore's.
 - `tabs_scripts_test.go`: the scripts' terms against Ghostty's dictionary, their syntax on macOS,
   and the real ps; `tabs_scripts_mocked_test.go`: the scripts against a mock Ghostty on macOS,
   with apply.js's cases in `tabs_scripts_apply_test.go`.
