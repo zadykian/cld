@@ -116,3 +116,54 @@ func TestRestoreLastDirectory(t *testing.T) {
 		t.Errorf("entry %q, want %q", got, want)
 	}
 }
+
+// An ended session that -C's DIR names comes back where it ran, not in DIR, and --new makes it anew
+// in DIR (decision 61.1). Where it ran is gone, the advice gives the shell, which is elsewhere, DIR
+// by -C: absolute, and quoted where it needs to be. Without -C, the advice resumes it from here.
+func TestJoinDirectoryEnded(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	made, dir, spaced := filepath.Join(s.Root, "made"), filepath.Join(s.Root, "dir", "_"),
+		filepath.Join(s.Root, "a b", "_")
+	makeDirs(t, made, filepath.Dir(dir), dir, filepath.Dir(spaced), spaced)
+	writeEntry(t, s, "x", made, firstID)
+	writeEntry(t, s, "y", made, firstID)
+	writeEntry(t, s, "gone", filepath.Join(s.Root, "gone"), firstID)
+	for _, c := range []struct {
+		args []string
+		in   string
+	}{
+		{[]string{"join", "-C", "../dir/_", "-s", "x"}, made},
+		{[]string{"join", "-C", "../dir/_", "-s", "y", "--new"}, dir},
+	} {
+		result := s.RunCldOnTerminal(fakeTmux(s), c.args...)
+		record := s.FakeTmuxRecord()
+		resumed := optionFollowedBy(record.Argv, "--resume", firstID)
+		if result.Code != 0 || result.Stderr != "" || record.Cwd != c.in ||
+			!optionFollowedBy(record.Argv, "-c", c.in) || resumed != (c.in == made) {
+			t.Errorf("%q: exit %d, stderr %q, tmux in %s, arguments %q; want it in %s, -c there, "+
+				"--resume %s only in %s", c.args, result.Code, result.Stderr, record.Cwd,
+				record.Argv, c.in, firstID, made)
+		}
+	}
+	entries := map[string]string{"x": entry("x", made, firstID), "y": entry("y", dir, "")}
+	for name, want := range entries {
+		if got := readEntry(s, name); got != want {
+			t.Errorf("%s's entry %q, want %q", name, got, want)
+		}
+	}
+	advice := "cld: session 'gone' ran in " + filepath.Join(s.Root, "gone") +
+		", which no longer exists; resume it "
+	for _, c := range []struct{ from, option, want string }{
+		{s.Work, "../dir/_", "with cld join -C " + dir},
+		{s.Work, "../a b/_", "with cld join -C '" + spaced + "'"},
+		{dir, "", "from here with cld join"},
+	} {
+		args := []string{"join", "-s", "gone"}
+		if c.option != "" {
+			args = append(args, "-C", c.option)
+		}
+		checkJoinRefused(t, "join of gone with -C "+c.option, s.RunCldIn(c.from, nil, args...),
+			advice+c.want+" -s gone --resume "+firstID+"\n")
+	}
+}

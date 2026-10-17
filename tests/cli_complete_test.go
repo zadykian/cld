@@ -78,6 +78,8 @@ const (
 		"powershell\tprint the completion script for powershell\n"
 	// cobra describes an option by the first line of its usage, backquotes included.
 	offeredJoinOptions = "--detach-others\tdetach any other terminal attached to the session\n" +
+		"--directory\trun as if in `DIR`: join makes the session there,\n" +
+		"-C\trun as if in `DIR`: join makes the session there,\n" +
 		"--existing\tjoin only a session that runs, or that a stop ended:\n" +
 		"--fork\twith --resume, resume a copy of SESSION under a new\n" +
 		"--help\thelp for join\n-h\thelp for join\n" +
@@ -147,6 +149,12 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "completion", ""}, offeredShellSetups + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "f"}, offeredSetupFish + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "bash", ""}, noFileDirective},
+	{[]string{"__complete", "setup", "config", "project", "-"},
+		"--directory\tset up the project in `DIR`, rather than in the\n" +
+			"-C\tset up the project in `DIR`, rather than in the\n" +
+			"--help\thelp for project\n-h\thelp for project\n" +
+			"--mcp\tan MCP `SERVER` for claude in the project: goland or\n" +
+			"--permissions\twhat claude may do in the project without asking:\n" + noFileDirective},
 	// --mcp offers its servers; after a comma, those the list does not have, after it.
 	{[]string{"__complete", "setup", "config", "project", "--m"},
 		"--mcp\tan MCP `SERVER` for claude in the project: goland or\n" + noFileDirective},

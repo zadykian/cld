@@ -15,7 +15,7 @@ import (
 	"github.com/zadykian/cld/internal/session"
 )
 
-// joinUse names "[flags]" before ARGS, where cobra would add it at the end, and leaves --new,
+// joinUse names "[flags]" before ARGS, where cobra would add it at the end, and leaves -C, --new,
 // --fork, --existing and --detach-others to it, for 80 columns.
 const joinUse = "join [-n NAME] [-s SUFFIX] [-w] [--resume SESSION] [flags] [-- ARGS...]"
 
@@ -26,16 +26,17 @@ last; with --detach-others, those terminals are detached. Where the session has
 ended, claude first resumes the conversation it had last, by the ID cld keeps
 of it, or else by the name cld-NAME-SUFFIX, in the directory it ran in; with
 --new, it starts a new one here instead. Where there is no such session, join
-creates it in the current directory. NAME is by default the name of the git
-repository the directory is in, or else of the directory itself; without -s,
-SUFFIX is INDEX, 0 or, where sessions NAME-INDEX run or have ended within 30
-days, one above the highest of their INDEX, and join creates the session. Where
-the directory's name leaves nothing, as in /, the session is SUFFIX alone. NAME
-and SUFFIX consist of letters, digits, "_" and "-", each starting with a letter
-or digit, and make 64 characters at most. Without -n, a running session made in
-another repository or directory of the same name is refused. Without -s, join
-also ends the sessions idle for longer than $CLD_IDLE_DAYS days, as cld list
-does, once it has taken its INDEX.
+creates it in the current directory. With -C DIR, join runs as if in DIR. NAME
+is by default the name of the git repository the directory is in, or else of
+the directory itself; without -s, SUFFIX is INDEX, 0 or, where sessions
+NAME-INDEX run or have ended within 30 days, one above the highest of their
+INDEX, and join creates the session. Where the directory's name leaves nothing,
+as in /, the session is SUFFIX alone. NAME and SUFFIX consist of letters,
+digits, "_" and "-", each starting with a letter or digit, and make 64
+characters at most. Without -n, a running session made in another repository or
+directory of the same name is refused. Without -s, join also ends the sessions
+idle for longer than $CLD_IDLE_DAYS days, as cld list does, once it has taken
+its INDEX.
 
 With --resume, claude resumes SESSION in a session join creates, in the current
 directory: whatever claude --resume takes, such as a session ID, a name, or a
@@ -83,7 +84,7 @@ type joinCommand struct {
 	names naming.Options
 
 	worktree, fresh, fork, detachOthers, existing bool
-	conversation                                  string
+	conversation, directory                       string
 	// The command a terminal runs as it moves gives these, not the user (decisions 51.3 and
 	// 51.4).
 	switchedFrom, moved string
@@ -102,6 +103,8 @@ func newJoin(typed string, words []string) *cobra.Command {
 	}
 	j.names = naming.Add(join, "the session's `SUFFIX`, after NAME-: by default the index\n"+
 		"above the highest of the sessions NAME-INDEX, or 0")
+	cmdline.Directory(join, &j.directory, "run as if in `DIR`: join makes the session there,\n"+
+		"and takes NAME's default from it")
 	flags := join.Flags()
 	flags.BoolVarP(&j.worktree, "worktree", "w", false,
 		"create the session with claude in git worktree\n"+
@@ -140,15 +143,18 @@ func (j *joinCommand) run(c *cobra.Command, args []string) error {
 	if err := j.check(c, len(claudeWords) > 0); err != nil {
 		return err
 	}
+	from, err := cmdline.Enter(c, j.directory)
+	if err != nil {
+		return err
+	}
 	joining := session.Joining{DetachOthers: j.detachOthers, Worktree: j.worktree, New: j.fresh,
 		Conversation: j.conversation, Fork: j.fork, Args: claudeWords,
-		SwitchedFrom: j.switchedFrom, Typed: j.words, Existing: j.existing}
+		SwitchedFrom: j.switchedFrom, Typed: j.words, From: from, Existing: j.existing}
 	// Without -s, join creates the session under the next index and sweeps every server; with
 	// -s it reads its session's server only (decision 50.3).
 	next := !j.names.SuffixGiven()
 	var limit time.Duration
 	if next {
-		var err error
 		if limit, err = idle.Limit(); err != nil {
 			return err
 		}

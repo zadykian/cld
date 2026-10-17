@@ -42,6 +42,9 @@ overrides cobra.
 - `join` refuses a word after `--` that cld gives claude itself, that resumes a conversation, or
   with which claude leaves the session (`claudeOptions` in `cmdline`;
   [decision 41](../../docs/design/decisions/0041-claude-options.md)).
+- `join` and `setup config project` enter `-C`'s DIR as `cd` does, after their own checks and
+  before anything reads the current directory; a move carries the directory before `-C`
+  ([decision 61](../../docs/design/decisions/0061-running-in-another-directory.md)).
 - The default NAME, from the repository or the directory, is the one name cld changes. Messages name
   a session back as `-n NAME -s SUFFIX`
   ([decision 24](../../docs/design/decisions/0024-names-from-the-repository.md)).

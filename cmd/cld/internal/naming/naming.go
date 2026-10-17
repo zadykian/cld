@@ -93,7 +93,7 @@ func (o Options) GivenName() (string, bool) {
 func (o Options) Resolve(tmux *session.Tmux) (string, session.Home, error) {
 	name, home := *o.name, session.Home{}
 	if !o.flags.Changed("name") {
-		name, home = defaultName()
+		name, home = defaultName("")
 	}
 	if name != "" {
 		name += "-"
@@ -112,11 +112,11 @@ func (o Options) Resolve(tmux *session.Tmux) (string, session.Home, error) {
 	return name, home, nil
 }
 
-// defaultName is the NAME of NAME-SUFFIX where -n gives none, and the home that sessions of it
-// are taken from (decision 37). The home is none where NAME is "", as in the root directory,
-// where -s names any session whole.
-func defaultName() (string, session.Home) {
-	name, home := session.DefaultName("")
+// defaultName is the NAME of NAME-SUFFIX where -n gives none, in directory dir or else the current
+// one. It also returns the home that sessions of it are taken from (decision 37): none where NAME
+// is "", as in the root directory, where -s names any session whole.
+func defaultName(dir string) (string, session.Home) {
+	name, home := session.DefaultName(dir)
 	if name == "" {
 		return "", session.Home{}
 	}

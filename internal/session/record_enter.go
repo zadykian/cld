@@ -15,13 +15,13 @@ import (
 // enter makes the directory the session of entry r comes back in (see backIn) the current one, PWD
 // naming it too, and returns it. join and restore start claude there to resume the session's
 // conversation (decisions 40.4 and 56.4). One that cannot be entered is refused (see enterError).
-func enter(r entry) (string, error) {
-	dir, err := enterable(r)
+func enter(r entry, chosen bool) (string, error) {
+	dir, err := enterable(r, chosen)
 	if err != nil {
 		return "", err
 	}
 	if err := os.Chdir(dir); err != nil {
-		return "", enterError(r, dir, err)
+		return "", enterError(r, dir, err, chosen)
 	}
 	if err := os.Setenv("PWD", dir); err != nil {
 		return "", fail.Runtime(err.Error())
@@ -30,11 +30,12 @@ func enter(r entry) (string, error) {
 }
 
 // enterable is the directory the session of entry r comes back in, where it can be entered, and
-// otherwise why join refuses to resume the session's conversation there.
-func enterable(r entry) (string, error) {
+// otherwise why join refuses to resume the session's conversation there. chosen is whether -C
+// chose the current directory (see enterError).
+func enterable(r entry, chosen bool) (string, error) {
 	dir := backIn(r)
 	if err := canEnter(dir); err != nil {
-		return "", enterError(r, dir, err)
+		return "", enterError(r, dir, err, chosen)
 	}
 	return dir, nil
 }
@@ -89,13 +90,18 @@ func canEnter(dir string) error {
 
 // enterError refuses dir, where the session of entry r would come back, which err says cannot be
 // entered. Its advice is the join that resumes the conversation in the current directory instead,
-// by the entry's ID or else by the session's name.
-func enterError(r entry, dir string, err error) error {
+// by the entry's ID or else by the session's name. Where -C chose it, the advice names it with -C,
+// as the user's shell is elsewhere (decision 61.1).
+func enterError(r entry, dir string, err error, chosen bool) error {
 	conversation := r.Conversation
 	if conversation == "" {
 		conversation = "cld-" + r.Name
 	}
-	advice := "; resume it from here with cld join " + Options(r.Name) + " --resume " + conversation
+	join := "from here with cld join "
+	if here, err := os.Getwd(); chosen && err == nil {
+		join = "with cld join -C " + shellArgument(here) + " "
+	}
+	advice := "; resume it " + join + Options(r.Name) + " --resume " + conversation
 	if errors.Is(err, fs.ErrNotExist) {
 		return &fail.Error{Status: 1, Advice: advice,
 			Message: "session '" + r.Name + "' ran in " + dir + ", which no longer exists"}

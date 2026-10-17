@@ -122,6 +122,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [50. One command for a session](design/decisions/0050-one-command-join.md): Accepted (#114).
   Replaces `new` and `join` of 3 and `resume` of 16. Amended by 51 and 58.
 - [51. Moving between sessions](design/decisions/0051-moving-between-sessions.md): Accepted (#112).
+  Amended by 61.
 - [52. Telemetry outside cld](design/decisions/0052-telemetry-outside-cld.md): Accepted (#158).
   Replaces 18. Amended by 53.
 - [53. A project's settings and the user's](design/decisions/0053-project-and-user-settings.md):
@@ -135,3 +136,5 @@ The `adr` skill in `.claude/skills` adds a record.
   exists](design/decisions/0058-joining-only-a-session-that-exists.md): Accepted (#175).
 - [60. A command for each restore](design/decisions/0060-a-command-for-each-restore.md): Accepted
   (#185).
+- [61. Running in another directory](design/decisions/0061-running-in-another-directory.md):
+  Accepted (#186).
