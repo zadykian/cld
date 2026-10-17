@@ -154,9 +154,12 @@ func showsAny(o *Observation, l *Loss) bool {
 }
 
 // lossCopies are loss l's leaves: each terminal id, and the pane as last seen, nil where none.
-func lossCopies(l *Loss) iter.Seq2[string, *Pane] {
+func lossCopies(l *Loss) iter.Seq2[string, *Pane] { return windowCopies(l.Windows) }
+
+// windowCopies are the leaves of windows, a loss's: each terminal id, and its pane's copy.
+func windowCopies(windows []Window) iter.Seq2[string, *Pane] {
 	return func(yield func(string, *Pane) bool) {
-		for _, w := range l.Windows {
+		for _, w := range windows {
 			for _, tab := range w.Tabs {
 				if !leafCopies(tab.Tree, yield) {
 					return

@@ -41,9 +41,12 @@ const (
 	offeredSetupRestore    = "restore\thave your systemd run cld restore at login, or at boot\n"
 	offeredSetups          = offeredConfig + offeredSetupCompletion + offeredSetupRestore
 
-	offeredRestoreTabs = "tabs\tkeep a record of a Mac's Ghostty windows, tabs and splits\n"
-	offeredTabsOptions = "--dry-run\tprint what the record holds, and do nothing\n" +
+	offeredRestoreTabs = "tabs\treopen a Mac's Ghostty windows, tabs and splits of cld sessions\n"
+	offeredTabsOptions = "--all\treopen every window lost in this run of Ghostty and the\n" +
+		"--closed\talso reopen the tabs and splits closed one at a time\n" +
+		"--dry-run\tprint what would reopen and what would be typed, and do\n" +
 		"--help\thelp for tabs\n" +
+		"--older\treopen the windows lost before those reopened last, one\n" +
 		"--watch\tkeep the record: start, unless one runs, a process that\n"
 
 	offeredProject = "project\tset claude up in the project in the current directory\n"

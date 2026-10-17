@@ -54,7 +54,8 @@ func unusable(err error) {
 }
 
 // printConfig prints what ssh -G prints of the destination, the one word in args. The user is
-// user@host's, else $USER or me, the host is in lower case, as ssh writes it, and the port 22.
+// user@host's, else $USER or me. The hostname is the host in lower case, as ssh writes it, and
+// the port 22. A line HOST HOSTNAME PORT of ssh-hosts gives others, as a Host block would.
 func printConfig(args []string) error {
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
 		unusable(errConfig)
@@ -63,7 +64,17 @@ func printConfig(args []string) error {
 	if at := strings.LastIndexByte(host, '@'); at >= 0 {
 		user, host = host[:at], host[at+1:]
 	}
-	_, err := fmt.Printf("user %s\nhostname %s\nport 22\n", user, strings.ToLower(host))
+	hostname, port := strings.ToLower(host), "22"
+	data, err := os.ReadFile(filepath.Join(os.Getenv("CLD_PROBE_DIR"), mac.SSHHosts))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for line := range strings.Lines(string(data)) {
+		if fields := strings.Fields(line); len(fields) == 3 && fields[0] == host {
+			hostname, port = fields[1], fields[2]
+		}
+	}
+	_, err = fmt.Printf("user %s\nhostname %s\nport %s\n", user, hostname, port)
 	return err
 }
 

@@ -14,8 +14,7 @@ const restoreCommands = "cld restore or cld restore tabs (see cld help)\n"
 
 // restore takes no word but its command tabs, checked before cobra sees it, as setup's are
 // (decision 59.1). An option before tabs is no option of restore's: cobra would run tabs for
-// restore --help=false tabs. restore tabs reopens nothing yet, and asks for --watch or --dry-run
-// before it looks for osascript.
+// restore --help=false tabs.
 func TestRestoreRequiresTabs(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -30,8 +29,6 @@ func TestRestoreRequiresTabs(t *testing.T) {
 		{[]string{"restore", "--"}, unexpected("restore", "--")},
 		{[]string{"restore", "--", "tabs"}, unexpected("restore", "--")},
 		{[]string{"restore", ""}, unexpected("restore", "")},
-		{[]string{"restore", "tabs"},
-			"cld: restore tabs: give --watch or --dry-run (see cld help)\n"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			t.Parallel()

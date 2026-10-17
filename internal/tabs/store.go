@@ -118,21 +118,25 @@ func nonNil[T any](list []T) []T {
 	return list
 }
 
-// save writes r to the record in dir, by a temporary file renamed over it. Where r's bytes are
-// old, it writes nothing, so that a record that did not change keeps its file and time.
-func save(dir string, r *Record, old []byte) error {
+// save writes r to the record in dir, by a temporary file renamed over it, and returns r's bytes,
+// the old of a later save. Where they are old, it writes nothing, so that a record that did not
+// change keeps its file and time.
+func save(dir string, r *Record, old []byte) ([]byte, error) {
 	normalize(r)
 	var data bytes.Buffer
 	encoder := json.NewEncoder(&data)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", " ")
 	if err := encoder.Encode(r); err != nil {
-		return err
+		return nil, err
 	}
 	if bytes.Equal(data.Bytes(), old) {
-		return nil
+		return old, nil
 	}
-	return replace(filepath.Join(dir, recordFile), data.Bytes())
+	if err := replace(filepath.Join(dir, recordFile), data.Bytes()); err != nil {
+		return nil, err
+	}
+	return data.Bytes(), nil
 }
 
 // replace replaces file with data: written to a temporary file beside it, readable by the user

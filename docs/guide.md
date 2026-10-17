@@ -14,7 +14,7 @@ yet, troubleshooting and upgrading. How cld works, and why, is in [design.md](de
   agent view's moves
 - [After a reboot](guide/after-a-reboot.md): `cld restore` and `cld setup restore`
 - [Ghostty's tabs on a Mac](guide/ghostty-tabs.md): Ghostty's settings, the watcher of
-  `cld restore tabs --watch`, and what its record misses
+  `cld restore tabs --watch`, what a restore reopens and loses, its failures, and what it misses
 - [claude's options and worktrees](guide/claude-options.md): the words after `--`, and `-w`
 - [claude's settings](guide/project-settings.md): a project's permission sets and IDE port, and
   your own settings

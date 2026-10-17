@@ -92,10 +92,11 @@ sessions claude makes on its server, then behave as plain tmux.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`
   ([decision 48](decisions/0048-restore-after-reboot.md)).
 - `internal/ghostty`: Ghostty on a Mac, for `cld restore tabs`: the JXA scripts osascript runs,
-  the snapshot, Ghostty's errors and their advice, and its CLI's `+show-config`
-  ([decision 59](decisions/0059-ghostty-tabs.md)).
+  the snapshot and the apply, Ghostty's errors and their advice, and its CLI's `+show-config` and
+  `+ssh-cache` ([decision 59](decisions/0059-ghostty-tabs.md)).
 - `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, each pane's classification
-  through ps and cld's title, the merge, the watcher and the dry-run.
+  through ps and cld's title, the merge and the watcher. Then the restore: what it reopens, the
+  dedupe, the plan and its typed lines, the record after the apply, and the report.
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld as a shell would when
   one cannot run ([decision 11.5 and 11.9](decisions/0011-go-and-cobra.md)).
 - `internal/fail`: carries exit statuses up to `main`, the only place that exits.

@@ -67,7 +67,7 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
   `setup restore`.
 - `tabs_fakes_test.go`: the probe's osascript against the model Ghostty in `internal/mac`, its
   snapshot, and the helpers the `tabs_fakes_*` files share. `tabs_fakes_failures_test.go`: its
-  failure modes, its delay file and the arguments it refuses; `tabs_fakes_apply_test.go`: its
+  failure modes, its delay files and the arguments it refuses; `tabs_fakes_apply_test.go`: its
   apply. `tabs_fakes_ssh_test.go`: the probe's ssh, on real tmux; `tabs_fakes_tools_test.go`: its
   ps, the sh fakes of open and ghostty, a pty's size, and the pty as cld's input.
 - `tabs_test.go`: `restore tabs` against the fake Ghostty, its record and its dry-run, and the
@@ -77,8 +77,17 @@ in [testing.md](../../docs/design/testing.md); each helper's doc comment says ho
 - `tabs_watch_test.go`: the watcher's life; `tabs_watch_ticks_test.go`: its ticks, its failures,
   the record's lock and its restart; `tabs_watch_runs_test.go`: the handover, a relaunch and the
   last tick; `tabs_refusals_test.go`: what `restore tabs` refuses.
+- `tabs_plan_test.go`: what a restore reopens, as its options ask; `tabs_plan_report_test.go`:
+  the dedupe, and the dry-run's report of a plan. `tabs_apply_test.go`: the plan apply.js gets,
+  and the record after it. `tabs_apply_order_test.go`: the builds' order, and those a restore
+  leaves out; `tabs_apply_report_test.go`: the report's rarer lines, an apply that fails, and a
+  record the restore cannot write. `tabs_apply_runs_test.go`: an apply that stops, a Ghostty the
+  restore opens, the watcher it starts, the record's lock and a stale tick. `tabs_lines_test.go`:
+  each typed line, and its run through the fake ssh on real tmux; `tabs_own_test.go`: the exec in
+  cld's own pane.
 - `tabs_scripts_test.go`: the scripts' terms against Ghostty's dictionary, their syntax on macOS,
-  and the real ps; `tabs_scripts_mocked_test.go`: the scripts against a mock Ghostty on macOS.
+  and the real ps; `tabs_scripts_mocked_test.go`: the scripts against a mock Ghostty on macOS,
+  with apply.js's cases in `tabs_scripts_apply_test.go`.
 - `cli_restore_test.go`: the word after `restore`.
 - `cli_TOPIC_test.go`: arguments, errors, tool and version checks, the help and the completion
   scripts, a file per topic; `cli_fake_tmux_test.go` has the helpers they share.
