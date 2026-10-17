@@ -79,7 +79,7 @@ sessions claude makes on its server, then behave as plain tmux.
     ([decision 46](decisions/0046-idle-sessions.md)).
 - `internal/session`: the tmux side, and cld's record of its sessions. `switch.go` and
   `switch_*.go` move a terminal between servers, `record.go` and `record_*.go` keep the record and
-  `restore.go` is `cld restore`.
+  `restore.go` is `cld restore sessions`.
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
   join's checks, kill's steps, and the forget and the rename.
 - `internal/project`: `cld setup config project`, a project's claude settings, `.mcp.json` and
@@ -90,8 +90,9 @@ sessions claude makes on its server, then behave as plain tmux.
 - `internal/update`: `cld update` ([decision 21](decisions/0021-self-update.md)).
 - `internal/completion`: `cld setup completion`, and the scripts `cld update` writes anew
   ([decision 22](decisions/0022-setting-completion-up.md)).
-- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`
-  ([decision 48](decisions/0048-restore-after-reboot.md)).
+- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore sessions`
+  (decisions [48](decisions/0048-restore-after-reboot.md) and
+  [60](decisions/0060-a-command-for-each-restore.md)).
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld as a shell would when
   one cannot run ([decision 11.5 and 11.9](decisions/0011-go-and-cobra.md)).
 - `internal/fail`: carries exit statuses up to `main`, the only place that exits.
@@ -115,8 +116,10 @@ line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cl
 `cmd/cld/internal/cmdline` give each reason.
 
 - cld checks the first argument before cobra, which takes an unknown command for an argument of
-  the root and runs `cld -n x join` as `join -n x`. It checks the word after `setup` and after
-  `setup config` the same way ([decision 53.2](decisions/0053-project-and-user-settings.md)).
+  the root and runs `cld -n x join` as `join -n x`. It checks the word after `setup`, after
+  `setup config` and after `restore` the same way (decisions
+  [53.2](decisions/0053-project-and-user-settings.md) and
+  [60.1](decisions/0060-a-command-for-each-restore.md)).
 - Each command reads options only up to its first argument, where pflag would read them all.
 - cobra's output goes to a buffer that cld prints, as cobra drops the error of a failed write.
 - `version` is a command, `completion` is cld's own, and completion offers no file names
@@ -207,8 +210,8 @@ the files beside it to the new name, keeping their times
 
 ### After a reboot
 
-A reboot ends every server without running a hook, so the run marks stay. `cld restore`, run by
-the user's systemd at its start, brings back each entry with a run mark and no server, detached,
+A reboot ends every server without running a hook, so the run marks stay. `cld restore sessions`,
+run by the user's systemd at its start, brings back each entry with a run mark and no server, detached,
 with the claude and environment it started with. A busy one gets a prompt to continue. A session
 whose run mark is older than `CLD_IDLE_DAYS` stays ended, since tmux's idle times start again at a
 restore ([decision 48](decisions/0048-restore-after-reboot.md)).

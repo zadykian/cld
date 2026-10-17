@@ -22,8 +22,11 @@
 - **`C-q d` does nothing.** The terminal keeps `Ctrl+Q`: see [terminals that keep C-q](terminal.md).
 - **Names that differ only in case.** Where the socket directory ignores case, as on macOS, `A` and
   `a` share a socket and a record: while one runs, cld refuses the other.
-- **`cannot record session`.** The session runs, but once ended, `cld list` and `cld restore` do not
-  know it. Point `XDG_STATE_HOME` at a directory you can write.
+- **`cannot record session`.** The session runs, but once ended, `cld list` and
+  `cld restore sessions` do not know it. Point `XDG_STATE_HOME` at a directory you can write.
+- **`restore: missing command` in `journalctl --user -u cld-restore`.** An older cld wrote the
+  unit, which runs plain `cld restore`. Run `cld setup restore` again
+  ([upgrade notes](install-and-upgrade.md#from-cld-0130-and-earlier)).
 - **`File name too long`.** The socket's path, `$TMUX_TMPDIR/tmux-UID/cld-S` with links resolved,
   must fit in 103 bytes on macOS and 107 on Linux. Use a shorter name.
 - **A slow cld.** Each run of tmux takes 6-20 ms built from source or most packages, and 100-200 ms

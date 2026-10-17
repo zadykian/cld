@@ -52,6 +52,15 @@ var helpCases = []struct {
 	{[]string{"completion", "-h", "tcsh"}, "completion"},
 	{[]string{"completion", "-h", "--help=x"}, "completion"},
 	{[]string{"completion", "--help", "-h=no"}, "completion"},
+	// restore's command: after it, or after help restore; -h after restore is restore's.
+	{[]string{"restore", "-h"}, "restore"},
+	{[]string{"restore", "--help"}, "restore"},
+	{[]string{"help", "restore"}, "restore"},
+	{[]string{"help", "restore", "sessions"}, "restore sessions"},
+	{[]string{"-h", "restore", "sessions"}, "restore sessions"},
+	{[]string{"restore", "-h", "sessions"}, "restore sessions"},
+	{[]string{"restore", "sessions", "-h"}, "restore sessions"},
+	{[]string{"restore", "sessions", "--help", "x"}, "restore sessions"},
 	// setup's commands: after it, or after help setup; -h after setup is setup's.
 	{[]string{"help", "setup"}, "setup"},
 	{[]string{"-h", "setup"}, "setup"},

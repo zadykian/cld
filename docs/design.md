@@ -116,7 +116,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [47. Agent view is off in cld's sessions](design/decisions/0047-agent-view-off.md): Accepted
   (#111). Amended by 50.
 - [48. Sessions come back after a reboot](design/decisions/0048-restore-after-reboot.md): Accepted
-  (#115). Amended by 50 and 52.
+  (#115). Amended by 50, 52 and 60.
 - [49. claude's status in the list](design/decisions/0049-status-in-the-list.md): Accepted (#113).
   Amended by 50.
 - [50. One command for a session](design/decisions/0050-one-command-join.md): Accepted (#114).
@@ -133,3 +133,5 @@ The `adr` skill in `.claude/skills` adds a record.
 - [57. Renaming from the list](design/decisions/0057-renaming-from-the-list.md): Accepted (#172).
 - [58. Joining only a session that
   exists](design/decisions/0058-joining-only-a-session-that-exists.md): Accepted (#175).
+- [60. A command for each restore](design/decisions/0060-a-command-for-each-restore.md): Accepted
+  (#185).

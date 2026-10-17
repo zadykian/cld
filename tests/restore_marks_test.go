@@ -160,7 +160,7 @@ func TestNoSessionNoMark(t *testing.T) {
 			result.Stderr)
 	}
 	checkMarks(t, s, "after tmux failed", map[string]bool{"x": false, "y": false, "z": false})
-	checkExit(t, "restore", s.RunCld(nil, "restore"), 0, "", "")
+	checkExit(t, "restore", s.RunCld(nil, "restore", "sessions"), 0, "", "")
 	if probes := s.Probes(); len(probes) != 1 {
 		t.Errorf("%d claudes started, want z's alone", len(probes))
 	}
@@ -202,7 +202,7 @@ func TestRunMarkWithoutEnvironment(t *testing.T) {
 	claude.Send("exit")
 	sandbox.WaitFor(t, 10*time.Second, "cld to return", func() bool { return !term.Running() })
 	checkMarks(t, s, "after claude exited with status 0", map[string]bool{"a": false})
-	checkExit(t, "restore", s.RunCld(nil, "restore"), 0, "", "")
+	checkExit(t, "restore", s.RunCld(nil, "restore", "sessions"), 0, "", "")
 	if probes := s.Probes(); len(probes) != 1 {
 		t.Errorf("%d claudes started, want the resumed one alone", len(probes))
 	}

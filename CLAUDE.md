@@ -10,12 +10,12 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
 - `cmd/cld`: the command line, a file per command with its help text.
 - `cmd/cld/internal`: what the commands share. `cmdline` holds the checks of arguments and
   options and their errors, `naming` the `-n` and `-s`, and `idle` `CLD_IDLE_DAYS` and the sweep.
-- `internal/session`: the tmux side, cld's record of its sessions, and `cld restore`.
+- `internal/session`: the tmux side, cld's record of its sessions, and `cld restore sessions`.
 - `internal/picker`: the interactive `cld list` on a terminal.
 - `internal/project`: `cld setup config project` and `user`: a project's `.claude` settings,
   `.mcp.json` and `.gitignore`, and claude's user settings.
 - `internal/completion`: `cld setup completion`, the script where bash, zsh or fish reads it.
-- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore`.
+- `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore sessions`.
 - `internal/update`: `cld update`, which replaces cld with the latest release.
 - `internal/configfile`: edits in place the files the `setup` commands write.
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld when one cannot run.

@@ -27,11 +27,12 @@ var (
 
 // What setup restore says of the unit it enabled, and of lingering.
 const (
-	unitEnabled  = "Enabled cld-restore.service: your systemd runs cld restore as it starts\n"
-	lingeringOff = "Lingering is off: your systemd starts, and cld restore with it, " +
-		"at your first login, and at your last logout ends the sessions cld restore brought " +
-		"back; loginctl enable-linger has it start at boot, and keeps them\n"
-	lingeringOn = "Lingering is on: your systemd starts at boot, and cld restore with it\n"
+	unitEnabled = "Enabled cld-restore.service: your systemd runs cld restore sessions as it " +
+		"starts\n"
+	lingeringOff = "Lingering is off: your systemd starts, and cld restore sessions with it, " +
+		"at your first login, and at your last logout ends the sessions cld restore sessions " +
+		"brought back; loginctl enable-linger has it start at boot, and keeps them\n"
+	lingeringOn = "Lingering is on: your systemd starts at boot, and cld restore sessions with it\n"
 )
 
 // systemdQuoted is value as setup restore writes it in the unit, in double quotes: "\" and "\""
@@ -45,7 +46,7 @@ func systemdQuoted(value string, command bool) string {
 }
 
 // restoreUnit is the unit setup restore writes, where cld runs with the environment env. It runs
-// cld, by the file it runs from, as cld restore, with the PATH, and the TMUX_TMPDIR,
+// cld, by the file it runs from, as cld restore sessions, with the PATH, and the TMUX_TMPDIR,
 // XDG_STATE_HOME and CLD_IDLE_DAYS that env sets.
 func restoreUnit(t *testing.T, env map[string]string) string {
 	t.Helper()
@@ -59,11 +60,12 @@ func restoreUnit(t *testing.T, env map[string]string) string {
 			environment += "Environment=" + systemdQuoted(name+"="+value, false) + "\n"
 		}
 	}
-	return "# Written by cld setup restore: at login, or at boot with lingering on, cld restore\n" +
-		"# brings back the sessions of cld that ran when the machine stopped.\n" +
+	return "# Written by cld setup restore: at login, or at boot with lingering on,\n" +
+		"# cld restore sessions brings back the sessions of cld that ran when the machine " +
+		"stopped.\n" +
 		"[Unit]\nDescription=Restore cld's sessions\n\n" +
 		"[Service]\nType=oneshot\nRemainAfterExit=yes\nKillMode=process\n" + environment +
-		"ExecStart=" + systemdQuoted(cld, true) + " restore\n\n" +
+		"ExecStart=" + systemdQuoted(cld, true) + " restore sessions\n\n" +
 		"[Install]\nWantedBy=default.target\n"
 }
 
@@ -91,7 +93,8 @@ func checkUnit(t *testing.T, path string, env map[string]string) {
 
 // setup restore writes the unit, quoted as systemd reads it, has the user's systemd read it,
 // enables it, and says whether lingering is on. Run again it leaves the unit unchanged, but for a
-// variable that changed. Without systemd it writes nothing, and a failure after the write says so.
+// variable that changed or an older cld's plain restore (decision 60.2). Without systemd it writes
+// nothing, and a failure after the write says so.
 func TestSetupRestore(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS != "linux" {
@@ -123,6 +126,11 @@ func TestSetupRestore(t *testing.T) {
 	delete(all, "XDG_STATE_HOME")
 	delete(all, "CLD_IDLE_DAYS")
 	checkUnit(t, unit, all)
+	s.WriteFile(unit, strings.Replace(restoreUnit(t, all), " restore sessions\n", " restore\n", 1))
+	checkSetupRestore(t, s, "over an older cld's unit", env, 0,
+		"Updated "+unit+"\n"+unitEnabled+lingeringOn, "",
+		showEnvironment, daemonReload, enableUnit, showLinger)
+	checkUnit(t, unit, all)
 	checkSetupRestoreFailed(t, s, unit, state)
 	result := s.RunCld(nil, "setup", "restore", "x")
 	want := "cld: setup restore: unexpected argument 'x' (see cld help)\n"
@@ -133,7 +141,7 @@ func TestSetupRestore(t *testing.T) {
 }
 
 // checkSetupRestoreRefused checks that setup restore writes no unit at unit without systemctl,
-// where systemctl --user fails, or with a CLD_IDLE_DAYS that restore would refuse.
+// where systemctl --user fails, or with a CLD_IDLE_DAYS that restore sessions would refuse.
 func checkSetupRestoreRefused(t *testing.T, s *sandbox.Sandbox, unit string) {
 	t.Helper()
 	checkSetupRestore(t, s, "without systemctl", map[string]string{"PATH": s.Tools()}, 1, "",
@@ -198,15 +206,16 @@ func TestSetupRestoreLinuxOnly(t *testing.T) {
 	}
 }
 
-// Completion runs none of the checks of setup restore, nor restore itself: whatever it completes
-// after either, it runs no systemctl or loginctl, nor tmux, and offers nothing.
+// Completion runs none of the checks of setup restore, nor restore sessions: whatever it completes
+// after either, it runs no systemctl or loginctl, nor tmux.
 func TestCompletionRunsNoSystemd(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
 		{"__complete", "setup", "restore", ""},
 		{"__complete", "setup", "restore", "-"},
 		{"__complete", "restore", ""},
-		{"__completeNoDesc", "restore", "-"},
+		{"__complete", "restore", "sessions", ""},
+		{"__completeNoDesc", "restore", "sessions", "-"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Parallel()

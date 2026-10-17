@@ -12,7 +12,7 @@
 - The environment comes back as the session started, stale where it belonged to the old login,
   such as `SSH_AUTH_SOCK` (see [claude's environment](sessions.md)). cld keeps it readable by you
   alone.
-- `journalctl --user -u cld-restore` shows what `cld restore` said.
+- `journalctl --user -u cld-restore` shows what `cld restore sessions` said.
 - `cld setup restore` needs `systemctl --user` to answer, which most containers lack. To undo it,
   run `systemctl --user disable cld-restore.service` and remove the unit.
 - Not checked yet: a real reboot. The tests end each server instead, and a transient unit stands

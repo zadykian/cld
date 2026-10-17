@@ -38,8 +38,12 @@ const (
 const (
 	offeredConfig          = "config\tset up claude's settings, in a project or your own\n"
 	offeredSetupCompletion = "completion\tset up cld's completion in bash, zsh or fish\n"
-	offeredSetupRestore    = "restore\thave your systemd run cld restore at login, or at boot\n"
-	offeredSetups          = offeredConfig + offeredSetupCompletion + offeredSetupRestore
+	offeredSetupRestore    = "restore\thave your systemd run cld restore sessions at login, or " +
+		"at boot\n"
+	offeredSetups = offeredConfig + offeredSetupCompletion + offeredSetupRestore
+
+	offeredRestoreSessions = "sessions\tbring back the sessions that ran when the machine " +
+		"stopped\n"
 
 	offeredProject = "project\tset claude up in the project in the current directory\n"
 	offeredUser    = "user\tset claude up in your own settings, for every project\n"
@@ -133,7 +137,13 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "r"}, offeredSetupRestore + noFileDirective},
 	{[]string{"__complete", "setup", "t"}, noFileDirective},
 	{[]string{"__complete", "setup", "restore", ""}, noFileDirective},
-	{[]string{"__complete", "restore", ""}, noFileDirective},
+	{[]string{"__complete", "restore", ""}, offeredRestoreSessions + noFileDirective},
+	{[]string{"__complete", "restore", "s"}, offeredRestoreSessions + noFileDirective},
+	{[]string{"__complete", "restore", "x"}, noFileDirective},
+	{[]string{"__complete", "restore", "sessions", ""}, noFileDirective},
+	{[]string{"__complete", "restore", "sessions", "-"},
+		"--help\thelp for sessions\n-h\thelp for sessions\n" + noFileDirective},
+	{[]string{"__complete", "help", "restore", ""}, offeredRestoreSessions + noFileDirective},
 	{[]string{"__complete", "setup", "completion", ""}, offeredShellSetups + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "f"}, offeredSetupFish + noFileDirective},
 	{[]string{"__complete", "setup", "completion", "bash", ""}, noFileDirective},

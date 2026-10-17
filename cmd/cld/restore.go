@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,8 +17,8 @@ import (
 	"github.com/zadykian/cld/internal/session"
 )
 
-// restoreLong is restore's help.
-const restoreLong = `bring back the sessions that ran when the machine stopped: a reboot or a crash
+// sessionsLong is restore sessions's help.
+const sessionsLong = `bring back the sessions that ran when the machine stopped: a reboot or a crash
 ends them, and cld list shows them as ended, beside those that cld kill, C-x in
 cld list, the idle sweep or claude's /exit ended, which stay ended. Each comes
 back as cld join -n NAME -s SUFFIX brings it back, but without a terminal:
@@ -25,17 +27,49 @@ environment the session started with and without the words given after --,
 and is told to continue the turn it was in, if any. A session not started or
 given a prompt for longer than $CLD_IDLE_DAYS days stays ended, with a note. A
 session that cannot come back is a warning, and the status 1. cld setup
-restore has your systemd run cld restore as it starts; cld join attaches to a
-session.`
+restore has your systemd run cld restore sessions as it starts; cld join
+attaches to a session.`
 
-// newRestore is cld restore, which brings back the sessions a reboot ended (decision 48.5).
-func newRestore() *cobra.Command {
-	return &cobra.Command{
+// newRestore is cld restore, whose command is restore sessions (decision 60). It runs nothing
+// itself, as newSetup does: restoreCommand has made sure that its command, or -h or --help,
+// follows it.
+func newRestore(typed string) *cobra.Command {
+	restore := &cobra.Command{
 		Use:   "restore",
 		Short: "bring back the sessions that ran when the machine stopped",
-		Long:  restoreLong,
+	}
+	restore.AddCommand(restoreSessions(typed + " sessions"))
+	return restore
+}
+
+// restoreCommand checks the argument after restore before cobra sees it, as setupCommand checks
+// setup's (decision 60.1): sessions, or -h or --help. cobra would run sessions for restore
+// --help=false sessions.
+func restoreCommand(args []string) error {
+	const hint = "cld restore sessions (see cld help)"
+	switch {
+	case len(args) == 0 || args[0] == "":
+		return fail.Usage("restore: missing command: " + hint)
+	case slices.Contains([]string{"sessions", "-h", "--help"}, args[0]):
+		return nil
+	case strings.HasPrefix(args[0], "-"):
+		return cmdline.Unexpected("restore", args[0])
+	}
+	return fail.Usage(fmt.Sprintf("restore: unknown command '%s': %s", args[0], hint))
+}
+
+// restoreSessions is cld restore sessions, which brings back the sessions a reboot ended
+// (decisions 48.5 and 60), named in its messages as typed.
+func restoreSessions(typed string) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "sessions",
+		Short: "bring back the sessions that ran when the machine stopped",
+		Long:  sessionsLong,
+		Args:  cmdline.NoArguments(typed),
 		RunE:  func(*cobra.Command, []string) error { return restoreAll() },
 	}
+	command.SetFlagErrorFunc(cmdline.FlagError(typed))
+	return command
 }
 
 // restoreAll brings back each session with a run mark, checking tmux as every command does and
@@ -94,18 +128,18 @@ func restoreOne(tmux *session.Tmux, name string, limit time.Duration) (bool, err
 func setupRestore(typed string) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "restore",
-		Short: "have your systemd run cld restore at login, or at boot",
-		Long: `have your user's systemd run cld restore as it starts, which brings back the
-sessions that ran when the machine stopped: cld writes the unit
+		Short: "have your systemd run cld restore sessions at login, or at boot",
+		Long: `have your user's systemd run cld restore sessions as it starts, which brings
+back the sessions that ran when the machine stopped: cld writes the unit
 ~/.config/systemd/user/cld-restore.service, which runs this cld with the PATH,
 TMUX_TMPDIR, XDG_STATE_HOME and CLD_IDLE_DAYS it has now, and enables it. Your
 systemd starts at your first login, and at your last logout ends the sessions
-cld restore brought back, unless lingering is on for you (loginctl
+cld restore sessions brought back, unless lingering is on for you (loginctl
 enable-linger): then it starts at boot, and keeps them. Run it again after
 moving cld, or to change those variables. Needs systemd; Linux only.`,
 		RunE: func(*cobra.Command, []string) error {
-			// The unit hands CLD_IDLE_DAYS on to cld restore, which would refuse a value that
-			// is no number of days at every start.
+			// The unit hands CLD_IDLE_DAYS on to cld restore sessions, which would refuse a
+			// value that is no number of days at every start.
 			if _, err := idle.Limit(); err != nil {
 				return err
 			}

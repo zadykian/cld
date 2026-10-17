@@ -11,5 +11,5 @@
 // clients that attach and the reads of the sessions run tmux -u, as tmux writes "_" for what is
 // not ASCII under a locale without UTF-8. switch.go and switch_*.go move a terminal between
 // sessions, record.go and record_*.go keep cld's record of its sessions, and restore.go is cld
-// restore.
+// restore sessions.
 package session
