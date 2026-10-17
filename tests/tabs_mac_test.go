@@ -119,6 +119,21 @@ func front(m *mac.Model, id string, jobs ...[]string) {
 	}
 }
 
+// ptyPane puts pane id of m on a pty of the test's: its terminal's tty, and its processes'. So cld
+// reads the pane's size from the pty, and finds its own pane by it.
+func ptyPane(t *testing.T, m *mac.Model, id string) *sandbox.Pty {
+	t.Helper()
+	p := sandbox.OpenPty(t)
+	old, tty := strings.TrimPrefix(m.Terminals[id].TTY, "/dev/"), strings.TrimPrefix(p.Path, "/dev/")
+	m.Terminals[id].TTY = p.Path
+	for i := range m.Processes {
+		if m.Processes[i].TTY == old {
+			m.Processes[i].TTY = tty
+		}
+	}
+	return p
+}
+
 // tabOf is a tab of the panes ids in a row, left to right, the first focused.
 func tabOf(ids ...string) mac.Tab {
 	var tree *mac.Node

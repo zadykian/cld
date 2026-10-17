@@ -37,8 +37,16 @@ func windowLeaves(w Window) []string {
 	return ids
 }
 
-// sameLeaves reports whether tree n's leaves are ids, in that order.
-func sameLeaves(n *Node, ids []string) bool { return slices.Equal(Leaves(n), ids) }
+// within reports whether ids are tree n's leaves, in that order, less none or some.
+func within(n *Node, ids []string) bool {
+	i := 0
+	for _, id := range Leaves(n) {
+		if i < len(ids) && id == ids[i] {
+			i++
+		}
+	}
+	return i == len(ids)
+}
 
 // flat is a row of the panes ids, left to right: right(a, right(b, c)), with no ratio. One id is
 // a leaf, and none is nil.

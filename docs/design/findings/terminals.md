@@ -197,6 +197,14 @@ name being unique under `macos/`. The scripting files match in both but for `Gho
   and rows times the cell's size in pixels. A resize gives the surface's pixels less its padding:
   `window-padding-x` and `-y`, 2 points a side by default, times the display's scale. With
   `window-padding-balance` on, the padding also takes the space the grid leaves.
+- **A tab's tree** (v1.3.1 and main; `SplitTree.swift`, `SplitView.swift`,
+  `TerminalSplitTreeView.swift`, `BaseTerminalController.swift`). A split's first half gets its
+  share of the points less half the 1-point divider, in whole points, and the second starts half a
+  point after it. A closed pane's sibling takes its split's place, and a zoom stays. A zoom shows
+  the zoomed pane alone, and focuses it; the others leave the view and keep their sizes. Going to
+  another split from it unzooms, or with `split-preserve-zoom` zooms that split. Move Split, a pane
+  dropped on another, removes the pane, then splits the target with it. So the tree can change
+  while its leaves keep their order.
 - **One binary** (v1.3.1 and main; `macos/Ghostty.xcodeproj/project.pbxproj`, `main.swift`,
   `src/termio/Exec.zig`). The app's executable is `ghostty`, and `main.swift` runs a `+ACTION`
   argument as a CLI action, exiting before AppKit starts. `GHOSTTY_BIN_DIR`, and the `PATH` entry

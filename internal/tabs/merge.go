@@ -102,8 +102,7 @@ func mergePane(p *Pane, t ghostty.Terminal, sizes map[string]Size, seen Seen, no
 }
 
 // mergeWindows makes r's windows o's, front to back, then the old windows o shows only hidden
-// panes of, last. Each tab keeps its tree where an old or undone tab had its panes in that order.
-// A pane in no window then leaves r.Panes.
+// panes of, last. Each tab's tree is treeFor's. A pane in no window then leaves r.Panes.
 func mergeWindows(r *Record, o *Observation, undone []Window) {
 	old := r.Windows
 	windows := make([]Window, 0, len(o.Windows))
@@ -114,7 +113,7 @@ func mergeWindows(r *Record, o *Observation, undone []Window) {
 			for i, terminal := range t.Terminals {
 				ids[i] = terminal.ID
 			}
-			if tab, ok := tabFor(ids, t.Selected, t.Focused, old, undone); ok {
+			if tab, ok := tabFor(ids, t.Selected, t.Focused, o.Sizes, old, undone); ok {
 				tabs = append(tabs, tab)
 			}
 		}
@@ -138,8 +137,8 @@ func mergeWindows(r *Record, o *Observation, undone []Window) {
 }
 
 // hiddenWindow is old window w as the record keeps it while o shows none of its panes in a window
-// but some hidden: a minimized or hidden window. Its gone panes leave its tabs. False means w is
-// no such window, or nothing of w remains.
+// but some hidden: a minimized or hidden window. Its gone panes leave its tabs, whose panes have
+// no size to read. False means w is no such window, or nothing of w remains.
 func hiddenWindow(w Window, o *Observation, old []Window) (Window, bool) {
 	ids := windowLeaves(w)
 	hidden := func(id string) bool { return o.Hidden[id] }
@@ -149,7 +148,7 @@ func hiddenWindow(w Window, o *Observation, old []Window) (Window, bool) {
 	var tabs []Tab
 	for _, t := range w.Tabs {
 		ids := slices.DeleteFunc(Leaves(t.Tree), o.gone)
-		if tab, ok := tabFor(ids, t.Selected, t.Focused, old, nil); ok {
+		if tab, ok := tabFor(ids, t.Selected, t.Focused, nil, old, nil); ok {
 			tabs = append(tabs, tab)
 		}
 	}
@@ -157,31 +156,53 @@ func hiddenWindow(w Window, o *Observation, old []Window) (Window, bool) {
 }
 
 // tabFor is the tab of the panes ids, selected or not, with focused its focused pane where ids
-// holds that pane. False means ids is empty.
-func tabFor(ids []string, selected bool, focused string, old, undone []Window) (Tab, bool) {
+// holds that pane, and sizes the panes' sizes. False means ids is empty.
+func tabFor(ids []string, selected bool, focused string, sizes map[string]Size,
+	old, undone []Window,
+) (Tab, bool) {
 	if len(ids) == 0 {
 		return Tab{}, false
 	}
 	if !slices.Contains(ids, focused) {
 		focused = ""
 	}
-	tree, shape := treeFor(ids, old, undone)
+	tree, shape := treeFor(ids, focused, sizes, old, undone)
 	return Tab{Selected: selected, Focused: focused, Shape: shape, Tree: tree}, true
 }
 
-// treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old or undone with
-// those panes in that order gives its own, so that a tree cld made stays made, through an undo
-// too. Else the panes make a row: Ghostty's AppleScript gives no split's direction (decision 59.8).
-func treeFor(ids []string, old, undone []Window) (*Node, string) {
+// treeFor is the split tree of a tab of the panes ids, focused the focused one, and its shape. A
+// tab of old or undone whose panes, less any that went, are ids gives its tree, unless the sizes
+// revise it. A row, or no such tab, takes the sizes' tree, failing that a row. Ghostty's
+// AppleScript gives no split's direction (decision 59.8).
+func treeFor(ids []string, focused string, sizes map[string]Size, old, undone []Window,
+) (*Node, string) {
 	if len(ids) == 1 {
 		return &Node{Pane: ids[0]}, ShapeMade
 	}
+	base, shape := oldTree(ids, old, undone)
+	if base != nil && shape != ShapeFlat {
+		if tree := revise(base, shape == ShapeMade, ids, sizes, focused); tree != nil {
+			return tree, ShapeInferred
+		}
+		return base, shape
+	}
+	if tree, ok := infer(ids, sizes); ok {
+		return tree, ShapeInferred
+	}
+	return flat(ids), ShapeFlat
+}
+
+// oldTree is a copy of the tree of a tab of old or undone whose panes are ids and maybe others, in
+// order, and its shape. The others leave it as Ghostty removes a pane, whose sibling takes its
+// split's place (SplitTree.swift). nil means there is none.
+func oldTree(ids []string, old, undone []Window) (*Node, string) {
+	drop := func(id string) bool { return !slices.Contains(ids, id) }
 	for _, w := range slices.Concat(old, undone) {
 		for _, tab := range w.Tabs {
-			if sameLeaves(tab.Tree, ids) {
-				return copyTree(tab.Tree, nil), tab.Shape
+			if within(tab.Tree, ids) {
+				return copyTree(prune(tab.Tree, drop), nil), tab.Shape
 			}
 		}
 	}
-	return flat(ids), ShapeFlat
+	return nil, ""
 }
