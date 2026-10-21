@@ -9,8 +9,9 @@
 // main's ruleset refuses them, and CI's run of a pull request checks out GitHub's merge of it. A
 // header is type(scope)!: description, the scope and the ! optional, its type one CLAUDE.md lists
 // and its scope of a-z, 0-9, _ and -. A blank line parts it from the body, and no line passes 72
-// columns. Findings go to stdout as COMMIT:LINE: message, the header being line 1. The exit
-// status is 1 for a finding and 2 for a usage or setup error, which go run reports as 1.
+// columns, the URLs of the body aside. Findings go to stdout as COMMIT:LINE: message, the header
+// being line 1. The exit status is 1 for a finding and 2 for a usage or setup error, which go run
+// reports as 1.
 package main
 
 import (

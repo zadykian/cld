@@ -6,6 +6,24 @@ import (
 	"testing"
 )
 
+// dependabot is the message of Dependabot's bump of golang.org/x/text to 0.43.0, in #189.
+const dependabot = `chore(deps): Bump golang.org/x/text from 0.42.0 to 0.43.0
+
+Bumps [golang.org/x/text](https://github.com/golang/text) from 0.42.0 to 0.43.0.
+- [Release notes](https://github.com/golang/text/releases)
+- [Commits](https://github.com/golang/text/compare/v0.42.0...v0.43.0)
+
+---
+updated-dependencies:
+- dependency-name: golang.org/x/text
+  dependency-version: 0.43.0
+  dependency-type: direct:production
+  update-type: version-update:semver-minor
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+`
+
 var checkTests = []struct {
 	name, msg string
 	want      []finding
@@ -29,6 +47,21 @@ var checkTests = []struct {
 			{3, "line of 73 columns, over the cap of 72"},
 		},
 	},
+	{
+		name: "72 columns and a URL",
+		msg:  "docs: x\n\n" + strings.Repeat("y", 71) + " https://example.com/" + strings.Repeat("z", 40),
+	},
+	{
+		name: "73 columns and two URLs",
+		msg: "docs: x\n\nhttp://example.com/ " + strings.Repeat("y", 36) + " https://example.org/ " +
+			strings.Repeat("y", 34),
+		want: []finding{{3, "line of 73 columns, over the cap of 72"}},
+	},
+	{
+		name: "a header of a URL", msg: "docs: see https://example.com/" + strings.Repeat("x", 43),
+		want: []finding{{1, "header of 73 columns, over the cap of 72"}},
+	},
+	{name: "Dependabot's", msg: dependabot},
 	{name: "an unknown type", msg: "feature: add\n", want: []finding{
 		{1, "type \"feature\" is none of build, chore, ci, docs, feat, fix, perf, refactor, " +
 			"style, test"},

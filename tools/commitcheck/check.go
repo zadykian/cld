@@ -8,8 +8,11 @@ import (
 	"unicode/utf8"
 )
 
-// maxColumns is the cap on each line of a message, the header's too, a character a column.
+// maxColumns is the cap on the columns of each line of a message, the header's too.
 const maxColumns = 72
+
+// urlForm matches a URL, up to the space that ends it.
+var urlForm = regexp.MustCompile(`https?://\S+`)
 
 // types are the types CLAUDE.md's Commits lists.
 var types = []string{"build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "style",
@@ -39,14 +42,21 @@ func check(msg string) []finding {
 		findings = append(findings, finding{2, "no blank line between the header and the body"})
 	}
 	for i, line := range lines {
-		if n := utf8.RuneCountInString(line); n > maxColumns {
-			what := "line"
-			if i == 0 {
-				what = "header"
-			}
+		what, n := "line", columns(line)
+		if i == 0 {
+			what, n = "header", utf8.RuneCountInString(line)
+		}
+		if n > maxColumns {
 			findings = append(findings, finding{i + 1,
 				fmt.Sprintf("%s of %d columns, over the cap of %d", what, n, maxColumns)})
 		}
 	}
 	return findings
+}
+
+// columns returns the columns a line of the body takes, a character a column. A URL takes none, as
+// it cannot wrap: Dependabot's bodies link the modules they bump in lines that pass the cap by
+// their URLs. A header's URL can move to the body, so the header counts it.
+func columns(line string) int {
+	return utf8.RuneCountInString(urlForm.ReplaceAllLiteralString(line, ""))
 }

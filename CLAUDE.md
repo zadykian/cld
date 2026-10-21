@@ -126,7 +126,7 @@ Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org
 - The scope, optional, is the part changed: `cli` (`cmd/cld`), `session`, `tests`, `jediterm` or
   `docs`. The description is short, imperative and lower case, with no trailing period.
 - The body is a list of bullets wrapped at 72 columns: what was wrong or missing, what changed,
-  the tmux and claude versions checked, and what the tests cover.
+  the tmux and claude versions checked, and what the tests cover. Its URLs take no columns.
 - A breaking change takes `!` before the colon and a `BREAKING CHANGE:` footer saying what users
   must change.
 - `make commits`, in `make lint`, checks the header's form and the 72 columns
