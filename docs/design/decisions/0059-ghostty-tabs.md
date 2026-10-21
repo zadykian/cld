@@ -220,10 +220,18 @@ runs `cld join --existing` for the session, then a shell (58). A pane that showe
 ### 59.8 Split shapes
 
 AppleScript gives a tab's leaves in order, but no split's direction or ratio. A tree cld built is
-`made`, and kept while its leaves stay. Otherwise cld infers the tree from the leaves' order and
-their panes' sizes in pixels (`inferred`), or makes the leaves a row (`flat`). A rebuilt tab gets
-its tree, then `equalize_splits`. Rejected for now: ratios through `resize_split`, which wait for
-the sizes of #177's check 10.
+`made`. Otherwise cld infers the tree from the leaves' order and their panes' sizes in pixels
+(`inferred`), or makes the leaves a row (`flat`) where no tree fits them. Each run of leaves keeps
+its trees of each size, as its neighbour may fit beside one and not another. Equal panes fit side by
+side and stacked alike, and AppleScript gives no window's size. So the tree nearest 1.4 times as
+wide as tall wins, then the first found, side by side. A tab keeps its tree, less the panes that
+closed as Ghostty removes them, until the sizes fit another and not it at that size, as after a Move
+Split. A made tree stays wherever they fit it, safe from the tie-break. Any tree stays where they
+fit none, or show the focused pane over the rest: a zoom. Rejected: a tree kept while its leaves
+are, which a zoom or a half-read resize can leave wrong. Rejected too: side by side at every tie,
+which makes two equal stacked panes a row, and each run's first tree alone, which loses
+`right(a, down(b, c))`. A rebuilt tab gets its tree, then `equalize_splits`. Rejected for now:
+ratios through `resize_split`, which wait for the sizes of check 10 in #177.
 
 ### 59.9 cld's own pane
 
