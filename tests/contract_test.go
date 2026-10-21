@@ -13,7 +13,7 @@ import (
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
 
-// The terminal contract, C1 to C10 of docs/design/testing.md, runs in each terminal of
+// The terminal contract, C1 to C10 of docs/design/testing/contract.md, runs in each terminal of
 // CLD_TERMINALS. Its tests are here and in contract_*_test.go. Where terminals differ, the
 // difference is in expectations, never a skip.
 

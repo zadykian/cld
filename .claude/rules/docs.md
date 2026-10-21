@@ -19,8 +19,9 @@ What each document holds. How to write them is in [writing.md](writing.md).
   the package comments.
 - [docs/design.md](../../docs/design.md) indexes the design docs in `docs/design/`:
   - `overview.md`: the packages, cld's record, a session's life and the distribution.
-  - `testing.md`: the test layers, the terminal contract, the drivers, CI, what the tests found,
-    and what is not checked yet.
+  - `testing.md`: the test layers and CI. `testing/` holds a page per subject: `contract.md`, the
+    terminal contract with its drivers and what the tests found; `harness.md`; and `status.md`,
+    what is not checked yet.
   - `findings/`: probed behaviour of tmux, claude, the terminals and the environment, with the
     versions checked. A file that would pass 300 lines splits by subject into files that each stand
     on their own, never into a continuation such as `NAME-2.md`.

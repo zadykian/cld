@@ -5,8 +5,10 @@ The research behind cld and the reasons for what it does. What cld offers its us
 
 - [Overview](design/overview.md): where cld started, the server's options, the packages, cld's
   record of its sessions, a session's life and how releases are built.
-- [Testing](design/testing.md): the test layers, the terminal contract C1-C10, the drivers, the
-  harness, CI, what the tests found, and what is not checked yet.
+- [Testing](design/testing.md): the test layers and CI. A page each holds
+  [the terminal contract](design/testing/contract.md) C1-C10 with its drivers and what they found,
+  [the harness](design/testing/harness.md), and [the status](design/testing/status.md): what is
+  not checked yet.
 
 ## Findings
 

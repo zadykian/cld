@@ -126,7 +126,7 @@ make lint                            # every gate of CI's lint job
 make docker-check                    # as CI runs it, on tmux built from source
 ```
 
-The tests check one [terminal contract](docs/design/testing.md) against an xterm-compatible
+The tests check one [terminal contract](docs/design/testing/contract.md) against an xterm-compatible
 terminal and JediTerm; iTerm2 is not automated yet. [docs/design.md](docs/design.md) records the
 tmux and claude behaviour cld relies on, the decisions taken and how the tests work.
 [CLAUDE.md](CLAUDE.md) has the commands and what they need, the constraints and the conventions.

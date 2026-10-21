@@ -5,8 +5,9 @@ paths:
 
 # tests
 
-The invariants a change to the tests keeps. The terminal contract and the layers of the tests are
-in [testing.md](../../docs/design/testing.md); each helper's doc comment says how it works.
+The invariants a change to the tests keeps. The layers of the tests are in
+[testing.md](../../docs/design/testing.md), which links the pages of the terminal contract and the
+harness. Each helper's doc comment says how it works.
 
 ## What runs
 

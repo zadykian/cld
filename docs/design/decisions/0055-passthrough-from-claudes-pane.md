@@ -17,7 +17,7 @@ synchronized output. Under `on`, tmux also drops passthrough from a pane not sho
 terminal does not show, or beside a zoomed pane. tmux's default keys behind `C-q` make both.
 
 A test froze the terminal, had tmux defer a redraw, and had claude notify. Under `on` the
-notification never arrived ([testing](../testing.md#what-the-tests-found)). The wait of
+notification never arrived ([testing](../testing/contract.md#what-the-tests-found)). The wait of
 [decision 54.5](0054-ghostty.md) sent its beacon again until it arrived, for the same reason.
 
 This amends decisions [29](0029-notifications.md) and [54.5](0054-ghostty.md).

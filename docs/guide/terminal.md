@@ -49,7 +49,7 @@ until claude next changes directory.
 
 In a JetBrains IDE's terminal (JediTerm), Shift+Enter needs the IDE's setting that sends ESC CR.
 claude's clipboard copies and focus reports do not arrive there
-([what the tests found](../design/testing.md#what-the-tests-found)).
+([what the tests found](../design/testing/contract.md#what-the-tests-found)).
 
 ## Terminals that keep C-q
 
