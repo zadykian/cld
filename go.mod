@@ -10,7 +10,7 @@ require (
 	go.mitchellh.com/libghostty v0.0.0-20261007030428-8812ad0e0f79
 	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.46.0
-	golang.org/x/text v0.42.0
+	golang.org/x/text v0.43.0
 )
 
 require github.com/inconshreveable/mousetrap v1.1.0 // indirect
