@@ -51,7 +51,8 @@ Type `ssh HOST` once in a Ghostty pane with `ssh-terminfo` on, and leave with `e
   ControlPersist 10m
   ```
 
-- A `LocalCommand` runs as each connection opens, for `--host` too.
+- A `LocalCommand` runs as each connection opens, for `--host` too. ws's playbook writes one that
+  starts the watcher of `cld restore tabs`.
 - A dropped connection leaves the session running, as a detach does: run the same `join` again.
   cld does not reconnect.
 - In a session of cld's terminal, `join` and `list` refuse `--host`: the host's tmux would run

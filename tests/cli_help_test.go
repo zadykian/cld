@@ -22,6 +22,7 @@ var update = flag.Bool("update", false,
 // of cld's comes before its own, as "setup config", and theirs, as "setup config project".
 var helpTopics = []string{
 	"", "join", "detach", "kill", "list", "restore", "restore sessions",
+	"restore tabs",
 	"setup", "setup config", "setup config project", "setup config user", "setup completion",
 	"setup completion bash", "setup completion zsh", "setup completion fish", "setup restore",
 	"update", "completion", "help", "version",

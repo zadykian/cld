@@ -1,7 +1,8 @@
 # 25. The tab's title follows claude's status
 
-Status: Accepted. Amended by [26](0026-title-marks-worktree.md), [39](0039-hook-cost.md) and
-[49](0049-status-in-the-list.md).
+Status: Accepted. Amended by [26](0026-title-marks-worktree.md), [39](0039-hook-cost.md),
+[49](0049-status-in-the-list.md) and [59](0059-ghostty-tabs.md), under which the title is a
+contract with another machine's cld.
 
 ## Context
 
