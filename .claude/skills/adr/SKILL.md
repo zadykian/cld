@@ -16,8 +16,9 @@ link its record, instead of restating the reasons.
 - `docs/design/decisions/NNNN-slug.md`: one decision per file. `NNNN` is its number with leading
   zeros, and `slug` its title in lowercase words joined by hyphens.
 - `docs/design/findings/`: probed behaviour, with the versions checked, in the file of its subject:
-  `tmux-sessions.md`, `tmux-terminal.md`, `claude.md`, `terminals.md` or `environment.md`. A file
-  that would pass 300 lines continues in `NAME-2.md`.
+  `tmux-servers.md`, `tmux-commands.md`, `tmux-sessions.md`, `tmux-terminal.md`, `claude.md`,
+  `terminals.md` or `environment.md`. A file that would pass 300 lines splits by subject into files
+  that each stand on their own, never into a continuation such as `NAME-2.md`.
 - `docs/design.md`: the index, a line per record with its title and its Status.
 
 ## The record

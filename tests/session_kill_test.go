@@ -14,7 +14,7 @@ import (
 
 // kill ends the session it names, its claude and its server, and the other sessions carry on. The
 // terminal attached is left clean, and its cld exits 0: the session goes before the server, whose
-// exit alone would give status 1 (docs/design/findings/tmux-sessions.md).
+// exit alone would give status 1 (docs/design/findings/tmux-servers.md).
 func TestKill(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

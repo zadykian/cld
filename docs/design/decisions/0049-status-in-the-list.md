@@ -31,7 +31,7 @@ move a row between two reads ([decision 14.6](0014-the-session-list.md)).
 
 `list` reads the option in the `list-sessions` it runs anyway, after a space in the state's field,
 since an empty field would vanish. tmux writes only the three words there, and nothing for a dead
-pane (tmux 3.5a and 3.7c; [tmux findings](../findings/tmux-sessions.md)). Not the busy mark
+pane (tmux 3.5a and 3.7c; [tmux findings](../findings/tmux-commands.md)). Not the busy mark
 ([decision 48.3](0048-restore-after-reboot.md)): it does not tell `waiting` from `busy`.
 
 ### 49.4 As of the read

@@ -70,7 +70,7 @@ cld with 127 for no such file, and 126 otherwise.
 
 cld refuses to make a session in a directory that has been removed, or that it cannot enter
 (#21). tmux would start claude in the home directory
-([tmux findings](../findings/tmux-sessions.md)).
+([tmux findings](../findings/tmux-commands.md)).
 
 ## Consequences
 

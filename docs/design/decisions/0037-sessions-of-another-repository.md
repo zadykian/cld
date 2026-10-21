@@ -18,7 +18,7 @@ ended it, printing nothing.
 the directory `NAME` defaults to: the one holding the repository's common `.git`, or else the
 current directory. A session belongs where cld made it, so the home goes with `-n` too. tmux's `set`
 keeps the value unexpanded, and a `;` at its end goes escaped
-([tmux session findings](../findings/tmux-sessions.md)).
+([tmux session findings](../findings/tmux-commands.md)).
 
 ### 37.2 Another home is refused
 

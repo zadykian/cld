@@ -41,7 +41,7 @@ runs in. `cld kill` run there does the same. The list was not interactive there 
 The list kills a row's session only while it holds a pane's pid that the list read. A session made
 again has a new claude, and a dead pane keeps its pid. `#{session_created}` counts whole seconds and
 `#{session_id}` starts again on a new server, so neither tells a session made again (tmux 3.3a to
-3.7c; [tmux's findings](../findings/tmux-sessions.md)). A server that outlived its session
+3.7c; [tmux's findings](../findings/tmux-commands.md)). A server that outlived its session
 ([decision 13](0013-a-server-per-session.md)) has no pane to check, and ends as `cld kill` ends it.
 
 ### 15.4 One kill step
@@ -54,7 +54,7 @@ than letting tmux write over it.
 
 The list reads the sessions again, as after any read (14.6). It passes over the killed server as
 that exits. tmux then reports no server or, now and then, a server that exited unexpectedly (tmux
-3.3a to 3.7c; [tmux's findings](../findings/tmux-sessions.md)). The kill runs beside the list, as
+3.3a to 3.7c; [tmux's findings](../findings/tmux-servers.md)). The kill runs beside the list, as
 Enter's lookup does.
 
 ### 15.6 What it leaves

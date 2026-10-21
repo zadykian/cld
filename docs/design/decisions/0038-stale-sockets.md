@@ -7,7 +7,7 @@ Status: Accepted (#65). Amended by [46](0046-idle-sessions.md).
 Neither tmux nor cld removes a socket ([decision 13.1](0013-a-server-per-session.md)), so `tmux-UID`
 keeps one for every name used since `/tmp` was last cleaned. cld ran a `list-sessions` on each, one
 after another: 6-20 ms each natively, 100-200 ms through Ubuntu's snap of tmux 3.7. There 50 stale
-sockets made `cld list` take 7-8 s ([tmux session findings](../findings/tmux-sessions.md)).
+sockets made `cld list` take 7-8 s ([tmux session findings](../findings/tmux-servers.md)).
 
 ## Decision
 

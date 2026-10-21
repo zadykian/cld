@@ -8,14 +8,14 @@ Status: Accepted (#21, #74). Amended by [13](0013-a-server-per-session.md),
 ## Context
 
 - `tmux -V` reports the client, while a server runs the tmux that started it
-  ([tmux findings](../findings/tmux-sessions.md)).
+  ([tmux findings](../findings/tmux-servers.md)).
 - Every option and command cld runs is in tmux 3.2 or 3.3, but for `display -C` (3.6), which cld
   leaves out below it. Extended keys' mode 2 came in tmux 3.5, with a fix for a crash on a dead
   pane. tmux 3.5 mangles some Shift keys, and runs `#()` jobs with the user's shell, which breaks
   fish. tmux 3.7 is the first to answer DECRQM 2026, which claude needs for synchronized output
   ([tmux terminal findings](../findings/tmux-terminal.md)).
 - tmux starts claude with `execvp`, which searches relative `PATH` entries too, and runs a file
-  the system will not execute with `/bin/sh` ([tmux findings](../findings/tmux-sessions.md)).
+  the system will not execute with `/bin/sh` ([tmux findings](../findings/tmux-commands.md)).
 - The [claude findings](../findings/claude.md) record the release each flag and setting cld
   passes came in.
 

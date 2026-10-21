@@ -111,7 +111,7 @@ func listJoinLastRow(t *testing.T) {
 	waitScreen(t, term, listHints)
 	killAndForget(t, s, "a")
 	// cld kill ends the server, which takes a moment to exit. Waiting for it keeps Enter's lookup
-	// from reaching it as it goes (see docs/design/findings/tmux-sessions.md).
+	// from reaching it as it goes (see docs/design/findings/tmux-servers.md).
 	sandbox.WaitFor(t, 10*time.Second, "a's server to exit", func() bool {
 		_, err := s.Tmux("cld-a", "list-sessions")
 		return err != nil && strings.Contains(err.Error(), "no server running")

@@ -12,7 +12,7 @@ A session that runs cannot change its name in place:
 
 - tmux sets `socket_path` once, as the server starts. After a `mv` of the socket, `#{socket_path}`
   and `TMUX` keep the old path, and SIGUSR1 makes the socket there again (tmux 3.5a and 3.7c, read;
-  3.7c probed; [tmux's findings](../findings/tmux-sessions-2.md#sockets)).
+  3.7c probed; [tmux's findings](../findings/tmux-servers.md#sockets)).
 - cld's checks of a server read `socket_path` ([decision 34](0034-servers-are-marked.md)). `C-q s`,
   the moves and a bare `detach` go by the socket `TMUX` names
   ([decision 51](0051-moving-between-sessions.md)).

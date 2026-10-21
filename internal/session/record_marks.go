@@ -51,7 +51,7 @@ func starting(suffix string) bool {
 // setMarks is the run-shell, as tmux's words, that follows new-session to set the marks beside
 // the entry in file (decision 48.1). It removes the busy and start marks, and makes the run mark
 // run unless that is "", as restore passes to keep the mark's time (decision 48.8). It prints
-// nothing and exits 0, as tmux would show anything else (docs/design/findings/tmux-sessions.md).
+// nothing and exits 0, as tmux would show anything else (docs/design/findings/tmux-commands.md).
 func setMarks(file, run string) []string {
 	base := strings.TrimSuffix(file, ".json")
 	sh := `rm -f ` + shellWord(base+busyMark) + ` ` + shellWord(base+startMark)

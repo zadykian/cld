@@ -35,7 +35,7 @@ formats too.
 They have no `@cld`, but the prefix `C-q` they set marks them, so an upgrade keeps every session.
 tmux's default prefix is `C-b`, so a user's own server `cld-NAME` with prefix `C-q` counts as cld's.
 The prefix is a session option: a session that sets its own reads that, where cld's keep the global
-one ([tmux session findings](../findings/tmux-sessions.md)).
+one ([tmux session findings](../findings/tmux-commands.md)).
 
 ### 34.4 A guard against mistakes
 

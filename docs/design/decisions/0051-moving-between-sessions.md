@@ -99,7 +99,7 @@ command for every shell alike:
 - WORDS name the session (51.7), or carry the directory and words of a `join` typed in a pane in
   `--moved`, in URL-safe base64. As plain words, a newline in one of claude's would come out changed
   from tmux's parser within the `if` (tmux 3.5a and 3.7c;
-  [tmux findings](../findings/tmux-sessions.md)).
+  [tmux findings](../findings/tmux-commands.md)).
 
 The terminal's `cld join --moved` enters the directory the `join` ran in, `PWD` naming it, and runs
 it anew. A cld path with a control character binds no keys: they stay tmux's. Past some 12 KB of

@@ -58,7 +58,7 @@ nothing.
 `Stop`, `SessionEnd` and `async` exist in claude 2.1.232, so [decision 6](0006-versions.md) stands.
 The hooks add 1 KB to tmux's command, counted against its limit ([41.5](0041-claude-options.md)).
 cld's own words now take 8.8 KB at the sandbox's paths, and 9.8 KB with tmux at a path of 97
-characters ([tmux session findings](../findings/tmux-sessions.md)).
+characters ([tmux session findings](../findings/tmux-commands.md)).
 
 A failed turn, which ends in `StopFailure`, writes nothing. A third copy of the hook would take
 0.5 KB more of that limit, and the next `Stop`, `SessionEnd` or kill writes the directory.
@@ -72,7 +72,7 @@ covers a `/cd` with no turn after it. The sweep checks the session again around 
 
 `run-shell -t %0` expands claude's `#{pane_current_path}` into its command, so tmux puts it in
 single quotes, each quote in it escaped for sh. tmux's `#{q:}` leaves a newline, which would end
-sh's command there ([tmux session findings](../findings/tmux-sessions.md)).
+sh's command there ([tmux session findings](../findings/tmux-commands.md)).
 
 ### 56.4 Where a session comes back
 

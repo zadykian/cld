@@ -15,7 +15,7 @@ import (
 // Where the socket directory ignores case, names that differ only in case share a socket (decision
 // 13.6). join, detach and kill refuse A, naming session a, with a's claude running and once a's
 // server outlives it; list shows a once. Elsewhere a symbolic link cld-A to a's socket plays such a
-// directory, as a casefold tmpfs would (docs/design/findings/tmux-sessions.md).
+// directory, as a casefold tmpfs would (docs/design/findings/tmux-servers.md).
 func TestNamesDifferingInCase(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)

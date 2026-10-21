@@ -64,14 +64,14 @@ new option of its own, so [decision 6](0006-versions.md) stands.
 ### 41.5 The length of tmux's command
 
 tmux takes a command of 16364 bytes at most. It fails on a longer one after cld has printed the
-title, leaving its socket ([tmux session findings](../findings/tmux-sessions.md)). cld counts its
+title, leaving its socket ([tmux session findings](../findings/tmux-commands.md)). cld counts its
 command as tmux does, with the record's hooks, the marks
 ([decision 48.1](0048-restore-after-reboot.md)) and the keys
 ([decision 51.1](0051-moving-between-sessions.md)). It refuses a longer one with status 2, naming
 its size. The count comes before the terminal check
 ([decision 31.2](0031-a-terminal-to-attach-from.md)) and the entry, so a refusal leaves the record
 unchanged. Only claude's words, or a long SESSION, make it so: cld's own take 7 to 8 KB by their
-paths ([tmux session findings](../findings/tmux-sessions.md)). The keys take 420 bytes and six paths
+paths ([tmux session findings](../findings/tmux-commands.md)). The keys take 420 bytes and six paths
 of it. The message and the guide say to give claude long text in a file.
 
 ### 41.6 The help

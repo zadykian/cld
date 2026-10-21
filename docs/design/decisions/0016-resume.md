@@ -67,7 +67,7 @@ which part needs a newer one.
 ### 16.8 Words tmux would change
 
 tmux ends a command at a word ending in `;`, and expands `-c` as a format, where `#(...)` runs a
-command (tmux 3.3a to 3.7c; [tmux's findings](../findings/tmux-sessions.md)). So cld puts a `\`
+command (tmux 3.3a to 3.7c; [tmux's findings](../findings/tmux-commands.md)). So cld puts a `\`
 before such a `;`, and doubles each `#` of the directory. Before, a directory ending in `;` made no
 session, and one holding `#(...)` ran the command.
 

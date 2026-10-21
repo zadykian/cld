@@ -2,7 +2,8 @@
 
 What Claude Code does that cld relies on or works around, probed on Linux. "Read" means read in
 claude's JavaScript bundle, not run; "run" means the real claude ran. What tmux does around claude
-is in [tmux-sessions.md](tmux-sessions.md) and [tmux-terminal.md](tmux-terminal.md).
+is in tmux's findings: [servers](tmux-servers.md), [commands](tmux-commands.md),
+[sessions](tmux-sessions.md) and [the terminal](tmux-terminal.md).
 
 ## Versions and the command line
 

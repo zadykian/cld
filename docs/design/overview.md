@@ -7,7 +7,8 @@ that, and of where the rest of the design record lives:
 
 - the numbered decisions, a file each under `decisions/`, which the [index](../design.md) lists;
 - the findings: probed behaviour, with the versions checked, of
-  [tmux's sessions](findings/tmux-sessions.md), [tmux and the terminal](findings/tmux-terminal.md),
+  tmux's [servers](findings/tmux-servers.md), [commands](findings/tmux-commands.md) and
+  [sessions](findings/tmux-sessions.md), [tmux and the terminal](findings/tmux-terminal.md),
   [claude](findings/claude.md), [the terminals](findings/terminals.md) and
   [shells, tools and the system](findings/environment.md);
 - [testing](testing.md): the test layers, the terminal contract C1-C10, CI and what is checked.

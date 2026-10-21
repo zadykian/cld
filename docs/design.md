@@ -13,10 +13,12 @@ The research behind cld and the reasons for what it does. What cld offers its us
 Behaviour probed by hand, each finding with the versions checked. A decision links the
 findings it rests on, and a finding links back.
 
-- [tmux: servers and sessions](design/findings/tmux-sessions.md): releases, running a program,
-  command parsing, targets, clients, options and formats, a pane's environment, dead panes,
-  history, sockets, servers ending and what they cost. It continues in
-  [tmux-sessions-2.md](design/findings/tmux-sessions-2.md): moving a server's socket.
+- [tmux: servers](design/findings/tmux-servers.md): releases, sockets, servers ending and what
+  servers cost.
+- [tmux: commands](design/findings/tmux-commands.md): running a program, command parsing, command
+  lists, options and formats.
+- [tmux: sessions and panes](design/findings/tmux-sessions.md): targets, clients, a pane's
+  environment, dead panes, history and restoring sessions.
 - [tmux: the terminal's side](design/findings/tmux-terminal.md): a client starting, the locale, an
   outer tmux, keys, focus, the mouse, notifications, links, titles, messages, popups and
   `detach-client`.
