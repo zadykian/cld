@@ -28,6 +28,10 @@ const (
 	logLimit = 1 << 20
 )
 
+// cannotStart starts Start's error where the watcher's process does not start, and a restore's
+// warning where Start fails.
+const cannotStart = "cannot start the watcher: "
+
 // Start starts the watcher unless one runs: cld restore tabs --watching, in a session of its own,
 // with watch's lock on fd 3 (decision 59.3). It reports false where one runs. It refuses to run
 // outside a Ghostty pane: the watcher's osascript asks macOS for the grant of the app it descends
@@ -63,7 +67,7 @@ func Start() (started bool, err error) {
 	cmd.Stderr, cmd.ExtraFiles, cmd.Dir = log, []*os.File{watch}, "/"
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		return false, fmt.Errorf("cannot start the watcher: %w", err)
+		return false, fmt.Errorf(cannotStart+"%w", err)
 	}
 	return true, cmd.Process.Release()
 }

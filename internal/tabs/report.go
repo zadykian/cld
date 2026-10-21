@@ -1,7 +1,6 @@
 package tabs
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,12 +10,14 @@ import (
 )
 
 // Report is what a restore did or would do, for cmd to print: Lines on stdout, then Warnings and
-// Notes on stderr. Failed is a step that failed, which makes the status 1 (decision 48.8).
+// Notes on stderr. Failed is a step that failed, which makes the status 1 (decision 48.8). Own is
+// cld's own pane, which cmd joins again by exec once the report is out, nil for none.
 type Report struct {
 	Lines    []string
 	Warnings []string
 	Notes    []string
 	Failed   bool
+	Own      *Own
 }
 
 // warn adds warning, where there is one: a failed step.
@@ -27,6 +28,9 @@ func (r *Report) warn(warning string) {
 	}
 }
 
+// note adds note: what cld did, or left, beside what was asked of it.
+func (r *Report) note(note string) { r.Notes = append(r.Notes, note) }
+
 // section adds a heading and its lines, where it has any.
 func (r *Report) section(heading string, lines []string) {
 	if len(lines) > 0 {
@@ -34,25 +38,12 @@ func (r *Report) section(heading string, lines []string) {
 	}
 }
 
-// dryRun reports what the record in dir holds after a restore's merge, seen. Ghostty and the
-// watcher come first, then the panes a restore would join again, the losses, and those that wait
-// for Ghostty's undo. Notes on Ghostty's config end it.
-func dryRun(ctx context.Context, dir string, seen *observed, report *Report) {
-	c := clock{now: time.Now()}
-	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
-	r := seen.record
-	report.Lines = append(report.Lines, c.ghostty(seen))
-	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)
-	report.section("Panes to join again:", c.joinAgain(r))
-	report.section("Losses:", c.losses(r.Losses))
-	for _, l := range r.Losses {
-		if l.Cause == CauseQuit && len(l.Windows) == 0 {
-			report.Lines = append(report.Lines,
-				"Ghostty brought back every window as it quit at "+c.at(l.At))
-		}
+// paneCwd is the directory of record r's pane id, "" where unknown.
+func paneCwd(r *Record, id string) string {
+	if p := r.Panes[id]; p != nil {
+		return p.Cwd
 	}
-	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
-	report.section("Notes:", settingsNotes(ctx, seen.app))
+	return ""
 }
 
 // clock writes the report's times, in local time: of today as 15:04, of another day with its
@@ -60,6 +51,13 @@ func dryRun(ctx context.Context, dir string, seen *observed, report *Report) {
 type clock struct {
 	now  time.Time
 	home string
+}
+
+// newClock is the clock of a report written now.
+func newClock() clock {
+	c := clock{now: time.Now()}
+	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
+	return c
 }
 
 func (c clock) at(t time.Time) string { return c.format(t, "15:04") }
@@ -90,88 +88,23 @@ func (c clock) dir(path string) string {
 	return path
 }
 
-// ghostty is the report's first line: Ghostty's version, pid and start, or that none runs.
-func (c clock) ghostty(seen *observed) string {
-	if seen.o == nil {
-		return "Ghostty is not running: the record as if it brought nothing back"
+// when is when loss l was lost: closed, or as Ghostty quit.
+func (c clock) when(l *Loss) string {
+	if l.Cause == CauseQuit {
+		return "lost as Ghostty quit at " + c.at(l.At)
 	}
-	line := "Ghostty"
-	if seen.o.Version != "" {
-		line += " " + seen.o.Version
-	}
-	line += fmt.Sprintf(", pid %d", seen.app.PID)
-	if seen.app.Launched > 0 {
-		return line + ", started " + c.at(time.UnixMilli(int64(seen.app.Launched*1000)))
-	}
-	if p, ok := seen.o.Procs.ByPID(seen.app.PID); ok {
-		return line + ", started " + c.at(p.Start)
-	}
-	return line
+	return "closed at " + c.at(l.At)
 }
 
-// watcher is the watcher's lines: its pid and last tick, or that none runs, and its last line.
-func (c clock) watcher(s Status) []string {
-	line := "The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one"
-	if s.PID != 0 {
-		line = fmt.Sprintf("The watcher: pid %d, last read at %s", s.PID, c.atSecond(s.LastTick))
+// noun is what loss l is, in the singular: a window, a tab or a split.
+func noun(l *Loss) string {
+	switch l.Cause {
+	case CauseTab:
+		return "a tab"
+	case CausePane:
+		return "a split"
 	}
-	if s.LastLine == "" {
-		return []string{line}
-	}
-	return []string{line, "The watcher's last line: " + s.LastLine}
-}
-
-// joinAgain is a line per pane a restore would join again: a shell at its prompt, with a binding.
-// A quit cut that binding, or a restore typed it, and it did not hold.
-func (c clock) joinAgain(r *Record) []string {
-	var lines []string
-	for _, w := range r.Windows {
-		for _, id := range windowLeaves(w) {
-			p := r.Panes[id]
-			if p == nil || p.Kind != KindLocal || p.Last == nil {
-				continue
-			}
-			lines = append(lines, fmt.Sprintf("  in %s: %s, %s", c.dir(p.Cwd), binding(p.Last),
-				c.cut(p.Last)))
-		}
-	}
-	return lines
-}
-
-// binding is the session or the host of last.
-func binding(last *Last) string {
-	if last.Session != "" {
-		return fmt.Sprintf("session '%s' on %s", last.Session, last.Host)
-	}
-	return "ssh to " + last.Host
-}
-
-// cut is what ended last's binding: a typed line that left the pane at its prompt, or a quit.
-func (c clock) cut(last *Last) string {
-	switch {
-	case last.Typed != nil:
-		return "typed at " + c.at(*last.Typed) + " and back at its prompt"
-	case last.Cut == CutQuit:
-		return "as Ghostty quit at " + c.at(last.At)
-	}
-	return "as it closed at " + c.at(last.At)
-}
-
-// losses is a line per loss not restored, with its size and time, but for a quit that lost
-// nothing.
-func (c clock) losses(list []*Loss) []string {
-	var lines []string
-	for _, l := range list {
-		if l.Restored != nil || len(l.Windows) == 0 {
-			continue
-		}
-		when := "closed at " + c.at(l.At)
-		if l.Cause == CauseQuit {
-			when = "lost as Ghostty quit at " + c.at(l.At)
-		}
-		lines = append(lines, "  "+size(l)+", "+when)
-	}
-	return lines
+	return "a window"
 }
 
 // size is what loss l holds: a tab, a split, or windows with their tabs and panes.
@@ -183,7 +116,7 @@ func size(l *Loss) string {
 	}
 	switch l.Cause {
 	case CauseTab, CausePane:
-		what := map[string]string{CauseTab: "a tab", CausePane: "a split"}[l.Cause]
+		what := noun(l)
 		if panes > 1 {
 			what += " of " + count(panes, "pane")
 		}
@@ -200,45 +133,34 @@ func size(l *Loss) string {
 	return what
 }
 
+// windowSize is a window of tabs, with their panes.
+func windowSize(tabs []ghostty.TabBuild) string {
+	panes := 0
+	for _, tab := range tabs {
+		panes += len(buildLeaves(tab.Tree))
+	}
+	what := "a window of " + count(len(tabs), "tab")
+	if panes > len(tabs) {
+		what += " and " + count(panes, "pane")
+	}
+	return what
+}
+
+// buildLeaves are the leaves of apply.js's tree n, left or top first.
+func buildLeaves(n *ghostty.Node) []*ghostty.Leaf {
+	switch {
+	case n == nil:
+		return nil
+	case n.Leaf != nil:
+		return []*ghostty.Leaf{n.Leaf}
+	}
+	return append(buildLeaves(n.First), buildLeaves(n.Second)...)
+}
+
 // count is n of thing, in the plural but for one.
 func count(n int, thing string) string {
 	if n == 1 {
 		return "1 " + thing
 	}
 	return fmt.Sprintf("%d %ss", n, thing)
-}
-
-// settingsNotes are the notes on the settings in Ghostty's config that keep a restore from working
-// as it should, as ghostty +show-config gives them. app is the Ghostty that runs, if any.
-func settingsNotes(ctx context.Context, app ghostty.App) []string {
-	bin, ok := ghostty.Binary(app)
-	if !ok {
-		return []string{"  cld cannot read Ghostty's config: ghostty is not installed"}
-	}
-	s, err := ghostty.ReadSettings(ctx, bin)
-	if err != nil {
-		return []string{"  cld cannot read Ghostty's config: " + err.Error()}
-	}
-	var notes []string
-	switch s.SaveState {
-	case "always":
-	case "default":
-		notes = append(notes, "  window-save-state is default: whether Ghostty brings back its"+
-			" windows after Cmd+Q rests on macOS's own setting; set it to always")
-	default:
-		notes = append(notes, "  window-save-state is "+s.SaveState+
-			": Ghostty brings back no window after Cmd+Q")
-	}
-	if s.Title {
-		notes = append(notes, "  title is set in Ghostty's config: it hides cld's title,"+
-			" and with it each pane's session")
-	}
-	if !s.SSHTerminfo {
-		notes = append(notes, "  shell-integration-features lacks ssh-terminfo: cld types"+
-			" TERM=xterm-256color for hosts Ghostty has no terminfo cached for")
-	}
-	if s.HiddenTitlebar {
-		notes = append(notes, "  macos-titlebar-style is hidden: rebuilt tabs open as windows")
-	}
-	return notes
 }

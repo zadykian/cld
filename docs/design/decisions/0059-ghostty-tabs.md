@@ -61,7 +61,8 @@ specifier goes through its window's
   ([findings](../findings/terminals.md#ghostty)). With an older Ghostty, cld fails, naming its
   version.
 - A snapshot finds Ghostty's process through `NSRunningApplication`, which sends no Apple Event,
-  and stops where none runs: an Apple Event would launch Ghostty.
+  and stops where none runs: an Apple Event would launch Ghostty. An apply checks again before each
+  typing, build and wait, and stops once the Ghostty it began with has gone.
 - Automation denied and AppleScript off both fail with -1743, so cld tells them apart by the step.
   Denied, a getter fails. Off, getters answer empty, and `new surface configuration`, which opens
   nothing, fails with Ghostty's text. Each gets its advice.
@@ -119,9 +120,10 @@ The record lives in `tabs/` beside cld's record of its sessions
 not know. The directory is the user's alone. `tabs.json` is written by rename, only where its bytes
 change, so a tick that sees nothing new writes nothing. `lock` guards each read and write. A
 restore waits for it up to 10 s, and the watcher not at all at a tick, but up to 10 s to note the
-end of its run. `watch`'s time is the last tick, `restore` keeps two restores apart, and
-`watch.log` is emptied past 1 MB. A record that does not parse is moved aside, with a warning. One
-of a newer format is refused, so the newer cld still finds it.
+end of its run. `watch`'s time is the last tick, and `watch.log` is emptied past 1 MB. `restore`
+keeps two restores apart: a second fails at once with status 1 rather than wait, as it would type
+into the same panes. A dry-run takes no part in it. A record that does not parse is moved aside,
+with a warning. One of a newer format is refused, so the newer cld still finds it.
 
 - **Identity.** A pane is its terminal's id, which Ghostty keeps for the surface's life, through
   its restoration and an undo. Window and tab ids are addresses, so the record never stores them.
@@ -170,13 +172,30 @@ decisions [25](0025-title-follows-status.md) and [26](0026-title-marks-worktree.
 ### 59.6 What a restore reopens
 
 A pane Ghostty brought back, at its prompt with a `last`, is joined again in place. A window that a
-quit or a close lost is rebuilt: by default those of the last 15 minutes, and the last quit's. Older
-ones wait for `--older`, a burst at a time, or `--all`. A tab or split closed alone, usually on
-purpose, comes back only with `--closed`. A second restore reopens nothing new.
+quit or a close lost is rebuilt: by default those of the last 15 minutes, and the last quit's,
+whatever its age. Older ones wait for `--older`, a burst at a time, or `--all`. A tab or split
+closed alone, usually on purpose, comes back only with `--closed`. A second restore reopens nothing
+new.
 
-The dedupe counts: for each session, the panes joined to it by hand since the loss are subtracted
-from those to rebuild. A pane it drops opens as a shell in its directory, keeping the layout.
-Ghostty is opened where it does not run, so that the windows it restores count first.
+- **What is open stays.** A lost pane that Ghostty shows again, in a window it brought back late
+  say, is never rebuilt. A pane that two losses hold is rebuilt once, from the newer.
+- **The dedupe counts.** For each session, and each host of plain ssh, the panes joined to it by
+  hand since the loss are subtracted from those to join, in place or rebuilt. A rebuilt pane it
+  drops opens as a shell in its directory, keeping the layout, and a pane in place is left alone.
+- **Placement.** A tab goes back into the window that holds its anchor, at its index, read back
+  after the move; a split goes beside its anchor. Without the anchor, either opens as a window.
+  Windows are built back to front, the oldest loss first, so the newest ends in front. Tabs go
+  back newest first, as an undo does: a tab's index is its place as it closed, among the tabs that
+  closed later.
+- **Ghostty** is opened by its bundle id where it does not run. cld waits up to 10 s for two
+  snapshots in a row to agree, so that the windows Ghostty restores count first.
+- **Failures.** A failed typing or build is a warning and the status 1, as in `cld restore`
+  ([48.8](0048-restore-after-reboot.md)). A loss is restored once a build made a pane of it, or
+  once nothing of it remains to build. A typed pane keeps its `last` (59.4), so the next restore
+  types again into a pane whose ssh failed.
+- **A busy pane**, whose group changed after the snapshot, is left alone, with a note.
+- **An apply that stops**, with no result, marks no loss restored. Where Ghostty shows terminals it
+  lacked before, a merge enters them, so that the next restore's dedupe counts those that joined.
 
 ### 59.7 The typed line
 
@@ -191,8 +210,10 @@ runs `cld join --existing` for the session, then a shell (58). A pane that showe
   pane's group again just before. It empties the line first, then types, then presses Enter.
 - **Never `--detach-others`**: it would detach the session on another device
   ([decision 23](0023-joining-beside-other-terminals.md)).
-- **Terminfo.** For a host that Ghostty's terminfo cache lacks, the line sets
-  `TERM=xterm-256color`: Ghostty's wrapper would append its install script to the line's command.
+- **Terminfo.** cld asks `ghostty +ssh-cache --host=KEY`, KEY being `ssh -G`'s
+  `user@hostname[:port]`, as Ghostty's wrapper keys its cache. For a host it lacks, the line starts
+  `TERM=xterm-256color command`, past the wrapper, which would append its install script to the
+  line's command ([findings](../findings/terminals.md#ghosttys-applescript-on-macos)).
 - **Pace.** Lines and new ssh panes go out spaced, so that sshd's `MaxStartups` and a fail2ban
   see no burst; #177's check 15 tunes it.
 
@@ -208,7 +229,10 @@ the sizes of #177's check 10.
 
 cld finds the pane it runs in by its input's device number, matched to each pane's `tty`, rather
 than by running `tty`. A restore never types into it, and its own merge counts it a shell at its
-prompt. Where the pane has a `last`, cld execs the same ssh there itself, as `join` execs tmux.
+prompt. Where the pane has a `last`, cld execs the same ssh there itself once its report is out,
+as `join` execs tmux. The dedupe counts the pane among those in place, and the terminfo rule holds
+for its `TERM` (59.7). Its `last` notes the typing before the exec, so an ssh that fails leaves it
+for the next restore.
 
 ### 59.10 Not taken
 
@@ -235,9 +259,12 @@ covers drops meanwhile (`zadykian/ws` #56). So within a run no pane gets a `last
 `restore tabs` has its own help and completes its options, never `--watching`. `--watch` and the
 hidden `--watching` stay in every later release with these meanings, as the keys' options do
 ([decision 51.2](0051-moving-between-sessions.md)): ssh's config and the watcher's exec name them.
-Until 59.6 lands, `restore tabs` without `--watch` or `--dry-run` fails with status 2, and its
-help names the record alone. `--dry-run` shows Ghostty, the watcher, the panes and losses the record
-holds, and notes from `ghostty +show-config`.
+Plain `restore tabs` restores, and its help says what it reopens and types. `--older`, `--all` and
+`--closed` widen what it reopens (59.6), and `--older` and `--all` exclude each other. `--watch`
+only starts the watcher, so it excludes them and `--dry-run`. `--dry-run` shows Ghostty, the
+watcher, the lines it would type and the windows it would reopen. It also lists what waits for
+Ghostty's undo, and what is left with the option that reopens each. Notes on the plan and from
+`ghostty +show-config` end it.
 
 ### 59.12 Tests
 
@@ -258,7 +285,7 @@ the guide where users see it.
   guide says how to start it, and which of Ghostty's settings it needs.
 - A move then a close within one tick records the session before the move. A title fixed in
   Ghostty's config, or set by hand, hides a pane's session.
-- Rebuilt windows lose their frame, fullscreen state, tab titles and colours.
+- Rebuilt windows lose their frame, fullscreen state, tab titles and colours. Where Ghostty's main
+  window is in native fullscreen, each opens in native fullscreen
+  ([findings](../findings/terminals.md#ghosttys-applescript-on-macos)).
 - The title and `--existing` are a contract across releases of cld on two machines.
-- This release keeps the record and shows it; joining and reopening (59.6 to 59.9) follow in
-  #176's next changes.

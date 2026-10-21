@@ -5,7 +5,7 @@ Usage:
 
 Available Commands:
   sessions    bring back the sessions that ran when the machine stopped
-  tabs        keep a record of a Mac's Ghostty windows, tabs and splits
+  tabs        reopen a Mac's Ghostty windows, tabs and splits of cld sessions
 
 Flags:
   -h, --help   help for restore
