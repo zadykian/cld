@@ -10,8 +10,8 @@ import (
 )
 
 // What setup config project writes in .claude/settings.json: the permission rules of each set and
-// MCP server. With --mcp goland --permissions cld, that is the repository's own file, but for its
-// hooks.
+// MCP server. With --mcp goland --permissions cld, that is the repository's own file up to its
+// plugins.
 
 // With --permissions cld, setup config project adds the entries permissions.deny lacks after those
 // it has, keeping them. The settings' order and indentation stay, the new key permissions.allow

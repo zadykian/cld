@@ -100,10 +100,11 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   which binds that commit, move together and by hand
   ([decision 54](docs/design/decisions/0054-ghostty.md)).
 - `setup config project --mcp goland --permissions cld` writes this repository's `.mcp.json` and
-  `.claude/settings.json` byte for byte, but for the hooks, which stay the settings' last key.
+  `.claude/settings.json` byte for byte, but for the plugins and hooks, the settings' last keys.
   Change them with `internal/project` (decisions
-  [19](docs/design/decisions/0019-project-settings.md) and
-  [28](docs/design/decisions/0028-shared-project-settings.md)).
+  [19](docs/design/decisions/0019-project-settings.md),
+  [28](docs/design/decisions/0028-shared-project-settings.md) and
+  [63](docs/design/decisions/0063-this-repositorys-plugins.md)).
 - Run `setup config user`, `setup completion` and `setup restore` only with `HOME` and the
   variables they follow pointing at a scratch directory, and `setup restore` never against the
   user's own systemd (decisions [22](docs/design/decisions/0022-setting-completion-up.md),
@@ -138,5 +139,8 @@ Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org
   [docs.md](.claude/rules/docs.md), and the writing policy in
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
 - Skills in `.claude/skills/`: `adr`, `split-file`, `trim`, `issue`, and `land`, run by hand only.
+- Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
+  [zadykian/skills](https://github.com/zadykian/skills). Each of their skills first reads cld's
+  notes for it, `.claude/skill-notes/NAME.md`.
 - Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing, and `doc-editor`.
 - Hooks in `.claude/hooks/`: the file's gates after each Edit or Write, `make lint` as a turn ends.

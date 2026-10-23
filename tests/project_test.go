@@ -13,9 +13,9 @@ import (
 )
 
 // setup config project in the sandbox's work directory, a git work tree unless a test says
-// otherwise, against the real git. Where nothing was, cld writes the repository's own .mcp.json and
-// .claude/settings.json, less its hooks, with --mcp goland --permissions cld (decisions 19.1 and
-// 28.6). The tests read both from the repository, so a change to either goes with a change to cld.
+// otherwise, against the real git. Where nothing was, --mcp goland --permissions cld writes the
+// repository's own .mcp.json, and its .claude/settings.json up to the plugins (decisions 19.1, 28.6
+// and 63). The tests read both from the repository, so either changes together with cld.
 
 const (
 	// localSettings is the .claude/settings.local.json setup config project writes where there is

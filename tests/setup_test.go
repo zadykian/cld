@@ -61,12 +61,12 @@ func ideTools(name string) []string {
 	return entries
 }
 
-// repoSettings is the repository's .claude/settings.json without its last key, hooks, which setup
-// project does not write.
+// repoSettings is the repository's .claude/settings.json up to its plugins, the keys of its own
+// Claude Code setup, which setup config project does not write (decision 63).
 func repoSettings(t *testing.T) string {
 	t.Helper()
 	settings := repoFile(t, ".claude/settings.json")
-	if before, _, found := strings.Cut(settings, ",\n  \"hooks\": {\n"); found {
+	if before, _, found := strings.Cut(settings, ",\n  \"extraKnownMarketplaces\": {\n"); found {
 		return before + "\n}\n"
 	}
 	return settings

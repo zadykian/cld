@@ -67,8 +67,8 @@ The `adr` skill in `.claude/skills` adds a record.
   19, 22, 24, 27, 28, 37, 40, 44, 49, 50, 52, 53 and 62.
 - [18. Telemetry](design/decisions/0018-telemetry.md): Accepted (#30). Amended by 19, 22 and 48.
   Superseded by 52.
-- [19. Project settings](design/decisions/0019-project-settings.md): Accepted. Amended by 28, 52
-  and 53.
+- [19. Project settings](design/decisions/0019-project-settings.md): Accepted. Amended by 28, 52,
+  53 and 63.
 - [20. An install script](design/decisions/0020-install-script.md): Accepted.
 - [21. Self-update](design/decisions/0021-self-update.md): Accepted. Amended by 22.
 - [22. Setting completion up](design/decisions/0022-setting-completion-up.md): Accepted. Amended by
@@ -83,7 +83,7 @@ The `adr` skill in `.claude/skills` adds a record.
   by 39.
 - [27. Completion in bash with ble.sh](design/decisions/0027-completion-with-blesh.md): Accepted.
 - [28. Project settings a team can share](design/decisions/0028-shared-project-settings.md):
-  Accepted. Amended by 53.
+  Accepted. Amended by 53 and 63.
 - [29. Notifications](design/decisions/0029-notifications.md): Accepted (#59). Amended by 53 and
   55.
 - [30. Links](design/decisions/0030-links.md): Accepted (#60).
@@ -140,3 +140,4 @@ The `adr` skill in `.claude/skills` adds a record.
   Accepted (#186).
 - [62. Commands on another host](design/decisions/0062-commands-on-another-host.md): Accepted
   (#186).
+- [63. This repository's plugins](design/decisions/0063-this-repositorys-plugins.md): Accepted.
