@@ -138,7 +138,8 @@ Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org
 - `.claude/rules/`: each area's invariants, what each document holds in
   [docs.md](.claude/rules/docs.md), and the writing policy in
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
-- Skills in `.claude/skills/`: `adr`, `split-file`, `trim`, `issue`, and `land`, run by hand only.
+- Skills in `.claude/skills/`: `adr`, `split-file`, `trim` and `land`, run by hand only. `issue` is
+  flow's, `/flow:issue`.
 - Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
   [zadykian/skills](https://github.com/zadykian/skills). Each of their skills first reads cld's
   notes for it, `.claude/skill-notes/NAME.md`.
