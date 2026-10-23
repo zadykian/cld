@@ -100,7 +100,7 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   which binds that commit, move together and by hand
   ([decision 54](docs/design/decisions/0054-ghostty.md)).
 - `setup config project --mcp goland --permissions cld` writes this repository's `.mcp.json` and
-  `.claude/settings.json` byte for byte, but for the plugins and hooks, the settings' last keys.
+  `.claude/settings.json` byte for byte, but for the plugins' keys, which stay the settings' last.
   Change them with `internal/project` (decisions
   [19](docs/design/decisions/0019-project-settings.md),
   [28](docs/design/decisions/0028-shared-project-settings.md) and
@@ -144,4 +144,6 @@ Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org
   [zadykian/skills](https://github.com/zadykian/skills). Each of their skills first reads cld's
   notes for it, `.claude/skill-notes/NAME.md`.
 - Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing, and `doc-editor`.
-- Hooks in `.claude/hooks/`: the file's gates after each Edit or Write, `make lint` as a turn ends.
+- Hooks: the [lint plugin's](https://github.com/zadykian/skills/blob/main/docs/lint.md), which run
+  `make lint-file` on each file Claude edits, and `make lint-tree` as a turn ends. They run only in
+  a tree the maintainer vouches for, whose gate code, `.claude/lint-gates` included, matches `HEAD`.
