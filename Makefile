@@ -35,8 +35,8 @@ FILES =
 # The Markdown files rumdl and lychee check: those git lists, new ones included.
 MARKDOWN = $$(git ls-files --cached --others --exclude-standard '*.md')
 
-.PHONY: check lint vet golangci-lint sizecheck vale rumdl govulncheck actionlint zizmor lychee \
-	commits test \
+.PHONY: check lint lint-tree vet golangci-lint sizecheck vale rumdl govulncheck actionlint zizmor \
+	lychee commits lint-file test \
 	docker-image docker-test docker-check docker-blesh-image docker-blesh-test docker-blesh-check \
 	dist install uninstall
 
@@ -44,9 +44,14 @@ check: vet test
 
 # Every gate, as CI's lint job runs them, each failing on any finding. tools/run downloads the
 # tools pinned there into .cache/tools; check keeps to vet, whose tools the Docker image has.
-lint: SHELLCHECK = tools/run shellcheck
-lint: SHFMT = tools/run shfmt
-lint: vet golangci-lint sizecheck vale rumdl govulncheck actionlint zizmor lychee commits
+lint: lint-tree govulncheck
+
+# Every gate but govulncheck, whose findings change with the day's advisories, as the lint plugin
+# runs them as Claude ends its turn. The plugin passes BASE as origin/main's ref, which overrides
+# the Docker checks' BASE above; no gate here reads either.
+lint-tree: SHELLCHECK = tools/run shellcheck
+lint-tree: SHFMT = tools/run shfmt
+lint-tree: vet golangci-lint sizecheck vale rumdl actionlint zizmor lychee commits
 
 vet:
 	$(SHELLCHECK) $(SCRIPTS)
@@ -99,6 +104,23 @@ lychee:
 # The messages of the commits HEAD adds to origin/main, as CLAUDE.md's Commits has them.
 commits:
 	go run ./tools/commitcheck
+
+# The gates of each file of FILES, as the lint plugin runs them after Claude edits a file: gofmt
+# and golangci-lint on a Go file's package, lychee and rumdl on a Markdown file, and the size caps
+# and Vale on both. sizecheck alone, without its tests. A file of another kind passes.
+lint-file:
+	@status=0; for file in $(FILES); do \
+		case $$file in \
+		*.go) test -z "$$(gofmt -l "$$file" 2>&1)" || { gofmt -d "$$file"; status=1; }; \
+			tools/run golangci-lint run --allow-serial-runners "./$$(dirname "$$file")/" || \
+				status=1 ;; \
+		*.md) tools/run lychee --offline --include-fragments --no-progress "$$file" || status=1; \
+			tools/run rumdl check --deny-config-warnings "$$file" || status=1 ;; \
+		*) continue ;; \
+		esac; \
+		go run ./tools/sizecheck "$$file" || status=1; \
+		$(MAKE) --no-print-directory vale FILES="$$file" || status=1; \
+	done; exit $$status
 
 test:
 	cd tests && CLD_TERMINALS=$(TERMINALS) go test -count=1 $(TEST_TAGS) ./...
