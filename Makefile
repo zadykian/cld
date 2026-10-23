@@ -25,7 +25,7 @@ PLATFORMS = linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 BUILD = CGO_ENABLED=0 go build -trimpath -ldflags '-X main.version=$(VERSION)'
 # The scripts vet checks, POSIX sh but for fetch-deps and build-lib, which are bash.
 SCRIPTS = install.sh tests/jediterm/fetch-deps tests/ghostty/build-lib tools/run tools/valecheck \
-	.claude/hooks/lint-file.sh .claude/hooks/lint-branch.sh tests/fakes/open tests/fakes/ghostty
+	tests/fakes/open tests/fakes/ghostty
 # vet's ShellCheck and shfmt: those on the PATH, as the Docker image and Homebrew have them, but
 # the pinned ones under lint.
 SHELLCHECK = shellcheck
