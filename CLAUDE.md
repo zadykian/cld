@@ -136,7 +136,7 @@ Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org
 ## Where else to look
 
 - `.claude/rules/`: each area's invariants, what each document holds in
-  [docs.md](.claude/rules/docs.md), and the writing policy in
+  [docs.md](.claude/rules/docs.md), and what cld adds to the `writing` skill's policy in
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
 - Skills in `.claude/skills/`: `adr`. The plugins hold the rest: `/flow:issue`, `/flow:land`, run
   by hand only, `/docs:trim` and `/lint:split-file`.

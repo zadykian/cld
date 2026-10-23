@@ -75,7 +75,7 @@ link to the decision.
 
 ## Check
 
-- Follow [writing.md](../../rules/writing.md): sentences of 30 words or fewer, files of 300 lines
-  or fewer.
+- Follow the `writing` skill and [writing.md](../../rules/writing.md): sentences of 30 words or
+  fewer, files of 300 lines or fewer.
 - Run `make vale FILES='PATHS'`, `make sizecheck FILES='PATHS'`, `make rumdl` and `make lychee`.
 - Commit as `docs(design): ...`, or with the change the decision is for.

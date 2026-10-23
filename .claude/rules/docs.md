@@ -5,7 +5,7 @@ paths:
 
 # Docs
 
-What each document holds. How to write them is in [writing.md](writing.md).
+What each document holds. How to write them is in the `writing` skill and [writing.md](writing.md).
 
 - `README.md` is the overview, of 150 lines or fewer: what cld does, installing it, the commands,
   and a line per feature that links its page of the guide.

@@ -38,10 +38,10 @@ Then read the code for what they cannot see.
 - **Size.** Files of 300 lines or fewer. Functions of 60 lines and 40 statements or fewer
   (revive's `function-length`), cognitive complexity 20 or less (`gocognit`), no deep `if`
   nesting (`nestif`). Say how to split what is over.
-- **Comments.** As [writing.md](../rules/writing.md) has them: a block's purpose in one or two
-  sentences, or a non-obvious reason; never narration of the code. Blocks of 4 lines or fewer,
-  package comments of 15 or fewer, sentences of 30 words or fewer. A reason a decision records
-  is linked as "decision N", not restated.
+- **Comments.** As the `writing` skill and [writing.md](../rules/writing.md) have them: a block's
+  purpose in one or two sentences, or a non-obvious reason; never narration of the code. Blocks of
+  4 lines or fewer, package comments of 15 or fewer, sentences of 30 words or fewer. A reason a
+  decision records is linked as "decision N", not restated.
 - **One place per fact.** A constant, a rule or a reason stated twice is a finding: name the
   place it belongs.
 - **Lines.** 100 columns or fewer (`lll`).
