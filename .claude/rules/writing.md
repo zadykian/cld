@@ -16,6 +16,7 @@ check the measurable part, each warning counting as an error; review checks the 
 - Each fact lives in one place: code details in code, reasons in a decision record, behaviour in
   the guide. Other places link to it.
 - Docs do not repeat `cld help`; they say what the help leaves out.
+- A Go doc comment starts with the name it documents, as `// Setup sets...` does.
 
 ## The caps
 
