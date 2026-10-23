@@ -1,6 +1,6 @@
 # 63. This repository's plugins
 
-Status: Accepted.
+Status: Accepted. Amended by [64](0064-the-shared-skills-as-they-are.md).
 
 ## Context
 
