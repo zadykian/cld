@@ -68,7 +68,7 @@ sizecheck:
 	go test -count=1 ./tools/...
 	go run ./tools/sizecheck $(FILES)
 
-# Vale. tools/valecheck.txt is empty: no file may fail it.
+# Vale, which fails on an alert in any file.
 vale:
 	tools/valecheck $(FILES)
 

@@ -1,1 +1,0 @@
-# The files that fail Vale (tools/valecheck): the list may only shrink.

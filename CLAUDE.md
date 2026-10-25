@@ -113,8 +113,8 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
   ([testing](docs/design/testing.md#layers); #121).
 - Fix a finding, or justify it in place (`//nolint:LINTER // reason`); never lower a severity or
   add an exclusion.
-- The baselines, `tools/sizecheck/baseline.txt` and `tools/valecheck.txt`, are empty and stay so:
-  every file passes every gate outright (#125).
+- `tools/sizecheck/baseline.txt` is empty and stays so: every file passes every gate outright
+  (#125).
 
 ## Commits
 
