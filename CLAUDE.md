@@ -128,13 +128,12 @@ skill. `.github/workflows/rules.yml` checks each pull request against it, and wa
 - `.claude/rules/`: each area's invariants, what each document holds in
   [docs.md](.claude/rules/docs.md), and what cld adds to the `writing` skill's policy in
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
-- Skills in `.claude/skills/`: `adr`. The plugins hold the rest: `/flow:issue`, `/flow:land`, run
-  by hand only, `/docs:trim` and `/lint:split-file`.
+- Skills in `.claude/skills/`: `adr`.
 - Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
-  [zadykian/skills](https://github.com/zadykian/skills), whose skills cld runs as they are
-  ([decision 64](docs/design/decisions/0064-the-shared-skills-as-they-are.md)).
+  [zadykian/skills](https://github.com/zadykian/skills), whose skills and hooks hold as they ship
+  ([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)).
 - Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing. `/docs:trim`
   edits docs and comments.
 - Hooks: the [lint plugin's](https://github.com/zadykian/skills/blob/main/docs/lint.md), which run
-  `make lint-file` on each file Claude edits, and `make lint-tree` as a turn ends. They run only in
-  a tree the maintainer vouches for, whose gate code, `.claude/lint-gates` included, matches `HEAD`.
+  `make lint-file` and `make lint-tree`. `.claude/lint-gates` names the gate code beyond the
+  plugin's defaults.
