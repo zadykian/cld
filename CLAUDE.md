@@ -58,9 +58,9 @@ release: a binary per platform, `cld.sha256` and `install.sh`.
 
 - Pull requests land on `main` by fast-forward only, as the commits CI checked.
 - Never run `gh pr merge`: the repository and the ruleset on `main` refuse every merge method.
-- Rebase onto `main`, then comment `/ff` on the pull request
-  (`.github/workflows/fast-forward.yml`). It pushes once `linux`, `macos` and `lint` pass and
-  every conversation is resolved.
+- A comment `/ff` lands a pull request, through `.github/workflows/fast-forward.yml`, as
+  [`/flow:land`](https://github.com/zadykian/skills/blob/main/skills/land/SKILL.md) does. The
+  ruleset on `main` requires `linux`, `macos` and `lint` to pass, and every conversation resolved.
 - The maintainer pushes a pull request that changes `.github/workflows` by hand,
   `git push origin SHA:main`, as the workflow's token may not push such a change.
 - `.claude/settings.json` denies `gh pr merge` and the usual forms of a push to `main`. A rule
