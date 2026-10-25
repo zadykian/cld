@@ -133,7 +133,8 @@ skill. `.github/workflows/rules.yml` checks each pull request against it, and wa
 - Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
   [zadykian/skills](https://github.com/zadykian/skills), whose skills cld runs as they are
   ([decision 64](docs/design/decisions/0064-the-shared-skills-as-they-are.md)).
-- Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing, and `doc-editor`.
+- Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing. `/docs:trim`
+  edits docs and comments.
 - Hooks: the [lint plugin's](https://github.com/zadykian/skills/blob/main/docs/lint.md), which run
   `make lint-file` on each file Claude edits, and `make lint-tree` as a turn ends. They run only in
   a tree the maintainer vouches for, whose gate code, `.claude/lint-gates` included, matches `HEAD`.
