@@ -17,8 +17,7 @@ link its record, instead of restating the reasons.
   zeros, and `slug` its title in lowercase words joined by hyphens.
 - `docs/design/findings/`: probed behaviour, with the versions checked, in the file of its subject:
   `tmux-servers.md`, `tmux-commands.md`, `tmux-sessions.md`, `tmux-terminal.md`, `claude.md`,
-  `terminals.md` or `environment.md`. A file that would pass 300 lines splits by subject into files
-  that each stand on their own, never into a continuation such as `NAME-2.md`.
+  `terminals.md` or `environment.md`.
 - `docs/design.md`: the index, a line per record with its title and its Status.
 
 ## The record
@@ -75,7 +74,7 @@ link to the decision.
 
 ## Check
 
-- Follow the `writing` skill and [writing.md](../../rules/writing.md): sentences of 30 words or
-  fewer, files of 300 lines or fewer.
+- Follow the
+  [`writing` skill](https://github.com/zadykian/skills/blob/main/skills/writing/SKILL.md).
 - Run `make vale FILES='PATHS'`, `make sizecheck FILES='PATHS'`, `make rumdl` and `make lychee`.
 - Commit as `docs(design): ...`, or with the change the decision is for.

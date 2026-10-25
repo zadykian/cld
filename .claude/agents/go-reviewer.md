@@ -35,18 +35,15 @@ Then read the code for what they cannot see.
 - **Errors.** Every error is handled, returned with context, or discarded with a reason in a
   comment: `errcheck` counts `_ =` too. Wrapped errors are compared with `errors.Is` and
   `errors.As`. No `nil` returned beside an error just checked (`nilerr`).
-- **Size.** Files of 300 lines or fewer. Functions of 60 lines and 40 statements or fewer
-  (revive's `function-length`), cognitive complexity 20 or less (`gocognit`), no deep `if`
-  nesting (`nestif`). Say how to split what is over.
-- **Comments.** As the `writing` skill and [writing.md](../rules/writing.md) have them: a block's
-  purpose in one or two sentences, or a non-obvious reason; never narration of the code. Blocks of
-  4 lines or fewer, package comments of 15 or fewer, sentences of 30 words or fewer. A reason a
-  decision records is linked as "decision N", not restated.
+- **Size.** Functions of 60 lines and 40 statements or fewer (revive's `function-length`),
+  cognitive complexity 20 or less (`gocognit`), no deep `if` nesting (`nestif`). Say how to split
+  what is over.
+- **Comments.** As the
+  [`writing` skill](https://github.com/zadykian/skills/blob/main/skills/writing/SKILL.md) has them.
 - **One place per fact.** A constant, a rule or a reason stated twice is a finding: name the
   place it belongs.
-- **Lines.** 100 columns or fewer (`lll`).
-- **Exceptions.** A `//nolint` names one linter and says why (`nolintlint`). A lowered severity, a
-  new exclusion, or a new or raised baseline entry is a finding.
+- **Exceptions.** A `//nolint` names one linter and says why (`nolintlint`). A lowered severity or
+  a new exclusion is a finding.
 - **Tests.** Changed behaviour has a test. Helpers call `t.Helper()` (`thelper`) and use
   `t.TempDir` and `t.Setenv` (`usetesting`).
 - **cld's rules.** Where the diff touches them, the constraints in `CLAUDE.md` and the rules in
