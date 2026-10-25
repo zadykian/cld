@@ -53,7 +53,7 @@ type measurement struct {
 	errMsg  string
 }
 
-// measure counts the lines of the file at path with contents src and, in Go, its comment blocks.
+// measure counts the lines of the file at path with contents src and, in Go, its package comment.
 func measure(path string, src []byte) measurement {
 	var m measurement
 	m.values[checkLines] = bytes.Count(src, []byte("\n"))
@@ -72,18 +72,11 @@ func measure(path string, src []byte) measurement {
 		}
 		return m
 	}
-	for _, group := range file.Comments {
-		b := block{line: fset.Position(group.Pos()).Line}
-		b.length = fset.Position(group.End()).Line - b.line + 1
-		switch {
-		case group == file.Doc:
-			m.pkg = b
-			m.values[checkPackage] = b.length
-		case b.length > maxComment:
-			m.blocks = append(m.blocks, b)
-		}
+	if group := file.Doc; group != nil {
+		m.pkg = block{line: fset.Position(group.Pos()).Line}
+		m.pkg.length = fset.Position(group.End()).Line - m.pkg.line + 1
+		m.values[checkPackage] = m.pkg.length
 	}
-	m.values[checkComments] = len(m.blocks)
 	return m
 }
 

@@ -31,8 +31,8 @@ func entries(t *testing.T, dir string) string {
 	return strings.Join(kept, "")
 }
 
-// badGo is a Go file with a comment block of 5 lines on line 3.
-var badGo = "package a\n\n" + strings.Repeat("// x\n", 5) + "var x int\n"
+// longGo is a Go file of 301 lines.
+var longGo = "package a\n" + strings.Repeat("\n", 300)
 
 // runSteps is a session of sizecheck in one repository, each step on what those before it left.
 // $DIR in args stands for the repository's directory.
@@ -80,13 +80,13 @@ var runSteps = []struct {
 		entries: "big.md lines=302\n",
 	},
 	{
-		name: "a FILE alone", write: map[string]string{"new.go": badGo}, args: []string{"new.go"},
-		status: 1, stdout: "new.go:3: comment block of 5 lines, over the cap of 4\n",
+		name: "a FILE alone", write: map[string]string{"new.go": longGo}, args: []string{"new.go"},
+		status: 1, stdout: "new.go:1: 301 lines, over the cap of 300\n",
 		entries: "big.md lines=302\n",
 	},
 	{
 		name: "an absolute FILE", args: []string{"$DIR/new.go"},
-		status: 1, stdout: "new.go:3: comment block of 5 lines, over the cap of 4\n",
+		status: 1, stdout: "new.go:1: 301 lines, over the cap of 300\n",
 		entries: "big.md lines=302\n",
 	},
 	{
@@ -96,7 +96,7 @@ var runSteps = []struct {
 	},
 	{
 		name: "-update drops the stale entry and adds none", args: []string{"-update"}, status: 1,
-		stdout: "new.go:3: comment block of 5 lines, over the cap of 4\n", entries: "",
+		stdout: "new.go:1: 301 lines, over the cap of 300\n", entries: "",
 	},
 	{name: "a file fixed", write: map[string]string{"new.go": "package a\n"}, entries: ""},
 	{

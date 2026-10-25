@@ -4,8 +4,8 @@
 //
 //	go run ./tools/sizecheck [-update] [FILE...]
 //
-// Every .go and .md file is at most 300 lines; in Go, a comment block is at most 4 lines and the
-// package comment at most 15. It checks the files git lists, or those of them a FILE names.
+// Every .go and .md file is at most 300 lines, and in Go the package comment at most 15. It
+// checks the files git lists, or those of them a FILE names.
 // baseline.txt holds today's overages as ceilings: a value may fall, never rise, and an entry the
 // file no longer needs is stale. -update lowers the ceilings and drops stale entries; it adds or
 // raises one only when it creates the baseline. Findings go to stdout as PATH:LINE: message.

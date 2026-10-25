@@ -29,47 +29,13 @@ var measureTests = []struct {
 		want: measurement{values: values{6, 0, 0}},
 	},
 	{
-		name: "a block at the cap", path: "a.go", src: goSource("", comment(4)),
-		want: measurement{values: values{7, 0, 0}},
-	},
-	{
-		name: "a block over the cap", path: "a.go", src: goSource("", comment(5)),
-		want: measurement{values: values{8, 1, 0}, blocks: []block{{3, 5}}},
-	},
-	{
-		name: "a /* */ block over the cap", path: "a.go", src: goSource("", "/*\n1\n2\n3\n*/\n"),
-		want: measurement{values: values{8, 1, 0}, blocks: []block{{3, 5}}},
-	},
-	{
-		name: "a blank line splits blocks", path: "a.go",
-		src:  goSource("", comment(3)+"\n"+comment(3)),
-		want: measurement{values: values{10, 0, 0}},
-	},
-	{
-		name: "a trailing comment is a block of its own", path: "a.go",
-		src:  goSource("", "var y int // y\n"+comment(4)),
-		want: measurement{values: values{8, 0, 0}},
-	},
-	{
-		name: "blocks inside a function", path: "a.go",
-		src:  goSource("", "func f() {\n"+comment(6)+"}\n"),
-		want: measurement{values: values{11, 1, 0}, blocks: []block{{4, 6}}},
-	},
-	{
 		name: "the package comment at its cap", path: "a.go", src: goSource(comment(15), ""),
 		want: measurement{values: values{18, 0, 15}, pkg: block{1, 15}},
 	},
 	{
 		name: "the package comment over its cap", path: "a.go",
-		src: goSource("//go:build linux\n\n"+comment(16), comment(5)),
-		want: measurement{
-			values: values{26, 1, 16}, pkg: block{3, 16}, blocks: []block{{21, 5}},
-		},
-	},
-	{
-		name: "a comment above the package clause, apart from it", path: "a.go",
-		src:  comment(5) + "\n" + goSource("", ""),
-		want: measurement{values: values{9, 1, 0}, blocks: []block{{1, 5}}},
+		src:  goSource("//go:build linux\n\n"+comment(16), comment(5)),
+		want: measurement{values: values{26, 0, 16}, pkg: block{3, 16}},
 	},
 	{
 		name: "a parse error", path: "a.go", src: "package a\n\nfunc {\n",
