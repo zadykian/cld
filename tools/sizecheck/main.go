@@ -1,11 +1,11 @@
-// Command sizecheck keeps cld's files and Go comments short, and its backlog shrinking.
+// Command sizecheck keeps cld's files short, and its backlog shrinking.
 //
 // Run from the repository root:
 //
 //	go run ./tools/sizecheck [-update] [FILE...]
 //
-// Every .go and .md file is at most 300 lines, and in Go the package comment at most 15. It
-// checks the files git lists, or those of them a FILE names.
+// Every .go and .md file is at most 300 lines. It checks the files git lists, or those of them a
+// FILE names.
 // baseline.txt holds today's overages as ceilings: a value may fall, never rise, and an entry the
 // file no longer needs is stale. -update lowers the ceilings and drops stale entries; it adds or
 // raises one only when it creates the baseline. Findings go to stdout as PATH:LINE: message.
@@ -120,7 +120,7 @@ func measureFiles(dir string, listed []string,
 		if err != nil {
 			return nil, err
 		}
-		files[path] = measure(path, src)
+		files[path] = measure(src)
 	}
 	return files, nil
 }

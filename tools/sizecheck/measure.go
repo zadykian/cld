@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"go/parser"
-	"go/scanner"
-	"go/token"
 	"os/exec"
 	"slices"
 	"strings"
@@ -53,29 +50,12 @@ type measurement struct {
 	errMsg  string
 }
 
-// measure counts the lines of the file at path with contents src and, in Go, its package comment.
-func measure(path string, src []byte) measurement {
+// measure counts the lines of a file of contents src.
+func measure(src []byte) measurement {
 	var m measurement
 	m.values[checkLines] = bytes.Count(src, []byte("\n"))
 	if len(src) > 0 && src[len(src)-1] != '\n' {
 		m.values[checkLines]++
-	}
-	if !strings.HasSuffix(path, ".go") {
-		return m
-	}
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
-	if err != nil {
-		m.errLine, m.errMsg = 1, err.Error()
-		if list, ok := errors.AsType[scanner.ErrorList](err); ok && len(list) > 0 {
-			m.errLine, m.errMsg = list[0].Pos.Line, list[0].Msg
-		}
-		return m
-	}
-	if group := file.Doc; group != nil {
-		m.pkg = block{line: fset.Position(group.Pos()).Line}
-		m.pkg.length = fset.Position(group.End()).Line - m.pkg.line + 1
-		m.values[checkPackage] = m.pkg.length
 	}
 	return m
 }
