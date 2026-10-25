@@ -73,16 +73,12 @@ var runErrorTests = []struct {
 	inStderr string
 }{
 	{
-		name: "-update with a FILE", files: map[string]string{}, args: []string{"-update", "a.go"},
-		status: 2, inStderr: "sizecheck: -update takes no FILE",
-	},
-	{
 		name: "an unknown flag", files: map[string]string{}, args: []string{"-x"},
 		status: 2, inStderr: "flag provided but not defined: -x\nusage: go run ./tools/sizecheck",
 	},
 	{
 		name: "help", files: map[string]string{}, args: []string{"-h"},
-		status: 0, inStderr: "usage: go run ./tools/sizecheck [-update] [FILE...]",
+		status: 0, inStderr: "usage: go run ./tools/sizecheck [FILE...]",
 	},
 	{name: "not a repository", status: 2, inStderr: "sizecheck: git ls-files: fatal:"},
 	{

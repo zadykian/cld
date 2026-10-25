@@ -131,12 +131,3 @@ func formatBaseline(base baseline) []byte {
 	}
 	return b.Bytes()
 }
-
-// writeBaseline writes base to path, where that changes the file.
-func writeBaseline(path string, base baseline) error {
-	data := formatBaseline(base)
-	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, data) {
-		return nil
-	}
-	return os.WriteFile(path, data, 0o644)
-}

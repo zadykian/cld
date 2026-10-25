@@ -2,13 +2,12 @@
 //
 // Run from the repository root:
 //
-//	go run ./tools/sizecheck [-update] [FILE...]
+//	go run ./tools/sizecheck [FILE...]
 //
 // Every .go and .md file is at most 300 lines. It checks the files git lists, or those of them a
 // FILE names.
 // baseline.txt holds today's overages as ceilings: a value may fall, never rise, and an entry the
-// file no longer needs is stale. -update lowers the ceilings and drops stale entries; it adds or
-// raises one only when it creates the baseline. Findings go to stdout as PATH:LINE: message.
+// file no longer needs is stale. Findings go to stdout as PATH:LINE: message.
 // The exit status is 1 for a finding and 2 for a usage or setup error, which go run reports as 1.
 package main
 
@@ -39,10 +38,8 @@ func main() {
 func run(dir string, args []string, stdout, stderr *strings.Builder) int {
 	flags := flag.NewFlagSet("sizecheck", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	update := flags.Bool("update", false,
-		"lower the baseline's ceilings to the current values and drop stale entries")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: go run ./tools/sizecheck [-update] [FILE...]")
+		fmt.Fprintln(stderr, "usage: go run ./tools/sizecheck [FILE...]")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -51,11 +48,7 @@ func run(dir string, args []string, stdout, stderr *strings.Builder) int {
 		}
 		return 2
 	}
-	if *update && flags.NArg() > 0 {
-		fmt.Fprintln(stderr, "sizecheck: -update takes no FILE: it updates the whole baseline")
-		return 2
-	}
-	status, err := inspect(dir, flags.Args(), *update, stdout, stderr)
+	status, err := inspect(dir, flags.Args(), stdout, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, "sizecheck:", err)
 		return 2
@@ -63,12 +56,9 @@ func run(dir string, args []string, stdout, stderr *strings.Builder) int {
 	return status
 }
 
-// inspect measures the files in scope, compares them with the baseline, writes the baseline
-// where update asks, and reports the findings.
-func inspect(dir string, args []string, update bool, stdout, stderr *strings.Builder) (int, error) {
-	basePath := filepath.Join(dir, filepath.FromSlash(baselinePath))
-	base, err := readBaseline(basePath)
-	create := update && errors.Is(err, os.ErrNotExist)
+// inspect measures the files in scope, compares them with the baseline, and reports the findings.
+func inspect(dir string, args []string, stdout, stderr *strings.Builder) (int, error) {
+	base, err := readBaseline(filepath.Join(dir, filepath.FromSlash(baselinePath)))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return 0, err
 	}
@@ -84,23 +74,15 @@ func inspect(dir string, args []string, update bool, stdout, stderr *strings.Bui
 	if err != nil {
 		return 0, err
 	}
-	findings, next := compare(base, files, inScope, create)
-	if update {
-		findings = refused(findings)
-		if err := writeBaseline(basePath, next); err != nil {
-			return 0, err
-		}
-	}
+	findings, _ := compare(base, files, inScope, false)
 	for _, f := range findings {
 		fmt.Fprintf(stdout, "%s:%d: %s\n", f.path, f.line, f.msg)
 	}
 	if len(findings) == 0 {
 		return 0, nil
 	}
-	if update {
-		fmt.Fprintln(stderr, "sizecheck: -update adds no entry and raises no ceiling")
-	} else if hasStale(findings) {
-		fmt.Fprintln(stderr, "sizecheck: drop stale entries with go run ./tools/sizecheck -update")
+	if hasStale(findings) {
+		fmt.Fprintln(stderr, "sizecheck: drop the stale entries from", baselinePath)
 	}
 	return 1, nil
 }

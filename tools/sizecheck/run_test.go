@@ -49,23 +49,18 @@ var runSteps = []struct {
 		stdout: "big.md:1: 303 lines, over the cap of 300\nold.md:1: 305 lines, over the cap of 300\n",
 	},
 	{
-		name: "-update creates it", args: []string{"-update"},
+		name:    "a baseline",
+		write:   map[string]string{baselinePath: "big.md lines=303\nold.md lines=305\n"},
 		entries: "big.md lines=303\nold.md lines=305\n",
 	},
-	{name: "it holds", entries: "big.md lines=303\nold.md lines=305\n"},
 	{
 		name: "a file gone", write: map[string]string{"old.md": ""}, status: 1,
 		stdout:  "old.md:1: stale baseline entry: the file is gone or git ignores it\n",
 		entries: "big.md lines=303\nold.md lines=305\n",
 	},
-	{name: "-update drops its entry", args: []string{"-update"}, entries: "big.md lines=303\n"},
 	{
-		name: "above the ceiling", write: map[string]string{"big.md": lines(304)}, status: 1,
-		stdout:  "big.md:1: 304 lines, above the baseline's ceiling of 303\n",
-		entries: "big.md lines=303\n",
-	},
-	{
-		name: "-update raises nothing", args: []string{"-update"}, status: 1,
+		name: "above the ceiling", status: 1,
+		write:   map[string]string{baselinePath: "big.md lines=303\n", "big.md": lines(304)},
 		stdout:  "big.md:1: 304 lines, above the baseline's ceiling of 303\n",
 		entries: "big.md lines=303\n",
 	},
@@ -73,36 +68,25 @@ var runSteps = []struct {
 		name: "below the ceiling", write: map[string]string{"big.md": lines(302)},
 		entries: "big.md lines=303\n",
 	},
-	{name: "-update lowers it", args: []string{"-update"}, entries: "big.md lines=302\n"},
 	{
 		name: "stale", write: map[string]string{"big.md": lines(290)}, status: 1,
-		stdout:  "big.md:1: stale baseline entry lines=302: now 290, within the cap of 300\n",
-		entries: "big.md lines=302\n",
+		stdout:  "big.md:1: stale baseline entry lines=303: now 290, within the cap of 300\n",
+		entries: "big.md lines=303\n",
 	},
 	{
 		name: "a FILE alone", write: map[string]string{"new.go": longGo}, args: []string{"new.go"},
 		status: 1, stdout: "new.go:1: 301 lines, over the cap of 300\n",
-		entries: "big.md lines=302\n",
+		entries: "big.md lines=303\n",
 	},
 	{
 		name: "an absolute FILE", args: []string{"$DIR/new.go"},
 		status: 1, stdout: "new.go:1: 301 lines, over the cap of 300\n",
-		entries: "big.md lines=302\n",
+		entries: "big.md lines=303\n",
 	},
 	{
 		name:    "FILEs out of the repository, ignored, of another kind or missing",
 		args:    []string{"../big.md", "ignored/big.md", ".gitignore", "missing.md"},
-		entries: "big.md lines=302\n",
-	},
-	{
-		name: "-update drops the stale entry and adds none", args: []string{"-update"}, status: 1,
-		stdout: "new.go:1: 301 lines, over the cap of 300\n", entries: "",
-	},
-	{name: "a file fixed", write: map[string]string{"new.go": "package a\n"}, entries: ""},
-	{
-		name: "-update on an empty baseline adds none", args: []string{"-update"}, status: 1,
-		write:  map[string]string{"big.md": lines(310)},
-		stdout: "big.md:1: 310 lines, over the cap of 300\n", entries: "",
+		entries: "big.md lines=303\n",
 	},
 }
 
