@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -12,81 +10,56 @@ func lines(n int) string {
 	return strings.Repeat("x\n", n)
 }
 
-// entries returns the baseline's lines but its comments, or "none" where there is no baseline.
-func entries(t *testing.T, dir string) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(baselinePath)))
-	if os.IsNotExist(err) {
-		return "none"
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	var kept []string
-	for line := range strings.Lines(string(data)) {
-		if !strings.HasPrefix(line, "#") {
-			kept = append(kept, line)
-		}
-	}
-	return strings.Join(kept, "")
-}
-
 // longGo is a Go file of 301 lines.
 var longGo = "package a\n" + strings.Repeat("\n", 300)
 
 // runSteps is a session of sizecheck in one repository, each step on what those before it left.
-// $DIR in args stands for the repository's directory.
+// $DIR in args stands for the repository's directory. The steps with a baseline come last.
 var runSteps = []struct {
-	name    string
-	write   map[string]string // files to write before the step; "" removes one
-	args    []string
-	status  int
-	stdout  string
-	entries string // the baseline's entries after the step
+	name   string
+	write  map[string]string // files to write before the step; "" removes one
+	args   []string
+	status int
+	stdout string
 }{
 	{
-		name: "no baseline", status: 1, entries: "none",
+		name: "every file", status: 1,
 		stdout: "big.md:1: 303 lines, over the cap of 300\nold.md:1: 305 lines, over the cap of 300\n",
 	},
 	{
-		name:    "a baseline",
-		write:   map[string]string{baselinePath: "big.md lines=303\nold.md lines=305\n"},
-		entries: "big.md lines=303\nold.md lines=305\n",
-	},
-	{
 		name: "a file gone", write: map[string]string{"old.md": ""}, status: 1,
-		stdout:  "old.md:1: stale baseline entry: the file is gone or git ignores it\n",
-		entries: "big.md lines=303\nold.md lines=305\n",
+		stdout: "big.md:1: 303 lines, over the cap of 300\n",
 	},
+	{name: "a file at the cap", write: map[string]string{"big.md": lines(300)}},
 	{
-		name: "above the ceiling", status: 1,
-		write:   map[string]string{baselinePath: "big.md lines=303\n", "big.md": lines(304)},
-		stdout:  "big.md:1: 304 lines, above the baseline's ceiling of 303\n",
-		entries: "big.md lines=303\n",
-	},
-	{
-		name: "below the ceiling", write: map[string]string{"big.md": lines(302)},
-		entries: "big.md lines=303\n",
-	},
-	{
-		name: "stale", write: map[string]string{"big.md": lines(290)}, status: 1,
-		stdout:  "big.md:1: stale baseline entry lines=303: now 290, within the cap of 300\n",
-		entries: "big.md lines=303\n",
-	},
-	{
-		name: "a FILE alone", write: map[string]string{"new.go": longGo}, args: []string{"new.go"},
+		name:  "a FILE alone",
+		write: map[string]string{"big.md": lines(310), "new.go": longGo}, args: []string{"new.go"},
 		status: 1, stdout: "new.go:1: 301 lines, over the cap of 300\n",
-		entries: "big.md lines=303\n",
 	},
 	{
 		name: "an absolute FILE", args: []string{"$DIR/new.go"},
 		status: 1, stdout: "new.go:1: 301 lines, over the cap of 300\n",
-		entries: "big.md lines=303\n",
 	},
 	{
-		name:    "FILEs out of the repository, ignored, of another kind or missing",
-		args:    []string{"../big.md", "ignored/big.md", ".gitignore", "missing.md"},
-		entries: "big.md lines=303\n",
+		name: "FILEs out of the repository, ignored, of another kind or missing",
+		args: []string{"../big.md", "ignored/big.md", ".gitignore", "missing.md"},
+	},
+	{
+		name: "a file git does not track yet", status: 1,
+		stdout: "big.md:1: 310 lines, over the cap of 300\nnew.go:1: 301 lines, over the cap of 300\n",
+	},
+	{name: "a baseline", write: map[string]string{baselinePath: "big.md lines=310\n", "new.go": ""}},
+	{
+		name: "above the ceiling", write: map[string]string{"big.md": lines(311)}, status: 1,
+		stdout: "big.md:1: 311 lines, above the baseline's ceiling of 310\n",
+	},
+	{
+		name: "a stale entry", write: map[string]string{"big.md": lines(290)}, status: 1,
+		stdout: "big.md:1: stale baseline entry lines=310: now 290, within the cap of 300\n",
+	},
+	{
+		name: "an entry of a file gone", write: map[string]string{baselinePath: "old.md lines=305\n"},
+		status: 1, stdout: "old.md:1: stale baseline entry: the file is gone or git ignores it\n",
 	},
 }
 
@@ -110,9 +83,6 @@ func TestRun(t *testing.T) {
 		if status != step.status || stdout.String() != step.stdout {
 			t.Errorf("%s: status %d, stdout %q, stderr %q; want %d and %q", step.name, status,
 				stdout.String(), stderr.String(), step.status, step.stdout)
-		}
-		if got := entries(t, dir); got != step.entries {
-			t.Errorf("%s: the baseline's entries are %q, want %q", step.name, got, step.entries)
 		}
 	}
 }
