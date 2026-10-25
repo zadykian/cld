@@ -28,9 +28,6 @@ func repository(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
 	git(t, dir, "init", "-q")
-	if err := os.MkdirAll(filepath.Join(dir, "tools", "sizecheck"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	write(t, dir, files)
 	git(t, dir, "add", "-A")
 	return dir
@@ -81,11 +78,6 @@ var runErrorTests = []struct {
 		status: 0, inStderr: "usage: go run ./tools/sizecheck [FILE...]",
 	},
 	{name: "not a repository", status: 2, inStderr: "sizecheck: git ls-files: fatal:"},
-	{
-		name:   "a malformed baseline",
-		files:  map[string]string{baselinePath: "a.go lines=1\n"},
-		status: 2, inStderr: "baseline.txt:1: lines=1 is within the cap of 300\n",
-	},
 }
 
 func TestRunErrors(t *testing.T) {

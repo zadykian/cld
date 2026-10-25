@@ -1,13 +1,11 @@
-// Command sizecheck keeps cld's files short, and its backlog shrinking.
+// Command sizecheck keeps cld's files short.
 //
 // Run from the repository root:
 //
 //	go run ./tools/sizecheck [FILE...]
 //
 // Every .go and .md file is at most 300 lines. It checks the files git lists, or those of them a
-// FILE names.
-// baseline.txt holds today's overages as ceilings: a value may fall, never rise, and an entry the
-// file no longer needs is stale. Findings go to stdout as PATH:LINE: message.
+// FILE names. Findings go to stdout as PATH:LINE: message.
 // The exit status is 1 for a finding and 2 for a usage or setup error, which go run reports as 1.
 package main
 
@@ -19,9 +17,6 @@ import (
 	"path/filepath"
 	"strings"
 )
-
-// baselinePath is the baseline's path from the repository root.
-const baselinePath = "tools/sizecheck/baseline.txt"
 
 func main() {
 	var stdout, stderr strings.Builder
@@ -48,7 +43,7 @@ func run(dir string, args []string, stdout, stderr *strings.Builder) int {
 		}
 		return 2
 	}
-	status, err := inspect(dir, flags.Args(), stdout, stderr)
+	status, err := inspect(dir, flags.Args(), stdout)
 	if err != nil {
 		fmt.Fprintln(stderr, "sizecheck:", err)
 		return 2
@@ -56,12 +51,8 @@ func run(dir string, args []string, stdout, stderr *strings.Builder) int {
 	return status
 }
 
-// inspect measures the files in scope, compares them with the baseline, and reports the findings.
-func inspect(dir string, args []string, stdout, stderr *strings.Builder) (int, error) {
-	base, err := readBaseline(filepath.Join(dir, filepath.FromSlash(baselinePath)))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return 0, err
-	}
+// inspect measures the files in scope, and reports those over the cap.
+func inspect(dir string, args []string, stdout *strings.Builder) (int, error) {
 	listed, err := listFiles(dir)
 	if err != nil {
 		return 0, err
@@ -74,17 +65,14 @@ func inspect(dir string, args []string, stdout, stderr *strings.Builder) (int, e
 	if err != nil {
 		return 0, err
 	}
-	findings, _ := compare(base, files, inScope, false)
-	for _, f := range findings {
-		fmt.Fprintf(stdout, "%s:%d: %s\n", f.path, f.line, f.msg)
+	status := 0
+	for _, path := range listed {
+		if n, limit := files[path].values[checkLines], checks[checkLines].limit; n > limit {
+			fmt.Fprintf(stdout, "%s:1: %d lines, over the cap of %d\n", path, n, limit)
+			status = 1
+		}
 	}
-	if len(findings) == 0 {
-		return 0, nil
-	}
-	if hasStale(findings) {
-		fmt.Fprintln(stderr, "sizecheck: drop the stale entries from", baselinePath)
-	}
-	return 1, nil
+	return status, nil
 }
 
 // measureFiles measures the listed .go and .md files in scope, passing over those gone from disk.

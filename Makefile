@@ -63,7 +63,7 @@ vet:
 golangci-lint:
 	tools/run golangci-lint run ./...
 
-# The size caps. tools/sizecheck/baseline.txt is empty: no file may exceed them.
+# The size cap, which no .go or .md file may exceed.
 sizecheck:
 	go test -count=1 ./tools/...
 	go run ./tools/sizecheck $(FILES)

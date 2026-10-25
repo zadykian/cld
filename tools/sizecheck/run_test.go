@@ -14,7 +14,7 @@ func lines(n int) string {
 var longGo = "package a\n" + strings.Repeat("\n", 300)
 
 // runSteps is a session of sizecheck in one repository, each step on what those before it left.
-// $DIR in args stands for the repository's directory. The steps with a baseline come last.
+// $DIR in args stands for the repository's directory.
 var runSteps = []struct {
 	name   string
 	write  map[string]string // files to write before the step; "" removes one
@@ -47,19 +47,6 @@ var runSteps = []struct {
 	{
 		name: "a file git does not track yet", status: 1,
 		stdout: "big.md:1: 310 lines, over the cap of 300\nnew.go:1: 301 lines, over the cap of 300\n",
-	},
-	{name: "a baseline", write: map[string]string{baselinePath: "big.md lines=310\n", "new.go": ""}},
-	{
-		name: "above the ceiling", write: map[string]string{"big.md": lines(311)}, status: 1,
-		stdout: "big.md:1: 311 lines, above the baseline's ceiling of 310\n",
-	},
-	{
-		name: "a stale entry", write: map[string]string{"big.md": lines(290)}, status: 1,
-		stdout: "big.md:1: stale baseline entry lines=310: now 290, within the cap of 300\n",
-	},
-	{
-		name: "an entry of a file gone", write: map[string]string{baselinePath: "old.md lines=305\n"},
-		status: 1, stdout: "old.md:1: stale baseline entry: the file is gone or git ignores it\n",
 	},
 }
 

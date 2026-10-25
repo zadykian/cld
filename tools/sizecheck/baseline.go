@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,19 +19,6 @@ const baselineHeader = "" +
 	"# lines: the file's lines (cap 300). comments: Go comment blocks over 4 lines (cap 0).\n" +
 	"# package: the package comment's lines (cap 15).\n" +
 	"# go run ./tools/sizecheck -update lowers the ceilings and drops stale entries.\n"
-
-// readBaseline reads the baseline at path; an error wraps os.ErrNotExist where there is none.
-func readBaseline(path string) (baseline, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return baseline{}, err
-	}
-	base, err := parseBaseline(data)
-	if err != nil {
-		return nil, fmt.Errorf("%s:%w", path, err)
-	}
-	return base, nil
-}
 
 // parseBaseline parses lines of a path and its ceilings as key=N, skipping blank and # lines.
 // A path that starts with " is quoted as in Go.
