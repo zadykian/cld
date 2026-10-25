@@ -67,8 +67,8 @@ func inspect(dir string, args []string, stdout *strings.Builder) (int, error) {
 	}
 	status := 0
 	for _, path := range listed {
-		if n, limit := files[path].values[checkLines], checks[checkLines].limit; n > limit {
-			fmt.Fprintf(stdout, "%s:1: %d lines, over the cap of %d\n", path, n, limit)
+		if n := files[path]; n > maxLines {
+			fmt.Fprintf(stdout, "%s:1: %d lines, over the cap of %d\n", path, n, maxLines)
 			status = 1
 		}
 	}
@@ -77,8 +77,8 @@ func inspect(dir string, args []string, stdout *strings.Builder) (int, error) {
 
 // measureFiles measures the listed .go and .md files in scope, passing over those gone from disk.
 func measureFiles(dir string, listed []string,
-	inScope func(string) bool) (map[string]measurement, error) {
-	files := make(map[string]measurement)
+	inScope func(string) bool) (map[string]int, error) {
+	files := make(map[string]int)
 	for _, path := range listed {
 		if !checked(path) || !inScope(path) {
 			continue
