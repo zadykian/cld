@@ -126,7 +126,7 @@ skill. `.github/workflows/rules.yml` checks each pull request against it, and wa
 ## Where else to look
 
 - `.claude/rules/`: each area's invariants, what each document holds in
-  [docs.md](.claude/rules/docs.md), and what cld adds to the `writing` skill's policy in
+  [docs.md](.claude/rules/docs.md), and the gates of the `writing` skill's policy in
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
 - Skills in `.claude/skills/`: `adr`.
 - Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
