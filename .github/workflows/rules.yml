@@ -1,0 +1,24 @@
+name: rules
+
+# Checks each pull request against the shared rules, through the actions of zadykian/actions with
+# their default inputs: its commits and size, its description, and the banned terms. Each warns
+# and never blocks, so no ruleset requires it. Each action's README says what it checks:
+# https://github.com/zadykian/actions.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: zadykian/actions/atomic-commits@d6c413fda643fd21fa38480c7c0a9202e6cb1483 # v1.0.0
+      - uses: zadykian/actions/pr-description@d6c413fda643fd21fa38480c7c0a9202e6cb1483 # v1.0.0
+      - uses: zadykian/actions/banned-terms@d6c413fda643fd21fa38480c7c0a9202e6cb1483 # v1.0.0
