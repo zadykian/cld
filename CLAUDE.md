@@ -118,17 +118,10 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
 
 ## Commits
 
-Messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), as
-`git log` on `main` shows them.
-
-- The header is `type(scope): description`. The type is `feat`, `fix`, `build`, `chore`, `ci`,
-  `docs`, `perf`, `refactor`, `style` or `test`.
-- The scope, optional, is the part changed: `cli` (`cmd/cld`), `session`, `tests`, `jediterm` or
-  `docs`. The description is short, imperative and lower case, with no trailing period.
-- The body is a list of bullets wrapped at 72 columns: what was wrong or missing, what changed,
-  the tmux and claude versions checked, and what the tests cover. Its URLs take no columns.
-- A breaking change takes `!` before the colon and a `BREAKING CHANGE:` footer saying what users
-  must change.
+Commits and pull requests follow the
+[atomic-commits](https://github.com/zadykian/skills/blob/main/skills/atomic-commits/SKILL.md)
+skill. `.github/workflows/rules.yml` checks each pull request against it, and warns only
+([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)).
 
 ## Where else to look
 
