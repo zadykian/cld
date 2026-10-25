@@ -1,4 +1,0 @@
-# The files over sizecheck's caps, with ceilings that may only fall.
-# lines: the file's lines (cap 300). comments: Go comment blocks over 4 lines (cap 0).
-# package: the package comment's lines (cap 15).
-# go run ./tools/sizecheck -update lowers the ceilings and drops stale entries.

@@ -29,25 +29,12 @@ var checks = [numChecks]struct {
 	checkPackage:  {"package", 15},
 }
 
-// maxComment is the cap on the lines of a comment block other than the package comment.
-const maxComment = 4
-
 // values holds a number per check: a file's measure, or the baseline's ceilings, 0 for none.
 type values [numChecks]int
-
-// A block is a comment block: the line it starts on and its length in lines.
-type block struct {
-	line, length int
-}
 
 // A measurement is what sizecheck finds in a file.
 type measurement struct {
 	values values
-	blocks []block // the comment blocks over maxComment, the package comment aside
-	pkg    block   // the package comment, of length 0 where there is none
-	// Where a Go file fails to parse, and why; errMsg is empty where it parses.
-	errLine int
-	errMsg  string
 }
 
 // measure counts the lines of a file of contents src.
