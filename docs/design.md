@@ -143,4 +143,6 @@ The `adr` skill in `.claude/skills` adds a record.
 - [63. This repository's plugins](design/decisions/0063-this-repositorys-plugins.md): Accepted.
   Amended by 64.
 - [64. The shared skills as they are](design/decisions/0064-the-shared-skills-as-they-are.md):
+  Accepted. Amended by 65.
+- [65. The shared rules as they ship](design/decisions/0065-the-shared-rules-as-they-ship.md):
   Accepted.

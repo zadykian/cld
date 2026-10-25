@@ -1,6 +1,6 @@
 # 64. The shared skills as they are
 
-Status: Accepted.
+Status: Accepted. Amended by [65](0065-the-shared-rules-as-they-ship.md).
 
 ## Context
 
