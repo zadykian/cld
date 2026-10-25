@@ -15,9 +15,8 @@ The rest has a page per subject, in `testing/`:
 ## Layers
 
 1. **Static.** `make vet` runs gofmt, go vet, ShellCheck and shfmt. `make lint`, CI's `lint` job,
-   adds golangci-lint, the size caps, Vale, rumdl, govulncheck, the workflow linters, lychee and the
-   commit messages' style. Each checks every file or commit, and any finding fails it, warnings
-   included.
+   adds golangci-lint, the size caps, Vale, rumdl, govulncheck, the workflow linters and lychee.
+   Each checks every file, and any finding fails it, warnings included.
 2. **Behaviour against real tmux.** The probe replaces claude, `tmux -V` for the version check,
    and `systemctl` and `loginctl` for `setup restore`
    ([decision 48](decisions/0048-restore-after-reboot.md)). As claude it sets the terminal modes

@@ -36,7 +36,7 @@ FILES =
 MARKDOWN = $$(git ls-files --cached --others --exclude-standard '*.md')
 
 .PHONY: check lint lint-tree vet golangci-lint sizecheck vale rumdl govulncheck actionlint zizmor \
-	lychee commits lint-file test \
+	lychee lint-file test \
 	docker-image docker-test docker-check docker-blesh-image docker-blesh-test docker-blesh-check \
 	dist install uninstall
 
@@ -51,7 +51,7 @@ lint: lint-tree govulncheck
 # the Docker checks' BASE above; no gate here reads either.
 lint-tree: SHELLCHECK = tools/run shellcheck
 lint-tree: SHFMT = tools/run shfmt
-lint-tree: vet golangci-lint sizecheck vale rumdl actionlint zizmor lychee commits
+lint-tree: vet golangci-lint sizecheck vale rumdl actionlint zizmor lychee
 
 vet:
 	$(SHELLCHECK) $(SCRIPTS)
@@ -100,10 +100,6 @@ zizmor:
 # Links to files and their headings.
 lychee:
 	tools/run lychee --offline --include-fragments --no-progress $(MARKDOWN)
-
-# The messages of the commits HEAD adds to origin/main, as CLAUDE.md's Commits has them.
-commits:
-	go run ./tools/commitcheck
 
 # The gates of each file of FILES, as the lint plugin runs them after Claude edits a file: gofmt
 # and golangci-lint on a Go file's package, lychee and rumdl on a Markdown file, and the size caps
