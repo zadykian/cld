@@ -60,8 +60,9 @@ release: a binary per platform, `cld.sha256` and `install.sh`.
   [`/flow:land`](https://github.com/zadykian/toolkit/blob/main/skills/land/SKILL.md) does.
 - The ruleset on `main` allows the merge method alone, with signed commits and branches up to date.
   It requires `linux`, `macos` and `lint` to pass, and every conversation resolved.
-- `.claude/settings.json` denies `gh pr merge` and the usual forms of a push to `main`. A rule
-  matches the command as written, so the ruleset on `main` stays the guard.
+- `.claude/settings.json` denies the usual forms of a push to `main`, but no merge
+  ([decision 66](docs/design/decisions/0066-merges-left-to-the-ruleset.md)). A rule matches the
+  command as written, so the ruleset on `main` stays the guard.
 
 ## Hard rules
 

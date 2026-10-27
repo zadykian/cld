@@ -27,5 +27,5 @@ Flags:
                                 files and run commands that only read, such as
                                 git status and ls; cld, as cld's own repository
                                 has it, to edit files, run git, go, make, docker
-                                and more, but not merge or push to main; or
+                                and more, but not push to main; or
                                 none, to add nothing

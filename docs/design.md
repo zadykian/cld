@@ -83,7 +83,7 @@ The `adr` skill in `.claude/skills` adds a record.
   by 39.
 - [27. Completion in bash with ble.sh](design/decisions/0027-completion-with-blesh.md): Accepted.
 - [28. Project settings a team can share](design/decisions/0028-shared-project-settings.md):
-  Accepted. Amended by 53 and 63.
+  Accepted. Amended by 53, 63 and 66.
 - [29. Notifications](design/decisions/0029-notifications.md): Accepted (#59). Amended by 53 and
   55.
 - [30. Links](design/decisions/0030-links.md): Accepted (#60).
@@ -146,3 +146,4 @@ The `adr` skill in `.claude/skills` adds a record.
   Accepted. Amended by 65.
 - [65. The shared rules as they ship](design/decisions/0065-the-shared-rules-as-they-ship.md):
   Accepted.
+- [66. Merges left to the ruleset](design/decisions/0066-merges-left-to-the-ruleset.md): Accepted.

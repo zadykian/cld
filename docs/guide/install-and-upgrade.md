@@ -18,6 +18,13 @@ By hand, download your system's binary and `cld.sha256` from a
 
 [Upgrading](../guide.md) says how to upgrade; here is what changed, newest first.
 
+### From cld 0.14.0 and earlier
+
+- **`--permissions cld`** no longer denies `gh pr merge`, as pull requests land by GitHub's merge
+  ([decision 66](../design/decisions/0066-merges-left-to-the-ruleset.md)). cld removes nothing, so
+  settings it set up before keep the deny: remove `Bash(gh pr merge *)` from their
+  `permissions.deny` to let claude merge.
+
 ### From cld 0.13.0 and earlier
 
 - **`cld restore`** is now `cld restore sessions`, and plain `cld restore` fails as a missing
