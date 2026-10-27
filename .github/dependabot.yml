@@ -19,3 +19,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # The toolkit's actions move by hand, with the marketplace's ref in .claude/settings.json,
+    # which Dependabot does not read: the toolkit's tools/pin moves both to one release.
+    ignore:
+      - dependency-name: zadykian/toolkit*
