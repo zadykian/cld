@@ -56,7 +56,7 @@ func setupProject(typed string) *cobra.Command {
 			"and use the servers' tools that only read; cld, as\n"+
 			"cld's own repository has it, to edit files, run git,\n"+
 			"go, make, docker and more, use every server tool, but\n"+
-			"not merge or push to main; or none, to add nothing")
+			"not push to main; or none, to add nothing")
 	command.RunE = func(c *cobra.Command, _ []string) error {
 		servers, err := mcpServers(*mcp)
 		if err != nil {

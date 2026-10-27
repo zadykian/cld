@@ -12,8 +12,7 @@ Each adds what the settings lack, and keeps the values they have.
   `git show`, whose `--output` writes any file, `.git/config` too: claude still runs them with the
   options it knows to be safe.
 - `cld` allows editing files, web access, and commands such as `git`, `make` and `docker run`:
-  enough for a prompt-injected claude to run anything. It denies `gh pr merge` and pushes to
-  `main`.
+  enough for a prompt-injected claude to run anything. It denies pushes to `main`.
 - With `--mcp`, `read-only` allows the IDE's tools that only read, as GoLand 2026.2.3 marks them.
   `cld` allows every tool, GoLand's `execute_terminal_command` among them.
 - claude keeps its other files in `.claude` out of git itself, in `.git/info/exclude`.
@@ -33,7 +32,7 @@ Each adds what the settings lack, and keeps the values they have.
   is set. Every claude reads it, in cld or not, in every project, and a project's settings rank
   above it.
 - `--permissions` takes the sets above, which then hold in every project. There `cld` lets claude
-  edit files and run `git` anywhere, short of a merge or a push to `main`.
+  edit files and run `git` anywhere, short of a push to `main`.
 - `--notifications` names your terminal's channel, as [notifications](terminal.md#notifications)
   lists them. claude reads a channel it does not know as unset, so cld refuses one.
 - A value you have stays, the channel's too: to take cld's, remove the key and run `user` again.

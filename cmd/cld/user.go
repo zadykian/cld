@@ -40,7 +40,7 @@ func setupUser(typed string) *cobra.Command {
 			"files and run commands that only read, such as\n"+
 			"git status and ls; cld, as cld's own repository\n"+
 			"has it, to edit files, run git, go, make, docker\n"+
-			"and more, but not merge or push to main; or\n"+
+			"and more, but not push to main; or\n"+
 			"none, to add nothing")
 	notifications := flags.String("notifications", "",
 		"the `CHANNEL` claude notifies on: auto, claude's\n"+

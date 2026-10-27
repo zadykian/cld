@@ -56,15 +56,13 @@ release: a binary per platform, `cld.sha256` and `install.sh`.
 
 ## How changes land
 
-- Pull requests land on `main` by fast-forward only, as the commits CI checked.
-- Never run `gh pr merge`: the repository and the ruleset on `main` refuse every merge method.
-- A comment `/ff` lands a pull request, through `.github/workflows/fast-forward.yml`, as
-  [`/flow:land`](https://github.com/zadykian/toolkit/blob/main/skills/land/SKILL.md) does. The
-  ruleset on `main` requires `linux`, `macos` and `lint` to pass, and every conversation resolved.
-- The maintainer pushes a pull request that changes `.github/workflows` by hand,
-  `git push origin SHA:main`, as the workflow's token may not push such a change.
-- `.claude/settings.json` denies `gh pr merge` and the usual forms of a push to `main`. A rule
-  matches the command as written, so the ruleset on `main` stays the guard.
+- Pull requests land on `main` by GitHub's merge commits, as
+  [`/flow:land`](https://github.com/zadykian/toolkit/blob/main/skills/land/SKILL.md) does.
+- The ruleset on `main` allows the merge method alone, with signed commits and branches up to date.
+  It requires `linux`, `macos` and `lint` to pass, and every conversation resolved.
+- `.claude/settings.json` denies the usual forms of a push to `main`, but no merge
+  ([decision 66](docs/design/decisions/0066-merges-left-to-the-ruleset.md)). A rule matches the
+  command as written, so the ruleset on `main` stays the guard.
 
 ## Hard rules
 

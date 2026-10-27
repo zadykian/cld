@@ -50,8 +50,7 @@ which Vale counts alike.
 - A tag `vX.Y.Z` runs the checks and publishes a release.
 - iTerm2, nightly and on tags, waits on its driver, and stays advisory until it proves stable.
 
-Pull requests land on `main` by fast-forward, so `main` holds the commits CI checked. GitHub's
-merge methods all write commits of their own, so the repository allows merge commits alone, and
-the ruleset on `main` rebase alone, leaving none. A comment `/ff` pushes the head once
-the required checks pass; a change to `.github/workflows` is pushed by hand, as the workflow's
-token may not push it.
+Pull requests land on `main` by GitHub's merge commits: a pull request's own signed commits land as
+they are, under a merge commit that GitHub signs. The ruleset on `main` allows the merge method
+alone and requires branches to be up to date, so a merge's tree is the tree CI checked.
+`/flow:land` merges once the required checks pass.

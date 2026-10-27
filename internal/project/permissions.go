@@ -95,11 +95,10 @@ var cldAllow = []string{
 	"Workflow(code-review)",
 }
 
-// cldDeny is what --permissions cld refuses claude: merging a pull request, which lands on main by
-// fast-forward alone, and pushing to main, which the maintainer does. A rule matches the command
-// as written, so these stop the usual forms of both, not every one.
+// cldDeny is what --permissions cld refuses claude: pushing to main, where a pull request lands by
+// a merge that the ruleset judges (decision 66). A rule matches the command as written, so these
+// stop the usual forms of a push, not every one.
 var cldDeny = []string{
-	"Bash(gh pr merge *)",
 	"Bash(git push * main)",
 	"Bash(git push * main *)",
 	"Bash(git push * +main)",

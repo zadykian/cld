@@ -55,7 +55,6 @@
       "mcp__goland"
     ],
     "deny": [
-      "Bash(gh pr merge *)",
       "Bash(git push * main)",
       "Bash(git push * main *)",
       "Bash(git push * +main)",
@@ -74,7 +73,7 @@
       "source": {
         "source": "github",
         "repo": "zadykian/toolkit",
-        "ref": "v4.0.1"
+        "ref": "v5.0.0"
       },
       "autoUpdate": true
     }
