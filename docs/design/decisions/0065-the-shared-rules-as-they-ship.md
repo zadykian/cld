@@ -5,7 +5,7 @@ Status: Accepted.
 ## Context
 
 [Decision 64](0064-the-shared-skills-as-they-are.md) runs the skills of
-[zadykian/skills](https://github.com/zadykian/skills) as they ship, but keeps the rules of
+[zadykian/toolkit](https://github.com/zadykian/toolkit) as they ship, but keeps the rules of
 `CLAUDE.md` and `.claude/rules/` beside them, where a skill finds them too. Some of those rules
 changed a skill's own:
 
@@ -15,9 +15,9 @@ changed a skill's own:
   fail a gate, where the `writing` skill keeps none.
 
 `tools/commitcheck` checked the messages in `make lint`, and so blocked a pull request. The
-author's repositories now take the skills' rules as they ship, and
-[zadykian/actions](https://github.com/zadykian/actions) checks each pull request against them.
-This amends decision 64.
+author's repositories now take the skills' rules as they ship, and the actions of
+[zadykian/toolkit](https://github.com/zadykian/toolkit/tree/main/actions) check each pull request
+against them. This amends decision 64.
 
 ## Decision
 
@@ -31,7 +31,7 @@ it.
 ### 65.2 The rule checks warn
 
 `.github/workflows/rules.yml` runs the `atomic-commits`, `pr-description` and `banned-terms`
-actions of zadykian/actions on each pull request, with their default inputs. They warn and never
+actions of zadykian/toolkit on each pull request, with their default inputs. They warn and never
 block, so no ruleset requires them. `tools/commitcheck` and `make commits` go.
 
 ### 65.3 The skill's caps alone

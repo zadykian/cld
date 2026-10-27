@@ -5,7 +5,7 @@ Status: Accepted. Amended by [65](0065-the-shared-rules-as-they-ship.md).
 ## Context
 
 [Decision 63](0063-this-repositorys-plugins.md) has this repository take its skills from the
-plugins of [zadykian/skills](https://github.com/zadykian/skills). What it adds to a shared skill
+plugins of [zadykian/toolkit](https://github.com/zadykian/toolkit). What it adds to a shared skill
 goes in `.claude/skill-notes/`, which the skill reads first. Those notes held the issue title's
 form, the checks `/flow:land` waits for, who tags a release, and the Go rules for `/docs:trim` and
 `/lint:split-file`.
