@@ -73,7 +73,8 @@
     "zadykian": {
       "source": {
         "source": "github",
-        "repo": "zadykian/skills"
+        "repo": "zadykian/toolkit",
+        "ref": "v4.0.0"
       },
       "autoUpdate": true
     }

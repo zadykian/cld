@@ -1,9 +1,9 @@
 name: rules
 
-# Checks each pull request against the shared rules, through the actions of zadykian/actions with
+# Checks each pull request against the shared rules, through the actions of zadykian/toolkit with
 # their default inputs: its commits and size, its description, and the banned terms. Each warns
 # and never blocks, so no ruleset requires it. Each action's README says what it checks:
-# https://github.com/zadykian/actions.
+# https://github.com/zadykian/toolkit/tree/main/actions.
 
 on:
   pull_request:
@@ -19,6 +19,6 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: zadykian/actions/atomic-commits@9c02fe599a7f620e98cd3d89ba9a0858e2f8b147 # v2.0.0
-      - uses: zadykian/actions/pr-description@9c02fe599a7f620e98cd3d89ba9a0858e2f8b147 # v2.0.0
-      - uses: zadykian/actions/banned-terms@9c02fe599a7f620e98cd3d89ba9a0858e2f8b147 # v2.0.0
+      - uses: zadykian/toolkit/actions/atomic-commits@4c0c6dcb16a67dd4ab7346a8214e93c076dd1402 # v4.0.0
+      - uses: zadykian/toolkit/actions/pr-description@4c0c6dcb16a67dd4ab7346a8214e93c076dd1402 # v4.0.0
+      - uses: zadykian/toolkit/actions/banned-terms@4c0c6dcb16a67dd4ab7346a8214e93c076dd1402 # v4.0.0
