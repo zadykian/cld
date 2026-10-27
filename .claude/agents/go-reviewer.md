@@ -39,7 +39,7 @@ Then read the code for what they cannot see.
   cognitive complexity 20 or less (`gocognit`), no deep `if` nesting (`nestif`). Say how to split
   what is over.
 - **Comments.** As the
-  [`writing` skill](https://github.com/zadykian/skills/blob/main/skills/writing/SKILL.md) has them.
+  [`writing` skill](https://github.com/zadykian/toolkit/blob/main/skills/writing/SKILL.md) has them.
 - **One place per fact.** A constant, a rule or a reason stated twice is a finding: name the
   place it belongs.
 - **Exceptions.** A `//nolint` names one linter and says why (`nolintlint`). A lowered severity or

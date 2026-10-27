@@ -75,6 +75,6 @@ link to the decision.
 ## Check
 
 - Follow the
-  [`writing` skill](https://github.com/zadykian/skills/blob/main/skills/writing/SKILL.md).
+  [`writing` skill](https://github.com/zadykian/toolkit/blob/main/skills/writing/SKILL.md).
 - Run `make vale FILES='PATHS'`, `make sizecheck FILES='PATHS'`, `make rumdl` and `make lychee`.
 - Commit as `docs(design): ...`, or with the change the decision is for.

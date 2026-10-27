@@ -59,7 +59,7 @@ release: a binary per platform, `cld.sha256` and `install.sh`.
 - Pull requests land on `main` by fast-forward only, as the commits CI checked.
 - Never run `gh pr merge`: the repository and the ruleset on `main` refuse every merge method.
 - A comment `/ff` lands a pull request, through `.github/workflows/fast-forward.yml`, as
-  [`/flow:land`](https://github.com/zadykian/skills/blob/main/skills/land/SKILL.md) does. The
+  [`/flow:land`](https://github.com/zadykian/toolkit/blob/main/skills/land/SKILL.md) does. The
   ruleset on `main` requires `linux`, `macos` and `lint` to pass, and every conversation resolved.
 - The maintainer pushes a pull request that changes `.github/workflows` by hand,
   `git push origin SHA:main`, as the workflow's token may not push such a change.
@@ -117,7 +117,7 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
 ## Commits
 
 Commits and pull requests follow the
-[atomic-commits](https://github.com/zadykian/skills/blob/main/skills/atomic-commits/SKILL.md)
+[atomic-commits](https://github.com/zadykian/toolkit/blob/main/skills/atomic-commits/SKILL.md)
 skill. `.github/workflows/rules.yml` checks each pull request against it, and warns only
 ([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)).
 
@@ -128,10 +128,12 @@ skill. `.github/workflows/rules.yml` checks each pull request against it, and wa
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
 - Skills in `.claude/skills/`: `adr`.
 - Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
-  [zadykian/skills](https://github.com/zadykian/skills), whose skills and hooks hold as they ship
-  ([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)).
+  [zadykian/toolkit](https://github.com/zadykian/toolkit), whose skills and hooks hold as they ship
+  ([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)). Its `ref` and the
+  workflows' actions pin one release, which the toolkit's `tools/pin` moves, as
+  [Pin a release](https://github.com/zadykian/toolkit#pin-a-release) says.
 - Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing. `/docs:trim`
   edits docs and comments.
-- Hooks: the [lint plugin's](https://github.com/zadykian/skills/blob/main/docs/lint.md), which run
+- Hooks: the [lint plugin's](https://github.com/zadykian/toolkit/blob/main/docs/lint.md), which run
   `make lint-file` and `make lint-tree`. `.claude/lint-gates` names the gate code beyond the
   plugin's defaults.
