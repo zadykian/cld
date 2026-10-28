@@ -117,7 +117,9 @@ Each rule links the decision record in `docs/design/decisions/` that gives its r
 Commits and pull requests follow the
 [atomic-commits](https://github.com/zadykian/toolkit/blob/main/skills/atomic-commits/SKILL.md)
 skill. `.github/workflows/rules.yml` checks each pull request against it, and warns only
-([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)).
+([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)). Issues take the
+form of the [issue](https://github.com/zadykian/toolkit/blob/main/skills/issue/SKILL.md) skill in
+`.github/ISSUE_TEMPLATE`, and `.github/workflows/issues.yml` warns on one that strays from it.
 
 ## Where else to look
 
