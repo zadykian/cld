@@ -127,9 +127,9 @@ skill. `.github/workflows/rules.yml` checks each pull request against it, and wa
 - Skills in `.claude/skills/`: `adr`.
 - Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
   [zadykian/toolkit](https://github.com/zadykian/toolkit), whose skills and hooks hold as they ship
-  ([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)). Its `ref` and the
-  workflows' actions pin one release, which the toolkit's `tools/pin` moves, as
-  [Pin a release](https://github.com/zadykian/toolkit#pin-a-release) says.
+  ([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)). Its `ref`, the
+  workflows' actions and the templates in `.github/` pin one release, which the toolkit's
+  `tools/pin` sets, as [Pin a release](https://github.com/zadykian/toolkit#pin-a-release) says.
 - Agents in `.claude/agents/`: `go-reviewer`, which reviews Go and edits nothing. `/docs:trim`
   edits docs and comments.
 - Hooks: the [lint plugin's](https://github.com/zadykian/toolkit/blob/main/docs/lint.md), which run
