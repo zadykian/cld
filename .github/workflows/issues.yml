@@ -1,0 +1,27 @@
+name: issues
+
+# Checks each issue against the issue form in .github/ISSUE_TEMPLATE, through the issue action of
+# zadykian/toolkit with its default inputs: its title and the fields of its body. It warns and
+# never blocks, so no ruleset requires it. The issues event runs the workflow as main has it. The
+# action's README says what it checks: https://github.com/zadykian/toolkit/tree/main/actions/issue.
+
+on:
+  issues:
+    types: [opened, edited]
+
+# Two runs of an issue race to create the check's comment, so a newer event's run cancels the
+# older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: zadykian/toolkit/actions/issue@84b430f143a2944891329db62847475d531f877a # v6.0.0
