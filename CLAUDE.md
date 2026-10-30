@@ -127,7 +127,7 @@ form of the [issue](https://github.com/zadykian/toolkit/blob/main/skills/issue/S
   [docs.md](.claude/rules/docs.md), and the gates of the `writing` skill's policy in
   [writing.md](.claude/rules/writing.md), loaded with the files they cover.
 - Skills in `.claude/skills/`: `adr`.
-- Plugins in `.claude/settings.json`: `flow`, `docs` and `lint`, from the marketplace
+- Plugins in `.claude/settings.json`: `flow`, `docs`, `lint` and `lean`, from the marketplace
   [zadykian/toolkit](https://github.com/zadykian/toolkit), whose skills and hooks hold as they ship
   ([decision 65](docs/design/decisions/0065-the-shared-rules-as-they-ship.md)). Its `ref`, the
   workflows' actions and the templates in `.github/` pin one release, which the toolkit's
@@ -136,4 +136,5 @@ form of the [issue](https://github.com/zadykian/toolkit/blob/main/skills/issue/S
   edits docs and comments.
 - Hooks: the [lint plugin's](https://github.com/zadykian/toolkit/blob/main/docs/lint.md), which run
   `make lint-file` and `make lint-tree`. `.claude/lint-gates` names the gate code beyond the
-  plugin's defaults.
+  plugin's defaults. The [lean plugin's](https://github.com/zadykian/toolkit/blob/main/docs/lean.md)
+  deny a workflow agent with no tier, and a foreground poll that no timeout bounds.
