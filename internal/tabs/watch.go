@@ -21,12 +21,15 @@ const (
 )
 
 // watcher is the watcher's state. run and pid are Ghostty's run and pid, once a tick knows them.
+// exe is the file cld runs from, and exeInfo that file as the watcher last ran it.
 type watcher struct {
-	dir   string
-	watch *os.File // fd 3, kept for the process's life: see holdsLock
-	run   string
-	pid   int
-	log   *logger
+	dir     string
+	watch   *os.File // fd 3, kept for the process's life: see holdsLock
+	run     string
+	pid     int
+	exe     string
+	exeInfo os.FileInfo
+	log     *logger
 }
 
 // Watch is the watcher, cld restore tabs --watching, which Start runs with watch's lock on fd 3.
@@ -49,11 +52,17 @@ func Watch() error {
 	if err := writeWatch(w.watch, os.Getpid()); err != nil {
 		return w.stop(err)
 	}
+	if w.exe, err = os.Executable(); err == nil {
+		w.exeInfo, err = os.Stat(w.exe)
+	}
+	if err != nil {
+		w.log.line("cld cannot restart as cld update replaces it: " + err.Error())
+	}
 	return w.loop(context.Background())
 }
 
-// loop runs the watcher's ticks. Before each snapshot, it checks Ghostty's pid, so that a tick
-// after Ghostty quit runs no osascript.
+// loop runs the watcher's ticks. Before each snapshot, it checks its own file and Ghostty's pid,
+// so that a tick after cld update runs no osascript under the old cld.
 func (w *watcher) loop(ctx context.Context) error {
 	src := ghostty.Poll(tick)
 	defer src.Close() //nolint:errcheck // Poll's closes nothing
@@ -61,6 +70,7 @@ func (w *watcher) loop(ctx context.Context) error {
 		if err := src.Wait(ctx); err != nil {
 			return w.stop(err)
 		}
+		w.restartIfReplaced()
 		if w.pid != 0 && !alive(w.pid) {
 			return w.ended()
 		}
@@ -173,6 +183,24 @@ func (w *watcher) noteEnd() error {
 	}
 	r.Run.Ended = time.Now().UTC().Truncate(time.Second)
 	return save(w.dir, r, old)
+}
+
+// restartIfReplaced runs the new cld in the watcher's process, where cld update has renamed one
+// over the file it runs from. The process, its session and the lock stay. A failed exec is logged
+// once, and the old cld goes on.
+func (w *watcher) restartIfReplaced() {
+	info, err := os.Stat(w.exe)
+	if err != nil || w.exeInfo == nil ||
+		os.SameFile(info, w.exeInfo) && info.ModTime().Equal(w.exeInfo.ModTime()) {
+		return
+	}
+	w.exeInfo = info
+	w.log.line("restarting as the new cld")
+	if _, err = unix.FcntlInt(watchFD, unix.F_SETFD, 0); err == nil {
+		err = unix.Exec(w.exe, append([]string{"cld"}, watchArgv...), os.Environ())
+	}
+	unix.CloseOnExec(watchFD)
+	w.log.line("cannot restart as the new cld: " + err.Error())
 }
 
 // failed logs err, a tick's failure. A permanent one stops the watcher, with status 1: macOS or

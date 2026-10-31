@@ -2,6 +2,7 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -96,6 +97,40 @@ func TestTabsWatchStale(t *testing.T) {
 	waitSnapshots(t, s, snapshots(t, s)+1)
 	checkRecord(t, "after the slow snapshot", readRecord(t, s), named(a, b), "*a/made | *b/made",
 		"", "")
+}
+
+// Once cld update renames a new cld over the one the watcher runs from, the watcher runs the new
+// cld in its own process. It keeps its pid, its session and its lock, and reads Ghostty on.
+func TestTabsWatchRestarts(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	saveModel(t, s, m)
+	cld := filepath.Join(s.Root, "bin", "cld")
+	if err := os.Mkdir(filepath.Dir(cld), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binary := readFile(t, sandbox.Cld)
+	s.WriteProgram(cld, binary, 0o755)
+	t.Cleanup(func() { killWatchers(t, s) })
+	start := exec.Command(cld, "restore", "tabs", "--watch")
+	start.Env, start.Dir = s.Environ(watchEnv), s.Work
+	checkExit(t, "restore tabs --watch", runCommand(t, start), 0, "", "")
+	pid := waitTicked(t, s, m)
+	s.WriteProgram(cld+".new", binary, 0o755)
+	if err := os.Rename(cld+".new", cld); err != nil {
+		t.Fatal(err)
+	}
+	sandbox.WaitFor(t, 15*time.Second, "the restart", func() bool {
+		return len(watchLog(t, s)) > 0
+	})
+	waitSnapshots(t, s, snapshots(t, s)+1)
+	if now, _ := watchPIDs(s); now != pid || !watcherRuns(t, pid) || !watching(t, s) {
+		t.Errorf("the watcher is %d, its lock held %t, want %d running cld restore tabs "+
+			"--watching", now, watching(t, s), pid)
+	}
+	checkLog(t, s, "restarting as the new cld")
 }
 
 // watchTime is watch's time in s, which each merge of the watcher's sets.
