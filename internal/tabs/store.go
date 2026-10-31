@@ -16,7 +16,10 @@ import (
 )
 
 // The files in the record's directory (decision 59.4).
-const recordFile = "tabs.json" // the record
+const (
+	recordFile = "tabs.json" // the record
+	watchFile  = "watch"     // the watcher's; its time is the last tick
+)
 
 // Dir is the record's directory, tabs/ in cld's state directory, made where missing. It sits
 // outside sessions/, whose expiry removes the files it does not know.
@@ -153,6 +156,16 @@ func moveAside(dir string) (string, error) {
 		return "", err
 	}
 	return aside, nil
+}
+
+// lastTick is the watcher's last tick: the time of watch in dir, to the second, or zero where
+// watch is missing.
+func lastTick(dir string) time.Time {
+	info, err := os.Stat(filepath.Join(dir, watchFile))
+	if err != nil {
+		return time.Time{}
+	}
+	return info.ModTime().UTC().Truncate(time.Second)
 }
 
 // reason is err as the system says it, with the path it names.

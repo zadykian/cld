@@ -1,12 +1,17 @@
 package tabs
 
-import "slices"
+import (
+	"slices"
+	"strings"
+	"time"
+)
 
 // runChange is Ghostty's quit of r's run, seen as o shows another (decision 59.4). What o shows
 // none of the panes of is the quit's loss, empty where Ghostty brought everything back. A window
 // pending at the quit joins it, and a pending tab or split stays a loss of its own kind.
-func runChange(r *Record, o *Observation) {
+func runChange(r *Record, o *Observation, lastTick time.Time) {
 	ended := r.Run.ID
+	at := quitTime(r.Run, lastTick, o.Time)
 	windows := quitWindows(r, o)
 	for _, l := range r.Pending {
 		if l.Cause == CauseClosed {
@@ -15,9 +20,28 @@ func runChange(r *Record, o *Observation) {
 			r.Losses = append(r.Losses, l)
 		}
 	}
-	r.Losses = append(r.Losses, &Loss{At: o.Time, Run: ended, Cause: CauseQuit,
+	r.Losses = append(r.Losses, &Loss{At: at, Run: ended, Cause: CauseQuit,
 		Windows: nonNil(windows)})
 	r.Previous, r.Run, r.Pending = ended, Run{ID: o.Run, Version: o.Version}, nil
+}
+
+// quitTime is when run quit: when the watcher saw its pid go, else its last tick, else now. A tick
+// before the run's start was a watcher's of an earlier run, which no watcher of this one followed.
+func quitTime(run Run, lastTick, now time.Time) time.Time {
+	switch {
+	case !run.Ended.IsZero():
+		return run.Ended.UTC().Truncate(time.Second)
+	case !lastTick.IsZero() && !lastTick.Before(runStart(run.ID)):
+		return lastTick.UTC().Truncate(time.Second)
+	}
+	return now
+}
+
+// runStart is the START of run id PID@START, zero where id has none.
+func runStart(id string) time.Time {
+	_, start, _ := strings.Cut(id, "@")
+	at, _ := time.Parse(time.RFC3339, start) //nolint:errcheck // a run with no start has zero
+	return at
 }
 
 // quitWindows takes out of r the windows of which o holds no pane, in a window or hidden, with

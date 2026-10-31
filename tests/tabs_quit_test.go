@@ -1,12 +1,14 @@
 package tests
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/zadykian/cld/internal/tabs"
 	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
@@ -113,4 +115,56 @@ func TestTabsQuitWhilePending(t *testing.T) {
 	r := tick(t, s, relaunch(m, 4242, relaunched, a, d))
 	checkRecord(t, "quit", r, names, "*a/made | *d/made", "",
 		"tab 2 beside a: b/made\nquit: *c/made")
+}
+
+// A quit's time is when the watcher saw Ghostty's run end, else its last tick in that run, else the
+// merge's. A tick from before the run's start was an earlier run's watcher's.
+func TestTabsQuitTime(t *testing.T) {
+	t.Parallel()
+	ended := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
+	ticked := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	for _, test := range []struct {
+		name       string
+		ended      bool
+		tick, want time.Time // zero: no watch file, and the merge's time
+	}{
+		{"run.ended", true, ticked, ended},
+		{"the last tick", false, ticked, ticked},
+		{"a tick before the run", false, ghosttyStart.Add(-time.Hour), time.Time{}},
+		{"the merge", false, time.Time{}, time.Time{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m := ghosttyApp(t, s)
+			a := addPane(m, "✳ cld-a", ssh("ws"))
+			m.Windows = []mac.Window{windowOf(tabOf(a))}
+			r := recordOf(m, map[string]*tabs.Pane{a: {Kind: "cld", Host: "ws", Session: "a"}},
+				tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made", Tree: leaf(a)}}})
+			if test.ended {
+				r.Run.Ended = ended
+			}
+			writeRecord(t, s, r)
+			if !test.tick.IsZero() {
+				watch := filepath.Join(tabsDir(s), "watch")
+				s.WriteFile(watch, "")
+				if err := os.Chtimes(watch, test.tick, test.tick); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := time.Now().UTC().Truncate(time.Second)
+			r = tick(t, s, relaunch(m, 4242, relaunched))
+			if len(r.Losses) != 1 || !quitAt(r.Losses[0].At, test.want, before) {
+				t.Errorf("losses %s, want a quit at %v", drawLosses(r.Losses, named(a)), test.want)
+			}
+		})
+	}
+}
+
+// quitAt reports whether a quit at got is at want, or where want is zero, at a merge since before.
+func quitAt(got, want, before time.Time) bool {
+	if want.IsZero() {
+		return !got.Before(before) && !got.After(time.Now())
+	}
+	return got.Equal(want)
 }

@@ -47,7 +47,7 @@ func observe(ctx context.Context, report *Report) (*observed, error) {
 	}
 	report.warn(warning)
 	if !snap.Running {
-		Merge(r, &Observation{Time: time.Now().UTC().Truncate(time.Second)})
+		Merge(r, &Observation{Time: time.Now().UTC().Truncate(time.Second)}, lastTick(dir))
 		return &observed{record: r}, nil
 	}
 	app, err := snap.Ghostty()
@@ -58,7 +58,7 @@ func observe(ctx context.Context, report *Report) (*observed, error) {
 	if err != nil {
 		return nil, failure(err)
 	}
-	Merge(r, o)
+	Merge(r, o, lastTick(dir))
 	return &observed{record: r, app: app, o: o}, save(dir, r, old)
 }
 
