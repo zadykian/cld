@@ -195,3 +195,33 @@ func TestTabsLayout(t *testing.T) {
 			"*right(a,down(b,c))/inferred", []float64{0.7, 0.3}},
 	})
 }
+
+// The window's shape and the padding. Two equal panes keep their split's direction in windows
+// from 0.75 to 2.6 times as wide as tall. In a window taller than wide, evened splits can come
+// back turned, as the guide says.
+func TestTabsLayoutRooms(t *testing.T) {
+	t.Parallel()
+	a, b, c, d := leaf("a"), leaf("b"), leaf("c"), leaf("d")
+	plain := room{w: 1200, h: 800, scale: 1, pad: 2, cellW: 8, cellH: 17}
+	balanced, padded, tall, wide, taller := retina, retina, retina, retina, retina
+	balanced.balance, padded.pad = true, 4
+	tall.w, tall.h, wide.w, wide.h, taller.w, taller.h = 750, 1000, 1560, 600, 800, 1100
+	runLayout(t, []layoutCase{
+		{"0.75 times as wide as tall", tall, cut("down", 0.5, a, b), "*down(a,b)/inferred",
+			[]float64{0.5}},
+		{"2.6 times as wide as tall", wide, cut("right", 0.5, a, b), "*right(a,b)/inferred",
+			[]float64{0.5}},
+		{"evened, taller than wide", taller, cut("down", 1.0/3, cut("right", 0.5, a, b),
+			cut("down", 0.5, c, d)), "*right(down(a,b),down(c,d))/inferred",
+			[]float64{0.33, 0.5, 0.5}},
+		{"a display of scale 1", plain, cut("right", 0.5, a, cut("down", 0.5, b, c)),
+			"*right(a,down(b,c))/inferred", []float64{0.5, 0.5}},
+		{"balanced padding", balanced, cut("down", 0.5, a, cut("right", 0.5, b, c)),
+			"*down(a,right(b,c))/inferred", []float64{0.5, 0.5}},
+		{"balanced padding, four panes", balanced, cut("right", 0.5, cut("down", 0.5, a,
+			cut("right", 0.5, b, c)), d), "*right(down(a,right(b,c)),d)/inferred",
+			[]float64{0.49, 0.5, 0.5}},
+		{"padding of 4 points", padded, cut("right", 0.5, a, cut("down", 0.5, b, c)),
+			"*right(a,down(b,c))/inferred", []float64{0.5, 0.5}},
+	})
+}
