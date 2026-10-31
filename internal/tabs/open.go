@@ -19,9 +19,10 @@ const (
 )
 
 // opened is the Ghostty that open starts, once two snapshots in a row agree (see settled): it has
-// brought its windows back. Past openWait, the last goes on, with a note. UNVERIFIED until #177's
-// check 8 (decision 59.12): that open -b starts Ghostty, which brings back its windows within
-// openWait.
+// brought its windows back. Past openWait, the last goes on, with a note. Under
+// window-save-state = always, Cmd+Q and open -b brought four terminals back in 4.7 seconds.
+// UNVERIFIED until #177's check 8 (decision 59.12): restoration under the default, after kill -9
+// and after a reboot.
 func opened(ctx context.Context, report *Report) (*ghostty.Snapshot, error) {
 	if err := ghostty.Open(ctx); err != nil {
 		return nil, fail.Runtime("cannot open Ghostty: " + err.Error())

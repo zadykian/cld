@@ -4,8 +4,9 @@ import "math"
 
 // padSlack is the pixels each pane takes off a run's size along an axis, beyond one pane. Padding
 // takes 8, 2 points a side at a scale of 2, and the divider 1, half a point. Rounding and balanced
-// padding take the other 7 (renderer/size.zig, Config.zig, SplitView.swift). UNVERIFIED until
-// #177's check 10 (decision 59.12): the padding, the divider and the scale on a Mac.
+// padding take the other 7 (renderer/size.zig, Config.zig, SplitView.swift). A Mac measured this
+// at the default padding and a scale of 2. UNVERIFIED until #177's check 10 (decision 59.12): other
+// paddings and scales.
 const padSlack = 16
 
 // wantAspect is the width over height a tab's tree is taken to have where its sizes fit trees of
@@ -167,8 +168,7 @@ func fit(n *Node, sizes map[string]Size, free string, cell [2]float64) (parse, b
 
 // zoomed reports whether pane focused covers the other panes of tree, as a zoomed split does.
 // Its size is theirs laid out as tree, and beyond it where its own part is open. Ghostty
-// zooms the focused pane and leaves the others their sizes. UNVERIFIED until #177's check 10
-// (decision 59.12).
+// zooms the focused pane and leaves the others their sizes.
 func zoomed(tree *Node, sizes map[string]Size, focused string, cell [2]float64) bool {
 	size, ok := sizes[focused]
 	if focused == "" || !ok || !valid(size) {

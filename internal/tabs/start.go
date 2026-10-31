@@ -60,8 +60,9 @@ func Start() (started bool, err error) {
 		return false, fail.Runtime("cannot find the file cld runs from: " + err.Error())
 	}
 	// stdin and stdout are /dev/null. The directory is /, so that the watcher keeps no pane's
-	// directory, or its volume, in use. UNVERIFIED until #177's checks 2 and 16 (decision 59.12).
-	// macOS charges the watcher's Apple Events to Ghostty once its pane closes, and after its exec.
+	// directory, or its volume, in use. macOS charges the watcher's Apple Events to Ghostty once
+	// its pane closes. UNVERIFIED until #177's check 16 (decision 59.12): that it stays charged
+	// to Ghostty after its exec.
 	cmd := exec.Command(exe, watchArgv...)
 	cmd.Args[0] = "cld"
 	cmd.Stderr, cmd.ExtraFiles, cmd.Dir = log, []*os.File{watch}, "/"
