@@ -32,6 +32,18 @@ func (r *Report) section(heading string, lines []string) {
 	}
 }
 
+// dryRun reports what the record holds after a restore's merge, seen: Ghostty, the losses, and
+// those that wait for Ghostty's undo. Notes on Ghostty's config end it.
+func dryRun(ctx context.Context, seen *observed, report *Report) {
+	c := clock{now: time.Now()}
+	report.Lines = append(report.Lines, c.ghostty(seen))
+	if r := seen.record; r != nil {
+		report.section("Losses:", c.losses(r.Losses))
+		report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
+	}
+	report.section("Notes:", settingsNotes(ctx, seen.app))
+}
+
 // clock writes the report's times, in local time: of today as 15:04, of another day with its
 // date.
 type clock struct {
@@ -50,19 +62,19 @@ func (c clock) at(t time.Time) string {
 
 // ghostty is the report's first line: Ghostty's version, pid and start, or that none runs. A
 // start is the one NSRunningApplication gave, else the one of ps's row for the pid.
-func (c clock) ghostty(snap *ghostty.Snapshot, app ghostty.App, procs Table) string {
-	if !snap.Running {
+func (c clock) ghostty(seen *observed) string {
+	if seen.o == nil {
 		return "Ghostty is not running"
 	}
 	line := "Ghostty"
-	if snap.Version != "" {
-		line += " " + snap.Version
+	if seen.o.Version != "" {
+		line += " " + seen.o.Version
 	}
-	line += fmt.Sprintf(", pid %d", app.PID)
-	if app.Launched > 0 {
-		return line + ", started " + c.at(time.UnixMilli(int64(app.Launched*1000)))
+	line += fmt.Sprintf(", pid %d", seen.app.PID)
+	if seen.app.Launched > 0 {
+		return line + ", started " + c.at(time.UnixMilli(int64(seen.app.Launched*1000)))
 	}
-	if p, ok := procs.ByPID(app.PID); ok {
+	if p, ok := seen.o.Procs.ByPID(seen.app.PID); ok {
 		return line + ", started " + c.at(p.Start)
 	}
 	return line

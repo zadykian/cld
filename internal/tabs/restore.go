@@ -3,26 +3,39 @@ package tabs
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
 // Restore reads Ghostty and merges what it shows into the record, as a tick does, then reports.
-// This release has the dry-run's report alone: Ghostty's version, pid and start, the losses, and
-// those that wait for Ghostty's undo (decision 59.11). Where Ghostty does not run, it merges
-// nothing.
+// This release has the dry-run's report alone: what the record holds (decision 59.11). Where
+// Ghostty does not run, it merges nothing.
 func Restore(ctx context.Context) (*Report, error) {
+	report := &Report{}
+	seen, err := observe(ctx, report)
+	if err != nil {
+		return nil, err
+	}
+	dryRun(ctx, seen, report)
+	return report, nil
+}
+
+// observed is what a restore saw: the record after its merge, and Ghostty, with o nil where
+// Ghostty does not run.
+type observed struct {
+	record *Record
+	app    ghostty.App
+	o      *Observation
+}
+
+// observe reads Ghostty and merges what it shows into the record, as a tick does.
+func observe(ctx context.Context, report *Report) (*observed, error) {
 	snap, err := ghostty.Take(ctx)
 	if err != nil {
 		return nil, failure(err)
 	}
-	c := clock{now: time.Now()}
-	report := &Report{}
 	if !snap.Running {
-		report.Lines = []string{c.ghostty(snap, ghostty.App{}, nil)}
-		report.section("Notes:", settingsNotes(ctx, ghostty.App{}))
-		return report, nil
+		return &observed{}, nil
 	}
 	app, err := snap.Ghostty()
 	if err != nil {
@@ -32,15 +45,11 @@ func Restore(ctx context.Context) (*Report, error) {
 	if err != nil {
 		return nil, failure(err)
 	}
-	record, err := merge(o, report)
+	r, err := merge(o, report)
 	if err != nil {
 		return nil, err
 	}
-	report.Lines = []string{c.ghostty(snap, app, o.Procs)}
-	report.section("Losses:", c.losses(record.Losses))
-	report.section("Waiting for Ghostty's undo:", c.losses(record.Pending))
-	report.section("Notes:", settingsNotes(ctx, app))
-	return report, nil
+	return &observed{record: r, app: app, o: o}, nil
 }
 
 // ownTTY tells the tty of the pane cld runs in, which a restore never types into: nil where cld's
