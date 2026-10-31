@@ -105,10 +105,14 @@ type mockedSnapshot struct {
 
 // mockedSnapshots are TestTabsScriptsMocked's cases for snapshot.js.
 func mockedSnapshots() []mockedSnapshot {
+	several := fakeGhostty()
+	several.Apps = 2
 	stopped := fakeGhostty()
 	stopped.Running = false
 	return []mockedSnapshot{
 		{"windows", windowsModel(), nil, windowsSnapshot},
+		{"several", several, nil, `{"running": true, "apps": [` + ghosttyAppJSON + `, ` +
+			ghosttyAppJSON + `], "version": "1.4.0", "terminals": [], "windows": []}`},
 		{"not running", stopped, nil, `{"running": false, "apps": []}`},
 	}
 }

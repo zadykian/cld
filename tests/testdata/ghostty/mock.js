@@ -152,11 +152,13 @@ var mockRun;
     const m = ghosttyMock.model;
     const found = [];
     if (m.running && bundle === 'com.mitchellh.ghostty') {
-      found.push({
-        processIdentifier: m.pid,
-        launchDate: {isNil: () => !m.launched, timeIntervalSince1970: m.launched},
-        executableURL: {isNil: () => !m.executable, path: m.executable},
-      });
+      for (let i = 0; i < Math.max(m.apps || 0, 1); i++) {
+        found.push({
+          processIdentifier: m.pid,
+          launchDate: {isNil: () => !m.launched, timeIntervalSince1970: m.launched},
+          executableURL: {isNil: () => !m.executable, path: m.executable},
+        });
+      }
     }
     return {count: found.length, objectAtIndex: (i) => found[i]};
   }}};
