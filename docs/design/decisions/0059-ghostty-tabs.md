@@ -148,3 +148,65 @@ of a newer format is refused, so the newer cld still finds it.
   until a restore types the line, then after two minutes, as a refused join leaves the host's
   shell. The second run change clears it too.
 
+### 59.5 What a pane shows
+
+The leader of a pane's foreground group, from ps by `pid` and `tty`, tells what the pane shows.
+
+- ssh as the leader, or as the child of `ghostty +ssh` or ws's `ws-join`, makes the pane `ssh`; an
+  ssh deeper in the group, a `git push`'s, does not count. The host is ssh's first word that is no
+  option, past those that take a value, or the word after `--`, as `cld join --host` gives it. A
+  host `--host` would refuse is no host ([62.2](0062-commands-on-another-host.md)), never sanitised.
+- An ssh pane is `cld` where its title is cld's: `<marker> cld-NAME`, then `[w]` in a worktree,
+  any single marker word, and a NAME that `session.ValidName` takes. The busy markers read as `✳`,
+  so the turning writes nothing.
+- A shell at its prompt is `local`, any other program `other`, and a pane with no `pid` or `tty`
+  `dead`. A pane whose leader ps lacks keeps what it showed, and so does one with cld in front.
+
+The title is the one channel from the host, as Ghostty drops a remote OSC 7. It counts only while
+ssh is in front, as a restored pane's title is stale. So cld's title is a contract with another
+machine's cld: the marker word may change, but `cld-NAME` after it and `[w]` may not. This amends
+decisions [25](0025-title-follows-status.md) and [26](0026-title-marks-worktree.md).
+
+### 59.6 What a restore reopens
+
+A pane Ghostty brought back, at its prompt with a `last`, is joined again in place. A window that a
+quit or a close lost is rebuilt: by default those of the last 15 minutes, and the last quit's. Older
+ones wait for `--older`, a burst at a time, or `--all`. A tab or split closed alone, usually on
+purpose, comes back only with `--closed`. A second restore reopens nothing new.
+
+The dedupe counts: for each session, the panes joined to it by hand since the loss are subtracted
+from those to rebuild. A pane it drops opens as a shell in its directory, keeping the layout.
+Ghostty is opened where it does not run, so that the windows it restores count first.
+
+### 59.7 The typed line
+
+A pane gets what the user would type: `ssh -t -o ConnectTimeout=10 HOST`, with a login shell that
+runs `cld join --existing` for the session, then a shell (58). A pane that showed plain ssh gets
+`ssh HOST`.
+
+- **`initial input`, never a `command`.** A `command` runs without the user's rc files, and makes
+  a window Ghostty never restores. Typed into the user's shell, the line gets its `PATH`, its agent
+  and Ghostty's ssh wrapper.
+- **In place**, cld types only into a shell at its prompt, as the snapshot saw it, and checks the
+  pane's group again just before. It empties the line first, then types, then presses Enter.
+- **Never `--detach-others`**: it would detach the session on another device
+  ([decision 23](0023-joining-beside-other-terminals.md)).
+- **Terminfo.** For a host that Ghostty's terminfo cache lacks, the line sets
+  `TERM=xterm-256color`: Ghostty's wrapper would append its install script to the line's command.
+- **Pace.** Lines and new ssh panes go out spaced, so that sshd's `MaxStartups` and a fail2ban
+  see no burst; #177's check 15 tunes it.
+
+### 59.8 Split shapes
+
+AppleScript gives a tab's leaves in order, but no split's direction or ratio. A tree cld built is
+`made`, and kept while its leaves stay. Otherwise cld infers the tree from the leaves' order and
+their panes' sizes in pixels (`inferred`), or makes the leaves a row (`flat`). A rebuilt tab gets
+its tree, then `equalize_splits`. Rejected for now: ratios through `resize_split`, which wait for
+the sizes of #177's check 10.
+
+### 59.9 cld's own pane
+
+cld finds the pane it runs in by its input's device number, matched to each pane's `tty`, rather
+than by running `tty`. A restore never types into it, and its own merge counts it a shell at its
+prompt. Where the pane has a `last`, cld execs the same ssh there itself, as `join` execs tmux.
+
