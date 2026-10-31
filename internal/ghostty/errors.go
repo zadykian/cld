@@ -11,13 +11,15 @@ import (
 // Kind is what went wrong in a script's run, as cld tells it apart.
 type Kind int
 
-// The kinds of Error. NoOsascript, Denied and ScriptingOff are permanent: another try finds them
-// again until the user acts.
+// The kinds of Error. NoOsascript, Denied, ScriptingOff and Old are permanent: another try finds
+// them again until the user acts.
 const (
 	NoOsascript  Kind = iota + 1 // osascript is not on the PATH
 	Denied                       // -1743 on the first getter: macOS denies Automation
 	ScriptingOff                 // -1743 with Ghostty's text on the probe: macos-applescript off
+	Old                          // no tty term: Ghostty before 1.4
 	Gone                         // Ghostty quit or went away during the run
+	Changed                      // the windows changed while read, twice
 	Several                      // more than one Ghostty process
 	Timeout                      // no answer before the deadline, or JXA's own timeout
 	Failed                       // anything else: osascript's own failure, or another of Ghostty's
@@ -73,6 +75,10 @@ func classify(se *ScriptError) *Error {
 		if strings.Contains(se.Message, "macos-applescript") {
 			e.Kind = ScriptingOff
 		}
+	case se.Step == "tty":
+		e.Kind = Old
+	case se.Step == "changed":
+		e.Kind = Changed
 	}
 	return e
 }
@@ -87,8 +93,15 @@ func (e *Error) Error() string {
 	case ScriptingOff:
 		// Ghostty's text ends its sentence, and Fail's advice follows it after a ";".
 		return "Ghostty says: " + strings.TrimSuffix(e.Message, ".")
+	case Old:
+		if e.Version == "" {
+			return "restore tabs needs Ghostty 1.4 or newer, and an older Ghostty runs"
+		}
+		return "restore tabs needs Ghostty 1.4 or newer, and Ghostty " + e.Version + " runs"
 	case Gone:
 		return "Ghostty quit while cld read it"
+	case Changed:
+		return "Ghostty's windows changed twice while cld read them"
 	case Several:
 		return fmt.Sprintf("Ghostty runs %d times, as open -n starts it: quit all but one", e.apps)
 	case Timeout:
@@ -104,6 +117,15 @@ func (e *Error) Error() string {
 		return fmt.Sprintf("Ghostty: %s at %s", e.Message, e.Step)
 	}
 	return fmt.Sprintf("Ghostty: %s (%d) at %s", e.Message, e.Number, e.Step)
+}
+
+// Permanent reports whether another try would fail alike until the user acts.
+func (e *Error) Permanent() bool {
+	switch e.Kind {
+	case NoOsascript, Denied, ScriptingOff, Old:
+		return true
+	}
+	return false
 }
 
 // Fail is e as cld ends with it: status 1, with what to do about it where cld can say.
