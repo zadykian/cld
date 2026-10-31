@@ -99,7 +99,7 @@ func (c clock) cut(last *Last) string {
 	return "as it closed at " + c.at(last.At)
 }
 
-// wouldReopen adds a section per loss that plan p rebuilds: when it was lost, then a line per
+// wouldReopen adds a section per loss that plan p rebuilds: the time of its loss, then a line per
 // window. Each pane shows what its line joins, or a shell in its directory.
 func (c clock) wouldReopen(p *Planned, report *Report) {
 	for i := 0; i < len(p.builds); {
@@ -109,7 +109,11 @@ func (c clock) wouldReopen(p *Planned, report *Report) {
 		for ; n < len(p.builds) && p.builds[n].loss == l; n++ {
 			lines = append(lines, "  "+c.panes(p.script.Builds[n], p.builds[n]))
 		}
-		report.section("Would reopen "+count(n-i, "window")+", "+c.when(l)+":", lines)
+		what := count(n-i, "window")
+		if a := noun(l); a != "" {
+			what = a + " as a window"
+		}
+		report.section("Would reopen "+what+", "+c.when(l)+":", lines)
 		i = n
 	}
 }

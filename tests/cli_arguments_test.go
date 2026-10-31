@@ -102,6 +102,8 @@ var argumentCases = []struct {
 	{[]string{"restore", "tabs", "x"}, unexpected("restore tabs", "x")},
 	{[]string{"restore", "tabs", "--bogus"}, unexpected("restore tabs", "--bogus")},
 	{[]string{"restore", "tabs", "--watch", "x"}, unexpected("restore tabs", "x")},
+	{[]string{"restore", "tabs", "--all", "x"}, unexpected("restore tabs", "x")},
+	{[]string{"restore", "tabs", "--older=x"}, unexpected("restore tabs", "--older=x")},
 	{[]string{"restore", "tabs", "--"}, unexpected("restore tabs", "--")},
 	{[]string{"help", "restore", "nope"}, unknownCommand("help", "restore nope")},
 	{[]string{"help", "setup", "config", "project", "restore"}, unexpected("help", "restore")},
