@@ -27,7 +27,11 @@ func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, report 
 		}
 	}
 	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
-	report.section("Notes:", settingsNotes(ctx, seen.app))
+	var notes []string
+	for _, note := range p.notes() {
+		notes = append(notes, "  "+note)
+	}
+	report.section("Notes:", append(notes, settingsNotes(ctx, seen.app)...))
 }
 
 // ghostty is the report's first line: Ghostty's version, pid and start, or that none runs.
@@ -130,7 +134,7 @@ func settingsNotes(ctx context.Context, app ghostty.App) []string {
 	}
 	if !s.SSHTerminfo {
 		notes = append(notes, "  shell-integration-features lacks ssh-terminfo: cld types"+
-			" TERM=xterm-256color for hosts Ghostty has no terminfo cached for")
+			" TERM="+fallbackTerm+" for hosts Ghostty has no terminfo cached for")
 	}
 	if s.HiddenTitlebar {
 		notes = append(notes, "  macos-titlebar-style is hidden: rebuilt tabs open as windows")

@@ -36,7 +36,7 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	dryRun(ctx, dir, seen, restorePlan(seen), report)
+	dryRun(ctx, dir, seen, restorePlan(ctx, seen), report)
 	return report, nil
 }
 
@@ -122,5 +122,10 @@ func failure(err error) error {
 	return err
 }
 
-// restorePlan plans the restore of the record seen against Ghostty as seen.
-func restorePlan(seen *observed) *Planned { return plan(seen.record, seen.o) }
+// restorePlan plans the restore of the record seen against Ghostty as seen. It asks Ghostty's
+// terminfo cache once per host.
+func restorePlan(ctx context.Context, seen *observed) *Planned {
+	bin, ok := ghostty.Binary(seen.app)
+	cached := func(host string) bool { return ok && ghostty.TerminfoCached(ctx, bin, host) }
+	return plan(seen.record, seen.o, cached)
+}

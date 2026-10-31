@@ -75,15 +75,16 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 	}
 	at := clockAt(quit)
 	checkReport(t, s, "Would type into 3 panes:\n"+
-		"  in ~/src, as Ghostty quit at "+at+": "+joinLine("ws", "app")+"\n"+
-		"  in /Users/me, as Ghostty quit at "+at+": ssh ws\n"+
-		"  in /Users/me, as Ghostty quit at "+at+": "+joinLine("ws2", "x")+"\n"+
+		"  in ~/src, as Ghostty quit at "+at+": "+uncachedJoin("ws", "app")+"\n"+
+		"  in /Users/me, as Ghostty quit at "+at+": TERM=xterm-256color command ssh ws\n"+
+		"  in /Users/me, as Ghostty quit at "+at+": "+uncachedJoin("ws2", "x")+"\n"+
 		"Ghostty brought back every window as it quit at "+at+"\n")
 }
 
-// joinLine is the line typed to join session, a NAME that does not split, on host.
-func joinLine(host, session string) string {
-	return "ssh -t -o ConnectTimeout=10 " + host +
+// uncachedJoin is the line typed to join session, a NAME that does not split, on host, whose
+// terminfo Ghostty has not cached.
+func uncachedJoin(host, session string) string {
+	return "TERM=xterm-256color command ssh -t -o ConnectTimeout=10 " + host +
 		` 'exec $SHELL -lc "cd / && cld join --existing -s ` + session + `; cd; exec $SHELL -l"'`
 }
 

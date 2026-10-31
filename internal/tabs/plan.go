@@ -10,31 +10,37 @@ var pace = ghostty.Pace{Gap: 0.3, Every: 8, Pause: 2}
 type Planned struct {
 	script ghostty.Plan
 	typed  []joining // the pane of each of script.Typed
+	// uncached are the hosts whose terminfo Ghostty has not cached, in the order asked.
+	uncached []string
 }
 
 // joining is a pane Ghostty kept that a restore joins to binding again.
 type joining struct {
 	pane    string
 	binding Binding
+	cached  bool // Ghostty has the host's terminfo
 }
 
 // Script is the plan apply.js runs.
 func (p *Planned) Script() *ghostty.Plan { return &p.script }
 
-// planner makes a Planned against observation o.
+// planner makes a Planned against observation o, asking cached once per host.
 type planner struct {
-	out *Planned
-	o   *Observation
+	out    *Planned
+	o      *Observation
+	cached func(host string) bool
+	hosts  map[string]bool
 }
 
 // plan is the restore of record r after its merge of o, nil where Ghostty does not run (decision
-// 59.6). Kept panes at their prompt with a Last are typed into.
-func plan(r *Record, o *Observation) *Planned {
+// 59.6). Kept panes at their prompt with a Last are typed into. cached tells a host's terminfo
+// cached.
+func plan(r *Record, o *Observation, cached func(host string) bool) *Planned {
 	if o == nil {
 		o = &Observation{}
 	}
-	pl := &planner{o: o, out: &Planned{script: ghostty.Plan{Pace: pace,
-		Typed: []ghostty.Typing{}}}}
+	pl := &planner{o: o, cached: cached, hosts: map[string]bool{},
+		out: &Planned{script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{}}}}
 	pl.typings(pl.inPlace(r))
 	return pl.out
 }
@@ -64,8 +70,18 @@ func (pl *planner) inPlace(r *Record) []keptPane {
 // typings plans each kept pane: the line that joins its binding again, typed into it.
 func (pl *planner) typings(kept []keptPane) {
 	for _, k := range kept {
-		pl.out.typed = append(pl.out.typed, joining{pane: k.pane, binding: k.binding})
+		j := joining{pane: k.pane, binding: k.binding, cached: pl.cachedHost(k.binding.Host)}
+		pl.out.typed = append(pl.out.typed, j)
 		pl.out.script.Typed = append(pl.out.script.Typed,
-			ghostty.Typing{Pane: k.pane, PID: k.pid, Line: Line(k.binding)})
+			ghostty.Typing{Pane: k.pane, PID: k.pid, Line: Line(j.binding, j.cached)})
 	}
+}
+
+// notes are the plan's notes: the hosts whose terminfo Ghostty has not cached.
+func (p *Planned) notes() []string {
+	var notes []string
+	for _, host := range p.uncached {
+		notes = append(notes, uncachedNote(host))
+	}
+	return notes
 }
