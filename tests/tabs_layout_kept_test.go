@@ -60,6 +60,57 @@ func TestTabsLayoutFallback(t *testing.T) {
 		"pane left of b: a/made", "")
 }
 
+// Sizes can fit a wrong tree: a split read halfway, the others' stale sizes beside a zoomed pane.
+// The sizes put the tree right once whole. A known tree stays through a zoom of its focused pane,
+// and through a pane that closes meanwhile.
+func TestTabsLayoutWrongFit(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	p := addPtyPanes(t, m, "a", "b", "c", "d")
+	tree := cut("right", 0.5, leaf("a"), cut("down", 0.5, leaf("b"), leaf("c")))
+	p.size(retina.sizes(cut("right", 0.5, leaf("a"), leaf("b"))))
+	p.size(map[string]tabs.Size{"c": retina.sizes(tree)["c"]})
+	m.Windows = []mac.Window{windowOf(p.tab(tree))}
+	checkTab(t, "c split from b, read halfway", tick(t, s, m), p.names,
+		"*down(a,down(b,c))/inferred", 0.4, 0.67)
+	p.size(retina.sizes(tree))
+	checkTab(t, "the split read", tick(t, s, m), p.names, "*right(a,down(b,c))/inferred",
+		0.5, 0.5)
+	p.size(retina.sizes(leaf("a")))
+	checkTab(t, "a zoomed", tick(t, s, m), p.names, "*right(a,down(b,c))/inferred", 0.5, 0.5)
+	grid := cut("right", 0.5, cut("down", 0.5, leaf("a"), leaf("d")),
+		cut("down", 0.5, leaf("b"), leaf("c")))
+	p.size(retina.sizes(grid))
+	m.Windows = []mac.Window{windowOf(p.tab(grid))}
+	checkTab(t, "d split below a", tick(t, s, m), p.names,
+		"*right(down(a,d),down(b,c))/inferred", 0.5, 0.5, 0.5)
+	p.size(retina.sizes(leaf("a")))
+	m.Windows = []mac.Window{windowOf(p.tab(tree))}
+	checkRecord(t, "a zoomed, d closed", tick(t, s, m), p.names,
+		"*right(a,down(b,c))/inferred", "pane down of a: d/made", "")
+}
+
+// A row that a resize read halfway left gives way once the sizes are whole. A pane over a row of
+// three passes the row's width by their padding alone, which is no zoom.
+func TestTabsLayoutHalfRead(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	p := addPtyPanes(t, m, "a", "b", "c", "d")
+	tree := cut("down", 0.5, leaf("a"), cut("right", 1.0/3, leaf("b"),
+		cut("right", 0.5, leaf("c"), leaf("d"))))
+	wider := room{w: 1600, h: 800, scale: 2, pad: 2, cellW: 16, cellH: 34}
+	p.size(retina.sizes(tree))
+	p.size(map[string]tabs.Size{"a": wider.sizes(tree)["a"]})
+	m.Windows = []mac.Window{windowOf(p.tab(tree))}
+	checkTab(t, "a resize half read", tick(t, s, m), p.names,
+		"*right(a,right(b,right(c,d)))/inferred", 0.57, 0.33, 0.5)
+	p.size(wider.sizes(tree))
+	checkTab(t, "the resize read", tick(t, s, m), p.names,
+		"*down(a,right(b,right(c,d)))/inferred", 0.5, 0.33, 0.5)
+}
+
 // A tab first seen zoomed takes the tree its stale sizes fit, until the zoom ends.
 func TestTabsLayoutZoomedAtFirst(t *testing.T) {
 	t.Parallel()

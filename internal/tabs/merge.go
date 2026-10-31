@@ -102,8 +102,7 @@ func mergePane(p *Pane, t ghostty.Terminal, sizes map[string]Size, seen Seen, no
 }
 
 // mergeWindows makes r's windows o's, front to back, then the old windows o shows only hidden
-// panes of, last. Each tab keeps its tree where an old or undone tab had its panes in that order.
-// A pane in no window then leaves r.Panes.
+// panes of, last. Each tab's tree is treeFor's. A pane in no window then leaves r.Panes.
 func mergeWindows(r *Record, o *Observation, undone []Window) {
 	old := r.Windows
 	windows := make([]Window, 0, len(o.Windows))
@@ -138,8 +137,8 @@ func mergeWindows(r *Record, o *Observation, undone []Window) {
 }
 
 // hiddenWindow is old window w as the record keeps it while o shows none of its panes in a window
-// but some hidden: a minimized or hidden window. Its gone panes leave its tabs. False means w is
-// no such window, or nothing of w remains.
+// but some hidden: a minimized or hidden window. Its gone panes leave its tabs, whose panes have
+// no size to read. False means w is no such window, or nothing of w remains.
 func hiddenWindow(w Window, o *Observation, old []Window) (Window, bool) {
 	ids := windowLeaves(w)
 	hidden := func(id string) bool { return o.Hidden[id] }
@@ -167,21 +166,22 @@ func tabFor(ids []string, selected bool, focused string, sizes map[string]Size,
 	if !slices.Contains(ids, focused) {
 		focused = ""
 	}
-	tree, shape := treeFor(ids, sizes, old, undone)
+	tree, shape := treeFor(ids, focused, sizes, old, undone)
 	return Tab{Selected: selected, Focused: focused, Shape: shape, Tree: tree}, true
 }
 
-// treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old or undone whose
-// panes, less any that went, are ids gives its tree, unless the sizes revise it. A row, or no such
-// tab, takes the sizes' tree, failing that a row: Ghostty's AppleScript gives no split's direction
-// (decision 59.8).
-func treeFor(ids []string, sizes map[string]Size, old, undone []Window) (*Node, string) {
+// treeFor is the split tree of a tab of the panes ids, focused the focused one, and its shape. A
+// tab of old or undone whose panes, less any that went, are ids gives its tree, unless the sizes
+// revise it. A row, or no such tab, takes the sizes' tree, failing that a row. Ghostty's
+// AppleScript gives no split's direction (decision 59.8).
+func treeFor(ids []string, focused string, sizes map[string]Size, old, undone []Window,
+) (*Node, string) {
 	if len(ids) == 1 {
 		return &Node{Pane: ids[0]}, ShapeMade
 	}
 	base, shape := oldTree(ids, old, undone)
 	if base != nil && shape != ShapeFlat {
-		if tree := revise(base, shape == ShapeMade, ids, sizes); tree != nil {
+		if tree := revise(base, shape == ShapeMade, ids, sizes, focused); tree != nil {
 			return tree, ShapeInferred
 		}
 		return base, shape
