@@ -22,7 +22,6 @@ type tabsCommand struct {
 }
 
 // restoreTabs is cld restore tabs, which keeps a record of Ghostty's tabs on a Mac (decision 59).
-// cld hides it until it does all that decision 59 says.
 func restoreTabs(typed string) *cobra.Command {
 	t := &tabsCommand{typed: typed}
 	command := &cobra.Command{
@@ -42,11 +41,11 @@ func restoreTabs(typed string) *cobra.Command {
 	return command
 }
 
-// run runs restore tabs. It reopens nothing yet, so it asks for --watch or --dry-run. A usage error
-// ends it before any tool runs. Then osascript, which only a Mac has, must be on the PATH.
+// run runs restore tabs: the watcher, its start, or the dry-run. A usage error ends it before any
+// tool runs. Then osascript, which only a Mac has, must be on the PATH.
 func (t *tabsCommand) run(*cobra.Command, []string) error {
-	if !t.watch && !t.watching && !t.dryRun {
-		return fail.Usage(t.typed + ": give --watch or --dry-run (see cld help)")
+	if err := t.together(); err != nil {
+		return err
 	}
 	if _, err := tool.LookPath("osascript"); err != nil {
 		return (&ghostty.Error{Kind: ghostty.NoOsascript}).Fail()
@@ -63,6 +62,21 @@ func (t *tabsCommand) run(*cobra.Command, []string) error {
 		return err
 	}
 	return printReport(report)
+}
+
+// together refuses the options that exclude each other, and a run with neither --watch nor
+// --dry-run, which reopens nothing yet.
+func (t *tabsCommand) together() error {
+	switch {
+	case t.watching && (t.watch || t.dryRun):
+		return fail.Usage(t.typed + ": --watching takes no other option (see cld help)")
+	case t.watch && t.dryRun:
+		return fail.Usage(t.typed + ": --watch and --dry-run exclude each other: --watch only " +
+			"starts the record's watcher (see cld help)")
+	case !t.watch && !t.watching && !t.dryRun:
+		return fail.Usage(t.typed + ": give --watch or --dry-run (see cld help)")
+	}
+	return nil
 }
 
 // printReport prints report: its lines, then its warnings and notes. A failed step makes the

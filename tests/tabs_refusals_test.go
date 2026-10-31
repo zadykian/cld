@@ -121,6 +121,37 @@ func checkMovedAside(t *testing.T, s *sandbox.Sandbox, result sandbox.Result, re
 	}
 }
 
+// --watch and --dry-run exclude each other, and --watching, which --watch starts, takes no other
+// option. Run by hand, --watching refuses to run.
+func TestTabsRefusesOptions(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"--watch", "--dry-run"}, 2, "cld: restore tabs: --watch and --dry-run exclude " +
+			"each other: --watch only starts the record's watcher (see cld help)\n"},
+		{[]string{"--watching", "--watch"}, 2,
+			"cld: restore tabs: --watching takes no other option (see cld help)\n"},
+		{[]string{"--watching", "--dry-run"}, 2,
+			"cld: restore tabs: --watching takes no other option (see cld help)\n"},
+		{[]string{"--watching"}, 1, "cld: restore tabs --watching runs only as --watch starts it\n"},
+	} {
+		t.Run(test.args[0]+" "+test.args[len(test.args)-1], func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			saveModel(t, s, ghosttyApp(t, s))
+			result := s.RunCld(map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"},
+				append([]string{"restore", "tabs"}, test.args...)...)
+			checkFailed(t, result, test.code, test.want)
+			if calls := s.OsascriptCalls(); len(calls) != 0 {
+				t.Errorf("osascript ran: %+v", calls)
+			}
+		})
+	}
+}
+
 // --watching run by hand, with fd 3 open on a file other than watch, refuses to run, and leaves
 // that file alone. Only the watch file that --watch locks makes a watcher.
 func TestTabsRefusesWatching(t *testing.T) {
