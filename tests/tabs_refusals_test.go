@@ -16,9 +16,7 @@ import (
 
 // automationAdvice is what cld says to do where macOS denies it Automation of Ghostty.
 const automationAdvice = ": in System Settings › Privacy & Security › Automation, allow " +
-	"Ghostty under the app cld runs in, Ghostty itself in its panes; as a last resort in " +
-	"Ghostty's panes, tccutil reset AppleEvents com.mitchellh.ghostty resets every Automation " +
-	"grant Ghostty holds"
+	"Ghostty under the app cld runs in"
 
 // Where cld cannot read Ghostty, the dry-run fails with status 1 and cld's message, and leaves the
 // record's bytes. So do osascript missing, macOS's Automation denied, AppleScript off in Ghostty's

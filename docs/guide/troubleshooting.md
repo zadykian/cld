@@ -30,9 +30,8 @@
 - **`File name too long`.** The socket's path, `$TMUX_TMPDIR/tmux-UID/cld-S` with links resolved,
   must fit in 103 bytes on macOS and 107 on Linux. Use a shorter name.
 - **`macOS denies control of Ghostty`.** `cld restore tabs` needs the grant of the app it runs in:
-  allow Ghostty under that app in System Settings › Privacy & Security › Automation. In Ghostty's
-  panes, that app is Ghostty itself. As a last resort there, `tccutil reset AppleEvents
-  com.mitchellh.ghostty` asks again, but resets every Automation grant Ghostty holds.
+  allow Ghostty under that app in System Settings › Privacy & Security › Automation. Ghostty's own
+  panes need none.
 - **`Ghostty says: AppleScript is disabled by the macos-applescript configuration`.** Set
   `macos-applescript = true` in Ghostty's config, and reload it.
 - **A pane's session missing from `cld restore tabs --dry-run`.** A `title` in Ghostty's config, or
