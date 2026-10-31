@@ -59,3 +59,39 @@ func dedupe(panes map[string]*Pane, wants map[Binding][]want) map[string]bool {
 	}
 	return deduped
 }
+
+// skip is a pane Ghostty kept, or a lost leaf, that a restore leaves a shell, for the report's
+// note. Its binding shows in a pane opened since, or it named no host.
+type skip struct {
+	binding Binding // Host "" for no host
+	cwd     string
+	kept    bool // a pane Ghostty kept, left unchanged; else a lost leaf, which a shell replaces
+}
+
+// note is the report's note on s, c writing its directory.
+func (s skip) note(c clock) string {
+	what := "a shell takes its place in " + c.dir(s.cwd)
+	if s.kept {
+		what = "left the pane in " + c.dir(s.cwd) + " as it is"
+	}
+	switch {
+	case s.binding.Host != "":
+		return s.binding.String() + " shows in a pane opened since: " + what
+	case s.kept:
+		return "a pane's last ssh named no host cld can type: " + what
+	}
+	return "a lost pane showed ssh to no host cld can type: " + what
+}
+
+// notes are the plan's notes, c writing directories: the panes and leaves left a shell, and the
+// hosts whose terminfo Ghostty has not cached.
+func (p *Planned) notes(c clock) []string {
+	var notes []string
+	for _, s := range p.skipped {
+		notes = append(notes, s.note(c))
+	}
+	for _, host := range p.uncached {
+		notes = append(notes, uncachedNote(host))
+	}
+	return notes
+}

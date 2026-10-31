@@ -30,6 +30,7 @@ type Planned struct {
 	builds  []building // the loss, leaves and bindings of each of script.Builds
 	chosen  []*Loss
 	deduped []string // kept panes whose binding shows in a pane opened since: Last goes
+	skipped []skip
 	// uncached are the hosts whose terminfo Ghostty has not cached, in the order asked.
 	uncached []string
 }
@@ -81,23 +82,26 @@ func plan(r *Record, o *Observation, chosen []*Loss, cached func(host string) bo
 
 // keptPane is a pane Ghostty kept, a shell at its prompt, with the binding its Last names.
 type keptPane struct {
-	pane    string
-	pid     int
-	binding Binding
-	at      time.Time
+	pane, cwd string
+	pid       int
+	binding   Binding
+	at        time.Time
 }
 
 // inPlace are the panes of o's windows that the snapshot shows a shell at its prompt, with a Last
-// in r that names a host.
+// in r. One whose Last names no host gets a note.
 func (pl *planner) inPlace(r *Record) []keptPane {
 	var out []keptPane
 	for t := range terminals(pl.o.Windows) {
 		seen, p := pl.o.Seen[t.ID], r.Panes[t.ID]
-		if seen.Kind != KindLocal || seen.Keep || p == nil || p.Last == nil || p.Last.Host == "" {
-			continue
+		switch {
+		case seen.Kind != KindLocal || seen.Keep || p == nil || p.Last == nil:
+		case p.Last.Host == "":
+			pl.out.skipped = append(pl.out.skipped, skip{cwd: p.Cwd, kept: true})
+		default:
+			out = append(out, keptPane{pane: t.ID, cwd: p.Cwd, pid: t.PID, at: p.Last.At,
+				binding: Binding{Host: p.Last.Host, Session: p.Last.Session}})
 		}
-		out = append(out, keptPane{pane: t.ID, pid: t.PID, at: p.Last.At,
-			binding: Binding{Host: p.Last.Host, Session: p.Last.Session}})
 	}
 	return out
 }
@@ -108,6 +112,7 @@ func (pl *planner) typings(kept []keptPane) {
 	for _, k := range kept {
 		if pl.deduped[k.pane] {
 			pl.out.deduped = append(pl.out.deduped, k.pane)
+			pl.out.skipped = append(pl.out.skipped, skip{binding: k.binding, cwd: k.cwd, kept: true})
 			continue
 		}
 		j := joining{pane: k.pane, binding: k.binding, cached: pl.cachedHost(k.binding.Host)}
@@ -215,13 +220,4 @@ func (pl *planner) key(p placement) {
 	}
 	pl.out.script.Builds = append(pl.out.script.Builds, build)
 	pl.out.builds = append(pl.out.builds, k.b)
-}
-
-// notes are the plan's notes: the hosts whose terminfo Ghostty has not cached.
-func (p *Planned) notes() []string {
-	var notes []string
-	for _, host := range p.uncached {
-		notes = append(notes, uncachedNote(host))
-	}
-	return notes
 }

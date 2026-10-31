@@ -35,7 +35,7 @@ func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []
 		}
 	}
 	var notes []string
-	for _, note := range p.notes() {
+	for _, note := range p.notes(c) {
 		notes = append(notes, "  "+note)
 	}
 	report.section("Notes:", append(notes, settingsNotes(ctx, seen.app)...))

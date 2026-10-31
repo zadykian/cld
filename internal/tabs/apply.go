@@ -76,7 +76,7 @@ func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report 
 		report.note(noun(l) + " " + c.when(l) + " waits for Ghostty's undo: run cld restore tabs" +
 			" again once it has passed")
 	}
-	report.Notes = append(report.Notes, p.notes()...)
+	report.Notes = append(report.Notes, p.notes(c)...)
 	if os.Getenv("TERM_PROGRAM") != "ghostty" {
 		if WatcherStatus(dir).PID == 0 {
 			report.note("no watcher runs here: the next ssh in a Ghostty pane starts one")
