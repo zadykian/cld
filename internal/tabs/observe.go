@@ -8,8 +8,8 @@ import (
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// Observation is a snapshot of Ghostty, with ps's rows read after it: what a merge folds into the
-// record.
+// Observation is a snapshot of Ghostty, with ps's rows and the panes' sizes read after it: what a
+// merge folds into the record.
 type Observation struct {
 	Time    time.Time // in UTC, to the second
 	Run     string    // Ghostty's run, PID@START (see runID)
@@ -17,10 +17,11 @@ type Observation struct {
 	Ghostty int              // Ghostty's pid
 	Windows []ghostty.Window // front to back
 	Seen    map[string]Seen  // by terminal id, every window's
+	Sizes   map[string]Size  // by terminal id, where TIOCGWINSZ read one
 	Procs   Table
 }
 
-// Observe reads ps around snap, which must hold a running Ghostty. A Ghostty whose ps row is
+// Observe reads ps and the panes' sizes around snap, which must hold a running Ghostty. A Ghostty whose ps row is
 // gone is a *ghostty.Error of kind Gone: the snapshot came as it quit.
 func Observe(ctx context.Context, snap *ghostty.Snapshot) (*Observation, error) {
 	app, err := snap.Ghostty()
@@ -28,7 +29,7 @@ func Observe(ctx context.Context, snap *ghostty.Snapshot) (*Observation, error) 
 		return nil, err
 	}
 	o := &Observation{Time: time.Now().UTC().Truncate(time.Second), Version: snap.Version,
-		Ghostty: app.PID, Windows: snap.Windows, Seen: map[string]Seen{}}
+		Ghostty: app.PID, Windows: snap.Windows, Seen: map[string]Seen{}, Sizes: map[string]Size{}}
 	if o.Procs, err = Processes(ctx); err != nil {
 		return nil, err
 	}
@@ -47,9 +48,12 @@ func Observe(ctx context.Context, snap *ghostty.Snapshot) (*Observation, error) 
 	return o, nil
 }
 
-// see classifies terminal t.
+// see classifies terminal t and reads its size.
 func (o *Observation) see(t ghostty.Terminal) {
 	o.Seen[t.ID] = classify(t, o.Procs, o.Ghostty)
+	if size := winsize(t.TTY); size != nil {
+		o.Sizes[t.ID] = *size
+	}
 }
 
 // runID is Ghostty's run, by its pid and its start as ps gives it, and false where ps lacks the
