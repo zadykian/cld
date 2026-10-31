@@ -48,11 +48,13 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 	want := "Ghostty is not running: the record as if it brought nothing back\n" +
 		"The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one\n" +
 		"Losses:\n  3 windows of 3 tabs and 4 panes, lost as Ghostty quit at "
+	rest := strings.TrimPrefix(result.Stdout, want)
 	if result.Code != 0 || !strings.HasPrefix(result.Stdout, want) ||
-		!slices.Contains([]string{clockAt(merged) + "\n", clockAt(time.Now()) + "\n"},
-			strings.TrimPrefix(result.Stdout, want)) || readFile(t, recordPath(s)) != before {
-		t.Errorf("no Ghostty: exit %d, stdout\n%s\nwant %q and the time, and tabs.json as it was",
-			result.Code, result.Stdout, want)
+		!slices.ContainsFunc([]string{clockAt(merged), clockAt(time.Now())}, func(at string) bool {
+			return strings.HasPrefix(rest, at+"\nNotes:\n")
+		}) || readFile(t, recordPath(s)) != before {
+		t.Errorf("no Ghostty: exit %d, stdout\n%s\nwant %q, the time and the notes, and "+
+			"tabs.json as it was", result.Code, result.Stdout, want)
 	}
 	quitGhostty(m)
 	n := relaunch(m, 4242, relaunched, ids...)

@@ -36,7 +36,8 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	dryRun(ctx, dir, seen, restorePlan(ctx, seen), report)
+	p, _ := restorePlan(ctx, seen)
+	dryRun(ctx, dir, seen, p, report)
 	return report, nil
 }
 
@@ -122,10 +123,21 @@ func failure(err error) error {
 	return err
 }
 
-// restorePlan plans the restore of the record seen against Ghostty as seen. It asks Ghostty's
-// terminfo cache once per host.
-func restorePlan(ctx context.Context, seen *observed) *Planned {
+// restorePlan plans the restore of the record seen against Ghostty as seen: every window loss not
+// yet restored. It asks Ghostty's terminfo cache once per host. left is the losses it does not
+// reopen: a tab's or a split's.
+func restorePlan(ctx context.Context, seen *observed) (p *Planned, left []*Loss) {
+	var chosen []*Loss
+	for _, l := range seen.record.Losses {
+		switch {
+		case l.Restored != nil || len(l.Windows) == 0:
+		case l.Cause == CauseClosed || l.Cause == CauseQuit:
+			chosen = append(chosen, l)
+		default:
+			left = append(left, l)
+		}
+	}
 	bin, ok := ghostty.Binary(seen.app)
 	cached := func(host string) bool { return ok && ghostty.TerminfoCached(ctx, bin, host) }
-	return plan(seen.record, seen.o, cached)
+	return plan(seen.record, seen.o, chosen, cached), left
 }
