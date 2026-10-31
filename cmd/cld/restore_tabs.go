@@ -46,7 +46,7 @@ func (t *tabsCommand) run(*cobra.Command, []string) error {
 	if _, err := tool.LookPath("osascript"); err != nil {
 		return (&ghostty.Error{Kind: ghostty.NoOsascript}).Fail()
 	}
-	report, err := tabs.Restore(context.Background())
+	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun})
 	if err != nil {
 		return err
 	}
