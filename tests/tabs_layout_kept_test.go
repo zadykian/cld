@@ -1,8 +1,12 @@
 package tests
 
 import (
+	"encoding/json"
+	"fmt"
+	"slices"
 	"testing"
 
+	"github.com/zadykian/cld/internal/ghostty"
 	"github.com/zadykian/cld/internal/tabs"
 	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
@@ -134,4 +138,69 @@ func TestTabsLayoutMade(t *testing.T) {
 	m.Windows = []mac.Window{windowOf(p.tab(split))}
 	checkTab(t, "c split from b", tick(t, s, m), p.names, "*down(a,right(b,c))/inferred",
 		0.7, 0.5)
+}
+
+// A closed window goes back with the tree its panes' sizes gave it. The plan apply.js gets
+// carries that tree, and the record holds it as made once Ghostty has built it.
+func TestTabsLayoutRestore(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	p := addPtyPanes(t, m, "a", "b", "c", "d")
+	tree := cut("right", 0.5, leaf("b"), cut("down", 0.5, leaf("c"), leaf("d")))
+	p.size(retina.sizes(tree))
+	p.size(retina.sizes(leaf("a")))
+	m.Windows = []mac.Window{windowOf(p.tab(leaf("a"))), windowOf(p.tab(tree))}
+	tick(t, s, m)
+	m.Windows = m.Windows[:1]
+	endLogins(m, p.ids["b"], p.ids["c"], p.ids["d"])
+	r := tick(t, s, m)
+	checkRecord(t, "closed", r, p.names, "*a/made", "", "closed: *right(b,down(c,d))/inferred")
+	if len(r.Losses) != 1 {
+		return
+	}
+	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0,
+		"Reopened a window of 1 tab and 3 panes, closed at "+clockAt(r.Losses[0].At)+"\n",
+		noWatcher)
+	if got := planTree(t, s); got != "right(b0l0,down(b0l1,b0l2))" {
+		t.Errorf("apply.js got the tree %s, want right(b0l0,down(b0l1,b0l2))", got)
+	}
+	names := p.names
+	for _, w := range loadModel(t, s).Windows {
+		for i, id := range w.Tabs[0].Tree.Leaves() {
+			if id != p.ids["a"] {
+				names[id] = string(rune('b' + i))
+			}
+		}
+	}
+	const want = "*right(b,down(c,d))/made | *a/made"
+	if got := drawWindows(readRecord(t, s).Windows, names); got != want {
+		t.Errorf("the record holds %s, want %s", got, want)
+	}
+}
+
+// planTree draws the tree of the one build in the plan s's restore gave apply.js, by its leaves'
+// keys.
+func planTree(t *testing.T, s *sandbox.Sandbox) string {
+	t.Helper()
+	calls := s.OsascriptCalls()
+	i := slices.IndexFunc(calls, func(c mac.OsascriptCall) bool { return c.Script == "apply" })
+	if i < 0 {
+		t.Fatalf("osascript's calls %+v, want an apply", calls)
+	}
+	var plan ghostty.Plan
+	if err := json.Unmarshal(calls[i].Input, &plan); err != nil {
+		t.Fatalf("apply's plan %s: %v", calls[i].Input, err)
+	}
+	if len(plan.Builds) != 1 || len(plan.Builds[0].Tabs) != 1 {
+		t.Fatalf("apply's plan %s, want one build of one tab", calls[i].Input)
+	}
+	var draw func(n *ghostty.Node) string
+	draw = func(n *ghostty.Node) string {
+		if n.Leaf != nil {
+			return n.Leaf.Key
+		}
+		return fmt.Sprintf("%s(%s,%s)", n.Split, draw(n.First), draw(n.Second))
+	}
+	return draw(plan.Builds[0].Tabs[0].Tree)
 }
