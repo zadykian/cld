@@ -205,6 +205,8 @@ runs `cld join --existing` for the session, then a shell (58). A pane that showe
 - **`initial input`, never a `command`.** A `command` runs without the user's rc files, and makes
   a window Ghostty never restores. Typed into the user's shell, the line gets its `PATH`, its agent
   and Ghostty's ssh wrapper.
+- **A directory that is gone.** A rebuilt pane opens in the home directory, not in osascript's
+  ([findings](../findings/terminals.md#the-mac-spikes-results)).
 - **In place**, cld types only into a shell at its prompt, as the snapshot saw it, and checks the
   pane's group again just before. It empties the line first, then types, then presses Enter.
 - **Never `--detach-others`**: it would detach the session on another device
