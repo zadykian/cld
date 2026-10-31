@@ -171,23 +171,33 @@ func tabFor(ids []string, selected bool, focused string, sizes map[string]Size,
 	return Tab{Selected: selected, Focused: focused, Shape: shape, Tree: tree}, true
 }
 
-// treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old or undone with
-// those panes in that order gives its own, so that a tree cld made stays made, through an undo
-// too. Else the sizes give the tree, failing that the panes make a row: Ghostty's AppleScript gives
-// no split's direction (decision 59.8).
+// treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old or undone whose
+// panes, less any that went, are ids gives its tree. Else the sizes give the tree, failing that
+// the panes make a row: Ghostty's AppleScript gives no split's direction (decision 59.8).
 func treeFor(ids []string, sizes map[string]Size, old, undone []Window) (*Node, string) {
 	if len(ids) == 1 {
 		return &Node{Pane: ids[0]}, ShapeMade
 	}
-	for _, w := range slices.Concat(old, undone) {
-		for _, tab := range w.Tabs {
-			if sameLeaves(tab.Tree, ids) {
-				return copyTree(tab.Tree, nil), tab.Shape
-			}
-		}
+	if base, shape := oldTree(ids, old, undone); base != nil {
+		return base, shape
 	}
 	if tree, ok := infer(ids, sizes); ok {
 		return tree, ShapeInferred
 	}
 	return flat(ids), ShapeFlat
+}
+
+// oldTree is a copy of the tree of a tab of old or undone whose panes are ids and maybe others, in
+// order, and its shape. The others leave it as Ghostty removes a pane, whose sibling takes its
+// split's place (SplitTree.swift). nil means there is none.
+func oldTree(ids []string, old, undone []Window) (*Node, string) {
+	drop := func(id string) bool { return !slices.Contains(ids, id) }
+	for _, w := range slices.Concat(old, undone) {
+		for _, tab := range w.Tabs {
+			if within(tab.Tree, ids) {
+				return copyTree(prune(tab.Tree, drop), nil), tab.Shape
+			}
+		}
+	}
+	return nil, ""
 }
