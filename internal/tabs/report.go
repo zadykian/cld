@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/zadykian/cld/internal/ghostty"
 )
 
 // Report is what a restore did or would do, for cmd to print: Lines on stdout, then Warnings and
@@ -73,6 +75,14 @@ func paneCwd(r *Record, id string) string {
 	return ""
 }
 
+// when is when loss l was lost: closed, or as Ghostty quit.
+func (c clock) when(l *Loss) string {
+	if l.Cause == CauseQuit {
+		return "lost as Ghostty quit at " + c.at(l.At)
+	}
+	return "closed at " + c.at(l.At)
+}
+
 // size is what loss l holds: a tab, a split, or windows with their tabs and panes.
 func size(l *Loss) string {
 	tabs, panes := 0, 0
@@ -105,4 +115,15 @@ func count(n int, thing string) string {
 		return "1 " + thing
 	}
 	return fmt.Sprintf("%d %ss", n, thing)
+}
+
+// buildLeaves are the leaves of apply.js's tree n, left or top first.
+func buildLeaves(n *ghostty.Node) []*ghostty.Leaf {
+	switch {
+	case n == nil:
+		return nil
+	case n.Leaf != nil:
+		return []*ghostty.Leaf{n.Leaf}
+	}
+	return append(buildLeaves(n.First), buildLeaves(n.Second)...)
 }

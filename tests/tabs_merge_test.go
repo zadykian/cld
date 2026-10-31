@@ -98,7 +98,8 @@ func TestTabsMergeClosedWindow(t *testing.T) {
 	if len(r.Losses) == 1 && !r.Losses[0].At.Equal(closed) {
 		t.Errorf("lost at %v, want %v, when it closed", r.Losses[0].At, closed)
 	}
-	checkReport(t, s, "Losses:\n  a window of 1 tab and 2 panes, closed at "+clockAt(closed)+"\n")
+	checkReport(t, s, "Would reopen 1 window, closed at "+clockAt(closed)+":\n"+
+		"  1 tab: session 'x' on ws | a shell in /Users/me\n")
 }
 
 // checkCopy reports loss l unless its leaf id holds a copy of the pane that shows want.

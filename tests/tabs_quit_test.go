@@ -47,14 +47,14 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 	result := dryRun(t, s)
 	want := "Ghostty is not running: the record as if it brought nothing back\n" +
 		"The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one\n" +
-		"Losses:\n  3 windows of 3 tabs and 4 panes, lost as Ghostty quit at "
+		"Would reopen 3 windows, lost as Ghostty quit at "
 	rest := strings.TrimPrefix(result.Stdout, want)
 	if result.Code != 0 || !strings.HasPrefix(result.Stdout, want) ||
 		!slices.ContainsFunc([]string{clockAt(merged), clockAt(time.Now())}, func(at string) bool {
-			return strings.HasPrefix(rest, at+"\nNotes:\n")
+			return strings.HasPrefix(rest, at+":\n"+quitWindows)
 		}) || readFile(t, recordPath(s)) != before {
-		t.Errorf("no Ghostty: exit %d, stdout\n%s\nwant %q, the time and the notes, and "+
-			"tabs.json as it was", result.Code, result.Stdout, want)
+		t.Errorf("no Ghostty: exit %d, stdout\n%s\nwant %q, the time and %q, and tabs.json as it "+
+			"was", result.Code, result.Stdout, want, quitWindows)
 	}
 	quitGhostty(m)
 	n := relaunch(m, 4242, relaunched, ids...)
@@ -83,6 +83,10 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 		"Ghostty brought back every window as it quit at "+at+"\n")
 }
 
+// quitWindows are the lines of the dry-run that would reopen quitMac's windows, back to front.
+const quitWindows = "  1 tab: session 'x' on ws2\n  1 tab: ssh to ws | a shell in /Users/me\n" +
+	"  1 tab: session 'app' on ws\n"
+
 // uncachedJoin is the line typed to join session, a NAME that does not split, on host, whose
 // terminfo Ghostty has not cached.
 func uncachedJoin(host, session string) string {
@@ -100,9 +104,9 @@ func TestTabsQuitBroughtSomeBack(t *testing.T) {
 		report        string
 	}{
 		{"some", []int{0, 3}, "*a/made | *d/made", "quit: *right(b,c)/flat",
-			"a window of 1 tab and 2 panes"},
+			"1 window, lost as Ghostty quit at %s:\n  1 tab: ssh to ws | a shell in /Users/me\n"},
 		{"none", nil, "", "quit: *a/made | *right(b,c)/flat | *d/made",
-			"3 windows of 3 tabs and 4 panes"},
+			"3 windows, lost as Ghostty quit at %s:\n" + quitWindows},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -117,8 +121,8 @@ func TestTabsQuitBroughtSomeBack(t *testing.T) {
 			if len(r.Losses) == 1 {
 				checkBackLast(t, r, ids, back, r.Losses[0].At, runOf(m))
 				checkCopy(t, r.Losses[0], ids[1], shown{Kind: "ssh", Host: "ws", Title: "me@ws: ~"})
-				checkReport(t, s, "Losses:\n  "+test.report+", lost as Ghostty quit at "+
-					clockAt(r.Losses[0].At)+"\n")
+				checkReport(t, s, "Would reopen "+fmt.Sprintf(test.report,
+					clockAt(r.Losses[0].At)))
 			}
 			for _, id := range ids[1:3] {
 				if r.Panes[id] != nil {

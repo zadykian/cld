@@ -4,22 +4,27 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// dryRun reports what a restore would do of plan p, made against the record in dir as seen.
-// Ghostty and the watcher come first, then the panes to type into, the losses, and those that wait
-// for Ghostty's undo. Notes on Ghostty's config end it.
-func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, report *Report) {
+// dryRun reports what a restore would do of plan p, made against the record in dir as seen. left
+// is the losses it would not reopen. Ghostty and the watcher come first. Then come the panes to
+// type into, the windows to reopen, the losses left and those that wait for Ghostty's undo. Notes
+// on the plan and on Ghostty's config end it.
+func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []*Loss,
+	report *Report,
+) {
 	c := clock{now: time.Now()}
 	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
 	r := seen.record
 	report.Lines = append(report.Lines, c.ghostty(seen))
 	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)
 	c.wouldType(r, p, report)
-	report.section("Losses:", c.losses(r.Losses))
+	c.wouldReopen(p, report)
+	report.section("Losses:", c.losses(left))
 	for _, l := range r.Losses {
 		if l.Cause == CauseQuit && len(l.Windows) == 0 {
 			report.Lines = append(report.Lines,
@@ -90,6 +95,39 @@ func (c clock) cut(last *Last) string {
 	return "as it closed at " + c.at(last.At)
 }
 
+// wouldReopen adds a section per loss that plan p rebuilds: when it was lost, then a line per
+// window. Each pane shows what its line joins, or a shell in its directory.
+func (c clock) wouldReopen(p *Planned, report *Report) {
+	for i := 0; i < len(p.builds); {
+		l := p.builds[i].loss
+		var lines []string
+		n := i
+		for ; n < len(p.builds) && p.builds[n].loss == l; n++ {
+			lines = append(lines, "  "+c.panes(p.script.Builds[n], p.builds[n]))
+		}
+		report.section("Would reopen "+count(n-i, "window")+", "+c.when(l)+":", lines)
+		i = n
+	}
+}
+
+// panes is what build b of info's loss makes: its tabs, each its panes split by |. A pane names
+// the session or host its line joins, or a shell in its directory.
+func (c clock) panes(b ghostty.Build, info building) string {
+	var tabs []string
+	for _, tab := range b.Tabs {
+		var panes []string
+		for _, leaf := range buildLeaves(tab.Tree) {
+			if bind, ok := info.bindings[leaf.Key]; ok {
+				panes = append(panes, bind.String())
+			} else {
+				panes = append(panes, "a shell in "+c.dir(leaf.Cwd))
+			}
+		}
+		tabs = append(tabs, strings.Join(panes, " | "))
+	}
+	return count(len(tabs), "tab") + ": " + strings.Join(tabs, ", ")
+}
+
 // losses is a line per loss not restored, with its size and time, but for a quit that lost
 // nothing.
 func (c clock) losses(list []*Loss) []string {
@@ -98,11 +136,7 @@ func (c clock) losses(list []*Loss) []string {
 		if l.Restored != nil || len(l.Windows) == 0 {
 			continue
 		}
-		when := "closed at " + c.at(l.At)
-		if l.Cause == CauseQuit {
-			when = "lost as Ghostty quit at " + c.at(l.At)
-		}
-		lines = append(lines, "  "+size(l)+", "+when)
+		lines = append(lines, "  "+size(l)+", "+c.when(l))
 	}
 	return lines
 }
