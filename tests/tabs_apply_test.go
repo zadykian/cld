@@ -149,6 +149,45 @@ func checkMade(t *testing.T, r *tabs.Record, now time.Time) {
 	}
 }
 
+// A build that fails keeps what it made, and the restore warns, with status 1. The loss is
+// restored where a pane of it opened, and stays for the next restore where none did.
+func TestTabsApplyFails(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, warning, windows string
+		failAt                 int
+		restored               bool
+	}{
+		{"a split", "Failed to create split. (-10000) (2 of its panes opened)",
+			"w1/made *w2/made | ", 8, true},
+		{"a window", "no terminal appeared", "", 6, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m, before := applyMac(t, s, time.Now().UTC().Truncate(time.Second))
+			m.FailAt = test.failAt
+			saveModel(t, s, m)
+			result := s.RunCld(tabsEnv, "restore", "tabs", "--all", "--closed")
+			warning := "cld: warning: cannot reopen a window closed at " +
+				clockAt(before.Losses[1].At) + ": " + test.warning + "\n"
+			if result.Code != 1 || !strings.HasPrefix(result.Stderr, warning) {
+				t.Errorf("exit %d, stderr %q, want exit 1 and the warning %q", result.Code,
+					result.Stderr, warning)
+			}
+			r := readRecord(t, s)
+			want := test.windows + "*q1/made | *q2/made | *right(t1,t2)/made right(p,a)/made " +
+				"d/made v/made"
+			if got := drawWindows(r.Windows, applyIDs()); got != want {
+				t.Errorf("the record's windows are %s, want %s", got, want)
+			}
+			if restored := r.Losses[1].Restored != nil; restored != test.restored {
+				t.Errorf("the window's loss restored %t, want %t", restored, test.restored)
+			}
+		})
+	}
+}
+
 // heldRestore starts cld restore tabs in s, and returns once its snapshot has read the model. The
 // fake osascript then holds it for a second, while the restore holds its locks. It returns what
 // waits for the restore to end.
