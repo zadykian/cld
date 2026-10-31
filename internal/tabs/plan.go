@@ -104,15 +104,20 @@ type pruned struct {
 }
 
 // leavesOf is chosen, each with its leaves to rebuild. A leaf open again, in a window of o or
-// hidden, is not rebuilt.
+// hidden, is not rebuilt. Nor is one that a newer loss of chosen holds too, which rebuilds it.
 func (pl *planner) leavesOf(chosen []*Loss) []pruned {
 	out := make([]pruned, len(chosen))
-	for i, l := range chosen {
-		out[i].loss = l
-		for _, w := range l.Windows {
-			if kept, ok := pruneWindow(w, func(id string) bool { return !pl.o.gone(id) }); ok {
+	taken := map[string]bool{}
+	drop := func(id string) bool { return taken[id] || !pl.o.gone(id) }
+	for i := len(chosen) - 1; i >= 0; i-- {
+		out[i].loss = chosen[i]
+		for _, w := range chosen[i].Windows {
+			if kept, ok := pruneWindow(w, drop); ok {
 				out[i].windows = append(out[i].windows, kept)
 			}
+		}
+		for id := range windowCopies(out[i].windows) {
+			taken[id] = true
 		}
 	}
 	return out
