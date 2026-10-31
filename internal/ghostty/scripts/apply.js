@@ -12,6 +12,8 @@ const BUNDLE = 'com.mitchellh.ghostty';
 const GONE = new Error('Ghostty is not running');
 let G = null;
 let started = 0;
+let pace = null;
+let paced = 0;
 let known = [];
 
 // ghosttyPid is the pid of Ghostty's process, through NSRunningApplication, which sends no Apple
@@ -29,6 +31,15 @@ function gone() {
 // alive throws GONE where gone holds, before an Apple Event that would launch Ghostty again.
 function alive() {
   if (gone()) throw GONE;
+}
+
+// step waits before each line that starts an ssh: pace.gap apart, and pace.pause more after
+// every pace.every, so that sshd's MaxStartups and a fail2ban see no burst (decision 59.7).
+function step() {
+  if (paced > 0) {
+    delay(paced % pace.every === 0 ? pace.gap + pace.pause : pace.gap);
+  }
+  paced++;
 }
 
 // message is a typing's error: JXA's text, then its number in brackets.
@@ -49,9 +60,11 @@ function failure(step, e) {
 }
 
 // type empties the prompt's line, pastes line, and presses Enter: input text is a paste, which a
-// prompt in bracketed-paste mode does not run. It types nothing, and is false, where another
-// group than the snapshot's shell is in front: the user started a program since (decision 59.7).
+// prompt in bracketed-paste mode does not run. Once the pace has passed, it types nothing, and is
+// false, where another group than the snapshot's shell is in front: the user started a program
+// since (decision 59.7).
 function type(typing) {
+  step();
   alive();
   if (G.terminals.byId(typing.pane).pid() !== typing.pid) return false;
   G.sendKey('u', {modifiers: 'control', to: G.terminals.byId(typing.pane)});
@@ -73,6 +86,7 @@ function attempt(f, caught) {
 
 function run(argv) {
   const plan = JSON.parse(argv[0]);
+  pace = plan.pace;
   started = ghosttyPid();
   if (started === 0) {
     return failure('running', GONE);

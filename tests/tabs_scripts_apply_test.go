@@ -28,7 +28,7 @@ var mockedApplies = []mockedApply{
 	  {"pane": "@4", "pid": 1, "line": "ls"}`, "", nil, nil,
 		`{"typed": [{"pane": "@1"}, {"pane": "@4", "busy": true}], "builds": []}`,
 		"*[1] [4] | *[7]", []string{"get terminals.id", "get pid of @1", "send key u control to @1",
-			"input text to @1", "send key enter to @1", "get pid of @4"}},
+			"input text to @1", "send key enter to @1", "delay 0.3", "get pid of @4"}},
 }
 
 // mockedFailures are apply.js's own cases as it fails.
@@ -61,6 +61,7 @@ func testMockedApply(t *testing.T) {
 			}
 		})
 	}
+	t.Run("the pace", testMockedPace)
 }
 
 // checkMockedApply runs apply.js on a plan of cld's pace with typed and builds, against the mock
@@ -79,4 +80,23 @@ func checkMockedApply(
 		t.Errorf("left the model %+v, want the shape %s", got.Model, drawn)
 	}
 	return got
+}
+
+// apply.js waits before each line that starts an ssh but the first. It waits the pace's gap, and
+// its pause too after every eighth line.
+func testMockedPace(t *testing.T) {
+	t.Parallel()
+	typing := `{"pane": "@1", "pid": 50003, "line": "ls"}`
+	got := runMocked(t, "apply", withIDs(`{`+pace+`, "typed": [`+
+		strings.Repeat(typing+", ", 8)+typing+`], "builds": []}`), fakeGhostty(2, 1), nil)
+	var delays []string
+	for _, event := range got.Log {
+		if strings.HasPrefix(event, "delay ") {
+			delays = append(delays, event)
+		}
+	}
+	want := append(slices.Repeat([]string{"delay 0.3"}, 7), "delay 2.3")
+	if !slices.Equal(delays, want) {
+		t.Errorf("waited %q, want %q", delays, want)
+	}
 }
