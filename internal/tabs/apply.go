@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
@@ -67,12 +68,14 @@ func (c clock) restored(r *Record, p *Planned, res *ghostty.Result, report *Repo
 		}
 	}
 	for i := range min(len(res.Builds), len(p.builds)) {
-		c.built(p.script.Builds[i], p.builds[i], res.Builds[i], report)
+		c.built(r, p.script.Builds[i], p.builds[i], res.Builds[i], report)
 	}
 }
 
-// built reports build b of info's loss, as res says apply made it.
-func (c clock) built(b ghostty.Build, info building, res ghostty.BuildResult, report *Report) {
+// built reports build b of info's loss, as res says apply made it, and as mark entered it in r.
+func (c clock) built(r *Record, b ghostty.Build, info building, res ghostty.BuildResult,
+	report *Report,
+) {
 	l := info.loss
 	if res.Error != "" {
 		failed := "cannot reopen " + noun(l) + " " + c.when(l) + ": " + res.Error
@@ -90,4 +93,19 @@ func (c clock) built(b ghostty.Build, info building, res ghostty.BuildResult, re
 		what = noun(l) + " as a window"
 	}
 	report.Lines = append(report.Lines, "Reopened "+what+", "+c.when(l))
+	if want := min(b.Index, tabsBeside(r, b.Anchor)); b.Kind == buildTab && !res.Window &&
+		want > 0 && res.Index != want {
+		report.warn(fmt.Sprintf("reopened a tab at %d, not at %d", res.Index, want))
+	}
+}
+
+// tabsBeside counts the tabs of the window of r that holds pane anchor: a tab moved past them
+// goes last, as Ghostty clamps the move.
+func tabsBeside(r *Record, anchor string) int {
+	for _, w := range r.Windows {
+		if slices.Contains(windowLeaves(w), anchor) {
+			return len(w.Tabs)
+		}
+	}
+	return 0
 }

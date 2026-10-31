@@ -121,14 +121,20 @@ func (a *applier) newTab(w int, id string) {
 }
 
 // moveTo moves the terminal id's tab to index, where that is above 0, clamped as macOS clamps
-// move_tab. It returns the index read back, from 1.
+// move_tab. It returns the index read back, from 1. A move the model drops goes once more, as
+// apply.js sends it.
 func (a *applier) moveTo(id string, index int) int {
 	w, t := a.m.Locate(id)
-	if index > 0 {
+	target := min(index, len(a.m.Windows[w].Tabs))
+	for attempt := 0; target > 0 && target != t+1 && attempt < 2; attempt++ {
+		if a.m.DropMoves > 0 {
+			a.m.DropMoves--
+			continue
+		}
 		tab := a.m.Windows[w].Tabs[t]
-		tabs := slices.Delete(a.m.Windows[w].Tabs, t, t+1)
-		t = min(index, len(tabs)+1) - 1
-		a.m.Windows[w].Tabs = slices.Insert(tabs, t, tab)
+		rest := slices.Delete(a.m.Windows[w].Tabs, t, t+1)
+		t = target - 1
+		a.m.Windows[w].Tabs = slices.Insert(rest, t, tab)
 	}
 	return t + 1
 }
