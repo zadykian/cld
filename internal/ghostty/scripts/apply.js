@@ -1,14 +1,15 @@
 // cld: apply
-// Types into the panes Ghostty kept and builds the windows of cld's plan, then prints what it made
-// as one JSON document (internal/ghostty/apply.go). Between commands it holds terminal ids alone.
-// Where Ghostty does not run, or the Ghostty it began with has gone, it sends no more Apple
-// Events.
+// Types into the panes Ghostty kept and builds the windows and splits of cld's plan, then prints
+// what it made as one JSON document (internal/ghostty/apply.go). Between commands it holds
+// terminal ids alone. Where Ghostty does not run, or the Ghostty it began with has gone, it sends
+// no more Apple Events.
 // UNVERIFIED until #177's check 11 (decision 59.12): a JS object as a command's surface
 // configuration, initialWorkingDirectory among its keys; a new window's or tab's terminal among
-// the terminals at once, and its window among the windows within 3 s (check 7 too); new tabs in
-// the order made; select tab and focus; pid read again just before typing; Ctrl+U, input text and
-// Enter in zsh with half-typed input and no paste prompt; Ctrl+U under a layout that moves U,
-// Dvorak's say, as send key names a key by its place; initial input run once under a slow .zshrc.
+// the terminals at once, and its window among the windows within 3 s (check 7 too); split's
+// result answering id(); new tabs in the order made; select tab and focus; pid read again just
+// before typing; Ctrl+U, input text and Enter in zsh with half-typed input and no paste prompt;
+// Ctrl+U under a layout that moves U, Dvorak's say, as send key names a key by its place; initial
+// input run once under a slow .zshrc.
 ObjC.import('AppKit');
 
 const BUNDLE = 'com.mitchellh.ghostty';
@@ -123,6 +124,40 @@ function open(leaf, create) {
   return created();
 }
 
+// splitAt splits terminal id towards direction with leaf's configuration, and returns the id of
+// the terminal split returns. For right and down, id keeps the first half.
+function splitAt(id, direction, leaf) {
+  if (leaf.line) step();
+  alive();
+  const c = config(leaf);
+  return G.split(G.terminals.byId(id), {direction: direction, withConfiguration: c}).id();
+}
+
+// grow builds node at terminal id: a split makes the second child's first terminal, and each
+// child grows from its own. Each key goes in as its terminal is made, so a split that fails still
+// reports every terminal made before it.
+function grow(node, id, keys) {
+  keys[firstLeaf(node).key] = id;
+  if (node.leaf) {
+    return;
+  }
+  const made = splitAt(id, node.split, firstLeaf(node.second));
+  keys[firstLeaf(node.second).key] = made;
+  grow(node.first, id, keys);
+  grow(node.second, made, keys);
+}
+
+function leaves(node) {
+  return node.leaf ? [node.leaf] : leaves(node.first).concat(leaves(node.second));
+}
+
+// settle evens a tab's splits (decision 59.8) and focuses its focused terminal.
+function settle(tab, keys) {
+  const ids = leaves(tab.tree).map(leaf => keys[leaf.key]);
+  if (ids.length > 1) G.performAction('equalize_splits', {on: G.terminals.byId(ids[0])});
+  G.focus(G.terminals.byId(keys[tab.focused] || ids[0]));
+}
+
 // choose selects tab in its window and focuses its focused terminal.
 function choose(tab, keys) {
   const id = keys[firstLeaf(tab.tree).key];
@@ -140,7 +175,8 @@ function buildWindow(b, keys) {
       ? G.newWindow({withConfiguration: c})
       : G.newTab({in: G.windows[windowOf(first)], withConfiguration: c}));
     if (n === 0) first = id;
-    keys[firstLeaf(tab.tree).key] = id;
+    grow(tab.tree, id, keys);
+    settle(tab, keys);
   });
   choose(b.tabs.find(tab => tab.selected) || b.tabs[0], keys);
   return {keys: keys};

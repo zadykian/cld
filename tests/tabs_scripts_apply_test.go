@@ -29,27 +29,44 @@ var mockedApplies = []mockedApply{
 		`{"typed": [{"pane": "@1"}, {"pane": "@4", "busy": true}], "builds": []}`,
 		"*[1] [4] | *[7]", []string{"get terminals.id", "get pid of @1", "send key u control to @1",
 			"input text to @1", "send key enter to @1", "delay 0.3", "get pid of @4"}},
-	{"a window of one tab", "", `{"kind": "window", "tabs": [
-	   {"selected": true, "tree": {"leaf": {"key": "a", "line": "ssh ws"}}}]}`, nil, nil,
-		`{"typed": [], "builds": [{"keys": {"a": "@10"}}]}`, "*[10] | *[1] [4] | *[7]",
-		[]string{"get terminals.id", "get terminals.id", "new window", "get terminals.id",
-			"get windows.terminals.id", "get windows[0].tabs.terminals.id",
-			"select tab windows[0].tabs[0]", "focus @10"}},
 	{"a window found by its terminal", "", `{"kind": "window", "tabs": [
-	   {"focused": "a", "tree": {"leaf": {"key": "a", "line": "ssh ws"}}},
+	   {"focused": "b", "tree": {"split": "right", "first": {"leaf": {"key": "a", "line": "ssh ws"}},
+	     "second": {"leaf": {"key": "b"}}}},
 	   {"selected": true, "tree": {"leaf": {"key": "c"}}}]}`, nil, nil,
-		`{"typed": [], "builds": [{"keys": {"a": "@10", "c": "@13"}}]}`,
-		"[10] *[13] | *[1] [4] | *[7]", []string{"get terminals.id", "get terminals.id",
-			"new window", "get terminals.id", "get terminals.id", "get windows.terminals.id",
-			"new tab in windows[0]", "get terminals.id", "get windows.terminals.id",
-			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[1]", "focus @13"}},
+		`{"typed": [], "builds": [{"keys": {"a": "@10", "b": "@13", "c": "@16"}}]}`,
+		"right(10,[13]) *[16] | *[1] [4] | *[7]", []string{"get terminals.id", "get terminals.id",
+			"new window", "get terminals.id", "split @10 right", "get id of @13",
+			"perform action equalize_splits on @10", "focus @13", "get terminals.id",
+			"get windows.terminals.id",
+			"new tab in windows[0]", "get terminals.id", "focus @16", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[1]", "focus @16"}},
+	{"a window the user opens meanwhile", "", `{"kind": "window", "tabs": [{"focused": "b",
+	   "tree": {"split": "right", "first": {"leaf": {"key": "a"}},
+	     "second": {"leaf": {"key": "b"}}}}]}`,
+		nil, map[string]any{"opens": []string{"split"}},
+		`{"typed": [], "builds": [{"keys": {"a": "@10", "b": "@16"}}]}`,
+		"*right(10,[16]) | *[13] | *[1] [4] | *[7]", []string{"get terminals.id",
+			"get terminals.id", "new window", "get terminals.id", "split @10 right",
+			"get id of @16", "perform action equalize_splits on @10", "focus @16",
+			"get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @16"}},
+	{"a split in a split", "", `{"kind": "window", "tabs": [{"focused": "c", "tree": {
+	   "split": "right", "first": {"leaf": {"key": "a"}}, "second": {"split": "down",
+	     "first": {"leaf": {"key": "b"}}, "second": {"leaf": {"key": "c"}}}}}]}`, nil, nil,
+		`{"typed": [], "builds": [{"keys": {"a": "@10", "b": "@13", "c": "@16"}}]}`,
+		"*right(10,down(13,[16])) | *[1] [4] | *[7]", []string{"get terminals.id",
+			"get terminals.id", "new window", "get terminals.id", "split @10 right",
+			"get id of @13", "split @13 down", "get id of @16",
+			"perform action equalize_splits on @10", "focus @16", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @16"}},
 	{"a window the user opens before a build", `{"pane": "@1", "pid": 50003, "line": "ls"}`,
 		`{"kind": "window", "tabs": [{"tree": {"leaf": {"key": "a"}}}]}`, nil,
 		map[string]any{"opens": []string{"send key enter"}},
 		`{"typed": [{"pane": "@1"}], "builds": [{"keys": {"a": "@13"}}]}`,
 		"*[13] | *[10] | *[1] [4] | *[7]", []string{"get terminals.id", "get pid of @1",
 			"send key u control to @1", "input text to @1", "send key enter to @1",
-			"get terminals.id", "new window", "get terminals.id", "get windows.terminals.id",
+			"get terminals.id", "new window", "get terminals.id", "focus @13",
+			"get windows.terminals.id",
 			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @13"}},
 }
 
@@ -59,6 +76,17 @@ var mockedFailures = []mockedApply{
 		func(m *mac.Model) { m.Running = false }, nil, `{"error": {"step": "running",
 		  "number": 0, "message": "Ghostty is not running", "version": ""}}`, "*[1] [4] | *[7]",
 		nil},
+	{"a build after one that fails", "", `{"kind": "window", "tabs": [{"tree": {"split": "right",
+	   "first": {"leaf": {"key": "a"}}, "second": {"leaf": {"key": "b"}}}}]},
+	  {"kind": "window", "tabs": [{"tree": {"leaf": {"key": "c"}}}]}`,
+		func(m *mac.Model) { m.FailAt = 2 }, nil,
+		`{"typed": [], "builds": [{"keys": {"a": "@10"},
+		  "error": "Failed to create split. (-10000)"}, {"keys": {"c": "@13"}}]}`,
+		"*[13] | *[10] | *[1] [4] | *[7]", []string{"get terminals.id",
+			"get terminals.id", "new window", "get terminals.id", "split @10 right",
+			"get terminals.id", "new window", "get terminals.id", "focus @13",
+			"get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @13"}},
 	{"Ghostty quits meanwhile", "", `{"kind": "window",
 	   "tabs": [{"tree": {"leaf": {"key": "a"}}}]},
 	  {"kind": "window", "tabs": [{"tree": {"leaf": {"key": "b"}}}]}`, nil,
@@ -71,13 +99,17 @@ var mockedFailures = []mockedApply{
 		"*[1] [4] | *[7]", []string{"get terminals.id"}},
 }
 
+// builtSoFar are the fake osascript's apply cases that apply.js builds so far: windows and their
+// splits.
+var builtSoFar = []string{"a window", "a window with no tab selected", "a tree split left",
+	"a split that fails"}
+
 // testMockedApply runs apply.js against fakeGhostty(2, 1) as the mock Ghostty. The fake
-// osascript's apply cases give the same results and shapes: those apply.js builds so far, which
-// are the windows of tabs of one pane each. apply.js's own cases follow.
+// osascript's apply cases give the same results and shapes. apply.js's own cases follow.
 func testMockedApply(t *testing.T) {
 	t.Parallel()
 	for _, test := range applyTests {
-		if test.name != "a window with no tab selected" {
+		if !slices.Contains(builtSoFar, test.name) {
 			continue
 		}
 		t.Run(test.name, func(t *testing.T) {

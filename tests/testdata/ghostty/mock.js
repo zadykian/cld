@@ -16,9 +16,11 @@
 //     front; quits: the start of a log line after which Ghostty quits.
 // Its commands keep Ghostty's rules as v1.4.0's source has them
 // (docs/design/findings/terminals.md): a new window joins the windows with its terminal; a new tab
-// goes after its window's selected tab, selected, its terminal focused at once; focus moves focus
-// at the next Apple Event; send key and input text record what they type in the terminal. The model's failAt is the terminal,
-// counted from 1, that Ghostty fails to make: a new window's or tab's never appears. delay only logs.
+// goes after its window's selected tab, selected, its terminal focused at once; split returns the
+// new terminal; a split and focus move focus at the next Apple Event; send key and input text
+// record what they type in the terminal. The model's failAt is the terminal, counted from 1, that
+// Ghostty fails to make: a split throws, and a new window's or tab's never appears. delay only
+// logs.
 var mockRun;
 (function () {
   const ghosttyMock = {model: null, log: [], idReads: 0, queue: [], made: 0};
@@ -322,6 +324,19 @@ var mockRun;
     return {tabs: [{selected: true, focused: id, tree: {pane: id}}]};
   };
 
+  // replace is tree n with the leaf of terminal id replaced by what with makes of it.
+  ghosttyMock.replace = function (n, id, with_) {
+    if (n.pane) {
+      return n.pane === id ? with_(n) : n;
+    }
+    return {split: n.split, first: ghosttyMock.replace(n.first, id, with_),
+      second: ghosttyMock.replace(n.second, id, with_)};
+  };
+
+  // halves are split's directions: the split each makes, and whether the new terminal comes first.
+  ghosttyMock.halves = {right: ['right', false], down: ['down', false], left: ['right', true],
+    up: ['down', true]};
+
   // type types text into the terminal to, as the fake osascript records it.
   ghosttyMock.type = function (to, text) {
     const t = ghosttyMock.model.terminals[to.mockId];
@@ -351,6 +366,31 @@ var mockRun;
         ghosttyMock.front(w, tab);
       }
       return {};
+    },
+    split: function (terminal, opts) {
+      const id = terminal.mockId;
+      ghosttyMock.event('split ' + id + ' ' + opts.direction);
+      ghosttyMock.command();
+      const at = ghosttyMock.found(id);
+      const half = ghosttyMock.halves[opts.direction];
+      if (!half) {
+        ghosttyMock.fail(-1715, 'Missing or unknown split direction.');
+      }
+      const made = ghosttyMock.make(opts.withConfiguration, true);
+      at.tab.tree = ghosttyMock.replace(at.tab.tree, id, (old) => half[1]
+        ? {split: half[0], first: {pane: made}, second: old}
+        : {split: half[0], first: old, second: {pane: made}});
+      ghosttyMock.queue.push(() => {
+        at.tab.focused = made;
+      });
+      return ghosttyMock.terminalSpec(made);
+    },
+    performAction: function (action, opts) {
+      const id = opts.on.mockId;
+      ghosttyMock.event('perform action ' + action + ' on ' + id);
+      ghosttyMock.command();
+      ghosttyMock.found(id);
+      return true;
     },
     focus: function (terminal) {
       const id = terminal.mockId;
