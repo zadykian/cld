@@ -66,3 +66,49 @@ func TestTabsPlanLeft(t *testing.T) {
 		"  a window of 1 tab, closed at "+at(5)+": --older or --all\n"+
 		"  a tab, closed at "+at(8)+": --closed\n", "")
 }
+
+// A quit after which Ghostty brought every window back lost nothing: a restore reopens nothing,
+// and runs no apply.
+func TestTabsPlanEmptyQuit(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a := addPane(m, "~")
+	m.Windows = []mac.Window{windowOf(tabOf(a))}
+	saveModel(t, s, m)
+	now := time.Now().UTC().Truncate(time.Second)
+	r := recordOf(m, map[string]*tabs.Pane{a: {Kind: "local", Since: now}},
+		tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made", Tree: leaf(a)}}})
+	r.Previous = "1@2025-01-01T00:00:00Z"
+	r.Losses = []*tabs.Loss{{At: now.Add(-time.Minute), Run: r.Previous, Cause: "quit",
+		Windows: []tabs.Window{}}}
+	writeRecord(t, s, r)
+	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0, "", noWatcher)
+	for _, call := range s.OsascriptCalls() {
+		if call.Script != "snapshot" {
+			t.Errorf("osascript ran %s, want only a snapshot", call.Script)
+		}
+	}
+	if l := readRecord(t, s).Losses; len(l) != 1 || l[0].Restored != nil {
+		t.Errorf("losses %+v, want the empty quit's, not restored", l)
+	}
+}
+
+// A window closed, whose panes' logins live while Ghostty's undo can bring it back, waits: a
+// restore reopens nothing, and notes it.
+func TestTabsPlanPending(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a, b := addPane(m, "~"), addPane(m, "~")
+	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b))}
+	tick(t, s, m)
+	m.Windows = m.Windows[:1]
+	r := tick(t, s, m)
+	if len(r.Pending) != 1 {
+		t.Fatalf("pending %s, want the closed window", drawLosses(r.Pending, named(a, b)))
+	}
+	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0, "",
+		"cld: a window closed at "+clockAt(r.Pending[0].At)+" waits for Ghostty's undo: run "+
+			"cld restore tabs again once it has passed\n"+noWatcher)
+}

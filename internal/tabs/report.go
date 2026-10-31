@@ -131,6 +131,19 @@ func size(l *Loss) string {
 	return what
 }
 
+// windowSize is a window of tabs, with their panes.
+func windowSize(tabs []ghostty.TabBuild) string {
+	panes := 0
+	for _, tab := range tabs {
+		panes += len(buildLeaves(tab.Tree))
+	}
+	what := "a window of " + count(len(tabs), "tab")
+	if panes > len(tabs) {
+		what += " and " + count(panes, "pane")
+	}
+	return what
+}
+
 // count is n of thing, in the plural but for one.
 func count(n int, thing string) string {
 	if n == 1 {

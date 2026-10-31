@@ -2,39 +2,44 @@ package tabs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// apply types plan p's lines into Ghostty's panes, then records them in the record seen, under the
-// locks Restore holds (decision 59.6). A plan with nothing to type runs nothing, and its result is
+// apply runs plan p's script in Ghostty, then records what it made in the record seen, under the
+// locks Restore holds (decision 59.6). A plan with nothing to do runs nothing, and its result is
 // empty. The result is nil where the apply gave none. A record it cannot write is a warning, as
-// what the apply typed is typed: the report still says so.
+// what the apply made is made: the report still says so.
 func apply(
 	ctx context.Context, dir string, seen *observed, p *Planned, report *Report,
 ) *ghostty.Result {
 	res := &ghostty.Result{}
-	if typed := p.Script().Typed; len(typed) > 0 {
+	if script := p.Script(); len(script.Typed) > 0 || len(script.Builds) > 0 {
 		var err error
-		if res, err = ghostty.Apply(ctx, &ghostty.Plan{Pace: pace, Typed: typed}); err != nil {
+		if res, err = ghostty.Apply(ctx, script); err != nil {
 			report.warn(failure(err).Error())
 		}
 	}
 	mark(seen.record, p, res, time.Now())
 	if err := save(dir, seen.record, nil); err != nil {
-		report.warn("cannot record what the restore made, so the next one may type it again: " +
+		report.warn("cannot record what the restore made, so the next one may reopen it: " +
 			err.Error())
 	}
 	return res
 }
 
 // finish ends a restore that ran plan p against the record seen, apply giving res: its report and
-// notes.
+// notes, the losses waiting for Ghostty's undo among them.
 func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report *Report) {
 	c := newClock()
 	c.restored(seen.record, p, res, report)
+	for _, l := range seen.record.Pending {
+		report.note(noun(l) + " " + c.when(l) + " waits for Ghostty's undo: run cld restore tabs" +
+			" again once it has passed")
+	}
 	report.Notes = append(report.Notes, p.notes()...)
 	if os.Getenv("TERM_PROGRAM") != "ghostty" {
 		if WatcherStatus(dir).PID == 0 {
@@ -44,7 +49,7 @@ func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report 
 }
 
 // restored reports a restore that ran plan p against record r, apply giving res, nil where it
-// gave none. It has a line per pane typed into, and a warning per failure.
+// gave none. It has a line per pane typed into and per build made, and a warning per failure.
 func (c clock) restored(r *Record, p *Planned, res *ghostty.Result, report *Report) {
 	if res == nil {
 		return
@@ -61,4 +66,25 @@ func (c clock) restored(r *Record, p *Planned, res *ghostty.Result, report *Repo
 			report.Lines = append(report.Lines, "Typed into "+in+": "+j.binding.String())
 		}
 	}
+	for i := range min(len(res.Builds), len(p.builds)) {
+		c.built(p.script.Builds[i], p.builds[i], res.Builds[i], report)
+	}
+}
+
+// built reports build b of info's loss, as res says apply made it.
+func (c clock) built(b ghostty.Build, info building, res ghostty.BuildResult, report *Report) {
+	l := info.loss
+	if res.Error != "" {
+		failed := "cannot reopen " + noun(l) + " " + c.when(l) + ": " + res.Error
+		if made := len(res.Keys); made > 0 {
+			failed += fmt.Sprintf(" (%d of its panes opened)", made)
+		}
+		report.warn(failed)
+		return
+	}
+	what := windowSize(b.Tabs)
+	if l.Cause == CauseTab || l.Cause == CausePane {
+		what = noun(l) + " as a window"
+	}
+	report.Lines = append(report.Lines, "Reopened "+what+", "+c.when(l))
 }
