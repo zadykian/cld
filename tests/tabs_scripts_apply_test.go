@@ -37,7 +37,7 @@ var mockedApplies = []mockedApply{
 		"right(10,[13]) *[16] | *[1] [4] | *[7]", []string{"get terminals.id", "get terminals.id",
 			"new window", "get terminals.id", "split @10 right", "get id of @13",
 			"perform action equalize_splits on @10", "focus @13", "get terminals.id",
-			"get windows.terminals.id",
+			"get windows.terminals.id", "delay 0.1", "get windows.terminals.id",
 			"new tab in windows[0]", "get terminals.id", "focus @16", "get windows.terminals.id",
 			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[1]", "focus @16"}},
 	{"a window the user opens meanwhile", "", `{"kind": "window", "tabs": [{"focused": "b",
@@ -48,7 +48,7 @@ var mockedApplies = []mockedApply{
 		"*right(10,[16]) | *[13] | *[1] [4] | *[7]", []string{"get terminals.id",
 			"get terminals.id", "new window", "get terminals.id", "split @10 right",
 			"get id of @16", "perform action equalize_splits on @10", "focus @16",
-			"get windows.terminals.id",
+			"get windows.terminals.id", "delay 0.1", "get windows.terminals.id",
 			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @16"}},
 	{"a split in a split", "", `{"kind": "window", "tabs": [{"focused": "c", "tree": {
 	   "split": "right", "first": {"leaf": {"key": "a"}}, "second": {"split": "down",
@@ -58,7 +58,8 @@ var mockedApplies = []mockedApply{
 			"get terminals.id", "new window", "get terminals.id", "split @10 right",
 			"get id of @13", "split @13 down", "get id of @16",
 			"perform action equalize_splits on @10", "focus @16", "get windows.terminals.id",
-			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @16"}},
+			"delay 0.1", "get windows.terminals.id", "get windows[0].tabs.terminals.id",
+			"select tab windows[0].tabs[0]", "focus @16"}},
 	{"a window the user opens before a build", `{"pane": "@1", "pid": 50003, "line": "ls"}`,
 		`{"kind": "window", "tabs": [{"tree": {"leaf": {"key": "a"}}}]}`, nil,
 		map[string]any{"opens": []string{"send key enter"}},
@@ -66,7 +67,7 @@ var mockedApplies = []mockedApply{
 		"*[13] | *[10] | *[1] [4] | *[7]", []string{"get terminals.id", "get pid of @1",
 			"send key u control to @1", "input text to @1", "send key enter to @1",
 			"get terminals.id", "new window", "get terminals.id", "focus @13",
-			"get windows.terminals.id",
+			"get windows.terminals.id", "delay 0.1", "get windows.terminals.id",
 			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @13"}},
 }
 
@@ -85,7 +86,7 @@ var mockedFailures = []mockedApply{
 		"*[13] | *[10] | *[1] [4] | *[7]", []string{"get terminals.id",
 			"get terminals.id", "new window", "get terminals.id", "split @10 right",
 			"get terminals.id", "new window", "get terminals.id", "focus @13",
-			"get windows.terminals.id",
+			"get windows.terminals.id", "delay 0.1", "get windows.terminals.id",
 			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @13"}},
 	{"Ghostty quits meanwhile", "", `{"kind": "window",
 	   "tabs": [{"tree": {"leaf": {"key": "a"}}}]},
@@ -172,7 +173,7 @@ func testMockedPace(t *testing.T) {
 		}
 	}
 	want := append(slices.Repeat([]string{"delay 0.3"}, 7), "delay 2.3")
-	if !slices.Equal(delays, want) {
-		t.Errorf("waited %q, want %q", delays, want)
+	if !slices.Equal(delays, append(want, "delay 0.1")) {
+		t.Errorf("waited %q, want %q, then a read of the new window", delays, want)
 	}
 }

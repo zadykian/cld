@@ -13,14 +13,15 @@
 //     the user changes them while a script reads them;
 //   opens: the starts of log lines, an event's or a delay's, after the first of which the user
 //     opens a window, each in turn; raises: likewise, the user bringing the back window to the
-//     front; quits: the start of a log line after which Ghostty quits.
+//     front; quits: the start of a log line after which Ghostty quits;
+//   lag: the reads of the windows that a new window misses, 1 where unset.
 // Its commands keep Ghostty's rules as v1.4.0's source has them
-// (docs/design/findings/terminals.md): a new window joins the windows with its terminal; a new tab
-// goes after its window's selected tab, selected, its terminal focused at once; split returns the
-// new terminal; a split and focus move focus at the next Apple Event; send key and input text
-// record what they type in the terminal. The model's failAt is the terminal, counted from 1, that
-// Ghostty fails to make: a split throws, and a new window's or tab's never appears. delay only
-// logs.
+// (docs/design/findings/terminals.md): a new window joins the windows a read after the terminals; a
+// new tab goes after its window's selected tab, selected, its terminal focused at once; split
+// returns the new terminal; a split and focus move focus at the next Apple Event; send key and
+// input text record what they type in the terminal. The model's failAt is the terminal, counted
+// from 1, that Ghostty fails to make: a split throws, and a new window's or tab's never appears.
+// delay only logs.
 var mockRun;
 (function () {
   const ghosttyMock = {model: null, log: [], idReads: 0, queue: [], made: 0};
@@ -91,16 +92,28 @@ var mockRun;
     return ghosttyMock.leaves(n.first).concat(ghosttyMock.leaves(n.second));
   };
 
-  // windows are the model's windows that Ghostty's getters find: none with AppleScript off.
-  ghosttyMock.windows = function () {
+  // all are the model's windows, a new one too: none with AppleScript off.
+  ghosttyMock.all = function () {
     const m = ghosttyMock.model;
     return m.mock.fail === 'off' ? [] : (m.windows || []);
   };
 
-  // read is a read of the windows, what: an Apple Event, whose answer value gives.
+  // windows are the model's windows that Ghostty's getters find, which a new one joins late.
+  ghosttyMock.windows = function () {
+    return ghosttyMock.all().filter((w) => !w.lag);
+  };
+
+  // read is a read of the windows, what: an Apple Event, whose answer value gives. A new window
+  // that it does not show joins the next read.
   ghosttyMock.read = function (what, value) {
     ghosttyMock.event(what);
-    return value();
+    const answer = value();
+    ghosttyMock.all().forEach((w) => {
+      if (w.lag) {
+        w.lag--;
+      }
+    });
+    return answer;
   };
 
   // terminal is the model's terminal id.
@@ -108,10 +121,10 @@ var mockRun;
     return (ghosttyMock.model.terminals || {})[id] || {};
   };
 
-  // locate is the window and tab of the model that hold terminal id, or null where Ghostty has
-  // none.
+  // locate is the window and tab of the model that hold terminal id, a new window's too, or null
+  // where Ghostty has none.
   ghosttyMock.locate = function (id) {
-    for (const window of ghosttyMock.windows()) {
+    for (const window of ghosttyMock.all()) {
       for (const tab of window.tabs) {
         if (ghosttyMock.leaves(tab.tree).includes(id)) {
           return {window: window, tab: tab};
@@ -245,12 +258,12 @@ var mockRun;
     }}};
   };
 
-  // terminalsSpec is G.terminals: every terminal of the app, its windows' then those of none; and
-  // each by its id.
+  // terminalsSpec is G.terminals: every terminal of the app, its windows', a new one's at once,
+  // then those of none; and each by its id.
   ghosttyMock.terminalsSpec = function () {
     const all = function () {
       const ids = [];
-      ghosttyMock.windows().forEach((w) => w.tabs.forEach((tab) => {
+      ghosttyMock.all().forEach((w) => w.tabs.forEach((tab) => {
         ids.push(...ghosttyMock.leaves(tab.tree));
       }));
       return ids.concat(ghosttyMock.model.hidden || []);
@@ -319,9 +332,10 @@ var mockRun;
     return id;
   };
 
-  // newWindow is a new window of one tab, the terminal id's.
+  // newWindow is a new window of one tab, the terminal id's, which the windows show a read late.
   ghosttyMock.newWindow = function (id) {
-    return {tabs: [{selected: true, focused: id, tree: {pane: id}}]};
+    return {tabs: [{selected: true, focused: id, tree: {pane: id}}],
+      lag: ghosttyMock.model.mock.lag || 1};
   };
 
   // replace is tree n with the leaf of terminal id replaced by what with makes of it.
