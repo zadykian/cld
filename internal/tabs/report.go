@@ -75,19 +75,11 @@ func (c clock) joinAgain(r *Record) []string {
 			if p == nil || p.Kind != KindLocal || p.Last == nil {
 				continue
 			}
-			lines = append(lines, fmt.Sprintf("  in %s: %s, %s", c.dir(p.Cwd), binding(p.Last),
-				c.cut(p.Last)))
+			b := Binding{Host: p.Last.Host, Session: p.Last.Session}
+			lines = append(lines, fmt.Sprintf("  in %s: %s, %s", c.dir(p.Cwd), b, c.cut(p.Last)))
 		}
 	}
 	return lines
-}
-
-// binding is the session or the host of last.
-func binding(last *Last) string {
-	if last.Session != "" {
-		return fmt.Sprintf("session '%s' on %s", last.Session, last.Host)
-	}
-	return "ssh to " + last.Host
 }
 
 // size is what loss l holds: a tab, a split, or windows with their tabs and panes.
