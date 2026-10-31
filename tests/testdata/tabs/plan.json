@@ -1,0 +1,32 @@
+{
+  "pace": {"gap": 0.3, "every": 8, "pause": 2},
+  "typed": [
+    {"pane": "@1", "pid": 50003,
+     "line": "ssh -t -o ConnectTimeout=10 ws 'exec $SHELL -lc \"cd / && cld join --existing -s app; cd; exec $SHELL -l\"'"}
+  ],
+  "builds": [
+    {"kind": "pane", "anchor": "@1", "split": "left", "tabs": [
+      {"focused": "b0l0", "tree": {"leaf": {"key": "b0l0", "cwd": "/Users/me/p"}}}
+    ]},
+    {"kind": "tab", "anchor": "@1", "index": 1, "tabs": [
+      {"selected": true, "focused": "b1l1", "tree": {"split": "right",
+        "first": {"leaf": {"key": "b1l0", "cwd": "/Users/me/t1",
+          "line": "ssh -t -o ConnectTimeout=10 ws 'exec $SHELL -lc \"cd / && cld join --existing -s x; cd; exec $SHELL -l\"'"}},
+        "second": {"leaf": {"key": "b1l1", "cwd": "/Users/me/t2"}}}}
+    ]},
+    {"kind": "window", "tabs": [
+      {"selected": true, "focused": "b2l0", "tree": {"leaf": {"key": "b2l0", "cwd": "/Users/me/q2"}}}
+    ]},
+    {"kind": "window", "tabs": [
+      {"selected": true, "focused": "b3l0", "tree": {"leaf": {"key": "b3l0", "cwd": "/Users/me/q1",
+        "line": "ssh -t -o ConnectTimeout=10 ws 'exec $SHELL -lc \"cld join --existing -n app -s 3; exec $SHELL -l\"'"}}}
+    ]},
+    {"kind": "window", "tabs": [
+      {"focused": "b4l0", "tree": {"leaf": {"key": "b4l0", "cwd": "/Users/me/w1",
+        "line": "TERM=xterm-256color command ssh ws2"}}},
+      {"selected": true, "focused": "b4l2", "tree": {"split": "down",
+        "first": {"leaf": {"key": "b4l1", "cwd": "/Users/me/w2"}},
+        "second": {"leaf": {"key": "b4l2", "cwd": "/Users/me/w3"}}}}
+    ]}
+  ]
+}
