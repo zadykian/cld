@@ -51,18 +51,19 @@ type applier struct {
 	made  int  // the terminals asked for, which m.FailAt counts
 }
 
-// typeLine types a line into a pane as apply.js does, Ctrl+U first and Enter last. It types
-// nothing where the pane is gone, or busy: another group than the plan's is in front.
+// typeLine types a line into a pane as apply.js does, Ctrl+U first and Enter last, once the pace
+// has passed. It types nothing where the pane is gone, or busy: another group than the plan's is
+// in front.
 func (a *applier) typeLine(t typing) typed {
+	if err := a.step(); err != nil {
+		return typed{Pane: t.Pane, Error: err.Error()}
+	}
 	terminal, ok := a.m.Terminals[t.Pane]
 	switch {
 	case !ok || a.off || !slices.Contains(a.m.IDs(), t.Pane):
 		return typed{Pane: t.Pane, Error: errNoObject.Error()}
 	case terminal.PID != t.PID:
 		return typed{Pane: t.Pane, Busy: true}
-	}
-	if err := a.step(); err != nil {
-		return typed{Pane: t.Pane, Error: err.Error()}
 	}
 	terminal.Typed = append(terminal.Typed, "^U", t.Line, "\r")
 	return typed{Pane: t.Pane}

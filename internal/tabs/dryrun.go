@@ -3,7 +3,6 @@ package tabs
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -17,8 +16,7 @@ import (
 func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []*Loss,
 	opts Options, report *Report,
 ) {
-	c := clock{now: time.Now()}
-	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
+	c := newClock()
 	r := seen.record
 	report.Lines = append(report.Lines, c.ghostty(seen))
 	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)

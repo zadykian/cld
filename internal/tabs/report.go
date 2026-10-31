@@ -2,6 +2,7 @@ package tabs
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -25,6 +26,9 @@ func (r *Report) warn(warning string) {
 	}
 }
 
+// note adds note: what cld did, or left, beside what was asked of it.
+func (r *Report) note(note string) { r.Notes = append(r.Notes, note) }
+
 // section adds a heading and its lines, where it has any.
 func (r *Report) section(heading string, lines []string) {
 	if len(lines) > 0 {
@@ -37,6 +41,13 @@ func (r *Report) section(heading string, lines []string) {
 type clock struct {
 	now  time.Time
 	home string
+}
+
+// newClock is the clock of a report written now.
+func newClock() clock {
+	c := clock{now: time.Now()}
+	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
+	return c
 }
 
 func (c clock) at(t time.Time) string { return c.format(t, "15:04") }

@@ -22,8 +22,9 @@ type Options struct {
 	Closed bool // reopen the tabs and splits closed alone too
 }
 
-// Restore reads Ghostty and merges what it shows into the record, as a tick does, then reports.
-// This release has the dry-run's report alone: what the record holds (decision 59.11).
+// Restore is cld restore tabs (decision 59.6). It merges what Ghostty shows into the record, as a
+// tick does, then types into the panes Ghostty kept, under both locks. A dry-run reports what it
+// would do instead.
 func Restore(ctx context.Context, opts Options) (*Report, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -35,12 +36,19 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 	}
 	report := &Report{}
 	seen, err := observe(ctx, dir, report)
-	unlock()
 	if err != nil {
+		unlock()
 		return nil, err
 	}
 	p, left := restorePlan(ctx, seen, opts)
-	dryRun(ctx, dir, seen, p, left, opts, report)
+	if opts.DryRun {
+		unlock()
+		dryRun(ctx, dir, seen, p, left, opts, report)
+		return report, nil
+	}
+	res := apply(ctx, p, report)
+	unlock()
+	finish(dir, seen, p, res, report)
 	return report, nil
 }
 
