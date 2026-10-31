@@ -55,3 +55,82 @@ are in that source. The ghostty driver copies the app ([decision 54](../decision
   runner with AVX-512, died with SIGILL in `ghostty_terminal_new` on runners without it. Built
   here for `x86_64_v4`, it died the same way. With `-Dcpu=baseline`, as Ghostty's `PACKAGING.md`
   tells packagers, it held no `zmm` instruction, against 49, and the contract passed.
+
+## Ghostty's AppleScript on macOS
+
+What `cld restore tabs` (#176) rests on, read in Ghostty's source and not probed: v1.3.1 and
+v1.4.0 both. Main at b3dc3d7 was read on 2026-10-16. Then v1.4.0 was checked against it, on
+2026-10-30. Paths are in those sources, and Swift files go by name alone. Each name is unique under
+`macos/`. The scripting files match in both but for `Ghostty.sdef`, `ScriptTab.swift`,
+`ScriptTerminal.swift` and `ScriptKeyEventCommand.swift`. The spike's results on a Mac follow
+(#177).
+
+- **The model** (v1.3.1 and v1.4.0; `macos/Ghostty.sdef`, `AppDelegate+AppleScript.swift`,
+  `ScriptWindow.swift`, `ScriptTab.swift`). The application holds windows, a window its tabs, and
+  a tab its terminals. A window is one AppKit tab group, listed front to back from
+  `NSApp.orderedWindows`, and its tabs come in tab-bar order. A tab's terminals are its split
+  tree's leaves, left or top first (`SplitTree.swift`). No class has a split's direction or ratio,
+  and a window has no frame.
+- **A terminal's id** (v1.3.1 and v1.4.0; `ScriptTerminal.swift`, `SurfaceView_AppKit.swift`,
+  `TerminalController.swift`). The id is the surface's UUID, which the code calls stable "for the
+  life of a surface". Ghostty's restoration decodes the saved UUID into the new surface, and an
+  undo puts the same surfaces back under a new controller. `name` is the surface's title, and
+  `working directory` its pwd. On v1.4.0, `name override` reads a title set by hand, `""` where
+  there is none, and `""` clears it. A tab's `name override` titles its window alone, leaving its
+  terminals' `name`.
+- **Window and tab ids** (v1.3.1 and v1.4.0; `ScriptWindow.swift`, `ScriptTab.swift`). They are hex
+  addresses: `window-ADDR` while AppKit reports no tab group, `tab-group-ADDR` once it reports one,
+  `controller-ADDR` for a controller with no window, and `tab-ADDR` for a tab's controller. So a
+  window's id can change while it lives. An undone close makes a new controller, whose id usually
+  differs; an address can be reused, so a stale id may name another tab or window. A tab's
+  specifier goes through its window's id.
+- **Windows against the app-wide terminals** (v1.3.1 and v1.4.0; `AppDelegate+AppleScript.swift`,
+  `QuickTerminalController.swift`, `QuickTerminalWindow.swift`). `windows` come from
+  `NSApp.orderedWindows`, and the application's `terminals` from `NSApp.windows`, in what the code
+  calls undefined order. Neither list's filter drops the quick terminal's controller, and the
+  code's comment counts it among the app-wide terminals. Its window is an `NSPanel`, which AppKit
+  documents `orderedWindows` as leaving out; the spike checks whether `windows` shows it (check 7).
+- **`pid` and `tty`** (v1.4.0, from PR #11922; not in v1.3.1;
+  `ScriptTerminal.swift`, `Ghostty.Surface.swift`, `src/pty.zig`). `pid` is `tcgetpgrp` on the
+  pty's master: the foreground process group's id. `tty` is the device path `TIOCPTYGNAME` gives,
+  cached at its first read. `pid` reads 0 and `tty` `""` while the surface has no pty, or when the
+  call fails. By default a child's exit closes its pane, which then leaves `terminals`
+  (`src/Surface.zig`). A pane stays open under `wait-after-command`, or after an exit within
+  `abnormal-command-exit-runtime`, which macOS counts as abnormal whatever its code. There the pty
+  stays open until the surface is freed (`src/termio/Exec.zig`), so `tty` keeps its name, and what
+  `pid` reads then is the spike's (check 9).
+- **No events** (v1.3.1 and v1.4.0; `macos/Ghostty.sdef`). The dictionary declares no event, and
+  Ghostty's only distributed notification tells its own Dock tile plugin of an icon change. So a
+  program outside learns of a change only by asking again. The scripting classes are
+  `@MainActor`, so each getter and command runs on Ghostty's main thread.
+- **`macos-applescript = false`** (v1.3.1 and v1.4.0; `src/config/Config.zig`,
+  `AppDelegate+AppleScript.swift`). The default is true, read from the live config at each call.
+  When false, the element and property getters return an empty list, `""`, 0, false or nil, with
+  no error. The application's own `name`, `version` and `frontmost` still answer. A lookup by id
+  returns nil, which the code says makes the specifier fail: an error, whose number is the spike's
+  (check 4). Commands fail with `errAEEventNotPermitted`, -1743, and the text "AppleScript is
+  disabled by the macos-applescript configuration." `new surface configuration` is such a command,
+  though it opens no terminal.
+- **A surface configuration** (v1.3.1 and v1.4.0; `ScriptSurfaceConfiguration.swift`,
+  `src/apprt/embedded.zig`, `src/termio/Exec.zig`, `TerminalController.swift`). `initial input`
+  goes to the pty as written, before any other input, so the pane's own shell reads it as typed.
+  Ghostty's App Intent passes its command that way, "to setup things like PATH"
+  (`NewTerminalIntent.swift`). A `command` runs as
+  `/usr/bin/login [-q] -flp USER /bin/bash --noprofile --norc -c 'exec -l CMD'`, with `-q` where
+  `~/.hushlogin` exists. It forces
+  `wait-after-command` on, and a window or tab made with one is never restorable. An
+  `initial working directory` that is no directory is ignored, and so is a cwd the pane cannot
+  access.
+- **New windows and tabs** (v1.4.0; `AppDelegate+AppleScript.swift`, `TerminalController.swift`).
+  `new window` returns the window, or wraps its controller while AppKit's window order lags.
+  `new tab in W` returns the tab. Under `window-new-tab-position = current`, the default, the tab
+  goes after W's selected tab, and under `end` after its last. v1.4.0 then selects it at once, where
+  v1.3.1 leaves that to a later turn of the run loop. A new window opens in native fullscreen when
+  its parent, the main window by preference, is in native fullscreen. With W in non-native
+  fullscreen, `new tab` shows an alert sheet on W and fails with "Failed to create tab." With
+  `macos-titlebar-style = hidden`, `new tab` makes a window.
+- **Splits** (v1.3.1 and v1.4.0; `ScriptTerminal.swift`, `BaseTerminalController.swift`,
+  `SplitTree.swift`). `split T direction right`, `left`, `down` or `up` returns the new terminal,
+  addressed app-wide by its UUID. It replaces T's leaf with a split at ratio 0.5, and focus moves
+  to the new terminal. For `right` and `down`, T keeps the left or top half. v1.3.1 finds T's
+  controller by T's window, and v1.4.0 by the tree that holds T (PR #13640).
