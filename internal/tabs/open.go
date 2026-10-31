@@ -2,6 +2,7 @@ package tabs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -30,6 +31,8 @@ func opened(ctx context.Context) (*ghostty.Snapshot, error) {
 		time.Sleep(openPoll)
 		snap, err := ghostty.Take(ctx)
 		switch {
+		case starting(err):
+			continue
 		case err != nil:
 			return nil, failure(err)
 		case !snap.Running:
@@ -40,6 +43,13 @@ func opened(ctx context.Context) (*ghostty.Snapshot, error) {
 		last = snap
 	}
 	return nil, fail.Runtime(fmt.Sprintf("Ghostty did not start in %d s", int(openWait.Seconds())))
+}
+
+// starting reports whether err is what a snapshot meets while Ghostty starts: its process not
+// ready, windows that change as it reads them, or a late answer.
+func starting(err error) bool {
+	e, ok := errors.AsType[*ghostty.Error](err)
+	return ok && (e.Kind == ghostty.Gone || e.Kind == ghostty.Changed || e.Kind == ghostty.Timeout)
 }
 
 // settled reports whether snapshots a and b, taken one after the other, show the same terminals

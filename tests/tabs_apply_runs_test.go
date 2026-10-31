@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -103,4 +104,23 @@ func TestTabsApplyOpens(t *testing.T) {
 func openedReport(ended time.Time) string {
 	return "Typed into the pane in /Users/me: session 'app' on ws\n" +
 		"Reopened a window of 1 tab, lost as Ghostty quit at " + clockAt(ended) + "\n"
+}
+
+// Windows that change as a snapshot reads them are read again while Ghostty opens.
+func TestTabsApplyOpenWaits(t *testing.T) {
+	t.Parallel()
+	t.Run("windows changing", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		s.WriteProbeFile(mac.SSHCache, "me@ws\n")
+		_, ended := stoppedMac(t, s)
+		s.WriteProbeFile(mac.FailFile, "changed\n")
+		before := snapshots(t, s)
+		wait := startCldAsync(t, s, s.Work, tabsEnv, "restore", "tabs")
+		waitSnapshots(t, s, before+3)
+		if err := os.Remove(filepath.Join(s.ProbeDir, mac.FailFile)); err != nil {
+			t.Fatal(err)
+		}
+		checkExit(t, "restore tabs", wait(), 0, openedReport(ended), noWatcher)
+	})
 }
