@@ -25,8 +25,8 @@ type Observation struct {
 
 // Observe reads ps and the panes' sizes around snap, which must hold a running Ghostty. own
 // reports whether a tty is cld's own, nil for none. That pane is a shell at its prompt whatever
-// ps shows, as the shell runs cld there (decision 59.9). A Ghostty whose ps row is gone is a
-// *ghostty.Error of kind Gone: the snapshot came as it quit.
+// ps shows, as the shell runs cld there (decision 59.9). A Ghostty whose ps row is gone, or
+// started at another time, is a *ghostty.Error of kind Gone: the snapshot came as it quit.
 func Observe(ctx context.Context, snap *ghostty.Snapshot, own func(tty string) bool) (
 	*Observation, error,
 ) {
