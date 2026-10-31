@@ -14,7 +14,8 @@ const SnapshotTimeout = 15 * time.Second
 // an *Error instead.
 type Snapshot struct {
 	Running bool         `json:"running"`
-	Apps    []App        `json:"apps"` // more than one is Ghostty run by open -n
+	Apps    []App        `json:"apps"`              // more than one is Ghostty run by open -n
+	Version string       `json:"version,omitempty"` // "" where the read failed
 	Error   *ScriptError `json:"error,omitempty"`
 }
 

@@ -3,6 +3,7 @@ package tests
 import (
 	"testing"
 
+	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
@@ -18,22 +19,25 @@ func dryRun(t *testing.T, s *sandbox.Sandbox) sandbox.Result {
 	return s.RunCld(tabsEnv, "restore", "tabs", "--dry-run")
 }
 
-// The dry-run says whether Ghostty runs. A Ghostty that does not run is no failure.
+// The dry-run says whether Ghostty runs, and its version, pid and start. A Ghostty that does not
+// run is no failure. NSRunningApplication gives the start, or else ps's row does.
 func TestTabsDryRunRuns(t *testing.T) {
 	t.Parallel()
+	const started = "Ghostty 1.4.0, pid 812, started 2025-01-02 09:12\n"
 	for _, test := range []struct {
-		name    string
-		running bool
-		want    string
+		name string
+		edit func(*mac.Model)
+		want string
 	}{
-		{"running", true, "Ghostty is running\n"},
-		{"not running", false, "Ghostty is not running\n"},
+		{"running", func(*mac.Model) {}, started},
+		{"no launch date", func(m *mac.Model) { m.Launched = 0 }, started},
+		{"not running", func(m *mac.Model) { m.Running = false }, "Ghostty is not running\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
 			m := ghosttyAt(ghosttyPID, ghosttyStart)
-			m.Running = test.running
+			test.edit(m)
 			saveModel(t, s, m)
 			checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0, test.want, "")
 		})
