@@ -47,18 +47,55 @@ var mockRun;
     return m.mock.fail === 'off' ? [] : (m.windows || []);
   };
 
+  // read is a read of the windows, what: an Apple Event, whose answer value gives.
+  ghosttyMock.read = function (what, value) {
+    ghosttyMock.event(what);
+    return value();
+  };
+
   // terminal is the model's terminal id.
   ghosttyMock.terminal = function (id) {
     return (ghosttyMock.model.terminals || {})[id] || {};
+  };
+
+  // locate is the window and tab of the model that hold terminal id, or null where Ghostty has
+  // none.
+  ghosttyMock.locate = function (id) {
+    for (const window of ghosttyMock.windows()) {
+      for (const tab of window.tabs) {
+        if (ghosttyMock.leaves(tab.tree).includes(id)) {
+          return {window: window, tab: tab};
+        }
+      }
+    }
+    return null;
+  };
+
+  // found is where Ghostty finds terminal id by its id, which fails where it has none.
+  ghosttyMock.found = function (id) {
+    const at = ghosttyMock.locate(id);
+    if (!at) {
+      ghosttyMock.fail(-1728, 'Can\'t get object.');
+    }
+    return at;
+  };
+
+  // front selects tab in window, and moves window to the front.
+  ghosttyMock.front = function (window, tab) {
+    window.tabs.forEach((t) => {
+      t.selected = t === tab;
+    });
+    const m = ghosttyMock.model;
+    m.windows = [window].concat(m.windows.filter((w) => w !== window));
   };
 
   // property is the getter of a property of every window's tabs' terminals, nested by window and
   // tab, as JXA reads it in one Apple Event.
   ghosttyMock.property = function (name, value) {
     return function () {
-      ghosttyMock.event('get windows.tabs.terminals.' + name);
-      return ghosttyMock.windows().map((w) => w.tabs.map((tab) =>
-        ghosttyMock.leaves(tab.tree).map((id) => value(id, ghosttyMock.terminal(id)))));
+      return ghosttyMock.read('get windows.tabs.terminals.' + name, () =>
+        ghosttyMock.windows().map((w) => w.tabs.map((tab) =>
+          ghosttyMock.leaves(tab.tree).map((id) => value(id, ghosttyMock.terminal(id))))));
     };
   };
 
@@ -77,13 +114,13 @@ var mockRun;
   // focused reads each tab's focused terminal in one Apple Event, which fails where a tab has
   // none, as a missing value fails JXA's bulk read.
   ghosttyMock.focused = function () {
-    ghosttyMock.event('get windows.tabs.focusedTerminal.id');
-    return ghosttyMock.windows().map((w) => w.tabs.map((tab) => {
-      if (!tab.focused) {
-        ghosttyMock.fail(-1728, "Can't get focused terminal.");
-      }
-      return tab.focused;
-    }));
+    return ghosttyMock.read('get windows.tabs.focusedTerminal.id', () =>
+      ghosttyMock.windows().map((w) => w.tabs.map((tab) => {
+        if (!tab.focused) {
+          ghosttyMock.fail(-1728, "Can't get focused terminal.");
+        }
+        return tab.focused;
+      })));
   };
 
   // windowsSpec is G.windows: the bulk getters, and each window by its index.
@@ -101,15 +138,14 @@ var mockRun;
       tabs: {
         terminals: terminals,
         selected: function () {
-          ghosttyMock.event('get windows.tabs.selected');
-          return ghosttyMock.windows().map((w) => w.tabs.map((tab) => !!tab.selected));
+          return ghosttyMock.read('get windows.tabs.selected', () =>
+            ghosttyMock.windows().map((w) => w.tabs.map((tab) => !!tab.selected)));
         },
         focusedTerminal: {id: ghosttyMock.focused},
       },
     };
     Object.defineProperty(spec, 'length', {get: function () {
-      ghosttyMock.event('count windows');
-      return ghosttyMock.windows().length;
+      return ghosttyMock.read('count windows', () => ghosttyMock.windows().length);
     }});
     ghosttyMock.windows().forEach((w, i) => {
       spec[i] = {tabs: w.tabs.map((tab, j) => ({focusedTerminal: {id: function () {
