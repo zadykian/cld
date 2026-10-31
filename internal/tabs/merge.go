@@ -39,17 +39,21 @@ func terminals(windows []ghostty.Window) iter.Seq[ghostty.Terminal] {
 // mergePanes updates r's pane of each terminal of o's windows, adding the new ones.
 func mergePanes(r *Record, o *Observation) {
 	for t := range terminals(o.Windows) {
+		seen := o.Seen[t.ID]
 		p, ok := r.Panes[t.ID]
 		if !ok {
 			p = &Pane{Since: o.Time}
 			r.Panes[t.ID] = p
+			if seen.Keep {
+				seen = Seen{Kind: KindOther, Title: seen.Title, Login: seen.Login}
+			}
 		}
-		mergePane(p, t, o.Seen[t.ID])
+		mergePane(p, t, seen)
 	}
 }
 
 // mergePane updates pane p from terminal t and seen. A field the tick could not read keeps its
-// value.
+// value: a dead pane keeps what it showed, and a pane ps could not place keeps it too.
 func mergePane(p *Pane, t ghostty.Terminal, seen Seen) {
 	if t.Cwd != "" {
 		p.Cwd = t.Cwd
@@ -57,7 +61,16 @@ func mergePane(p *Pane, t ghostty.Terminal, seen Seen) {
 	if t.TTY != "" {
 		p.TTY = t.TTY
 	}
-	p.Title = seen.Title
+	if seen.Login != 0 {
+		p.Login = seen.Login
+	}
+	switch {
+	case seen.Keep:
+	case seen.Kind == KindDead:
+		p.Kind = KindDead
+	default:
+		p.Kind, p.Title = seen.Kind, seen.Title
+	}
 }
 
 // mergeWindows makes r's windows o's, front to back. Each tab keeps its tree where an old tab had
