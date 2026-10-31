@@ -66,9 +66,9 @@ func appeared(o *Observation, snap *ghostty.Snapshot) int {
 	return n
 }
 
-// finish ends a restore that ran plan p against the record seen, apply giving res. It reports,
-// notes the losses waiting for Ghostty's undo, then starts the watcher where cld runs in a Ghostty
-// pane. Once the report is out, cmd joins cld's own pane again by exec (decision 59.9).
+// finish ends a restore that ran plan p against the record seen, apply giving res: its report,
+// then the watcher, started where cld runs in a Ghostty pane. cmd joins cld's own pane again by
+// exec once the report is out (decision 59.9).
 func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, left []*Loss,
 	report *Report,
 ) {

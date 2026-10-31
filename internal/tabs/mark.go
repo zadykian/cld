@@ -9,8 +9,7 @@ import (
 
 // mark records in r, at time now, what apply did of plan p, under the record's lock (decision
 // 59.6). res is apply's result. A nil res changes only the dedupe's panes and cld's own: a merge
-// enters the panes made instead. cld's own pane is typed by its exec. Each build's terminals enter
-// the record as panes at their prompt, in the windows it made.
+// enters the panes made instead. cld's own pane is typed by its exec.
 func mark(r *Record, p *Planned, res *ghostty.Result, now time.Time) {
 	now = now.UTC().Truncate(time.Second)
 	for _, id := range p.deduped {

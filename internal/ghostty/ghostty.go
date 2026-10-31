@@ -8,9 +8,9 @@
 //
 // Ghostty's errors come back by the step that failed and JXA's error number. They are never told
 // apart by English, but for macos-applescript's text; errors.go gives each kind cld's message and
-// advice. cli.go runs Ghostty's own CLI actions, such as +show-config. Ghostty's behaviour that
-// these rest on is in docs/design/findings/terminals.md. The package prints nothing and holds no
-// record: that is internal/tabs's.
+// advice. cli.go runs Ghostty's own CLI actions, +show-config and +ssh-cache, and open, which
+// starts Ghostty. Ghostty's behaviour that these rest on is in docs/design/findings/terminals.md.
+// The package prints nothing and holds no record: that is internal/tabs's.
 package ghostty
 
 // Bundle is Ghostty's bundle identifier: the scripts find its process and address it by it.
