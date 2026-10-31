@@ -16,7 +16,7 @@ import (
 	"github.com/zadykian/cld/internal/fail"
 )
 
-// watchArgv is the words after cld that run the watcher, which Start runs.
+// watchArgv is the words after cld that run the watcher, which Start runs and the watcher execs.
 var watchArgv = []string{"restore", "tabs", "--watching"}
 
 // The watcher's fd 3 is watch, which Start hands it locked. handover is how long the watcher waits
@@ -28,40 +28,64 @@ const (
 	logLimit = 1 << 20
 )
 
-// Start starts the watcher: cld restore tabs --watching, in a session of its own, with watch's
-// lock on fd 3 (decision 59.3). It starts none where a watcher holds the lock. It refuses to run outside a Ghostty pane: the watcher's osascript asks macOS for the grant of
-// the app it descends from.
-func Start() error {
+// Start starts the watcher unless one runs: cld restore tabs --watching, in a session of its own,
+// with watch's lock on fd 3 (decision 59.3). It reports false where one runs. It refuses to run
+// outside a Ghostty pane: the watcher's osascript asks macOS for the grant of the app it descends
+// from.
+func Start() (started bool, err error) {
 	if os.Getenv("TERM_PROGRAM") != "ghostty" {
-		return fail.Runtime(
+		return false, fail.Runtime(
 			"restore tabs --watch runs in a Ghostty pane: TERM_PROGRAM is not ghostty")
 	}
 	dir, err := Dir()
 	if err != nil {
-		return err
+		return false, err
 	}
-	watch, locked, err := tryLock(filepath.Join(dir, watchFile))
-	if err != nil || !locked {
-		return err
+	watch, err := openWatch(dir)
+	if err != nil || watch == nil {
+		return false, err
 	}
 	defer watch.Close() //nolint:errcheck // the watcher holds its own copy
 	log, err := openLog(dir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer log.Close() //nolint:errcheck // the watcher holds its own copy
 	exe, err := os.Executable()
 	if err != nil {
-		return fail.Runtime("cannot find the file cld runs from: " + err.Error())
+		return false, fail.Runtime("cannot find the file cld runs from: " + err.Error())
 	}
+	// stdin and stdout are /dev/null. The directory is /, so that the watcher keeps no pane's
+	// directory, or its volume, in use. UNVERIFIED until #177's checks 2 and 16 (decision 59.12).
+	// macOS charges the watcher's Apple Events to Ghostty once its pane closes, and after its exec.
 	cmd := exec.Command(exe, watchArgv...)
 	cmd.Args[0] = "cld"
 	cmd.Stderr, cmd.ExtraFiles, cmd.Dir = log, []*os.File{watch}, "/"
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("cannot start the watcher: %w", err)
+		return false, fmt.Errorf("cannot start the watcher: %w", err)
 	}
-	return cmd.Process.Release()
+	return true, cmd.Process.Release()
+}
+
+// openWatch opens dir's watch for a new watcher, locked. A watcher that holds it, but whose
+// Ghostty is gone, ends at its next tick. Then watch comes back unlocked, and the new watcher
+// waits for the lock (see holdsLock). Nil means a watcher runs, or another --watch starts one: it
+// holds the lock while watch still names a watcher that ended.
+func openWatch(dir string) (*os.File, error) {
+	path := filepath.Join(dir, watchFile)
+	watch, locked, err := tryLock(path)
+	if err != nil || locked {
+		return watch, err
+	}
+	if w, app := readWatch(path); app == 0 || alive(app) || !alive(w) {
+		return nil, nil
+	}
+	watch, err = os.OpenFile(path, os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, reason(err)
+	}
+	return watch, nil
 }
 
 // openLog opens watch.log in dir to append the watcher's stderr, emptied first where over
@@ -125,6 +149,20 @@ func writeWatch(watch *os.File, pids ...int) error {
 		return err
 	}
 	return os.Chtimes(watch.Name(), time.Time{}, info.ModTime())
+}
+
+// readWatch reads watch at path: the watcher's pid and Ghostty's, 0 for a line it lacks.
+func readWatch(path string) (watcher, app int) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, 0
+	}
+	lines := strings.Split(string(data), "\n")
+	watcher, _ = strconv.Atoi(lines[0]) //nolint:errcheck // a line that is no pid is none
+	if len(lines) > 1 {
+		app, _ = strconv.Atoi(lines[1]) //nolint:errcheck // as above
+	}
+	return watcher, app
 }
 
 // alive reports whether process pid exists: kill(pid, 0) finds it, or may not signal it.

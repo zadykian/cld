@@ -173,3 +173,45 @@ func TestTabsWatch(t *testing.T) {
 	}
 	checkLog(t, s, "Ghostty's run "+runOf(m)+" ended")
 }
+
+// Two --watch at once, and a third after them, leave one watcher: the one that took the lock.
+// Another would have logged that it gave up, after waiting 30 s for the lock.
+func TestTabsWatchOnce(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	saveModel(t, s, m)
+	t.Cleanup(func() { killWatchers(t, s) })
+	first := startCldAsync(t, s, s.Work, watchEnv, "restore", "tabs", "--watch")
+	second := startCldAsync(t, s, s.Work, watchEnv, "restore", "tabs", "--watch")
+	checkExit(t, "the first --watch", first(), 0, "", "")
+	checkExit(t, "the second --watch", second(), 0, "", "")
+	pid := waitTicked(t, s, m)
+	startWatch(t, s)
+	time.Sleep(31 * time.Second)
+	if now, _ := watchPIDs(s); now != pid || !watching(t, s) {
+		t.Errorf("the watcher is %d, its lock held %t, want %d", now, watching(t, s), pid)
+	}
+	checkLog(t, s)
+}
+
+// --watch refuses to start a watcher outside a Ghostty pane, where macOS would not give its
+// osascript Ghostty's grant.
+func TestTabsWatchInGhosttyOnly(t *testing.T) {
+	t.Parallel()
+	for _, program := range []string{"", "Apple_Terminal"} {
+		t.Run(program, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			saveModel(t, s, ghosttyApp(t, s))
+			result := s.RunCld(map[string]string{"TERM_PROGRAM": program}, "restore", "tabs",
+				"--watch")
+			checkFailed(t, result, 1, "cld: restore tabs --watch runs in a Ghostty pane: "+
+				"TERM_PROGRAM is not ghostty\n")
+			if _, err := os.Stat(watchPath(s)); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("watch: %v, want none", err)
+			}
+		})
+	}
+}

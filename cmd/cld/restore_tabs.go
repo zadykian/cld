@@ -35,8 +35,8 @@ func restoreTabs(typed string) *cobra.Command {
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
 	flags := command.Flags()
 	flags.BoolVar(&t.dryRun, "dry-run", false, "print what the record holds, and do nothing")
-	flags.BoolVar(&t.watch, "watch", false, "keep the record: start a process that\n"+
-		"reads Ghostty's tabs every 5 s and ends as Ghostty quits")
+	flags.BoolVar(&t.watch, "watch", false, "keep the record: start, unless one runs, a process "+
+		"that\nreads Ghostty's tabs every 5 s and ends as Ghostty quits")
 	flags.BoolVar(&t.watching, "watching", false, "")
 	cmdline.Hide(flags, "watching")
 	return command
@@ -55,7 +55,8 @@ func (t *tabsCommand) run(*cobra.Command, []string) error {
 	case t.watching:
 		return tabs.Watch()
 	case t.watch:
-		return tabs.Start()
+		_, err := tabs.Start()
+		return err
 	}
 	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun})
 	if err != nil {
