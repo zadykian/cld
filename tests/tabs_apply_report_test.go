@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -109,5 +111,30 @@ func TestTabsApplyMeets(t *testing.T) {
 				t.Errorf("last %+v, want it, with nothing typed", last)
 			}
 		})
+	}
+}
+
+// A record the restore cannot write once its apply has run is a warning, with status 1: the report
+// still says what it made.
+func TestTabsApplyUnrecorded(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	typedMac(t, s)
+	s.WriteProbeFile(mac.ApplyDelayFile, "1\n")
+	wait := startCldAsync(t, s, s.Work, tabsEnv, "restore", "tabs")
+	sandbox.WaitFor(t, 10*time.Second, "the apply", func() bool {
+		return !exists(filepath.Join(s.ProbeDir, mac.ApplyDelayFile))
+	})
+	if err := os.Remove(recordPath(s)); err != nil {
+		t.Fatal(err)
+	}
+	makeDirs(t, recordPath(s), filepath.Join(recordPath(s), "x"))
+	result := wait()
+	const warning = "cld: warning: cannot record what the restore made, so the next one may " +
+		"reopen it: "
+	if result.Code != 1 || result.Stdout != "Typed into the pane in /Users/me: session 'app' on "+
+		"ws\n" || !strings.HasPrefix(result.Stderr, warning) {
+		t.Errorf("exit %d, stdout %q, stderr %q, want exit 1, the line typed, and the warning %q",
+			result.Code, result.Stdout, result.Stderr, warning)
 	}
 }
