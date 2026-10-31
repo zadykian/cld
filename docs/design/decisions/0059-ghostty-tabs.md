@@ -17,8 +17,9 @@ what runs in each pane, and cld's title names the session.
 
 What this rests on in Ghostty is in the
 [terminal findings](../findings/terminals.md#ghosttys-applescript-on-macos), read in v1.3.1's
-source and v1.4.0's. The results of the spike on a Mac, #177, are still to come. Until
-then, each behaviour that only a Mac shows is marked in the one file that rests on it (59.12).
+source and v1.4.0's. The spike on a Mac, #177, probed part of it
+([results](../findings/terminals.md#the-mac-spikes-results)). Each behaviour that only a Mac shows
+and the spike left out is marked in the one file that rests on it (59.12).
 
 A restore types `cld join --existing`, which never creates a session
 ([decision 58](0058-joining-only-a-session-that-exists.md)). This decision amends decisions
@@ -90,14 +91,12 @@ finds it and exits 0, printing nothing.
   elsewhere `--watch` fails with status 1.
 - **Its identity.** macOS charges an Apple Event to the responsible process, here Ghostty, which
   is signed and carries the Apple Events entitlement. So cld's signature and `cld update` change no
-  grant. Started from another app's terminal, the watcher would be charged to that app. #177's
-  check 1 sees whether Ghostty asks once to control itself.
-- **Its fallback.** That a watcher in its own session stays charged to Ghostty after its pane
-  closes is #177's check 2. If not, a LaunchAgent runs `/usr/bin/osascript`, whose identity is
-  Apple's, and hands its snapshots to cld.
+  grant. Ghostty asks for none to control itself: macOS allows the event by the team id, and a
+  watcher in its own session stays charged to Ghostty after its pane closes. Started from another
+  app's terminal, the watcher would be charged to that app.
 - **Its ticks.** Every 5 s it takes a snapshot by one osascript, then reads ps and each pane's
-  size. A long-lived JXA loop would spare osascript's start at each tick. It waits for #177's
-  check 6: the loop's memory, and how long each read stalls Ghostty.
+  size. A long-lived JXA loop would spare osascript's start at each tick, but it asks Ghostty for
+  the same events, and a snapshot takes 0.2 s. So cld keeps one osascript per tick.
 - **Its end.** Before each snapshot it checks Ghostty's pid, sending no Apple Event. As the pid
   goes, it notes the end of the run in the record and exits: it lives as long as one Ghostty run.
   It never takes an osascript error for a quit.
