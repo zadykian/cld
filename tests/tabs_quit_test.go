@@ -71,7 +71,12 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 			t.Errorf("pane %d: last %+v, want %+v", i, got, want)
 		}
 	}
-	checkReport(t, s, "Ghostty brought back every window as it quit at "+clockAt(quit)+"\n")
+	at := clockAt(quit)
+	checkReport(t, s, "Panes to join again:\n"+
+		"  in ~/src: session 'app' on ws, as Ghostty quit at "+at+"\n"+
+		"  in /Users/me: ssh to ws, as Ghostty quit at "+at+"\n"+
+		"  in /Users/me: session 'x' on ws2, as Ghostty quit at "+at+"\n"+
+		"Ghostty brought back every window as it quit at "+at+"\n")
 }
 
 // The windows Ghostty does not bring back are the quit's one loss, with their panes as they were.
