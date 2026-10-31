@@ -47,15 +47,15 @@ func infer(ids []string, sizes map[string]Size) (*Node, bool) {
 	return best.tree, ok
 }
 
-// revise is the tree the sizes give a tab of the panes ids whose recorded tree is base. Nil means
-// base stays: the sizes fit no tree, or they fit base, at the size of the tree they give
-// (decision 59.8).
-func revise(base *Node, ids []string, sizes map[string]Size) *Node {
+// revise is the tree the sizes give a tab of the panes ids whose recorded tree is base, made by
+// cld or not. Nil means base stays: the sizes fit no tree, or they fit base, at the size of the
+// tree they give unless cld made base (decision 59.8).
+func revise(base *Node, made bool, ids []string, sizes map[string]Size) *Node {
 	best, cell, ok := bestParse(ids, sizes)
 	if !ok {
 		return nil
 	}
-	if got, ok := fit(base, sizes, cell); ok && same(got, best, cell) {
+	if got, ok := fit(base, sizes, cell); ok && (made || same(got, best, cell)) {
 		return nil
 	}
 	return best.tree

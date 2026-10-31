@@ -181,7 +181,7 @@ func treeFor(ids []string, sizes map[string]Size, old, undone []Window) (*Node, 
 	}
 	base, shape := oldTree(ids, old, undone)
 	if base != nil && shape != ShapeFlat {
-		if tree := revise(base, ids, sizes); tree != nil {
+		if tree := revise(base, shape == ShapeMade, ids, sizes); tree != nil {
 			return tree, ShapeInferred
 		}
 		return base, shape
