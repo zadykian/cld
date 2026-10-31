@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,10 +31,22 @@ var mockedApplies = []mockedApply{
 			"input text to @1", "send key enter to @1", "get pid of @4"}},
 }
 
+// mockedFailures are apply.js's own cases as it fails.
+var mockedFailures = []mockedApply{
+	{"Ghostty not running", `{"pane": "@1", "pid": 50003, "line": "ls"}`, "",
+		func(m *mac.Model) { m.Running = false }, nil, `{"error": {"step": "running",
+		  "number": 0, "message": "Ghostty is not running", "version": ""}}`, "*[1] [4] | *[7]",
+		nil},
+	{"denied", `{"pane": "@1", "pid": 50003, "line": "ls"}`, "", nil,
+		map[string]any{"fail": "denied"}, `{"error": {"step": "count", "number": -1743,
+		  "message": "Not authorized to send Apple events to Ghostty.", "version": ""}}`,
+		"*[1] [4] | *[7]", []string{"get terminals.id"}},
+}
+
 // testMockedApply runs apply.js against fakeGhostty(2, 1) as the mock Ghostty.
 func testMockedApply(t *testing.T) {
 	t.Parallel()
-	for _, test := range mockedApplies {
+	for _, test := range slices.Concat(mockedApplies, mockedFailures) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			m := fakeGhostty(2, 1)
