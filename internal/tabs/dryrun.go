@@ -10,12 +10,12 @@ import (
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// dryRun reports what a restore would do of plan p, made against the record in dir as seen. left
-// is the losses it would not reopen. Ghostty and the watcher come first. Then come the panes to
-// type into, the windows to reopen, the losses left and those that wait for Ghostty's undo. Notes
-// on the plan and on Ghostty's config end it.
+// dryRun reports what a restore with opts would do of plan p, made against the record in dir as
+// seen, and what it would leave (decision 59.6). Ghostty and the watcher come first. Then come the
+// panes to type into, what would reopen, what waits for Ghostty's undo, and what is left. Notes on
+// the plan and on Ghostty's config end it.
 func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []*Loss,
-	report *Report,
+	opts Options, report *Report,
 ) {
 	c := clock{now: time.Now()}
 	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
@@ -24,14 +24,18 @@ func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []
 	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)
 	c.wouldType(r, p, report)
 	c.wouldReopen(p, report)
-	report.section("Losses:", c.losses(left))
+	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
+	var lines []string
+	for _, l := range left {
+		lines = append(lines, "  "+size(l)+", "+c.when(l)+": "+reopenWith(r, l, opts, c.now))
+	}
+	report.section("Left:", lines)
 	for _, l := range r.Losses {
 		if l.Cause == CauseQuit && len(l.Windows) == 0 {
 			report.Lines = append(report.Lines,
 				"Ghostty brought back every window as it quit at "+c.at(l.At))
 		}
 	}
-	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
 	var notes []string
 	for _, note := range p.notes() {
 		notes = append(notes, "  "+note)

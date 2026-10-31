@@ -195,7 +195,7 @@ func TestTabsMergeClosedTab(t *testing.T) {
 	r := tick(t, s, m)
 	checkRecord(t, "lost", r, names, "*a/made c/made", "", "tab 2 beside a: b/made")
 	if len(r.Losses) == 1 {
-		checkReport(t, s, "Losses:\n  a tab, closed at "+clockAt(r.Losses[0].At)+"\n")
+		checkReport(t, s, "Left:\n  a tab, closed at "+clockAt(r.Losses[0].At)+": --closed\n")
 	}
 	m.Windows = []mac.Window{windowOf(tabOf(c))}
 	checkRecord(t, "the first closed", tick(t, s, m), names, "*c/made", "tab 1 beside c: *a/made",

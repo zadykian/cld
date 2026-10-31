@@ -16,7 +16,10 @@ const recordWait = 10 * time.Second
 
 // Options are what cld restore tabs is asked to do.
 type Options struct {
-	DryRun bool // report what the record holds, and change nothing in Ghostty
+	DryRun bool // report what a restore would do, and change nothing in Ghostty
+	Older  bool // reopen also the newest burst of the losses a restore without options leaves
+	All    bool // reopen every loss
+	Closed bool // reopen the tabs and splits closed alone too
 }
 
 // Restore reads Ghostty and merges what it shows into the record, as a tick does, then reports.
@@ -36,8 +39,8 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	p, left := restorePlan(ctx, seen)
-	dryRun(ctx, dir, seen, p, left, report)
+	p, left := restorePlan(ctx, seen, opts)
+	dryRun(ctx, dir, seen, p, left, opts, report)
 	return report, nil
 }
 
@@ -123,20 +126,10 @@ func failure(err error) error {
 	return err
 }
 
-// restorePlan plans the restore of the record seen against Ghostty as seen: every window loss not
-// yet restored. It asks Ghostty's terminfo cache once per host. left is the losses it does not
-// reopen: a tab's or a split's.
-func restorePlan(ctx context.Context, seen *observed) (p *Planned, left []*Loss) {
-	var chosen []*Loss
-	for _, l := range seen.record.Losses {
-		switch {
-		case l.Restored != nil || len(l.Windows) == 0:
-		case l.Cause == CauseClosed || l.Cause == CauseQuit:
-			chosen = append(chosen, l)
-		default:
-			left = append(left, l)
-		}
-	}
+// restorePlan picks what a restore reopens of the record seen, as opts asks, and plans it against
+// Ghostty as seen. It asks Ghostty's terminfo cache once per host. left is what it leaves.
+func restorePlan(ctx context.Context, seen *observed, opts Options) (*Planned, []*Loss) {
+	chosen, left := selectLosses(seen.record, opts, time.Now())
 	bin, ok := ghostty.Binary(seen.app)
 	cached := func(host string) bool { return ok && ghostty.TerminfoCached(ctx, bin, host) }
 	return plan(seen.record, seen.o, chosen, cached), left
