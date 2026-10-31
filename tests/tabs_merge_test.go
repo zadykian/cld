@@ -89,12 +89,15 @@ func TestTabsMergeClosedWindow(t *testing.T) {
 			t.Error("the closed window's panes are still the record's")
 		}
 	}
+	checkReport(t, s, "Waiting for Ghostty's undo:\n  a window of 1 tab and 2 panes, closed at "+
+		clockAt(closed)+"\n")
 	endLogins(m, b, c)
 	r := tick(t, s, m)
 	checkRecord(t, "its logins gone", r, names, "*a/made", "", "closed: *right(b,c)/flat")
 	if len(r.Losses) == 1 && !r.Losses[0].At.Equal(closed) {
 		t.Errorf("lost at %v, want %v, when it closed", r.Losses[0].At, closed)
 	}
+	checkReport(t, s, "Losses:\n  a window of 1 tab and 2 panes, closed at "+clockAt(closed)+"\n")
 }
 
 // checkCopy reports loss l unless its leaf id holds a copy of the pane that shows want.
@@ -156,5 +159,15 @@ func TestTabsMergeHidden(t *testing.T) {
 	if r.Panes[quick] != nil || r.Run.ID != run {
 		t.Errorf("the record holds %+v and run %s, want no quick terminal and run %s",
 			r.Panes[quick], r.Run.ID, run)
+	}
+}
+
+// checkReport reports what the dry-run prints in s where it lacks want.
+func checkReport(t *testing.T, s *sandbox.Sandbox, want string) {
+	t.Helper()
+	result := dryRun(t, s)
+	if result.Code != 0 || !strings.Contains(result.Stdout, want) {
+		t.Errorf("restore tabs --dry-run: exit %d, stdout\n%s\nwant within it\n%s", result.Code,
+			result.Stdout, want)
 	}
 }

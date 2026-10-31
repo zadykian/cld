@@ -68,6 +68,56 @@ func (c clock) ghostty(snap *ghostty.Snapshot, app ghostty.App, procs Table) str
 	return line
 }
 
+// losses is a line per loss not restored, with its size and time.
+func (c clock) losses(list []*Loss) []string {
+	var lines []string
+	for _, l := range list {
+		if l.Restored != nil || len(l.Windows) == 0 {
+			continue
+		}
+		when := "closed at " + c.at(l.At)
+		if l.Cause == CauseQuit {
+			when = "lost as Ghostty quit at " + c.at(l.At)
+		}
+		lines = append(lines, "  "+size(l)+", "+when)
+	}
+	return lines
+}
+
+// size is what loss l holds: a tab, a split, or windows with their tabs and panes.
+func size(l *Loss) string {
+	tabs, panes := 0, 0
+	for _, w := range l.Windows {
+		tabs += len(w.Tabs)
+		panes += len(windowLeaves(w))
+	}
+	switch l.Cause {
+	case CauseTab, CausePane:
+		what := map[string]string{CauseTab: "a tab", CausePane: "a split"}[l.Cause]
+		if panes > 1 {
+			what += " of " + count(panes, "pane")
+		}
+		return what
+	}
+	what := "a window"
+	if len(l.Windows) > 1 {
+		what = count(len(l.Windows), "window")
+	}
+	what += " of " + count(tabs, "tab")
+	if panes > tabs {
+		what += " and " + count(panes, "pane")
+	}
+	return what
+}
+
+// count is n of thing, in the plural but for one.
+func count(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
+}
+
 // settingsNotes are the notes on the settings in Ghostty's config that keep a restore from working
 // as it should, as ghostty +show-config gives them. app is the Ghostty that runs, if any.
 func settingsNotes(ctx context.Context, app ghostty.App) []string {

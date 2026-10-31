@@ -252,3 +252,12 @@ func drawLosses(losses []*tabs.Loss, names map[string]string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// clockAt is time at as the dry-run writes it: in UTC, as 15:04 today, else with its date.
+func clockAt(at time.Time) string {
+	now, at := time.Now().UTC(), at.UTC()
+	if now.Format(time.DateOnly) == at.Format(time.DateOnly) {
+		return at.Format("15:04")
+	}
+	return at.Format("2006-01-02 15:04")
+}
