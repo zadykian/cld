@@ -27,7 +27,7 @@ func Restore(ctx context.Context) (*Report, error) {
 	if err != nil {
 		return nil, failure(err)
 	}
-	o, err := Observe(ctx, snap)
+	o, err := Observe(ctx, snap, ownTTY())
 	if err != nil {
 		return nil, failure(err)
 	}
@@ -37,6 +37,16 @@ func Restore(ctx context.Context) (*Report, error) {
 	report.Lines = []string{c.ghostty(snap, app, o.Procs)}
 	report.section("Notes:", settingsNotes(ctx, app))
 	return report, nil
+}
+
+// ownTTY tells the tty of the pane cld runs in, which a restore never types into: nil where cld's
+// stdin is no terminal.
+func ownTTY() func(tty string) bool {
+	dev, ok := ownDevice()
+	if !ok {
+		return nil
+	}
+	return func(tty string) bool { return sameDevice(tty, dev) }
 }
 
 // merge folds o into the record in cld's state directory, and saves it. A record cld cannot read
