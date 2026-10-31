@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
@@ -66,7 +67,8 @@ func appeared(o *Observation, snap *ghostty.Snapshot) int {
 }
 
 // finish ends a restore that ran plan p against the record seen, apply giving res: its report and
-// notes, the losses waiting for Ghostty's undo among them.
+// notes, the losses waiting for Ghostty's undo among them, then the watcher, started where cld
+// runs in a Ghostty pane.
 func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report *Report) {
 	c := newClock()
 	c.restored(seen.record, p, res, report)
@@ -79,6 +81,8 @@ func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report 
 		if WatcherStatus(dir).PID == 0 {
 			report.note("no watcher runs here: the next ssh in a Ghostty pane starts one")
 		}
+	} else if _, err := Start(); err != nil {
+		report.warn(cannotStart + strings.TrimPrefix(err.Error(), cannotStart))
 	}
 }
 

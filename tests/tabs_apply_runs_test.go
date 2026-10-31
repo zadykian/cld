@@ -11,7 +11,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// A restore's runs around apply: an apply that gives no result, and a Ghostty the restore opens.
+// A restore's runs around apply: an apply that gives no result, a Ghostty the restore opens, and
+// the watcher it starts.
 
 // An apply that gives no result fails the restore with status 1, and marks no loss restored and
 // no line typed. So does one whose result lacks builds of the plan. Where Ghostty opened panes by
@@ -153,4 +154,21 @@ func TestTabsApplyOpenWaits(t *testing.T) {
 		checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0, "",
 			"cld: Ghostty was still opening windows\n"+noWatcher)
 	})
+}
+
+// A restore run in a Ghostty pane starts the watcher, where none runs. One run elsewhere notes
+// that none runs, unless one does.
+func TestTabsApplyStartsWatcher(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	saveModel(t, s, m)
+	checkExit(t, "restore tabs elsewhere", s.RunCld(tabsEnv, "restore", "tabs"), 0, "", noWatcher)
+	t.Cleanup(func() { killWatchers(t, s) })
+	checkExit(t, "restore tabs in a Ghostty pane", s.RunCld(watchEnv, "restore", "tabs"), 0, "",
+		"")
+	waitTicked(t, s, m)
+	checkExit(t, "restore tabs elsewhere, the watcher running",
+		s.RunCld(tabsEnv, "restore", "tabs"), 0, "", "")
 }
