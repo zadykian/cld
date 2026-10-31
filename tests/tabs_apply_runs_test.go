@@ -229,3 +229,40 @@ func checkStale(t *testing.T, s *sandbox.Sandbox, when, a, made string) {
 		t.Errorf("%s: the pane made is %+v, want its last on session x", when, p)
 	}
 }
+
+// A restore holds the record's lock until the record notes what its apply made: a watcher's tick
+// meanwhile merges nothing. Then the window it made, and its pane's last, survive the next ticks.
+func TestTabsApplyHoldsLock(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	a, lost := watchedMac(t, s)
+	s.WriteProbeFile(mac.ApplyDelayFile, "8\n")
+	wait := startCldAsync(t, s, s.Work, tabsEnv, "restore", "tabs")
+	sandbox.WaitFor(t, 10*time.Second, "the apply", func() bool {
+		return !exists(filepath.Join(s.ProbeDir, mac.ApplyDelayFile))
+	})
+	record, ticked := statRecord(t, s), watchTime(t, s)
+	waitSnapshots(t, s, snapshots(t, s)+1)
+	time.Sleep(time.Second) // for the tick's merge, were the record's lock free
+	if now := statRecord(t, s); !os.SameFile(now, record) || !now.ModTime().Equal(
+		record.ModTime()) || !watchTime(t, s).Equal(ticked) {
+		t.Error("a tick merged while the restore held the record")
+	}
+	checkExit(t, "restore tabs", wait(), 0,
+		"Reopened a window of 1 tab, closed at "+clockAt(lost.At)+"\n", "")
+	made, ticked := loadModel(t, s).Windows[0].Tabs[0].Focused, watchTime(t, s)
+	sandbox.WaitFor(t, 15*time.Second, "the watcher's next merge", func() bool {
+		return watchTime(t, s).After(ticked)
+	})
+	checkStale(t, s, "after the next merge", a, made)
+}
+
+// statRecord is the record of Ghostty's tabs in s, as it stands.
+func statRecord(t *testing.T, s *sandbox.Sandbox) os.FileInfo {
+	t.Helper()
+	info, err := os.Stat(recordPath(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info
+}

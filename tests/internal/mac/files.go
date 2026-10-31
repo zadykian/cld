@@ -16,8 +16,11 @@ const (
 	// $CLD_FAKE_OSASCRIPT_FAIL.
 	FailFile = "osascript-fail"
 	// DelayFile holds the seconds that the next snapshot waits before it answers, and goes then.
-	DelayFile  = "osascript-delay"
-	ShowConfig = "show-config" // what the fake ghostty +show-config prints
+	DelayFile = "osascript-delay"
+	// ApplyDelayFile holds the seconds that the next apply waits once it has made what it makes,
+	// before it answers, and goes then.
+	ApplyDelayFile = "osascript-apply-delay"
+	ShowConfig     = "show-config" // what the fake ghostty +show-config prints
 	// SSHCache has the keys the fake ghostty +ssh-cache --host=KEY finds, a line each.
 	SSHCache = "ssh-cache"
 	// SSHHosts has a line HOST HOSTNAME PORT per host whose ssh -G names another hostname or port.
