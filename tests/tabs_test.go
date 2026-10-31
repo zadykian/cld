@@ -84,19 +84,22 @@ func tick(t *testing.T, s *sandbox.Sandbox, m *mac.Model) *tabs.Record {
 // testdata/tabs/record.json gives as T.
 var sinceTimes = regexp.MustCompile(`"since": "[^"]*"`)
 
-// A first dry-run writes the record, readable by the user alone. It holds Ghostty's run, and every
-// pane by its terminal's id. It prints Ghostty, and the notes on Ghostty's config.
+// A first dry-run writes the record, readable by the user alone, of every pane by its terminal's
+// id. It prints Ghostty, that no watcher runs, and the notes on Ghostty's config.
 func TestTabsDryRunRecords(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	s.WriteProbeFile(mac.ShowConfig, "title = x\nmacos-titlebar-style = hidden\n")
 	m := ghosttyAt(812, ghosttyStart)
-	first, second := addPane(m, "~"), addPane(m, "vim")
-	m.Terminals[second].Cwd = "/Users/me/src"
-	m.Windows = []mac.Window{windowOf(tabOf(first), tabOf(second))}
+	ssh := addPane(m, "◐ cld-app-3", []string{"ssh", "ws"})
+	shell := addPane(m, "~")
+	vim := addPane(m, "vim", []string{"vim", "notes"})
+	m.Terminals[shell].Cwd = "/Users/me/src"
+	m.Windows = []mac.Window{windowOf(tabOf(ssh), tabOf(shell, vim))}
 	saveModel(t, s, m)
 	before := time.Now().UTC().Truncate(time.Second)
-	checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0, dryRunReport, "")
+	result := dryRun(t, s)
+	checkExit(t, "restore tabs --dry-run", result, 0, dryRunReport, "")
 	want := readFile(t, filepath.Join("testdata", "tabs", "record.json"))
 	got := sinceTimes.ReplaceAllString(readFile(t, recordPath(s)), `"since": "T"`)
 	if got != want {
@@ -109,92 +112,6 @@ func TestTabsDryRunRecords(t *testing.T) {
 	}
 	checkMode(t, recordPath(s), 0o600)
 	checkMode(t, tabsDir(s), 0o700)
-}
-
-// A dry-run that finds the record as Ghostty shows it writes nothing: the file keeps its bytes,
-// its inode and its time. claude's busy markers, which turn every second, are its idle ✳ there.
-func TestTabsWritesOnlyChanges(t *testing.T) {
-	t.Parallel()
-	s := sandbox.New(t)
-	m := ghosttyAt(812, ghosttyStart)
-	cldPane := addPane(m, "✳ cld-app", ssh("ws"))
-	m.Windows = []mac.Window{windowOf(tabOf(cldPane, addPane(m, "~")))}
-	tick(t, s, m)
-	old := time.Now().Add(-time.Hour).Truncate(time.Second)
-	if err := os.Chtimes(recordPath(s), old, old); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.Stat(recordPath(s))
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := readFile(t, recordPath(s))
-	for _, marker := range []string{"✳", session.BusyEven, session.BusyOdd} {
-		title := marker + " cld-app"
-		m.Terminals[cldPane].Name = title
-		tick(t, s, m)
-		info, err := os.Stat(recordPath(s))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !os.SameFile(first, info) || !info.ModTime().Equal(old) ||
-			readFile(t, recordPath(s)) != data {
-			t.Errorf("titled %q: tabs.json written again", title)
-		}
-	}
-}
-
-// recordOf is a record of the run of m's Ghostty, of panes and windows, for writeRecord.
-func recordOf(m *mac.Model, panes map[string]*tabs.Pane, windows ...tabs.Window) *tabs.Record {
-	return &tabs.Record{Format: tabs.Format, Run: tabs.Run{ID: runOf(m), Version: m.Version},
-		Panes: panes, Windows: windows, Pending: []*tabs.Loss{}, Losses: []*tabs.Loss{}}
-}
-
-// leaf is a record's leaf of pane id.
-func leaf(id string) *tabs.Node { return &tabs.Node{Pane: id} }
-
-// split is a record's split of first and second, right or down.
-func split(direction string, first, second *tabs.Node) *tabs.Node {
-	return &tabs.Node{Split: direction, First: first, Second: second}
-}
-
-// named names the panes ids a, b, c and on, for drawWindows.
-func named(ids ...string) map[string]string {
-	names := map[string]string{}
-	for i, id := range ids {
-		names[id] = string(rune('a' + i))
-	}
-	return names
-}
-
-// drawWindows draws a record's windows as the model's shape: " | " between windows and " "
-// between tabs, * before a selected tab, and each tab's tree, then / and its shape. A pane is
-// drawn by its name in names, and a split as right(A,B) or down(A,B).
-func drawWindows(windows []tabs.Window, names map[string]string) string {
-	drawn := make([]string, 0, len(windows))
-	for _, w := range windows {
-		tabList := make([]string, 0, len(w.Tabs))
-		for _, tab := range w.Tabs {
-			mark := ""
-			if tab.Selected {
-				mark = "*"
-			}
-			tabList = append(tabList, mark+drawNode(tab.Tree, names)+"/"+tab.Shape)
-		}
-		drawn = append(drawn, strings.Join(tabList, " "))
-	}
-	return strings.Join(drawn, " | ")
-}
-
-// drawNode draws a record's tree for drawWindows.
-func drawNode(n *tabs.Node, names map[string]string) string {
-	switch {
-	case n == nil:
-		return "nil"
-	case n.Pane != "":
-		return names[n.Pane]
-	}
-	return n.Split + "(" + drawNode(n.First, names) + "," + drawNode(n.Second, names) + ")"
 }
 
 // dryRunReport is what the dry-run prints of TestTabsDryRunRecords's Ghostty.
@@ -227,7 +144,7 @@ func TestTabsNeedsNoTmux(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	m := ghosttyApp(t, s)
-	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "✳ cld-x", ssh("ws"))))}
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "✳ cld-x", []string{"ssh", "ws"})))}
 	saveModel(t, s, m)
 	tools := s.Tools("osascript", "ps", "ghostty")
 	result := s.RunCld(map[string]string{"TZ": "UTC", "PATH": tools}, "restore", "tabs", "--dry-run")
@@ -237,6 +154,92 @@ func TestTabsNeedsNoTmux(t *testing.T) {
 	if r := readRecord(t, s); len(r.Panes) != 1 {
 		t.Errorf("recorded %d panes, want 1", len(r.Panes))
 	}
+}
+
+// A dry-run that finds the record as Ghostty shows it writes nothing: the file keeps its bytes,
+// its inode and its time. claude's busy markers, which turn every second, are its idle ✳ there.
+func TestTabsWritesOnlyChanges(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	ssh := addPane(m, "✳ cld-app", []string{"ssh", "ws"})
+	m.Windows = []mac.Window{windowOf(tabOf(ssh, addPane(m, "~")))}
+	tick(t, s, m)
+	old := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := os.Chtimes(recordPath(s), old, old); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.Stat(recordPath(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := readFile(t, recordPath(s))
+	for _, marker := range []string{"✳", session.BusyEven, session.BusyOdd} {
+		title := marker + " cld-app"
+		m.Terminals[ssh].Name = title
+		tick(t, s, m)
+		info, err := os.Stat(recordPath(s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !os.SameFile(first, info) || !info.ModTime().Equal(old) ||
+			readFile(t, recordPath(s)) != data {
+			t.Errorf("titled %q: tabs.json written again", title)
+		}
+	}
+}
+
+// recordOf is a record of the run of m's Ghostty, of panes and windows, for writeRecord.
+func recordOf(m *mac.Model, panes map[string]*tabs.Pane, windows ...tabs.Window) *tabs.Record {
+	return &tabs.Record{Format: tabs.Format, Run: tabs.Run{ID: runOf(m), Version: m.Version},
+		Panes: panes, Windows: windows, Pending: []*tabs.Loss{}, Losses: []*tabs.Loss{}}
+}
+
+// leaf is a record's leaf of pane id.
+func leaf(id string) *tabs.Node { return &tabs.Node{Pane: id} }
+
+// split is a record's split of first and second, right or down.
+func split(direction string, first, second *tabs.Node) *tabs.Node {
+	return &tabs.Node{Split: direction, First: first, Second: second}
+}
+
+// named names the panes ids a, b, c and on, for drawRecord.
+func named(ids ...string) map[string]string {
+	names := map[string]string{}
+	for i, id := range ids {
+		names[id] = string(rune('a' + i))
+	}
+	return names
+}
+
+// drawWindows draws a record's windows as shape draws the model's: " | " between windows and " "
+// between tabs, * before a selected tab, and each tab's tree, then / and its shape. A pane is
+// drawn by its name in names, and a split as right(A,B) or down(A,B).
+func drawWindows(windows []tabs.Window, names map[string]string) string {
+	drawn := make([]string, 0, len(windows))
+	for _, w := range windows {
+		tabList := make([]string, 0, len(w.Tabs))
+		for _, tab := range w.Tabs {
+			mark := ""
+			if tab.Selected {
+				mark = "*"
+			}
+			tabList = append(tabList, mark+drawNode(tab.Tree, names)+"/"+tab.Shape)
+		}
+		drawn = append(drawn, strings.Join(tabList, " "))
+	}
+	return strings.Join(drawn, " | ")
+}
+
+// drawNode draws a record's tree for drawWindows.
+func drawNode(n *tabs.Node, names map[string]string) string {
+	switch {
+	case n == nil:
+		return "nil"
+	case n.Pane != "":
+		return names[n.Pane]
+	}
+	return n.Split + "(" + drawNode(n.First, names) + "," + drawNode(n.Second, names) + ")"
 }
 
 // drawLosses draws losses, a line each: the cause, where a tab or split goes back, and its
