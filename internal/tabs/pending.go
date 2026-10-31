@@ -28,8 +28,8 @@ func vanish(r *Record, o *Observation) {
 }
 
 // closedIn is what closed in window w, gone telling a closed pane: w whole where its panes are
-// all gone. Else each tab whose panes are all gone is a loss, with its place. The losses hold
-// copies of the panes as the record last saw them.
+// all gone. Else each tab whose panes are all gone is a loss, with its place, and each split
+// likewise, with its side. The losses hold copies of the panes as the record last saw them.
 func closedIn(w Window, gone func(id string) bool, panes map[string]*Pane) []*Loss {
 	ids := windowLeaves(w)
 	if len(ids) == 0 || slices.ContainsFunc(ids, func(id string) bool { return !gone(id) }) {
@@ -45,6 +45,19 @@ func closedTabs(w Window, gone func(id string) bool, panes map[string]*Pane) []*
 		if allGone(tab.Tree, gone) {
 			losses = append(losses, &Loss{Cause: CauseTab, Anchor: anchorFor(w, i, gone),
 				Windows: []Window{{Tabs: []Tab{copyTab(tab, panes)}}}})
+			continue
+		}
+		for _, c := range goneSubtrees(tab.Tree, gone) {
+			lost := Tab{Shape: tab.Shape, Tree: copyTree(c.tree, panes)}
+			if isLeaf(c.tree) {
+				lost.Shape = ShapeMade
+			}
+			if slices.Contains(Leaves(c.tree), tab.Focused) {
+				lost.Focused = tab.Focused
+			}
+			losses = append(losses, &Loss{Cause: CausePane,
+				Anchor:  &Anchor{Pane: c.anchor, Split: c.side},
+				Windows: []Window{{Tabs: []Tab{lost}}}})
 		}
 	}
 	return losses
