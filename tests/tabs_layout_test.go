@@ -98,6 +98,12 @@ func (p *ptyPanes) size(sizes map[string]tabs.Size) {
 
 // tab is the model's tab of tree, whose leaves name the panes; the first is focused.
 func (p *ptyPanes) tab(tree *tabs.Node) mac.Tab {
+	return p.tabAt(tree, tabs.Leaves(tree)[0])
+}
+
+// tabAt is the model's tab of tree, whose leaves name the panes, focused its focused one: a
+// zoomed one, as Ghostty focuses it.
+func (p *ptyPanes) tabAt(tree *tabs.Node, focused string) mac.Tab {
 	var node func(n *tabs.Node) *mac.Node
 	node = func(n *tabs.Node) *mac.Node {
 		if n.Pane != "" {
@@ -105,7 +111,7 @@ func (p *ptyPanes) tab(tree *tabs.Node) mac.Tab {
 		}
 		return &mac.Node{Split: n.Split, First: node(n.First), Second: node(n.Second)}
 	}
-	return mac.Tab{Focused: p.ids[tabs.Leaves(tree)[0]], Tree: node(tree)}
+	return mac.Tab{Focused: p.ids[focused], Tree: node(tree)}
 }
 
 // ratios are tree's splits' ratios, first the outer split's, then each half's.

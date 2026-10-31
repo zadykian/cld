@@ -43,23 +43,41 @@ type search struct {
 // infer is the split tree of a tab of the panes ids, left or top first, from their sizes in sizes
 // (decision 59.8). False means a pane lacks a size, or no tree fits them.
 func infer(ids []string, sizes map[string]Size) (*Node, bool) {
-	best, ok := bestParse(ids, sizes)
+	best, _, ok := bestParse(ids, sizes)
 	return best.tree, ok
 }
 
-// bestParse is the parse of the panes ids nearest wantAspect. False means a pane lacks a size, or
-// no tree fits them.
-func bestParse(ids []string, sizes map[string]Size) (parse, bool) {
+// revise is the tree the sizes give a tab of the panes ids whose recorded tree is base, made by
+// cld or not. Nil means base stays: the sizes fit no tree, or show pane focused zoomed. Or they
+// fit base, at the size of the tree they give unless cld made base (decision 59.8).
+func revise(base *Node, made bool, ids []string, sizes map[string]Size, focused string) *Node {
+	best, cell, ok := bestParse(ids, sizes)
+	if !ok {
+		return nil
+	}
+	if got, ok := fit(base, sizes, "", cell); ok && (made || same(got, best, cell)) {
+		return nil
+	}
+	if zoomed(base, sizes, focused, cell) {
+		return nil
+	}
+	return best.tree
+}
+
+// bestParse is the parse of the panes ids nearest wantAspect, and their largest cell. False means
+// a pane lacks a size, or no tree fits them.
+func bestParse(ids []string, sizes map[string]Size) (parse, [2]float64, bool) {
 	s := &search{ids: ids, regions: map[[2]int]*region{}}
 	for _, id := range ids {
 		size, ok := sizes[id]
 		if !ok || !valid(size) {
-			return parse{}, false
+			return parse{}, [2]float64{}, false
 		}
 		s.sizes = append(s.sizes, size)
 	}
 	all := s.region(0, len(ids)-1)
-	return nearest(all.parses)
+	best, ok := nearest(all.parses)
+	return best, all.cell, ok
 }
 
 // region is the region of leaves a to b. Its parses are a leaf, or its splits into two runs: side
@@ -124,6 +142,52 @@ func join(direction string, p, q parse, cell [2]float64) (parse, bool) {
 		joint.size[j], joint.n[j] = deeper(p.size[j], p.n[j], q.size[j], q.n[j])
 	}
 	return joint, true
+}
+
+// fit is tree n laid out on sizes, false where a pane lacks a size or two halves do not meet. Pane
+// free counts as a pane of open size, which its neighbours give.
+func fit(n *Node, sizes map[string]Size, free string, cell [2]float64) (parse, bool) {
+	if isLeaf(n) {
+		if free != "" && n.Pane == free {
+			return parse{n: [2]int{1, 1}, open: [2]bool{true, true}}, true
+		}
+		size, ok := sizes[n.Pane]
+		return leafParse(n.Pane, size), ok && valid(size)
+	}
+	p, ok := fit(n.First, sizes, free, cell)
+	if !ok {
+		return parse{}, false
+	}
+	q, ok := fit(n.Second, sizes, free, cell)
+	if !ok {
+		return parse{}, false
+	}
+	return join(n.Split, p, q, cell)
+}
+
+// zoomed reports whether pane focused covers the other panes of tree, as a zoomed split does.
+// Its size is theirs laid out as tree, and beyond it where its own part is open. Ghostty
+// zooms the focused pane and leaves the others their sizes. UNVERIFIED until #177's check 10
+// (decision 59.12).
+func zoomed(tree *Node, sizes map[string]Size, focused string, cell [2]float64) bool {
+	size, ok := sizes[focused]
+	if focused == "" || !ok || !valid(size) {
+		return false
+	}
+	rest, ok := fit(tree, sizes, focused, cell)
+	if !ok {
+		return false
+	}
+	pane := leafParse(focused, size)
+	for i := range 2 {
+		switch {
+		case rest.open[i] && !beyond(pane.size[i], rest.size[i], 1, rest.n[i], cell[i]):
+			return false
+		case !rest.open[i] && !near(pane.size[i], rest.size[i], 1, rest.n[i], cell[i]):
+			return false
+		}
+	}
+	return true
 }
 
 // near reports whether sizes x and y, spanning nx and ny panes, are one length: within a cell,
