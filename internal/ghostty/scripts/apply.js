@@ -65,12 +65,21 @@ function step() {
   paced++;
 }
 
+// isDirectory reports whether path is a directory that exists.
+function isDirectory(path) {
+  const dir = Ref();
+  return $.NSFileManager.defaultManager.fileExistsAtPathIsDirectory(path, dir) && dir[0];
+}
+
 // config is leaf's surface configuration: its line as initial input, never a command, and its
-// directory (decision 59.7).
+// directory, or the home directory where that one is gone. Ghostty ignores a directory that does
+// not exist, and the pane would open in osascript's (decision 59.7).
 function config(leaf) {
   const c = {};
   if (leaf.line) c.initialInput = leaf.line + '\n';
-  if (leaf.cwd) c.initialWorkingDirectory = leaf.cwd;
+  if (leaf.cwd) {
+    c.initialWorkingDirectory = isDirectory(leaf.cwd) ? leaf.cwd : ObjC.unwrap($.NSHomeDirectory());
+  }
   return c;
 }
 

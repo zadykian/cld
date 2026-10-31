@@ -100,8 +100,8 @@ func (t Table) ByPID(pid int) (Process, bool) {
 }
 
 // Group is the process group pgid on tty: a pane's foreground job, whose leader has the pid
-// Ghostty reads. The tty guards against a pid reused elsewhere. UNVERIFIED until #177's check 9
-// (decision 59.12): that macOS's ps names a tty as Ghostty's tty does, less /dev/.
+// Ghostty reads. The tty guards against a pid reused elsewhere. macOS's ps names a tty as
+// Ghostty's tty does, less /dev/.
 func (t Table) Group(pgid int, tty string) []Process {
 	var group []Process
 	for _, p := range t {

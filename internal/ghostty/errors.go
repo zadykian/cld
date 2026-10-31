@@ -134,8 +134,7 @@ func (e *Error) Fail() error {
 	switch e.Kind {
 	case Denied:
 		advice = ": in System Settings › Privacy & Security › Automation, allow Ghostty under the" +
-			" app cld runs in, Ghostty itself in its panes; as a last resort in Ghostty's panes," +
-			" tccutil reset AppleEvents " + Bundle + " resets every Automation grant Ghostty holds"
+			" app cld runs in"
 	case ScriptingOff:
 		advice = "; set macos-applescript = true in Ghostty's config"
 	case Timeout:

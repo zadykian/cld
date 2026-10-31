@@ -65,7 +65,7 @@ asks for that app's grant instead. There a restore starts no watcher, and `--wat
   would, so that each lands at its place. A second restore reopens nothing new.
 - **Not twice.** For each session, and each host of plain ssh, cld counts the panes that joined it
   since the loss. As many of the panes that would join it are left a shell in their directory,
-  which keeps the layout.
+  which keeps the layout. A pane whose directory is gone opens in the home directory.
 - **Waiting.** A window closed within Ghostty's `undo-timeout` can still come back by undo, so cld
   leaves it. Run the restore again once that time has passed.
 - **Ghostty not running.** cld opens it, and waits up to 10 s for the windows it brings back, so

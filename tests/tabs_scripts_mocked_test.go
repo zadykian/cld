@@ -95,6 +95,7 @@ func TestTabsScriptsMocked(t *testing.T) {
 		})
 	}
 	t.Run("apply.js", testMockedApply)
+	t.Run("a directory that is gone", testMockedCwd)
 	t.Run("1.3.1", func(t *testing.T) {
 		t.Parallel()
 		m := windowsModel()
