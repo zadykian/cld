@@ -4,16 +4,23 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/zadykian/cld/internal/tabs"
+	"github.com/zadykian/cld/tests/internal/mac"
+	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// cld's scripts themselves: the terms of Ghostty's dictionary they use, and their syntax
-// where macOS has osacompile.
+// cld's scripts themselves: the terms of Ghostty's dictionary they use, their syntax where macOS
+// has osacompile, and the real ps.
 
 // scriptsDir holds the scripts cld embeds.
 var scriptsDir = filepath.Join("..", "internal", "ghostty", "scripts")
@@ -137,4 +144,53 @@ func TestTabsScriptSyntax(t *testing.T) {
 			t.Errorf("osacompile %s: %v\n%s", path, err, out)
 		}
 	}
+}
+
+// The real ps lists a pane's shell on a real pty, its login there being Ghostty's child, here the
+// tests' own process. The dry-run reads it as a shell at its prompt, with the pty's size.
+func TestTabsRealPs(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	pty := sandbox.OpenPty(t)
+	pty.SetSize(40, 120, 1680, 1120)
+	shell := startOnPty(t, pty)
+	m := ghosttyAt(os.Getpid(), ghosttyStart)
+	m.Processes = nil
+	m.Terminals["A"] = &mac.Terminal{Name: "~", Cwd: s.Home, PID: shell, TTY: pty.Path}
+	m.Windows = []mac.Window{windowOf(tabOf("A"))}
+	saveModel(t, s, m)
+	s.WriteProbeFile(mac.ShowConfig, quietConfig)
+	path := s.RealTools("ps") + string(os.PathListSeparator) + s.Tools("osascript", "ghostty")
+	result := s.RunCld(map[string]string{"TZ": "UTC", "PATH": path}, "restore", "tabs",
+		"--dry-run")
+	if result.Code != 0 || result.Stderr != "" {
+		t.Fatalf("exit %d, stderr %q, want exit 0", result.Code, result.Stderr)
+	}
+	r := readRecord(t, s)
+	p := r.Panes["A"]
+	if p == nil || p.Kind != "local" || p.Login != shell || p.TTY != pty.Path || p.Size == nil ||
+		*p.Size != (tabs.Size{Cols: 120, Rows: 40, Width: 1680, Height: 1120}) {
+		t.Errorf("the pane is %+v, size %+v; want local, login %d on %s, 120x40 in 1680x1120",
+			p, p.Size, shell, pty.Path)
+	}
+	if !strings.HasPrefix(r.Run.ID, strconv.Itoa(os.Getpid())+"@") {
+		t.Errorf("run %s, want the tests' own process's", r.Run.ID)
+	}
+}
+
+// startOnPty starts sh on pty as its controlling terminal, in a session of its own as a login's
+// shell is, and returns its pid. It ends with the test.
+func startOnPty(t *testing.T, pty *sandbox.Pty) int {
+	t.Helper()
+	sh := exec.Command("sh")
+	sh.Stdin, sh.Stdout, sh.Stderr = pty.Terminal, pty.Terminal, pty.Terminal
+	sh.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
+	if err := sh.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = sh.Process.Kill() //nolint:errcheck // it may have ended
+		_ = sh.Wait()         //nolint:errcheck // a killed shell's status is no failure
+	})
+	return sh.Process.Pid
 }

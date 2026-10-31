@@ -13,11 +13,12 @@ const SnapshotTimeout = 15 * time.Second
 // and the script sent no Apple Event. Error is set where the script failed, and Take returns it as
 // an *Error instead.
 type Snapshot struct {
-	Running bool         `json:"running"`
-	Apps    []App        `json:"apps"`              // more than one is Ghostty run by open -n
-	Version string       `json:"version,omitempty"` // "" where the read failed
-	Windows []Window     `json:"windows,omitempty"` // front to back
-	Error   *ScriptError `json:"error,omitempty"`
+	Running   bool         `json:"running"`
+	Apps      []App        `json:"apps"`                // more than one is Ghostty run by open -n
+	Version   string       `json:"version,omitempty"`   // "" where the read failed
+	Terminals []string     `json:"terminals,omitempty"` // app-wide ids, those in no window too
+	Windows   []Window     `json:"windows,omitempty"`   // front to back
+	Error     *ScriptError `json:"error,omitempty"`
 }
 
 // App is a Ghostty process, as NSRunningApplication gives it without an Apple Event.

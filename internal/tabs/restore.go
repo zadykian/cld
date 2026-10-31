@@ -17,33 +17,50 @@ func Restore(ctx context.Context) (*Report, error) {
 		return nil, failure(err)
 	}
 	c := clock{now: time.Now()}
+	report := &Report{}
 	if !snap.Running {
-		return &Report{Lines: []string{c.ghostty(snap, ghostty.App{}, nil)}}, nil
+		report.Lines = []string{c.ghostty(snap, ghostty.App{}, nil)}
+		report.section("Notes:", settingsNotes(ctx, ghostty.App{}))
+		return report, nil
 	}
 	app, err := snap.Ghostty()
 	if err != nil {
 		return nil, failure(err)
 	}
-	o, err := Observe(ctx, snap)
+	o, err := Observe(ctx, snap, ownTTY())
 	if err != nil {
 		return nil, failure(err)
 	}
-	if err := merge(o); err != nil {
+	if err := merge(o, report); err != nil {
 		return nil, err
 	}
-	return &Report{Lines: []string{c.ghostty(snap, app, o.Procs)}}, nil
+	report.Lines = []string{c.ghostty(snap, app, o.Procs)}
+	report.section("Notes:", settingsNotes(ctx, app))
+	return report, nil
 }
 
-// merge folds o into the record in cld's state directory, and saves it.
-func merge(o *Observation) error {
+// ownTTY tells the tty of the pane cld runs in, which a restore never types into: nil where cld's
+// stdin is no terminal.
+func ownTTY() func(tty string) bool {
+	dev, ok := ownDevice()
+	if !ok {
+		return nil
+	}
+	return func(tty string) bool { return sameDevice(tty, dev) }
+}
+
+// merge folds o into the record in cld's state directory, and saves it. A record cld cannot read
+// is moved aside, with a warning in report.
+func merge(o *Observation, report *Report) error {
 	dir, err := Dir()
 	if err != nil {
 		return err
 	}
-	r, old, err := load(dir)
+	r, old, warning, err := load(dir)
 	if err != nil {
 		return err
 	}
+	report.warn(warning)
 	Merge(r, o)
 	return save(dir, r, old)
 }

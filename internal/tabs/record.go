@@ -49,7 +49,16 @@ type Pane struct {
 	Cwd      string    `json:"cwd,omitempty"`
 	TTY      string    `json:"tty,omitempty"`
 	Login    int       `json:"login,omitempty"` // the pane's /usr/bin/login, Ghostty's child
-	Since    time.Time `json:"since"`           // when Host or Session last changed
+	Size     *Size     `json:"size,omitempty"`
+	Since    time.Time `json:"since"` // when Host or Session last changed
+}
+
+// Size is a pane's winsize. The pixels are the surface's, less its padding.
+type Size struct {
+	Cols   int `json:"cols"`
+	Rows   int `json:"rows"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // Window is a window's tabs, in tab-bar order.

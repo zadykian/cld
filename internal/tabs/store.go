@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/session"
 )
 
@@ -30,22 +32,43 @@ func Dir() (string, error) {
 }
 
 // load reads the record in dir, and old, its bytes for save. A missing record is a new one, with
-// no bytes.
-func load(dir string) (r *Record, old []byte, err error) {
+// no bytes. One that does not parse, or has format 0, is moved aside: a new one comes back, with
+// a warning for the caller to report. A newer format is refused before the parse, which it could
+// fail, so that the cld that wrote it finds it still.
+func load(dir string) (r *Record, old []byte, warning string, err error) {
 	data, err := os.ReadFile(filepath.Join(dir, recordFile))
 	if errors.Is(err, fs.ErrNotExist) {
-		return newRecord(), nil, nil
+		return newRecord(), nil, "", nil
 	}
 	if err != nil {
-		return nil, nil, reason(err)
+		return nil, nil, "", reason(err)
+	}
+	var head struct {
+		Format int `json:"format"`
+	}
+	if json.Unmarshal(data, &head) == nil && head.Format > Format {
+		return nil, nil, "", formatError{fail.Runtime(fmt.Sprintf(
+			"tabs.json has format %d, which this cld cannot read: run cld update", head.Format))}
 	}
 	r = &Record{}
-	if err := json.Unmarshal(data, r); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", filepath.Join(dir, recordFile), err)
+	if json.Unmarshal(data, r) != nil || r.Format < 1 {
+		aside, err := moveAside(dir)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		return newRecord(), nil, "moved aside a record cld cannot read: " + aside, nil
 	}
 	normalize(r)
-	return r, data, nil
+	return r, data, "", nil
 }
+
+// formatError is load's refusal of a record that a newer cld wrote, a *fail.Error within. The
+// restore fails with it, and the watcher stops, as no later tick could read the record either.
+type formatError struct{ err error }
+
+func (e formatError) Error() string { return e.err.Error() }
+
+func (e formatError) Unwrap() error { return e.err }
 
 // newRecord is the record before any observation.
 func newRecord() *Record {
@@ -106,6 +129,17 @@ func replace(file string, data []byte) error {
 		return reason(err)
 	}
 	return nil
+}
+
+// moveAside renames the record in dir to tabs.json.bad- and the time in UTC, and returns the
+// new path.
+func moveAside(dir string) (string, error) {
+	file := filepath.Join(dir, recordFile)
+	aside := file + ".bad-" + time.Now().UTC().Format("20060102T150405Z")
+	if err := os.Rename(file, aside); err != nil {
+		return "", err
+	}
+	return aside, nil
 }
 
 // reason is err as the system says it, with the path it names.
