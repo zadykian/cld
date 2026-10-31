@@ -5,15 +5,22 @@
 // UNVERIFIED until the macos job first runs it (decision 59.12).
 // The mock reads a model, argv[1], written as tests/internal/mac writes a Model, and logs each
 // Apple Event a script sends. Its key mock may hold:
+//   fail: 'denied', where macOS denies every Apple Event; or 'off', where Ghostty's config has
+//     AppleScript off, so that its getters find no window and its commands fail;
+//   versionFails: true, where reading Ghostty's version fails;
+//   noTty: true, for Ghostty 1.3.1, whose terminals have no tty;
 //   then: windows that replace the model's, one after each first read of the windows' ids, as
 //     the user changes them while a script reads them.
 var mockRun;
 (function () {
   const ghosttyMock = {model: null, log: [], idReads: 0};
 
-  // event logs an Apple Event.
+  // event logs an Apple Event, which fails where macOS denies them all.
   ghosttyMock.event = function (what) {
     ghosttyMock.log.push(what);
+    if (ghosttyMock.model.mock.fail === 'denied') {
+      ghosttyMock.fail(-1743, 'Not authorized to send Apple events to Ghostty.');
+    }
   };
 
   // fail throws as JXA does, with Apple's error number.
@@ -34,9 +41,10 @@ var mockRun;
     return ghosttyMock.leaves(n.first).concat(ghosttyMock.leaves(n.second));
   };
 
-  // windows are the model's windows that Ghostty's getters find.
+  // windows are the model's windows that Ghostty's getters find: none with AppleScript off.
   ghosttyMock.windows = function () {
-    return ghosttyMock.model.windows || [];
+    const m = ghosttyMock.model;
+    return m.mock.fail === 'off' ? [] : (m.windows || []);
   };
 
   // terminal is the model's terminal id.
@@ -85,8 +93,10 @@ var mockRun;
       name: ghosttyMock.property('name', (id, t) => t.name || ''),
       workingDirectory: ghosttyMock.property('workingDirectory', (id, t) => t.cwd || ''),
       pid: ghosttyMock.property('pid', (id, t) => t.pid || 0),
-      tty: ghosttyMock.property('tty', (id, t) => t.tty || ''),
     };
+    if (!ghosttyMock.model.mock.noTty) {
+      terminals.tty = ghosttyMock.property('tty', (id, t) => t.tty || '');
+    }
     const spec = {
       tabs: {
         terminals: terminals,
@@ -122,16 +132,17 @@ var mockRun;
       }));
       return ids.concat(ghosttyMock.model.hidden || []);
     };
-    return {
-      id: function () {
-        ghosttyMock.event('get terminals.id');
-        return all();
-      },
-      tty: function () {
+    const spec = {id: function () {
+      ghosttyMock.event('get terminals.id');
+      return all();
+    }};
+    if (!ghosttyMock.model.mock.noTty) {
+      spec.tty = function () {
         ghosttyMock.event('get terminals.tty');
         return all().map((id) => ghosttyMock.terminal(id).tty || '');
-      },
-    };
+      };
+    }
+    return spec;
   };
 
   // Application is Ghostty's application object, as JXA gives it by bundle id.
@@ -142,10 +153,17 @@ var mockRun;
     const G = {
       version: function () {
         ghosttyMock.event('get version');
+        if (ghosttyMock.model.mock.versionFails) {
+          ghosttyMock.fail(-1728, 'Can\'t get version.');
+        }
         return ghosttyMock.model.version;
       },
       newSurfaceConfiguration: function () {
         ghosttyMock.event('new surface configuration');
+        if (ghosttyMock.model.mock.fail === 'off') {
+          ghosttyMock.fail(-1743,
+            'AppleScript is disabled by the macos-applescript configuration.');
+        }
         return {};
       },
     };

@@ -69,8 +69,9 @@ var snapshotReads = []string{"count windows", "new surface configuration", "get 
 	"get windows[0].tabs[1].focusedTerminal.id", "get windows[1].tabs[0].focusedTerminal.id",
 	"get windows.tabs.terminals.id", "get terminals.id"}
 
-// snapshot.js reads Ghostty's windows in bulk, nested by window and tab, and reads no Ghostty that
-// does not run.
+// snapshot.js reads Ghostty's windows in bulk, nested by window and tab, and reads them again
+// where they changed between its reads. It reads no Ghostty that does not run, and tells each
+// failure apart by its step and JXA's number.
 func TestTabsScriptsMocked(t *testing.T) {
 	t.Parallel()
 	if _, err := os.Stat(realOsascript); err != nil {
@@ -92,6 +93,19 @@ func TestTabsScriptsMocked(t *testing.T) {
 			}
 		})
 	}
+	t.Run("1.3.1", func(t *testing.T) {
+		t.Parallel()
+		m := windowsModel()
+		m.Version = "1.3.1"
+		var doc struct {
+			Error struct{ Step, Message, Version string }
+		}
+		got := runMocked(t, "snapshot", "{}", m, map[string]any{"noTty": true})
+		if err := json.Unmarshal(got.Result, &doc); err != nil || doc.Error.Step != "tty" ||
+			doc.Error.Version != "1.3.1" || doc.Error.Message == "" {
+			t.Errorf("printed %s, want the error of the tty step, of Ghostty 1.3.1", got.Result)
+		}
+	})
 }
 
 // mockedSnapshot is a case of TestTabsScriptsMocked: a model, the mock's settings, and the
@@ -124,6 +138,14 @@ func mockedSnapshots() []mockedSnapshot {
 		{"changed twice", windowsModel(), map[string]any{"then": [][]mac.Window{moved, grown}},
 			`{"error": {"step": "changed", "number": 0,
 			  "message": "the windows changed while cld read them", "version": "1.4.0"}}`},
+		{"no version", windowsModel(), map[string]any{"versionFails": true},
+			strings.Replace(windowsSnapshot, `"version": "1.4.0"`, `"version": ""`, 1)},
+		{"denied", windowsModel(), map[string]any{"fail": "denied"},
+			`{"error": {"step": "count", "number": -1743,
+			  "message": "Not authorized to send Apple events to Ghostty.", "version": ""}}`},
+		{"off", windowsModel(), map[string]any{"fail": "off"},
+			`{"error": {"step": "probe", "number": -1743, "message":
+			  "AppleScript is disabled by the macos-applescript configuration.", "version": ""}}`},
 		{"several", several, nil, `{"running": true, "apps": [` + ghosttyAppJSON + `, ` +
 			ghosttyAppJSON + `], "version": "1.4.0", "terminals": [], "windows": []}`},
 		{"not running", stopped, nil, `{"running": false, "apps": []}`},
