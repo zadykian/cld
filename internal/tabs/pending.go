@@ -28,13 +28,42 @@ func vanish(r *Record, o *Observation) {
 }
 
 // closedIn is what closed in window w, gone telling a closed pane: w whole where its panes are
-// all gone, with copies of the panes as the record last saw them.
+// all gone. Else each tab whose panes are all gone is a loss, with its place. The losses hold
+// copies of the panes as the record last saw them.
 func closedIn(w Window, gone func(id string) bool, panes map[string]*Pane) []*Loss {
 	ids := windowLeaves(w)
 	if len(ids) == 0 || slices.ContainsFunc(ids, func(id string) bool { return !gone(id) }) {
-		return nil
+		return closedTabs(w, gone, panes)
 	}
 	return []*Loss{{Cause: CauseClosed, Windows: []Window{copyWindow(w, panes)}}}
+}
+
+// closedTabs is what closed in the tabs of window w, whose panes are not all gone.
+func closedTabs(w Window, gone func(id string) bool, panes map[string]*Pane) []*Loss {
+	var losses []*Loss
+	for i, tab := range w.Tabs {
+		if allGone(tab.Tree, gone) {
+			losses = append(losses, &Loss{Cause: CauseTab, Anchor: anchorFor(w, i, gone),
+				Windows: []Window{{Tabs: []Tab{copyTab(tab, panes)}}}})
+		}
+	}
+	return losses
+}
+
+// anchorFor is where tab i of window w goes back: its place from 1, beside the first open pane of
+// the nearest tab before it, else after it. Nil means no tab of w has an open pane.
+func anchorFor(w Window, i int, gone func(id string) bool) *Anchor {
+	for j := i - 1; j >= 0; j-- {
+		if pane := firstOpen(w.Tabs[j].Tree, gone); pane != "" {
+			return &Anchor{Pane: pane, Index: i + 1}
+		}
+	}
+	for j := i + 1; j < len(w.Tabs); j++ {
+		if pane := firstOpen(w.Tabs[j].Tree, gone); pane != "" {
+			return &Anchor{Pane: pane, Index: i + 1}
+		}
+	}
+	return nil
 }
 
 // copyWindow is a copy of window w whose leaves carry their panes in panes, nil stripping them.

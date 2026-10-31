@@ -73,3 +73,19 @@ func clonePane(p *Pane) *Pane {
 	}
 	return &c
 }
+
+// allGone reports whether tree n has panes, and gone holds for each.
+func allGone(n *Node, gone func(id string) bool) bool {
+	ids := Leaves(n)
+	return len(ids) > 0 && !slices.ContainsFunc(ids, func(id string) bool { return !gone(id) })
+}
+
+// firstOpen is tree n's first pane that gone does not hold for, "" for none.
+func firstOpen(n *Node, gone func(id string) bool) string {
+	for _, id := range Leaves(n) {
+		if !gone(id) {
+			return id
+		}
+	}
+	return ""
+}
