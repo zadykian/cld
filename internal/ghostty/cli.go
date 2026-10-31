@@ -3,6 +3,7 @@ package ghostty
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,10 +16,11 @@ import (
 )
 
 // The bounds of the programs cli.go runs: ghostty +show-config, then each of ssh -G and ghostty
-// +ssh-cache.
+// +ssh-cache, then open.
 const (
 	settingsTimeout = 10 * time.Second
 	cacheTimeout    = 5 * time.Second
+	openTimeout     = 10 * time.Second
 )
 
 // Settings are what +show-config says of the settings restore tabs's notes name. It prints only
@@ -127,4 +129,25 @@ func cacheKey(ctx context.Context, host string) (string, bool) {
 		return user + "@[" + hostname + "]:" + port, true
 	}
 	return user + "@" + hostname + ":" + port, true
+}
+
+// Open starts Ghostty by its bundle identifier, the one the scripts address it by, or brings
+// the Ghostty that runs to the front.
+func Open(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, openTimeout)
+	defer cancel()
+	cmd, err := tool.CommandContext(ctx, "open", "-b", Bundle)
+	if err != nil {
+		return errors.New("open is not installed")
+	}
+	var stderr bytes.Buffer
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, &stderr
+	if err := cmd.Run(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("open -b %s did not answer in %d s", Bundle,
+				int(openTimeout.Seconds()))
+		}
+		return fmt.Errorf("open -b %s: %s", Bundle, tool.Said(stderr.String(), err.Error()))
+	}
+	return nil
 }

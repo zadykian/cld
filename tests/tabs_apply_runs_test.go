@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -8,7 +10,7 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// A restore's runs around apply: an apply that gives no result.
+// A restore's runs around apply: an apply that gives no result, and a Ghostty the restore opens.
 
 // An apply that gives no result fails the restore with status 1, and marks no loss restored and
 // no line typed. So does one whose result lacks builds of the plan. Where Ghostty opened panes by
@@ -52,4 +54,53 @@ func TestTabsApplyStopped(t *testing.T) {
 			t.Errorf("last %+v, want it, with nothing typed", last)
 		}
 	})
+}
+
+// Where Ghostty does not run, a restore opens it by its bundle id. It reads Ghostty until two
+// snapshots in a row show the same terminals in the same tabs and windows, a third where a window
+// opens after the first. Then it joins the panes Ghostty brought back, and reopens the others.
+func TestTabsApplyOpens(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		late  bool // a window opens once the first snapshot after open has read Ghostty
+		reads int  // the snapshots after open
+	}{{"at once", false, 2}, {"a window late", true, 3}} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			s.WriteProbeFile(mac.SSHCache, "me@ws\n")
+			_, ended := stoppedMac(t, s)
+			before := snapshots(t, s)
+			if test.late {
+				s.WriteProbeFile(mac.DelayFile, "1\n")
+			}
+			wait := startCldAsync(t, s, s.Work, tabsEnv, "restore", "tabs")
+			if test.late {
+				sandbox.WaitFor(t, 10*time.Second, "the first read", func() bool {
+					return !exists(filepath.Join(s.ProbeDir, mac.DelayFile))
+				})
+				m := loadModel(t, s)
+				m.Windows = append(m.Windows, windowOf(tabOf(addPane(m, "~"))))
+				saveModel(t, s, m)
+			}
+			checkExit(t, "restore tabs", wait(), 0, openedReport(ended), noWatcher)
+			checkContent(t, filepath.Join(s.ProbeDir, mac.OpenLog), "-b com.mitchellh.ghostty\n")
+			checkContent(t, filepath.Join(s.ProbeDir, mac.NextFile), "")
+			var scripts []string
+			for _, call := range s.OsascriptCalls()[before:] {
+				scripts = append(scripts, call.Script)
+			}
+			want := append(slices.Repeat([]string{"snapshot"}, 1+test.reads), "apply")
+			if !slices.Equal(scripts, want) {
+				t.Errorf("osascript ran %q, want %q", scripts, want)
+			}
+		})
+	}
+}
+
+// openedReport is what a restore reports of stoppedMac's Ghostty, whose run ended at ended.
+func openedReport(ended time.Time) string {
+	return "Typed into the pane in /Users/me: session 'app' on ws\n" +
+		"Reopened a window of 1 tab, lost as Ghostty quit at " + clockAt(ended) + "\n"
 }
