@@ -30,27 +30,27 @@ session that cannot come back is a warning, and the status 1. cld setup
 restore has your systemd run cld restore sessions as it starts; cld join
 attaches to a session.`
 
-// newRestore is cld restore, whose command is restore sessions (decision 60). It runs nothing
-// itself, as newSetup does: restoreCommand has made sure that its command, or -h or --help,
-// follows it.
+// newRestore is cld restore, whose commands are restore sessions (decision 60) and tabs, hidden
+// (decision 59.1). It runs nothing itself, as newSetup does: restoreCommand has made sure that one
+// of its commands, or -h or --help, follows it.
 func newRestore(typed string) *cobra.Command {
 	restore := &cobra.Command{
 		Use:   "restore",
 		Short: "bring back the sessions that ran when the machine stopped",
 	}
-	restore.AddCommand(restoreSessions(typed + " sessions"))
+	restore.AddCommand(restoreSessions(typed+" sessions"), restoreTabs(typed+" tabs"))
 	return restore
 }
 
 // restoreCommand checks the argument after restore before cobra sees it, as setupCommand checks
-// setup's (decision 60.1): sessions, or -h or --help. cobra would run sessions for restore
-// --help=false sessions.
+// setup's (decisions 59.1 and 60.1): sessions, tabs, or -h or --help. cobra would run tabs for
+// restore --help=false tabs.
 func restoreCommand(args []string) error {
 	const hint = "cld restore sessions (see cld help)"
 	switch {
 	case len(args) == 0 || args[0] == "":
 		return fail.Usage("restore: missing command: " + hint)
-	case slices.Contains([]string{"sessions", "-h", "--help"}, args[0]):
+	case slices.Contains([]string{"sessions", "tabs", "-h", "--help"}, args[0]):
 		return nil
 	case strings.HasPrefix(args[0], "-"):
 		return cmdline.Unexpected("restore", args[0])

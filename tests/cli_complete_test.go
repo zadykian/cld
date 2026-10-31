@@ -142,6 +142,7 @@ var completeCases = []struct {
 	{[]string{"__complete", "setup", "restore", ""}, noFileDirective},
 	{[]string{"__complete", "restore", ""}, offeredRestoreSessions + noFileDirective},
 	{[]string{"__complete", "restore", "s"}, offeredRestoreSessions + noFileDirective},
+	{[]string{"__complete", "restore", "t"}, noFileDirective},
 	{[]string{"__complete", "restore", "x"}, noFileDirective},
 	{[]string{"__complete", "restore", "sessions", ""}, noFileDirective},
 	{[]string{"__complete", "restore", "sessions", "-"},

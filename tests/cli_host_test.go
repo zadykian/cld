@@ -216,7 +216,7 @@ func TestCompleteHost(t *testing.T) {
 		check(append(slices.Clone(command), "--ho"), offeredHost+noFileDirective)
 		check(append(slices.Clone(command), "--host", ""), noFileDirective)
 	}
-	for _, command := range [][]string{{"version"}, {"completion"}, {"help"},
+	for _, command := range [][]string{{"version"}, {"completion"}, {"help"}, {"restore", "tabs"},
 		{"setup", "completion"}} {
 		check(append(slices.Clone(command), "--ho"), noFileDirective)
 	}
