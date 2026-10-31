@@ -54,11 +54,14 @@ func newRecord() *Record {
 	return r
 }
 
-// normalize gives r an empty map for a nil one, so that its bytes do not depend on what made it.
-// It drops the nil panes that a record edited by hand may hold.
+// normalize gives r an empty map or slice for a nil one, so that its bytes do not depend on what
+// made it. It drops the nil panes that a record edited by hand may hold.
 func normalize(r *Record) {
 	if r.Panes == nil {
 		r.Panes = map[string]*Pane{}
+	}
+	if r.Windows == nil {
+		r.Windows = []Window{}
 	}
 	for id, p := range r.Panes {
 		if p == nil {
