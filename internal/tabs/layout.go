@@ -43,23 +43,38 @@ type search struct {
 // infer is the split tree of a tab of the panes ids, left or top first, from their sizes in sizes
 // (decision 59.8). False means a pane lacks a size, or no tree fits them.
 func infer(ids []string, sizes map[string]Size) (*Node, bool) {
-	best, ok := bestParse(ids, sizes)
+	best, _, ok := bestParse(ids, sizes)
 	return best.tree, ok
 }
 
-// bestParse is the parse of the panes ids nearest wantAspect. False means a pane lacks a size, or
-// no tree fits them.
-func bestParse(ids []string, sizes map[string]Size) (parse, bool) {
+// revise is the tree the sizes give a tab of the panes ids whose recorded tree is base. Nil means
+// base stays: the sizes fit no tree, or they fit base, at the size of the tree they give
+// (decision 59.8).
+func revise(base *Node, ids []string, sizes map[string]Size) *Node {
+	best, cell, ok := bestParse(ids, sizes)
+	if !ok {
+		return nil
+	}
+	if got, ok := fit(base, sizes, cell); ok && same(got, best, cell) {
+		return nil
+	}
+	return best.tree
+}
+
+// bestParse is the parse of the panes ids nearest wantAspect, and their largest cell. False means
+// a pane lacks a size, or no tree fits them.
+func bestParse(ids []string, sizes map[string]Size) (parse, [2]float64, bool) {
 	s := &search{ids: ids, regions: map[[2]int]*region{}}
 	for _, id := range ids {
 		size, ok := sizes[id]
 		if !ok || !valid(size) {
-			return parse{}, false
+			return parse{}, [2]float64{}, false
 		}
 		s.sizes = append(s.sizes, size)
 	}
 	all := s.region(0, len(ids)-1)
-	return nearest(all.parses)
+	best, ok := nearest(all.parses)
+	return best, all.cell, ok
 }
 
 // region is the region of leaves a to b. Its parses are a leaf, or its splits into two runs: side
@@ -124,6 +139,23 @@ func join(direction string, p, q parse, cell [2]float64) (parse, bool) {
 		joint.size[j], joint.n[j] = deeper(p.size[j], p.n[j], q.size[j], q.n[j])
 	}
 	return joint, true
+}
+
+// fit is tree n laid out on sizes, false where a pane lacks a size or two halves do not meet.
+func fit(n *Node, sizes map[string]Size, cell [2]float64) (parse, bool) {
+	if isLeaf(n) {
+		size, ok := sizes[n.Pane]
+		return leafParse(n.Pane, size), ok && valid(size)
+	}
+	p, ok := fit(n.First, sizes, cell)
+	if !ok {
+		return parse{}, false
+	}
+	q, ok := fit(n.Second, sizes, cell)
+	if !ok {
+		return parse{}, false
+	}
+	return join(n.Split, p, q, cell)
 }
 
 // near reports whether sizes x and y, spanning nx and ny panes, are one length: within a cell,

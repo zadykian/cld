@@ -172,14 +172,18 @@ func tabFor(ids []string, selected bool, focused string, sizes map[string]Size,
 }
 
 // treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old or undone whose
-// panes, less any that went, are ids gives its tree, but for a row. Else the sizes give the tree,
-// failing that the panes make a row: Ghostty's AppleScript gives no split's direction (decision
-// 59.8).
+// panes, less any that went, are ids gives its tree, unless the sizes revise it. A row, or no such
+// tab, takes the sizes' tree, failing that a row: Ghostty's AppleScript gives no split's direction
+// (decision 59.8).
 func treeFor(ids []string, sizes map[string]Size, old, undone []Window) (*Node, string) {
 	if len(ids) == 1 {
 		return &Node{Pane: ids[0]}, ShapeMade
 	}
-	if base, shape := oldTree(ids, old, undone); base != nil && shape != ShapeFlat {
+	base, shape := oldTree(ids, old, undone)
+	if base != nil && shape != ShapeFlat {
+		if tree := revise(base, ids, sizes); tree != nil {
+			return tree, ShapeInferred
+		}
 		return base, shape
 	}
 	if tree, ok := infer(ids, sizes); ok {
