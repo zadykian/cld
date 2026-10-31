@@ -132,3 +132,29 @@ func loginOf(m *mac.Model, id string) int {
 	}
 	return 0
 }
+
+// relaunch is m's Ghostty started again, as pid at start, once m's has quit. It brings the panes
+// back: each is a new login at its prompt, with the terminal's id, title and directory. The
+// windows of m whose panes are all back come back too.
+//
+//nolint:unparam // pid is always 4242 until the last-typed tests
+func relaunch(m *mac.Model, pid int, start time.Time, back ...string) *mac.Model {
+	n := ghosttyAt(pid, start)
+	n.Serial = m.Serial
+	for _, id := range back {
+		made := n.AddTerminal(m.Terminals[id].Cwd, "")
+		n.Terminals[id] = n.Terminals[made]
+		n.Terminals[id].Name = m.Terminals[id].Name
+		delete(n.Terminals, made)
+	}
+	for _, w := range m.Windows {
+		var leaves []string
+		for _, tab := range w.Tabs {
+			leaves = append(leaves, tab.Tree.Leaves()...)
+		}
+		if !slices.ContainsFunc(leaves, func(id string) bool { return !slices.Contains(back, id) }) {
+			n.Windows = append(n.Windows, w)
+		}
+	}
+	return n
+}
