@@ -96,7 +96,7 @@ func observe(ctx context.Context, dir string, opts Options, report *Report) (*ob
 		return nil, failure(err)
 	}
 	if !snap.Running && !opts.DryRun {
-		if snap, err = opened(ctx); err != nil {
+		if snap, err = opened(ctx, report); err != nil {
 			return nil, err
 		}
 	}

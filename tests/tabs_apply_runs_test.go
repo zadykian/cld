@@ -106,7 +106,9 @@ func openedReport(ended time.Time) string {
 		"Reopened a window of 1 tab, lost as Ghostty quit at " + clockAt(ended) + "\n"
 }
 
-// Windows that change as a snapshot reads them are read again while Ghostty opens.
+// Where Ghostty opens no window, or no terminal of its gets its tty, in 10 s, the restore gives
+// up waiting. It fails where Ghostty does not run by then, and goes on with a note where it does.
+// Windows that change as a snapshot reads them are read again. Without open, the restore fails.
 func TestTabsApplyOpenWaits(t *testing.T) {
 	t.Parallel()
 	t.Run("windows changing", func(t *testing.T) {
@@ -122,5 +124,33 @@ func TestTabsApplyOpenWaits(t *testing.T) {
 			t.Fatal(err)
 		}
 		checkExit(t, "restore tabs", wait(), 0, openedReport(ended), noWatcher)
+	})
+	t.Run("no open", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		saveModel(t, s, &mac.Model{})
+		env := map[string]string{"TZ": "UTC", "PATH": s.Tools("osascript", "ps", "ssh", "ghostty")}
+		checkFailed(t, s.RunCld(env, "restore", "tabs"), 1,
+			"cld: cannot open Ghostty: open is not installed\n")
+	})
+	t.Run("not started", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		saveModel(t, s, &mac.Model{})
+		checkFailed(t, s.RunCld(tabsEnv, "restore", "tabs"), 1,
+			"cld: Ghostty did not start in 10 s\n")
+		checkContent(t, filepath.Join(s.ProbeDir, mac.OpenLog), "-b com.mitchellh.ghostty\n")
+	})
+	t.Run("still opening", func(t *testing.T) {
+		t.Parallel()
+		s := sandbox.New(t)
+		saveModel(t, s, &mac.Model{})
+		m := ghosttyApp(t, s)
+		a := addPane(m, "~")
+		m.Terminals[a].TTY = ""
+		m.Windows = []mac.Window{windowOf(tabOf(a))}
+		saveNext(t, s, m)
+		checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0, "",
+			"cld: Ghostty was still opening windows\n"+noWatcher)
 	})
 }
