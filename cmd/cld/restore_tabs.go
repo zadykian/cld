@@ -19,6 +19,7 @@ import (
 type tabsCommand struct {
 	typed                   string
 	watch, watching, dryRun bool
+	older, all, closed      bool
 }
 
 // restoreTabs is cld restore tabs, which keeps a record of Ghostty's tabs on a Mac (decision 59).
@@ -33,7 +34,13 @@ func restoreTabs(typed string) *cobra.Command {
 	}
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
 	flags := command.Flags()
-	flags.BoolVar(&t.dryRun, "dry-run", false, "print what the record holds, and do nothing")
+	flags.BoolVar(&t.all, "all", false, "reopen every window lost in this run of Ghostty and the\n"+
+		"one before")
+	flags.BoolVar(&t.closed, "closed", false, "also reopen the tabs and splits closed one at a time")
+	flags.BoolVar(&t.dryRun, "dry-run", false, "print what would reopen and what would be typed, "+
+		"and do\nnothing")
+	flags.BoolVar(&t.older, "older", false, "reopen the windows lost before those reopened last, "+
+		"one\nburst at a time")
 	flags.BoolVar(&t.watch, "watch", false, "keep the record: start, unless one runs, a process "+
 		"that\nreads Ghostty's tabs every 5 s and ends as Ghostty quits")
 	flags.BoolVar(&t.watching, "watching", false, "")
@@ -57,22 +64,38 @@ func (t *tabsCommand) run(*cobra.Command, []string) error {
 		_, err := tabs.Start()
 		return err
 	}
-	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun})
+	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun,
+		Older: t.older, All: t.all, Closed: t.closed})
 	if err != nil {
 		return err
 	}
 	return printReport(report)
 }
 
-// together refuses the options that exclude each other, and a run with neither --watch nor
-// --dry-run, which reopens nothing yet.
+// together refuses the options that exclude each other: --watching takes none, --watch only
+// starts the watcher, and --all reopens what --older would. It refuses a run with neither --watch
+// nor --dry-run, which restores nothing yet.
 func (t *tabsCommand) together() error {
+	restoring := []struct {
+		set  bool
+		name string
+	}{{t.dryRun, "--dry-run"}, {t.older, "--older"}, {t.all, "--all"}, {t.closed, "--closed"}}
+	for _, option := range restoring {
+		switch {
+		case !option.set:
+		case t.watching:
+			return fail.Usage(t.typed + ": --watching takes no other option (see cld help)")
+		case t.watch:
+			return fail.Usage(t.typed + ": --watch and " + option.name + " exclude each other: " +
+				"--watch only starts the record's watcher (see cld help)")
+		}
+	}
 	switch {
-	case t.watching && (t.watch || t.dryRun):
+	case t.watching && t.watch:
 		return fail.Usage(t.typed + ": --watching takes no other option (see cld help)")
-	case t.watch && t.dryRun:
-		return fail.Usage(t.typed + ": --watch and --dry-run exclude each other: --watch only " +
-			"starts the record's watcher (see cld help)")
+	case t.older && t.all:
+		return fail.Usage(t.typed + ": --older and --all exclude each other: --all reopens every " +
+			"burst (see cld help)")
 	case !t.watch && !t.watching && !t.dryRun:
 		return fail.Usage(t.typed + ": give --watch or --dry-run (see cld help)")
 	}

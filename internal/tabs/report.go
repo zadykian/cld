@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/zadykian/cld/internal/ghostty"
 )
 
 // Report is what a restore did or would do, for cmd to print: Lines on stdout, then Warnings and
@@ -65,21 +67,25 @@ func (c clock) dir(path string) string {
 	return path
 }
 
-// joinAgain is a line per pane a restore would join again: a shell at its prompt, with a binding.
-// A quit cut that binding, or a restore typed it, and it did not hold.
-func (c clock) joinAgain(r *Record) []string {
-	var lines []string
-	for _, w := range r.Windows {
-		for _, id := range windowLeaves(w) {
-			p := r.Panes[id]
-			if p == nil || p.Kind != KindLocal || p.Last == nil {
-				continue
-			}
-			b := Binding{Host: p.Last.Host, Session: p.Last.Session}
-			lines = append(lines, fmt.Sprintf("  in %s: %s, %s", c.dir(p.Cwd), b, c.cut(p.Last)))
-		}
+// paneCwd is the directory of record r's pane id, "" where unknown.
+func paneCwd(r *Record, id string) string {
+	if p := r.Panes[id]; p != nil {
+		return p.Cwd
 	}
-	return lines
+	return ""
+}
+
+// when is when loss l was lost: closed, or as Ghostty quit.
+func (c clock) when(l *Loss) string {
+	if l.Cause == CauseQuit {
+		return "lost as Ghostty quit at " + c.at(l.At)
+	}
+	return "closed at " + c.at(l.At)
+}
+
+// noun names a loss of one tab or one split, and is empty for windows.
+func noun(l *Loss) string {
+	return map[string]string{CauseTab: "a tab", CausePane: "a split"}[l.Cause]
 }
 
 // size is what loss l holds: a tab, a split, or windows with their tabs and panes.
@@ -89,9 +95,7 @@ func size(l *Loss) string {
 		tabs += len(w.Tabs)
 		panes += len(windowLeaves(w))
 	}
-	switch l.Cause {
-	case CauseTab, CausePane:
-		what := map[string]string{CauseTab: "a tab", CausePane: "a split"}[l.Cause]
+	if what := noun(l); what != "" {
 		if panes > 1 {
 			what += " of " + count(panes, "pane")
 		}
@@ -114,4 +118,15 @@ func count(n int, thing string) string {
 		return "1 " + thing
 	}
 	return fmt.Sprintf("%d %ss", n, thing)
+}
+
+// buildLeaves are the leaves of apply.js's tree n, left or top first.
+func buildLeaves(n *ghostty.Node) []*ghostty.Leaf {
+	switch {
+	case n == nil:
+		return nil
+	case n.Leaf != nil:
+		return []*ghostty.Leaf{n.Leaf}
+	}
+	return append(buildLeaves(n.First), buildLeaves(n.Second)...)
 }

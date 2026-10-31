@@ -4,30 +4,43 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// dryRun reports what the record in dir holds after a restore's merge, seen. Ghostty and the
-// watcher come first, then the panes a restore would join again, the losses, and those that wait
-// for Ghostty's undo. Notes on Ghostty's config end it.
-func dryRun(ctx context.Context, dir string, seen *observed, report *Report) {
+// dryRun reports what a restore with opts would do of plan p, made against the record in dir as
+// seen, and what it would leave (decision 59.6). Ghostty and the watcher come first. Then come the
+// panes to type into, what would reopen, what waits for Ghostty's undo, and what is left. Notes on
+// the plan and on Ghostty's config end it.
+func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []*Loss,
+	opts Options, report *Report,
+) {
 	c := clock{now: time.Now()}
 	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
 	r := seen.record
 	report.Lines = append(report.Lines, c.ghostty(seen))
 	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)
-	report.section("Panes to join again:", c.joinAgain(r))
-	report.section("Losses:", c.losses(r.Losses))
+	c.wouldType(r, p, report)
+	c.wouldReopen(p, report)
+	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
+	var lines []string
+	for _, l := range left {
+		lines = append(lines, "  "+size(l)+", "+c.when(l)+": "+reopenWith(r, l, opts, c.now))
+	}
+	report.section("Left:", lines)
 	for _, l := range r.Losses {
 		if l.Cause == CauseQuit && len(l.Windows) == 0 {
 			report.Lines = append(report.Lines,
 				"Ghostty brought back every window as it quit at "+c.at(l.At))
 		}
 	}
-	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
-	report.section("Notes:", settingsNotes(ctx, seen.app))
+	var notes []string
+	for _, note := range p.notes() {
+		notes = append(notes, "  "+note)
+	}
+	report.section("Notes:", append(notes, settingsNotes(ctx, seen.app)...))
 }
 
 // ghostty is the report's first line: Ghostty's version, pid and start, or that none runs.
@@ -61,6 +74,20 @@ func (c clock) watcher(s Status) []string {
 	return []string{line, "The watcher's last line: " + s.LastLine}
 }
 
+// wouldType adds a line per pane Ghostty kept that plan p joins again: its directory, what cut its
+// binding, and the line typed.
+func (c clock) wouldType(r *Record, p *Planned, report *Report) {
+	var lines []string
+	for i, j := range p.typed {
+		where := "in " + c.dir(paneCwd(r, j.pane))
+		if p := r.Panes[j.pane]; p != nil && p.Last != nil {
+			where += ", " + c.cut(p.Last)
+		}
+		lines = append(lines, "  "+where+": "+p.script.Typed[i].Line)
+	}
+	report.section("Would type into "+count(len(lines), "pane")+":", lines)
+}
+
 // cut is what ended last's binding: a typed line that left the pane at its prompt, or a quit.
 func (c clock) cut(last *Last) string {
 	switch {
@@ -72,6 +99,43 @@ func (c clock) cut(last *Last) string {
 	return "as it closed at " + c.at(last.At)
 }
 
+// wouldReopen adds a section per loss that plan p rebuilds: the time of its loss, then a line per
+// window. Each pane shows what its line joins, or a shell in its directory.
+func (c clock) wouldReopen(p *Planned, report *Report) {
+	for i := 0; i < len(p.builds); {
+		l := p.builds[i].loss
+		var lines []string
+		n := i
+		for ; n < len(p.builds) && p.builds[n].loss == l; n++ {
+			lines = append(lines, "  "+c.panes(p.script.Builds[n], p.builds[n]))
+		}
+		what := count(n-i, "window")
+		if a := noun(l); a != "" {
+			what = a + " as a window"
+		}
+		report.section("Would reopen "+what+", "+c.when(l)+":", lines)
+		i = n
+	}
+}
+
+// panes is what build b of info's loss makes: its tabs, each its panes split by |. A pane names
+// the session or host its line joins, or a shell in its directory.
+func (c clock) panes(b ghostty.Build, info building) string {
+	var tabs []string
+	for _, tab := range b.Tabs {
+		var panes []string
+		for _, leaf := range buildLeaves(tab.Tree) {
+			if bind, ok := info.bindings[leaf.Key]; ok {
+				panes = append(panes, bind.String())
+			} else {
+				panes = append(panes, "a shell in "+c.dir(leaf.Cwd))
+			}
+		}
+		tabs = append(tabs, strings.Join(panes, " | "))
+	}
+	return count(len(tabs), "tab") + ": " + strings.Join(tabs, ", ")
+}
+
 // losses is a line per loss not restored, with its size and time, but for a quit that lost
 // nothing.
 func (c clock) losses(list []*Loss) []string {
@@ -80,11 +144,7 @@ func (c clock) losses(list []*Loss) []string {
 		if l.Restored != nil || len(l.Windows) == 0 {
 			continue
 		}
-		when := "closed at " + c.at(l.At)
-		if l.Cause == CauseQuit {
-			when = "lost as Ghostty quit at " + c.at(l.At)
-		}
-		lines = append(lines, "  "+size(l)+", "+when)
+		lines = append(lines, "  "+size(l)+", "+c.when(l))
 	}
 	return lines
 }
@@ -116,7 +176,7 @@ func settingsNotes(ctx context.Context, app ghostty.App) []string {
 	}
 	if !s.SSHTerminfo {
 		notes = append(notes, "  shell-integration-features lacks ssh-terminfo: cld types"+
-			" TERM=xterm-256color for hosts Ghostty has no terminfo cached for")
+			" TERM="+fallbackTerm+" for hosts Ghostty has no terminfo cached for")
 	}
 	if s.HiddenTitlebar {
 		notes = append(notes, "  macos-titlebar-style is hidden: rebuilt tabs open as windows")

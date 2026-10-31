@@ -38,6 +38,8 @@ func TestRequiresTools(t *testing.T) {
 		{[]string{"list"}, []string{"claude"}, "cld: tmux is not installed\n"},
 		{[]string{"restore", "tabs", "--dry-run"}, nil,
 			"cld: restore tabs runs on a Mac: osascript is not installed\n"},
+		{[]string{"restore", "tabs", "--dry-run", "--older"}, nil,
+			"cld: restore tabs runs on a Mac: osascript is not installed\n"},
 	} {
 		t.Run(strings.Join(test.args, " ")+" "+strings.Join(test.present, ","), func(t *testing.T) {
 			t.Parallel()

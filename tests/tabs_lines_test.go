@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zadykian/cld/internal/tabs"
+	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
@@ -23,6 +25,72 @@ const (
 		`-s x; cd; exec $SHELL -l"'`
 	uncached = "TERM=xterm-256color command "
 )
+
+// typedLines are a pane's last, by host and session, and the line a restore types for it. Ghostty
+// has the terminfo of ws and v6 cached, and not ws2's or ws3's. ssh -G gives ws3 port 2222, and v6
+// an IPv6 address on port 2200.
+var typedLines = []struct{ host, session, line string }{
+	{"ws", "app-3", splitLine},
+	{"ws", "x", wholeLine},
+	{"ws", "", "ssh ws"},
+	{"ws2", "app-3", uncached + strings.Replace(splitLine, " ws ", " ws2 ", 1)},
+	{"ws2", "", uncached + "ssh ws2"},
+	{"ws3", "", uncached + "ssh ws3"},
+	{"v6", "", "ssh v6"},
+}
+
+// A restore would type into each pane at its prompt with a last the line that joins it again. That
+// is ssh -t with a login shell that joins the session, from / where -s alone names it, then a
+// shell; or ssh alone. TERM=xterm-256color command starts it where Ghostty has no terminfo cached
+// for the host, as ssh -G's user@hostname names it; a port but 22 joins the key. Each host is
+// asked once. Here the dry-run lists the lines.
+func TestTabsLines(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	s.WriteProbeFile(mac.SSHCache, "me@ws\nme@[fe80::1]:2200\n")
+	s.WriteProbeFile(mac.SSHHosts, "ws3 ws3.lan 2222\nv6 fe80::1 2200\n")
+	m := ghosttyApp(t, s)
+	now := time.Now().UTC().Truncate(time.Second)
+	panes, all := map[string]*tabs.Pane{}, []mac.Tab{}
+	for _, test := range typedLines {
+		id := addPane(m, "~")
+		panes[id] = &tabs.Pane{Kind: "local", Since: now, Last: &tabs.Last{Host: test.host,
+			Session: test.session, Cut: "quit", Run: "1@x", At: now}}
+		all = append(all, tabOf(id))
+	}
+	m.Windows = []mac.Window{windowOf(all...)}
+	saveModel(t, s, m)
+	writeRecord(t, s, recordOf(m, panes))
+	result := dryRun(t, s)
+	for _, test := range typedLines {
+		if want := ": " + test.line + "\n"; !strings.Contains(result.Stdout, want) {
+			t.Errorf("%s on %s: dry-run printed\n%s\nwant the line %q", test.session, test.host,
+				result.Stdout, test.line)
+		}
+	}
+	for _, host := range []string{"ws2", "ws3"} {
+		if want := "  " + uncachedNote(host) + "\n"; !strings.Contains(result.Stdout, want) {
+			t.Errorf("dry-run printed\n%s\nwant the note %q", result.Stdout, want)
+		}
+	}
+	checkContent(t, filepath.Join(s.ProbeDir, mac.GhosttyLog), "+ssh-cache --host=me@ws\n"+
+		"+ssh-cache --host=me@ws2\n+ssh-cache --host=me@ws3.lan:2222\n"+
+		"+ssh-cache --host=me@[fe80::1]:2200\n+show-config\n")
+	var asked []string
+	for _, call := range s.SSHCalls() {
+		asked = append(asked, strings.Join(call.Argv, " "))
+	}
+	if want := []string{"-G ws", "-G ws2", "-G ws3", "-G v6"}; !slices.Equal(asked, want) {
+		t.Errorf("ssh ran with %q, want %q", asked, want)
+	}
+}
+
+// uncachedNote is the dry-run's note on host, whose terminfo Ghostty has not cached.
+func uncachedNote(host string) string {
+	return host + " has no Ghostty terminfo cached: cld types TERM=xterm-256color command ssh;" +
+		" with shell-integration-features = ssh-terminfo, run ssh " + host +
+		" once and later restores keep Ghostty's TERM"
+}
 
 // lineCase is a typed line run where the host has sessions: the session it joins, by its NAME,
 // or what cld says as it refuses.

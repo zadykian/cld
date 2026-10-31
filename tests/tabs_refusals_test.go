@@ -122,8 +122,9 @@ func checkMovedAside(t *testing.T, s *sandbox.Sandbox, result sandbox.Result, re
 	}
 }
 
-// --watch and --dry-run exclude each other, and --watching, which --watch starts, takes no other
-// option. Run by hand, --watching refuses to run.
+// --watch, which only starts the watcher, excludes the restore's options, and --older excludes
+// --all. --watching, which --watch starts, takes no other option. Run by hand, --watching refuses
+// to run.
 func TestTabsRefusesOptions(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -133,6 +134,16 @@ func TestTabsRefusesOptions(t *testing.T) {
 	}{
 		{[]string{"--watch", "--dry-run"}, 2, "cld: restore tabs: --watch and --dry-run exclude " +
 			"each other: --watch only starts the record's watcher (see cld help)\n"},
+		{[]string{"--older", "--watch"}, 2, "cld: restore tabs: --watch and --older exclude " +
+			"each other: --watch only starts the record's watcher (see cld help)\n"},
+		{[]string{"--watch", "--all"}, 2, "cld: restore tabs: --watch and --all exclude " +
+			"each other: --watch only starts the record's watcher (see cld help)\n"},
+		{[]string{"--watch", "--closed"}, 2, "cld: restore tabs: --watch and --closed exclude " +
+			"each other: --watch only starts the record's watcher (see cld help)\n"},
+		{[]string{"--all", "--older"}, 2, "cld: restore tabs: --older and --all exclude each " +
+			"other: --all reopens every burst (see cld help)\n"},
+		{[]string{"--watching", "--older"}, 2,
+			"cld: restore tabs: --watching takes no other option (see cld help)\n"},
 		{[]string{"--watching", "--watch"}, 2,
 			"cld: restore tabs: --watching takes no other option (see cld help)\n"},
 		{[]string{"--watching", "--dry-run"}, 2,
