@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/zadykian/cld/internal/fail"
@@ -77,20 +78,32 @@ func newRecord() *Record {
 	return r
 }
 
-// normalize gives r an empty map or slice for a nil one, so that its bytes do not depend on what
-// made it. It drops the nil panes that a record edited by hand may hold.
+// normalize gives r an empty list or map for each nil one, so that its bytes do not depend on
+// what made it. It drops the nil panes and losses that a record edited by hand may hold.
 func normalize(r *Record) {
 	if r.Panes == nil {
 		r.Panes = map[string]*Pane{}
-	}
-	if r.Windows == nil {
-		r.Windows = []Window{}
 	}
 	for id, p := range r.Panes {
 		if p == nil {
 			delete(r.Panes, id)
 		}
 	}
+	r.Windows = nonNil(r.Windows)
+	isNil := func(l *Loss) bool { return l == nil }
+	r.Pending = nonNil(slices.DeleteFunc(r.Pending, isNil))
+	r.Losses = nonNil(slices.DeleteFunc(r.Losses, isNil))
+	for _, l := range slices.Concat(r.Pending, r.Losses) {
+		l.Windows = nonNil(l.Windows)
+	}
+}
+
+// nonNil is list, or an empty list for nil, which JSON writes as [] rather than null.
+func nonNil[T any](list []T) []T {
+	if list == nil {
+		return []T{}
+	}
+	return list
 }
 
 // save writes r to the record in dir, by a temporary file renamed over it. Where r's bytes are
