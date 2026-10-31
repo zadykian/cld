@@ -70,6 +70,7 @@ func (w *watcher) loop(ctx context.Context) error {
 // permanent failure's, logged. UNVERIFIED until #177's check 16 (decision 59.12): that a quit
 // within a tick relaunches nothing, and leaves nothing half read to merge.
 func (w *watcher) tick(ctx context.Context, src ghostty.Source) (bool, error) {
+	before := statRecord(w.dir)
 	snap, err := src.Next(ctx)
 	if err != nil {
 		return false, w.failed(err)
@@ -92,11 +93,24 @@ func (w *watcher) tick(ctx context.Context, src ghostty.Source) (bool, error) {
 			return false, w.failed(err)
 		}
 	}
-	return false, w.merge(o)
+	return false, w.merge(o, before)
 }
 
-// merge folds o into the record.
-func (w *watcher) merge(o *Observation) error {
+// merge folds o into the record under its lock. It skips the tick where another cld holds the
+// lock, or wrote the record since before, as the snapshot began. o is older than that write, and
+// would take the windows a restore just made for closed (decision 59.3).
+func (w *watcher) merge(o *Observation, before os.FileInfo) error {
+	unlock, err := lockRecord(w.dir, 0)
+	if errors.Is(err, errBusy) {
+		return nil
+	}
+	if err != nil {
+		return w.failed(err)
+	}
+	defer unlock()
+	if !sameRecord(before, statRecord(w.dir)) {
+		return nil
+	}
 	last := lastTick(w.dir)
 	r, old, warning, err := load(w.dir)
 	if err != nil {
@@ -148,6 +162,24 @@ func (w *watcher) stop(err error) error {
 // line writes text to stderr, after the time in UTC.
 func (w *watcher) line(text string) {
 	_, _ = fmt.Fprintf(os.Stderr, "%s %s\n", time.Now().UTC().Format(time.RFC3339), text)
+}
+
+// statRecord is the record in dir as it stands, nil where missing.
+func statRecord(dir string) os.FileInfo {
+	info, err := os.Stat(filepath.Join(dir, recordFile))
+	if err != nil {
+		return nil
+	}
+	return info
+}
+
+// sameRecord reports whether a and b, two stats of the record, are of one write: save renames a
+// new file over it, so each write has a new inode.
+func sameRecord(a, b os.FileInfo) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }
 
 // writeWatch writes pids to watch, a line each: the watcher's, then Ghostty's once a tick knows
