@@ -16,6 +16,7 @@ type Observation struct {
 	Version string
 	Ghostty int              // Ghostty's pid
 	Windows []ghostty.Window // front to back
+	Hidden  map[string]bool  // the app-wide terminals in no window, such as the quick terminal
 	Seen    map[string]Seen  // by terminal id, every window's
 	Sizes   map[string]Size  // by terminal id, where TIOCGWINSZ read one
 	Procs   Table
@@ -34,7 +35,8 @@ func Observe(ctx context.Context, snap *ghostty.Snapshot, own func(tty string) b
 		return nil, err
 	}
 	o := &Observation{Time: time.Now().UTC().Truncate(time.Second), Version: snap.Version,
-		Ghostty: app.PID, Windows: snap.Windows, Seen: map[string]Seen{}, Sizes: map[string]Size{}}
+		Ghostty: app.PID, Windows: snap.Windows, Hidden: map[string]bool{},
+		Seen: map[string]Seen{}, Sizes: map[string]Size{}}
 	if o.Procs, err = Processes(ctx); err != nil {
 		return nil, err
 	}
@@ -48,6 +50,11 @@ func Observe(ctx context.Context, snap *ghostty.Snapshot, own func(tty string) b
 			for _, t := range tab.Terminals {
 				o.see(t, own)
 			}
+		}
+	}
+	for _, id := range snap.Terminals {
+		if _, in := o.Seen[id]; !in {
+			o.Hidden[id] = true
 		}
 	}
 	return o, nil

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"testing"
+	"time"
 
 	"github.com/zadykian/cld/internal/tabs"
 	"github.com/zadykian/cld/tests/internal/mac"
@@ -49,5 +50,35 @@ func TestTabsMergeMoves(t *testing.T) {
 					first.Panes[id].Since)
 			}
 		}
+	}
+}
+
+// Panes in no window that Ghostty still lists are never closed: the quick terminal, never in a
+// window, enters no record. A window minimized or hidden stays the record's, last. A ghostty
+// +ssh process, which runs Ghostty's own binary, is no new run of Ghostty.
+func TestTabsMergeHidden(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyAt(812, ghosttyStart)
+	a, b, quick := addPane(m, "~"), addPane(m, "~"), addPane(m, "~")
+	names := named(a, b)
+	m.Windows, m.Hidden = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b))}, []string{quick}
+	r := tick(t, s, m)
+	checkRecord(t, "shown", r, names, "*a/made | *b/made")
+	run := r.Run.ID
+	m.Windows, m.Hidden = []mac.Window{windowOf(tabOf(a))}, []string{quick, b}
+	sshCache := m.NewPID()
+	m.Processes = append(m.Processes, mac.Process{PID: sshCache, PPID: 1, PGID: sshCache,
+		Start: time.Now().UTC().Truncate(time.Second), Args: []string{ghosttyExecutable, "+ssh"}})
+	for range 2 {
+		checkRecord(t, "minimized", tick(t, s, m), names, "*a/made | *b/made")
+	}
+	m.Windows, m.Hidden = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b))}, nil
+	m.Processes = m.Processes[:len(m.Processes)-1]
+	r = tick(t, s, m)
+	checkRecord(t, "back, the quick terminal closed", r, names, "*a/made | *b/made")
+	if r.Panes[quick] != nil || r.Run.ID != run {
+		t.Errorf("the record holds %+v and run %s, want no quick terminal and run %s",
+			r.Panes[quick], r.Run.ID, run)
 	}
 }
