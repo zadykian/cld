@@ -50,6 +50,17 @@ var mockedApplies = []mockedApply{
 			"get id of @16", "perform action equalize_splits on @10", "focus @16",
 			"get windows.terminals.id", "delay 0.1", "get windows.terminals.id",
 			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @16"}},
+	{"a split tab moved first", "", `{"kind": "tab", "anchor": "@1", "index": 1, "tabs": [
+	   {"selected": true, "focused": "u", "tree": {"split": "right",
+	     "first": {"leaf": {"key": "t"}}, "second": {"leaf": {"key": "u"}}}}]}`, nil, nil,
+		`{"typed": [], "builds": [{"keys": {"t": "@10", "u": "@13"}, "index": 1}]}`,
+		"*right(10,[13]) [1] [4] | *[7]", []string{"get terminals.id", "get terminals.id",
+			"get windows.terminals.id", "new tab in windows[0]", "get terminals.id",
+			"get windows.terminals.id", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "count windows[0].tabs",
+			"perform action move_tab:-1 on @10", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "count windows[0].tabs", "split @10 right",
+			"get id of @13", "perform action equalize_splits on @10", "focus @13"}},
 	{"a split in a split", "", `{"kind": "window", "tabs": [{"focused": "c", "tree": {
 	   "split": "right", "first": {"leaf": {"key": "a"}}, "second": {"split": "down",
 	     "first": {"leaf": {"key": "b"}}, "second": {"leaf": {"key": "c"}}}}}]}`, nil, nil,
@@ -65,7 +76,19 @@ var mockedApplies = []mockedApply{
 		`{"typed": [], "builds": [{"keys": {"t": "@10"}, "index": 2}]}`, "[1] *[10] [4] | *[7]",
 		[]string{"get terminals.id", "get terminals.id", "get windows.terminals.id",
 			"new tab in windows[0]", "get terminals.id", "get windows.terminals.id",
-			"get windows[0].tabs.terminals.id", "focus @10"}},
+			"get windows.terminals.id", "get windows[0].tabs.terminals.id", "count windows[0].tabs",
+			"focus @10"}},
+	{"a move that lands the second time", "", `{"kind": "tab", "anchor": "@1", "index": 1,
+	   "tabs": [{"selected": true, "tree": {"leaf": {"key": "t"}}}]}`,
+		func(m *mac.Model) { m.DropMoves = 1 }, nil,
+		`{"typed": [], "builds": [{"keys": {"t": "@10"}, "index": 1}]}`, "*[10] [1] [4] | *[7]",
+		[]string{"get terminals.id", "get terminals.id", "get windows.terminals.id",
+			"new tab in windows[0]", "get terminals.id", "get windows.terminals.id",
+			"get windows.terminals.id", "get windows[0].tabs.terminals.id", "count windows[0].tabs",
+			"perform action move_tab:-1 on @10", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "count windows[0].tabs", "delay 0.2",
+			"perform action move_tab:-1 on @10", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "count windows[0].tabs", "focus @10"}},
 	{"a tab's window found once the pace has passed",
 		`{"pane": "@1", "pid": 50003, "line": "ls"}`, `{"kind": "tab", "anchor": "@7", "index": 2,
 	   "tabs": [{"selected": true, "tree": {"leaf": {"key": "t", "line": "ssh ws"}}}]}`, nil,
@@ -74,8 +97,8 @@ var mockedApplies = []mockedApply{
 		"[7] *[10] | *[1] [4]", []string{"get terminals.id", "get pid of @1",
 			"send key u control to @1", "input text to @1", "send key enter to @1", "delay 0.3",
 			"get terminals.id", "get windows.terminals.id", "new tab in windows[0]",
-			"get terminals.id", "get windows.terminals.id",
-			"get windows[0].tabs.terminals.id", "focus @10"}},
+			"get terminals.id", "get windows.terminals.id", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "count windows[0].tabs", "focus @10"}},
 	{"a window the user opens before a build", `{"pane": "@1", "pid": 50003, "line": "ls"}`,
 		`{"kind": "window", "tabs": [{"tree": {"leaf": {"key": "a"}}}]}`, nil,
 		map[string]any{"opens": []string{"send key enter"}},
@@ -97,6 +120,17 @@ var mockedFailures = []mockedApply{
 		slices.Concat([]string{"get terminals.id", "get terminals.id", "new window",
 			"get terminals.id"},
 			slices.Repeat([]string{"get windows.terminals.id", "delay 0.1"}, 30))},
+	{"a move dropped twice", "", `{"kind": "tab", "anchor": "@1", "index": 1,
+	   "tabs": [{"selected": true, "tree": {"leaf": {"key": "t"}}}]}`,
+		func(m *mac.Model) { m.DropMoves = 2 }, nil,
+		`{"typed": [], "builds": [{"keys": {"t": "@10"}, "index": 2}]}`, "[1] *[10] [4] | *[7]",
+		[]string{"get terminals.id", "get terminals.id", "get windows.terminals.id",
+			"new tab in windows[0]", "get terminals.id", "get windows.terminals.id",
+			"get windows.terminals.id", "get windows[0].tabs.terminals.id", "count windows[0].tabs",
+			"perform action move_tab:-1 on @10", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "count windows[0].tabs", "delay 0.2",
+			"perform action move_tab:-1 on @10", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "count windows[0].tabs", "focus @10"}},
 	{"Ghostty not running", `{"pane": "@1", "pid": 50003, "line": "ls"}`, "",
 		func(m *mac.Model) { m.Running = false }, nil, `{"error": {"step": "running",
 		  "number": 0, "message": "Ghostty is not running", "version": ""}}`, "*[1] [4] | *[7]",
@@ -124,27 +158,25 @@ var mockedFailures = []mockedApply{
 		"*[1] [4] | *[7]", []string{"get terminals.id"}},
 }
 
-// builtSoFar are the fake osascript's apply cases that apply.js builds so far: windows, tabs, their
-// splits and lost panes.
-var builtSoFar = []string{"a window", "a window with no tab selected", "a tree split left",
-	"a split that fails", "a pane right", "two panes down", "a pane left", "a pane up",
-	"a pane whose anchor is gone", "a tab after the selected one",
-	"a split tab in a window behind", "a tab whose window is gone"}
-
 // testMockedApply runs apply.js against fakeGhostty(2, 1) as the mock Ghostty. The fake
-// osascript's apply cases give the same results and shapes. apply.js's own cases follow.
+// osascript's apply cases give the same results and shapes, but for the case whose errors
+// JavaScriptCore words: the fake's words stand in for those. apply.js's own cases follow.
 func testMockedApply(t *testing.T) {
 	t.Parallel()
 	for _, test := range applyTests {
-		if !slices.Contains(builtSoFar, test.name) {
+		if test.name == "builds apply.js fails" {
 			continue
 		}
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+			typed := "" // a case types only into @7's shell, at its prompt
+			if test.typed != "" {
+				typed = `{"pane": "@7"}`
+			}
 			m := fakeGhostty(2, 1)
 			m.FailAt = test.failAt
 			checkMockedApply(t, test.typed, test.builds, m, nil,
-				`{"typed": [], "builds": [`+test.result+`]}`, test.shape)
+				`{"typed": [`+typed+`], "builds": [`+test.result+`]}`, test.shape)
 		})
 	}
 	for _, test := range slices.Concat(mockedApplies, mockedFailures) {

@@ -18,10 +18,11 @@
 // Its commands keep Ghostty's rules as v1.4.0's source has them
 // (docs/design/findings/terminals.md): a new window joins the windows a read after the terminals; a
 // new tab goes after its window's selected tab, selected, its terminal focused at once; split
-// returns the new terminal; a split and focus move focus at the next Apple Event; send key and
-// input text record what they type in the terminal. The model's failAt is the terminal, counted
-// from 1, that Ghostty fails to make: a split throws, and a new window's or tab's never appears.
-// delay only logs.
+// returns the new terminal; a split and focus move focus at the next Apple Event; move_tab moves
+// the selected tab, clamped, only when sent to its tab's focused terminal, and answers true either
+// way. The model's failAt is the terminal, counted from 1, that Ghostty fails to make, and its
+// dropMoves the move_tab actions Ghostty drops first, as the fake osascript has them. delay only
+// logs.
 var mockRun;
 (function () {
   const ghosttyMock = {model: null, log: [], idReads: 0, queue: [], made: 0};
@@ -403,7 +404,17 @@ var mockRun;
       const id = opts.on.mockId;
       ghosttyMock.event('perform action ' + action + ' on ' + id);
       ghosttyMock.command();
-      ghosttyMock.found(id);
+      const at = ghosttyMock.found(id);
+      const move = /^move_tab:(-?\d+)$/.exec(action);
+      const tabs = at.window.tabs;
+      const from = tabs.findIndex((t) => t.selected);
+      const m = ghosttyMock.model;
+      if (move && at.tab.focused === id && from >= 0 && m.dropMoves > 0) {
+        m.dropMoves--;
+      } else if (move && at.tab.focused === id && from >= 0) {
+        const to = Math.max(0, Math.min(tabs.length - 1, from + Number(move[1])));
+        tabs.splice(to, 0, tabs.splice(from, 1)[0]);
+      }
       return true;
     },
     focus: function (terminal) {

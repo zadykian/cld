@@ -6,10 +6,11 @@
 // UNVERIFIED until #177's check 11 (decision 59.12): a JS object as a command's surface
 // configuration, initialWorkingDirectory among its keys; a new window's or tab's terminal among
 // the terminals at once, and its window among the windows within 3 s (check 7 too); split's
-// result answering id(); new tabs in the order made, the index read back; select tab and focus;
-// pid read again just before typing; Ctrl+U, input text and Enter in zsh with half-typed input and
-// no paste prompt; Ctrl+U under a layout that moves U, Dvorak's say, as send key names a key by its
-// place; initial input run once under a slow .zshrc.
+// result answering id(); new tabs in the order made, a move_tab sent right after new tab landing,
+// and the index read back; select tab and focus; pid read again just before typing; Ctrl+U, input
+// text and Enter in zsh with half-typed input and no paste prompt; Ctrl+U under a layout that
+// moves U, Dvorak's say, as send key names a key by its place; initial input run once under a
+// slow .zshrc.
 ObjC.import('AppKit');
 
 const BUNDLE = 'com.mitchellh.ghostty';
@@ -182,9 +183,26 @@ function buildWindow(b, keys) {
   return {keys: keys};
 }
 
+// moveTo moves the selected tab, the one holding id, to index, and reads its index back. Ghostty
+// moves by places from the selected tab, clamped, and drops a move sent to a terminal its tab
+// does not focus, answering true all the same: a move that did not land goes once more after
+// 0.2 s. An index of 0 or none leaves the tab where new tab put it.
+function moveTo(id, index) {
+  for (let attempt = 0; ; attempt++) {
+    const w = windowOf(id);
+    const at = tabOf(w, id) + 1;
+    const target = Math.min(index || 0, G.windows[w].tabs.length);
+    if (target <= 0 || target === at || attempt === 2) return at;
+    if (attempt === 1) delay(0.2);
+    G.performAction('move_tab:' + (target - at), {on: G.terminals.byId(id)});
+  }
+}
+
 // buildTab opens a lost tab in the window holding its anchor, found once the pace has passed, or
-// as a window, and reports the index it took. Its key goes in at once, so a failure reports it. A
-// tab that lands beside other terminals than its anchor's fails, once built.
+// as a window. It moves the tab to its index while its first terminal is its only one, and so the
+// one its tab focuses; the splits grown after it move focus asynchronously. Its key goes in at
+// once, so a failed move reports it. A tab that lands beside other terminals than its anchor's
+// fails, once built.
 function buildTab(b, keys) {
   const tab = b.tabs[0];
   const id = open(firstLeaf(tab.tree), c => {
@@ -194,11 +212,10 @@ function buildTab(b, keys) {
       : G.newWindow({withConfiguration: c});
   });
   keys[firstLeaf(tab.tree).key] = id;
-  const found = windowWith(id);
-  const beside = found.ids;
+  const beside = windowWith(id).ids;
   const result = {keys: keys};
   if (b.anchor && beside.includes(b.anchor)) {
-    result.index = tabOf(found.index, id) + 1;
+    result.index = moveTo(id, b.index);
   } else if (beside.length === 1) {
     result.window = true;
   } else {
