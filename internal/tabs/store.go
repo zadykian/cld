@@ -11,15 +11,23 @@ import (
 	"slices"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/session"
 )
 
 // The files in the record's directory (decision 59.4).
 const (
-	recordFile = "tabs.json" // the record
-	watchFile  = "watch"     // the watcher's; its time is the last tick
+	recordFile  = "tabs.json" // the record
+	lockFile    = "lock"      // locked for each read, merge and write of the record
+	watchFile   = "watch"     // locked by the watcher for its life; its time is the last tick
+	restoreFile = "restore"   // locked by a restore, so that two never type into one pane
 )
+
+// errBusy is lockRecord's refusal where another cld holds the record's lock.
+var errBusy = fail.Runtime(
+	"cannot lock cld's record of Ghostty's tabs: another cld restore tabs holds it")
 
 // Dir is the record's directory, tabs/ in cld's state directory, made where missing. It sits
 // outside sessions/, whose expiry removes the files it does not know.
@@ -156,6 +164,49 @@ func moveAside(dir string) (string, error) {
 		return "", err
 	}
 	return aside, nil
+}
+
+// lockRecord takes the record's lock in dir, trying every 20 ms for up to wait, and returns what
+// lets it go. A lock still held after wait is errBusy, where session.Lock goes on without. A
+// restore waits 10 s; the watcher waits not at all at a tick, and 10 s to note its run's end.
+func lockRecord(dir string, wait time.Duration) (unlock func(), err error) {
+	file, err := os.OpenFile(filepath.Join(dir, lockFile), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, reason(err)
+	}
+	deadline := time.Now().Add(wait)
+	for {
+		err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		if err == nil {
+			return func() { _ = file.Close() }, nil //nolint:errcheck // the close lets the lock go
+		}
+		if !errors.Is(err, unix.EWOULDBLOCK) || !time.Now().Before(deadline) {
+			_ = file.Close() //nolint:errcheck // a file only opened, to lock
+			if errors.Is(err, unix.EWOULDBLOCK) {
+				return nil, errBusy
+			}
+			return nil, fmt.Errorf("%s: %w", file.Name(), err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// tryLock opens the file at path, made where missing, and takes its lock once. It reports false,
+// with no file, where another process holds the lock. The lock lasts while the file is open.
+func tryLock(path string) (*os.File, bool, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, false, reason(err)
+	}
+	err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	if err == nil {
+		return file, true, nil
+	}
+	_ = file.Close() //nolint:errcheck // a file only opened, to lock
+	if errors.Is(err, unix.EWOULDBLOCK) {
+		return nil, false, nil
+	}
+	return nil, false, fmt.Errorf("%s: %w", path, err)
 }
 
 // lastTick is the watcher's last tick: the time of watch in dir, to the second, or zero where

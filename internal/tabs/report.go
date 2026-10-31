@@ -3,6 +3,8 @@ package tabs
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
@@ -32,33 +34,37 @@ func (r *Report) section(heading string, lines []string) {
 	}
 }
 
-// dryRun reports what the record holds after a restore's merge, seen: Ghostty, the losses, and
-// those that wait for Ghostty's undo. Notes on Ghostty's config end it.
+// dryRun reports what the record holds after a restore's merge, seen. Ghostty comes first, then the
+// panes a restore would join again, the losses, and those that wait for Ghostty's undo. Notes on
+// Ghostty's config end it.
 func dryRun(ctx context.Context, seen *observed, report *Report) {
 	c := clock{now: time.Now()}
+	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
+	r := seen.record
 	report.Lines = append(report.Lines, c.ghostty(seen))
-	if r := seen.record; r != nil {
-		report.section("Losses:", c.losses(r.Losses))
-		for _, l := range r.Losses {
-			if l.Cause == CauseQuit && len(l.Windows) == 0 {
-				report.Lines = append(report.Lines,
-					"Ghostty brought back every window as it quit at "+c.at(l.At))
-			}
+	report.section("Panes to join again:", c.joinAgain(r))
+	report.section("Losses:", c.losses(r.Losses))
+	for _, l := range r.Losses {
+		if l.Cause == CauseQuit && len(l.Windows) == 0 {
+			report.Lines = append(report.Lines,
+				"Ghostty brought back every window as it quit at "+c.at(l.At))
 		}
-		report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
 	}
+	report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
 	report.section("Notes:", settingsNotes(ctx, seen.app))
 }
 
 // clock writes the report's times, in local time: of today as 15:04, of another day with its
-// date.
+// date. A directory under home starts with ~.
 type clock struct {
-	now time.Time
+	now  time.Time
+	home string
 }
 
-func (c clock) at(t time.Time) string {
+func (c clock) at(t time.Time) string { return c.format(t, "15:04") }
+
+func (c clock) format(t time.Time, layout string) string {
 	t = t.In(c.now.Location())
-	layout := "15:04"
 	year, month, day := t.Date()
 	if y, m, d := c.now.Date(); y != year || m != month || d != day {
 		layout = "2006-01-02 " + layout
@@ -66,8 +72,21 @@ func (c clock) at(t time.Time) string {
 	return t.Format(layout)
 }
 
-// ghostty is the report's first line: Ghostty's version, pid and start, or that none runs. A
-// start is the one NSRunningApplication gave, else the one of ps's row for the pid.
+func (c clock) dir(path string) string {
+	switch {
+	case path == "":
+		return "an unknown directory"
+	case c.home == "" || c.home == "/":
+		return path
+	case path == c.home:
+		return "~"
+	case strings.HasPrefix(path, c.home+"/"):
+		return "~" + path[len(c.home):]
+	}
+	return path
+}
+
+// ghostty is the report's first line: Ghostty's version, pid and start, or that none runs.
 func (c clock) ghostty(seen *observed) string {
 	if seen.o == nil {
 		return "Ghostty is not running: the record as if it brought nothing back"
@@ -86,7 +105,44 @@ func (c clock) ghostty(seen *observed) string {
 	return line
 }
 
-// losses is a line per loss not restored, with its size and time.
+// joinAgain is a line per pane a restore would join again: a shell at its prompt, with a binding.
+// A quit cut that binding, or a restore typed it, and it did not hold.
+func (c clock) joinAgain(r *Record) []string {
+	var lines []string
+	for _, w := range r.Windows {
+		for _, id := range windowLeaves(w) {
+			p := r.Panes[id]
+			if p == nil || p.Kind != KindLocal || p.Last == nil {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("  in %s: %s, %s", c.dir(p.Cwd), binding(p.Last),
+				c.cut(p.Last)))
+		}
+	}
+	return lines
+}
+
+// binding is the session or the host of last.
+func binding(last *Last) string {
+	if last.Session != "" {
+		return fmt.Sprintf("session '%s' on %s", last.Session, last.Host)
+	}
+	return "ssh to " + last.Host
+}
+
+// cut is what ended last's binding: a typed line that left the pane at its prompt, or a quit.
+func (c clock) cut(last *Last) string {
+	switch {
+	case last.Typed != nil:
+		return "typed at " + c.at(*last.Typed) + " and back at its prompt"
+	case last.Cut == CutQuit:
+		return "as Ghostty quit at " + c.at(last.At)
+	}
+	return "as it closed at " + c.at(last.At)
+}
+
+// losses is a line per loss not restored, with its size and time, but for a quit that lost
+// nothing.
 func (c clock) losses(list []*Loss) []string {
 	var lines []string
 	for _, l := range list {

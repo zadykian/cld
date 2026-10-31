@@ -15,10 +15,10 @@ import (
 )
 
 // tabsCommand is cld restore tabs, named in its messages as typed, and its options (decision
-// 59.11).
+// 59.11). --watching is the watcher, hidden.
 type tabsCommand struct {
-	typed  string
-	dryRun bool
+	typed            string
+	watching, dryRun bool
 }
 
 // restoreTabs is cld restore tabs, which keeps a record of Ghostty's tabs on a Mac (decision 59).
@@ -33,20 +33,26 @@ func restoreTabs(typed string) *cobra.Command {
 		RunE:   t.run,
 	}
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
-	command.Flags().BoolVar(&t.dryRun, "dry-run", false, "print what the record holds, and do nothing")
+	flags := command.Flags()
+	flags.BoolVar(&t.dryRun, "dry-run", false, "print what the record holds, and do nothing")
+	flags.BoolVar(&t.watching, "watching", false, "")
+	cmdline.Hide(flags, "watching")
 	return command
 }
 
 // run runs restore tabs. It reopens nothing yet, so it asks for --dry-run. A usage error ends it
 // before any tool runs. Then osascript, which only a Mac has, must be on the PATH.
 func (t *tabsCommand) run(*cobra.Command, []string) error {
-	if !t.dryRun {
+	if !t.dryRun && !t.watching {
 		return fail.Usage(t.typed + ": give --dry-run (see cld help)")
 	}
 	if _, err := tool.LookPath("osascript"); err != nil {
 		return (&ghostty.Error{Kind: ghostty.NoOsascript}).Fail()
 	}
-	report, err := tabs.Restore(context.Background())
+	if t.watching {
+		return tabs.Watch()
+	}
+	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun})
 	if err != nil {
 		return err
 	}

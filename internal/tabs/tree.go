@@ -77,23 +77,15 @@ func clonePane(p *Pane) *Pane {
 		size := *p.Size
 		c.Size = &size
 	}
-	return &c
-}
-
-// allGone reports whether tree n has panes, and gone holds for each.
-func allGone(n *Node, gone func(id string) bool) bool {
-	ids := Leaves(n)
-	return len(ids) > 0 && !slices.ContainsFunc(ids, func(id string) bool { return !gone(id) })
-}
-
-// firstOpen is tree n's first pane that gone does not hold for, "" for none.
-func firstOpen(n *Node, gone func(id string) bool) string {
-	for _, id := range Leaves(n) {
-		if !gone(id) {
-			return id
+	if p.Last != nil {
+		last := *p.Last
+		if p.Last.Typed != nil {
+			typed := *p.Last.Typed
+			last.Typed = &typed
 		}
+		c.Last = &last
 	}
-	return ""
+	return &c
 }
 
 // cut is a split that closed: a subtree of a tab whose panes are all gone, under a parent whose
@@ -124,6 +116,22 @@ func goneSubtrees(n *Node, gone func(id string) bool) []cut {
 		cuts = append(cuts, goneSubtrees(n.Second, gone)...)
 	}
 	return cuts
+}
+
+// allGone reports whether tree n has panes, and gone holds for each.
+func allGone(n *Node, gone func(id string) bool) bool {
+	ids := Leaves(n)
+	return len(ids) > 0 && !slices.ContainsFunc(ids, func(id string) bool { return !gone(id) })
+}
+
+// firstOpen is tree n's first pane that gone does not hold for, "" for none.
+func firstOpen(n *Node, gone func(id string) bool) string {
+	for _, id := range Leaves(n) {
+		if !gone(id) {
+			return id
+		}
+	}
+	return ""
 }
 
 // opposite is the side opposite split's: left for right, up for down.

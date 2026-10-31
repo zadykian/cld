@@ -21,6 +21,7 @@ const (
 func runChange(r *Record, o *Observation, lastTick time.Time) {
 	ended := r.Run.ID
 	at := quitTime(r.Run, lastTick, o.Time)
+	cutAtQuit(r.Panes, ended, at)
 	windows := quitWindows(r, o)
 	for _, l := range r.Pending {
 		if l.Cause == CauseClosed {
