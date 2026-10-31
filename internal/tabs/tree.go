@@ -47,11 +47,29 @@ func flat(ids []string) *Node {
 	return n
 }
 
-// copyTree is a copy of tree n that shares nothing with it, nil for nil.
-func copyTree(n *Node) *Node {
+// copyTree is a copy of tree n whose leaves carry a copy of their panes in panes, as a loss holds
+// them: the panes as last seen. A leaf panes lacks carries none, so a nil panes strips the copies.
+func copyTree(n *Node, panes map[string]*Pane) *Node {
 	if n == nil {
 		return nil
 	}
-	return &Node{Pane: n.Pane, Split: n.Split, Ratio: n.Ratio, First: copyTree(n.First),
-		Second: copyTree(n.Second)}
+	c := &Node{Pane: n.Pane, Split: n.Split, Ratio: n.Ratio, First: copyTree(n.First, panes),
+		Second: copyTree(n.Second, panes)}
+	if isLeaf(n) {
+		c.Copy = clonePane(panes[n.Pane])
+	}
+	return c
+}
+
+// clonePane is a copy of p that shares nothing with it, nil for nil.
+func clonePane(p *Pane) *Pane {
+	if p == nil {
+		return nil
+	}
+	c := *p
+	if p.Size != nil {
+		size := *p.Size
+		c.Size = &size
+	}
+	return &c
 }

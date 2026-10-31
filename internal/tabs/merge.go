@@ -10,7 +10,8 @@ import (
 )
 
 // Merge folds o into r as a tick does (decision 59.4). A run it has not seen before takes the
-// place of the one before. Then the panes o shows update, and the windows follow o's.
+// place of the one before. Then the panes o shows update, the windows o shows nowhere go pending,
+// and the windows follow o's.
 func Merge(r *Record, o *Observation) {
 	switch {
 	case r.Run.ID != o.Run:
@@ -19,6 +20,7 @@ func Merge(r *Record, o *Observation) {
 		r.Run.Version = o.Version
 	}
 	mergePanes(r, o)
+	vanish(r, o)
 	mergeWindows(r, o)
 }
 
@@ -171,7 +173,7 @@ func treeFor(ids []string, old []Window) (*Node, string) {
 	for _, w := range old {
 		for _, tab := range w.Tabs {
 			if sameLeaves(tab.Tree, ids) {
-				return copyTree(tab.Tree), tab.Shape
+				return copyTree(tab.Tree, nil), tab.Shape
 			}
 		}
 	}
