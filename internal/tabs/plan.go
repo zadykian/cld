@@ -1,6 +1,7 @@
 package tabs
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 
@@ -11,8 +12,15 @@ import (
 // 59.12): that it keeps sshd's MaxStartups and a fail2ban quiet, and ws's lock waits short.
 var pace = ghostty.Pace{Gap: 0.3, Every: 8, Pause: 2}
 
-// buildWindow is the kind of apply.js's build that opens a window.
-const buildWindow = "window"
+// The kinds of apply.js's builds, in the order a plan makes them. Splits and tabs go into the
+// windows of their anchors first, then windows, the front one last, so that it ends in front.
+const (
+	buildPane   = "pane"
+	buildTab    = "tab"
+	buildWindow = "window"
+)
+
+var buildRank = map[string]int{buildPane: 0, buildTab: 1, buildWindow: 2}
 
 // Planned is a restore's plan: the script apply.js runs, and what the report needs of it.
 type Planned struct {
@@ -123,24 +131,52 @@ func (pl *planner) leavesOf(chosen []*Loss) []pruned {
 	return out
 }
 
-// placement is a build before its keys: its loss, and the tabs it makes.
+// placement is a build before its keys: its loss, where it goes, and the tabs it makes.
 type placement struct {
 	loss  *Loss
 	build ghostty.Build
 	tabs  []Tab
 }
 
-// order makes lost's builds, a window each, back to front as the loss holds them. Oldest loss
-// first, so that the newest loss's front window comes last and ends in front.
+// placeLoss is where loss l goes back, a build per window, back to front. A window's close or a
+// quit opens windows. A tab opens at its index in the window holding its anchor, and a split
+// splits its anchor. Where o does not show the anchor, either opens as a window.
+func (pl *planner) placeLoss(l pruned) []placement {
+	b := ghostty.Build{Kind: buildWindow}
+	a := l.loss.Anchor
+	shown := a != nil && pl.o.shows(a.Pane)
+	switch {
+	case l.loss.Cause == CauseTab && shown:
+		b = ghostty.Build{Kind: buildTab, Anchor: a.Pane, Index: a.Index}
+	case l.loss.Cause == CauseTab:
+		b.Kind = buildTab
+	case l.loss.Cause == CausePane && shown && a.Split != "":
+		b = ghostty.Build{Kind: buildPane, Anchor: a.Pane, Split: a.Split}
+	}
+	out := make([]placement, 0, len(l.windows))
+	for _, w := range slices.Backward(l.windows) {
+		out = append(out, placement{loss: l.loss, build: b, tabs: w.Tabs})
+	}
+	return out
+}
+
+// order makes lost's builds: splits, then tabs, then windows. Splits and windows go oldest loss
+// first, so that the newest loss's front window comes last and ends in front. Tabs go newest
+// first, as an undo does: a tab's index is its place as it closed, among the tabs closed later.
+// The tabs of one close go by index.
 func (pl *planner) order(lost []pruned) {
 	var all []placement
 	for _, l := range lost {
-		for _, w := range slices.Backward(l.windows) {
-			all = append(all, placement{loss: l.loss, build: ghostty.Build{Kind: buildWindow},
-				tabs: w.Tabs})
-		}
+		all = append(all, pl.placeLoss(l)...)
 	}
-	slices.SortStableFunc(all, func(a, b placement) int { return a.loss.At.Compare(b.loss.At) })
+	slices.SortStableFunc(all, func(a, b placement) int {
+		kind := cmp.Compare(buildRank[a.build.Kind], buildRank[b.build.Kind])
+		if a.build.Kind == buildTab {
+			return cmp.Or(kind, b.loss.At.Compare(a.loss.At),
+				cmp.Compare(a.build.Index, b.build.Index))
+		}
+		return cmp.Or(kind, a.loss.At.Compare(b.loss.At))
+	})
 	for _, p := range all {
 		pl.key(p)
 	}
@@ -163,7 +199,7 @@ func (pl *planner) key(p placement) {
 			focused = firstKey(tree)
 		}
 		build.Tabs = append(build.Tabs, ghostty.TabBuild{Focused: focused, Tree: tree,
-			Selected: i == selected})
+			Selected: build.Kind != buildPane && i == selected})
 	}
 	pl.out.script.Builds = append(pl.out.script.Builds, build)
 	pl.out.builds = append(pl.out.builds, k.b)

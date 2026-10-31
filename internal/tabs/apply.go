@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
@@ -20,7 +21,7 @@ func apply(
 	if script := p.Script(); len(script.Typed) > 0 || len(script.Builds) > 0 {
 		var err error
 		if res, err = ghostty.Apply(ctx, script); err != nil {
-			report.warn(failure(err).Error())
+			stopped(ctx, dir, seen, err, report)
 		}
 	}
 	mark(seen.record, p, res, time.Now())
@@ -29,6 +30,39 @@ func apply(
 			err.Error())
 	}
 	return res
+}
+
+// stopped reports an apply that gave no result, err saying why: Ghostty quit, macOS withdrew its
+// grant, or osascript failed or ran out of time. apply.js prints only at its end, so it may have
+// built by then. Where Ghostty now holds terminals that it lacked before, a merge enters them, so
+// that the next restore's dedupe counts those that joined.
+func stopped(ctx context.Context, dir string, seen *observed, err error, report *Report) {
+	why := failure(err).Error()
+	snap, err := ghostty.Take(ctx)
+	n := 0
+	if err == nil && snap.Running {
+		n = appeared(seen.o, snap)
+	}
+	if n == 0 {
+		report.warn("the restore stopped: " + why)
+		return
+	}
+	if o, err := Observe(ctx, snap, ownTTY()); err == nil {
+		Merge(seen.record, o, lastTick(dir))
+	}
+	report.warn(fmt.Sprintf("the restore stopped after Ghostty opened %s (%s): run cld restore"+
+		" tabs --dry-run before running it again", count(n, "pane"), why))
+}
+
+// appeared counts the terminals of snap that observation o held nowhere.
+func appeared(o *Observation, snap *ghostty.Snapshot) int {
+	n := 0
+	for _, id := range snap.Terminals {
+		if o == nil || o.gone(id) {
+			n++
+		}
+	}
+	return n
 }
 
 // finish ends a restore that ran plan p against the record seen, apply giving res: its report and
@@ -67,12 +101,14 @@ func (c clock) restored(r *Record, p *Planned, res *ghostty.Result, report *Repo
 		}
 	}
 	for i := range min(len(res.Builds), len(p.builds)) {
-		c.built(p.script.Builds[i], p.builds[i], res.Builds[i], report)
+		c.built(r, p.script.Builds[i], p.builds[i], res.Builds[i], report)
 	}
 }
 
-// built reports build b of info's loss, as res says apply made it.
-func (c clock) built(b ghostty.Build, info building, res ghostty.BuildResult, report *Report) {
+// built reports build b of info's loss, as res says apply made it, and as mark entered it in r.
+func (c clock) built(r *Record, b ghostty.Build, info building, res ghostty.BuildResult,
+	report *Report,
+) {
 	l := info.loss
 	if res.Error != "" {
 		failed := "cannot reopen " + noun(l) + " " + c.when(l) + ": " + res.Error
@@ -83,8 +119,28 @@ func (c clock) built(b ghostty.Build, info building, res ghostty.BuildResult, re
 		return
 	}
 	what := windowSize(b.Tabs)
-	if l.Cause == CauseTab || l.Cause == CausePane {
+	switch {
+	case l.Cause == CauseTab && b.Kind == buildTab && !res.Window:
+		what = fmt.Sprintf("a tab at %d in its window", res.Index)
+	case l.Cause == CausePane && b.Kind == buildPane:
+		what = "a split beside its pane"
+	case l.Cause == CauseTab || l.Cause == CausePane:
 		what = noun(l) + " as a window"
 	}
 	report.Lines = append(report.Lines, "Reopened "+what+", "+c.when(l))
+	if want := min(b.Index, tabsBeside(r, b.Anchor)); b.Kind == buildTab && !res.Window &&
+		want > 0 && res.Index != want {
+		report.warn(fmt.Sprintf("reopened a tab at %d, not at %d", res.Index, want))
+	}
+}
+
+// tabsBeside counts the tabs of the window of r that holds pane anchor: a tab moved past them
+// goes last, as Ghostty clamps the move.
+func tabsBeside(r *Record, anchor string) int {
+	for _, w := range r.Windows {
+		if slices.Contains(windowLeaves(w), anchor) {
+			return len(w.Tabs)
+		}
+	}
+	return 0
 }

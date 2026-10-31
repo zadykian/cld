@@ -9,7 +9,8 @@ import (
 
 // apply applies apply.js's plan to m, a Ghostty that runs, in Go and not by apply.js's commands.
 // It saves what it typed and built, and prints the result, unless mode fails it. With partial, it
-// fails as garbage does once it has typed and made the first build.
+// fails as garbage does once it has typed and made the first build. With short, it prints what it
+// did by then, as an apply.js that stopped early would.
 func apply(dir string, m *mac.Model, p *plan, mode string) error {
 	switch failure, canned := applyFailures[mode]; {
 	case canned:
@@ -25,7 +26,7 @@ func apply(dir string, m *mac.Model, p *plan, mode string) error {
 		out.Typed = append(out.Typed, a.typeLine(t))
 	}
 	for i, b := range p.Builds {
-		if mode == "partial" && i == 1 {
+		if (mode == "partial" || mode == "short") && i == 1 {
 			break
 		}
 		out.Builds = append(out.Builds, a.build(b))

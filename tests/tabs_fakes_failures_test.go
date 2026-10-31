@@ -50,7 +50,7 @@ var failureAnswers = []struct {
 	{"denied", answer{0, `{"error": {"step": "count", "number": -1743,
 		"message": "Not authorized to send Apple events to Ghostty.", "version": ""}}`, ""},
 		answer{0, `{"error": {"step": "count", "number": -1743,
-		"message": "Not authorized to send Apple events to Ghostty. (-1743)", "version": ""}}`, ""},
+		"message": "Not authorized to send Apple events to Ghostty.", "version": ""}}`, ""},
 		"*[1]"},
 	{"off", answer{0, `{"error": {"step": "probe", "number": -1743,
 		"message": "AppleScript is disabled by the macos-applescript configuration.",
@@ -72,7 +72,7 @@ var failureAnswers = []struct {
 	{"gone", answer{0, `{"error": {"step": "read", "number": -600,
 		"message": "Application isn't running.", "version": "1.4.0"}}`, ""},
 		answer{0, `{"error": {"step": "count", "number": -600,
-		"message": "Application isn't running. (-600)", "version": ""}}`, ""},
+		"message": "Application isn't running.", "version": ""}}`, ""},
 		"*[1]"},
 	{"garbage", answer{1, "", "fake osascript: execution error\n"},
 		answer{1, "", "fake osascript: execution error\n"}, "*[1]"},
@@ -143,7 +143,9 @@ func testFailFile(t *testing.T) {
 func testFailNotRunning(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	for _, mode := range []string{"denied", "off", "old", "changed", "gone", "partial", "timeout"} {
+	for _, mode := range []string{
+		"denied", "off", "old", "changed", "gone", "partial", "short", "timeout",
+	} {
 		extra := map[string]string{"CLD_FAKE_OSASCRIPT_FAIL": mode}
 		checkExit(t, mode+": a snapshot", osascript(t, s, extra, snapshotScript, "{}"), 0,
 			`{"running":false,"apps":[]}`+"\n", "")
@@ -172,26 +174,33 @@ func testTimeout(t *testing.T) {
 }
 
 // partial types and makes the first build of an apply, then fails as garbage does, printing no
-// result. A snapshot answers.
+// result; short prints the result so far. A snapshot answers.
 func testPartial(t *testing.T) {
 	t.Parallel()
-	s := sandbox.New(t)
-	saveModel(t, s, fakeGhostty(1))
-	extra := map[string]string{"CLD_FAKE_OSASCRIPT_FAIL": "partial"}
 	plan := withIDs(`{` + pace + `, "typed": [{"pane": "@1", "pid": 50003, "line": "ls"}],
 	  "builds": [{"kind": "window", "tabs": [{"tree": {"leaf": {"key": "a"}}}]},
 	    {"kind": "window", "tabs": [{"tree": {"leaf": {"key": "b"}}}]}]}`)
-	checkExit(t, "the apply", osascript(t, s, extra, applyScript, plan),
-		1, "", "fake osascript: execution error\n")
-	m := loadModel(t, s)
-	if got := shape(m); got != "*[4] | *[1]" {
-		t.Errorf("the apply built %s, want *[4] | *[1]", got)
-	}
-	checkTyped(t, m, map[int][]string{1: {"^U", "ls", "\r"}})
-	result := osascript(t, s, extra, snapshotScript, "{}")
-	if result.Code != 0 || len(snapshotIDs(t, result.Stdout)) != 2 {
-		t.Errorf("the snapshot: exit %d, stdout %q, want the two terminals", result.Code,
-			result.Stdout)
+	for _, test := range []struct {
+		mode  string
+		apply answer
+	}{
+		{"partial", answer{1, "", "fake osascript: execution error\n"}},
+		{"short", answer{0, `{"typed": [{"pane": "@1"}], "builds": [{"keys": {"a": "@4"}}]}`, ""}},
+	} {
+		s := sandbox.New(t)
+		saveModel(t, s, fakeGhostty(1))
+		extra := map[string]string{"CLD_FAKE_OSASCRIPT_FAIL": test.mode}
+		test.apply.check(t, test.mode, osascript(t, s, extra, applyScript, plan))
+		m := loadModel(t, s)
+		if got := shape(m); got != "*[4] | *[1]" {
+			t.Errorf("%s: the apply built %s, want *[4] | *[1]", test.mode, got)
+		}
+		checkTyped(t, m, map[int][]string{1: {"^U", "ls", "\r"}})
+		result := osascript(t, s, extra, snapshotScript, "{}")
+		if result.Code != 0 || len(snapshotIDs(t, result.Stdout)) != 2 {
+			t.Errorf("%s: the snapshot: exit %d, stdout %q, want the two terminals", test.mode,
+				result.Code, result.Stdout)
+		}
 	}
 }
 

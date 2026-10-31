@@ -35,7 +35,7 @@ var snapshotFailures = map[string]scriptError{
 
 // failureModes are the failure modes, "" answering as Ghostty would.
 var failureModes = []string{
-	"", "denied", "off", "old", "changed", "gone", "garbage", "partial", "timeout",
+	"", "denied", "off", "old", "changed", "gone", "garbage", "partial", "short", "timeout",
 }
 
 // fakeOsascript fakes osascript running cld's scripts against the model Ghostty (internal/mac).
@@ -95,8 +95,9 @@ func readCall(args []string) (script, input string, p *plan) {
 }
 
 // failMode is the first line of osascript-fail where that exists, else $CLD_FAKE_OSASCRIPT_FAIL:
-// denied, off, old, changed, gone, garbage, partial or timeout; "" answers. changed fails only a
-// snapshot, and partial only an apply. old refuses an apply, which cld never runs on Ghostty 1.3.1.
+// denied, off, old, changed, gone, garbage, partial, short or timeout; "" answers. changed fails
+// only a snapshot, and partial and short only an apply. old refuses an apply, which cld never runs
+// on Ghostty 1.3.1.
 func failMode(dir string) (string, error) {
 	mode := os.Getenv("CLD_FAKE_OSASCRIPT_FAIL")
 	data, err := os.ReadFile(filepath.Join(dir, mac.FailFile))
