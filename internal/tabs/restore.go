@@ -24,7 +24,8 @@ type Options struct {
 
 // Restore is cld restore tabs (decision 59.6). It merges what Ghostty shows into the record, as a
 // tick does, opening Ghostty where it does not run. Then it types into the panes Ghostty kept,
-// under both locks. A dry-run reports what it would do instead.
+// rebuilds what a quit or a close lost, and records what it made, under both locks. A dry-run
+// reports what it would do instead.
 func Restore(ctx context.Context, opts Options) (*Report, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -40,12 +41,13 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 		unlock()
 		return nil, err
 	}
-	p, left := restorePlan(ctx, seen, opts)
 	if opts.DryRun {
 		unlock()
+		p, left := restorePlan(ctx, seen, opts)
 		dryRun(ctx, dir, seen, p, left, opts, report)
 		return report, nil
 	}
+	p, left := restorePlan(ctx, seen, opts)
 	res := apply(ctx, dir, seen, p, report)
 	unlock()
 	finish(dir, seen, p, res, left, report)
@@ -123,6 +125,15 @@ func observe(ctx context.Context, dir string, opts Options, report *Report) (*ob
 	return &observed{record: r, saved: saved, app: app, o: o}, err
 }
 
+// restorePlan picks what a restore reopens of the record seen, as opts asks, and plans it against
+// Ghostty as seen. It asks Ghostty's terminfo cache once per host. left is what it leaves.
+func restorePlan(ctx context.Context, seen *observed, opts Options) (*Planned, []*Loss) {
+	chosen, left := selectLosses(seen.record, opts, time.Now())
+	bin, ok := ghostty.Binary(seen.app)
+	cached := func(host string) bool { return ok && ghostty.TerminfoCached(ctx, bin, host) }
+	return plan(seen.record, seen.o, chosen, cached), left
+}
+
 // ownTTY tells the tty of the pane cld runs in, which a restore never types into: nil where cld's
 // stdin is no terminal.
 func ownTTY() func(tty string) bool {
@@ -139,13 +150,4 @@ func failure(err error) error {
 		return e.Fail()
 	}
 	return err
-}
-
-// restorePlan picks what a restore reopens of the record seen, as opts asks, and plans it against
-// Ghostty as seen. It asks Ghostty's terminfo cache once per host. left is what it leaves.
-func restorePlan(ctx context.Context, seen *observed, opts Options) (*Planned, []*Loss) {
-	chosen, left := selectLosses(seen.record, opts, time.Now())
-	bin, ok := ghostty.Binary(seen.app)
-	cached := func(host string) bool { return ok && ghostty.TerminfoCached(ctx, bin, host) }
-	return plan(seen.record, seen.o, chosen, cached), left
 }
