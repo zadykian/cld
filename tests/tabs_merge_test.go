@@ -60,6 +60,75 @@ func TestTabsMergeMoves(t *testing.T) {
 	}
 }
 
+// A closed window waits for Ghostty's undo while its panes' logins live, which a long
+// undo-timeout makes several ticks. Then the record counts it lost, with its time of closing and
+// its panes as the record last saw them.
+func TestTabsMergeClosedWindow(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a, b, c := addPane(m, "~"), addPane(m, "✳ cld-x", ssh("ws")), addPane(m, "~")
+	names := named(a, b, c)
+	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b, c))}
+	tick(t, s, m)
+	m.Windows = m.Windows[:1]
+	var closed time.Time
+	for i := range 3 {
+		r := tick(t, s, m)
+		checkRecord(t, "closed", r, names, "*a/made", "closed: *right(b,c)/flat", "")
+		switch {
+		case len(r.Pending) != 1:
+		case i == 0:
+			closed = r.Pending[0].At
+			checkCopy(t, r.Pending[0], b, shown{Kind: "cld", Host: "ws", Session: "x",
+				Title: "✳ cld-x"})
+		case !r.Pending[0].At.Equal(closed):
+			t.Errorf("tick %d: closed at %v, want %v", i, r.Pending[0].At, closed)
+		}
+		if r.Panes[b] != nil || r.Panes[c] != nil {
+			t.Error("the closed window's panes are still the record's")
+		}
+	}
+	endLogins(m, b, c)
+	r := tick(t, s, m)
+	checkRecord(t, "its logins gone", r, names, "*a/made", "", "closed: *right(b,c)/flat")
+	if len(r.Losses) == 1 && !r.Losses[0].At.Equal(closed) {
+		t.Errorf("lost at %v, want %v, when it closed", r.Losses[0].At, closed)
+	}
+}
+
+// checkCopy reports loss l unless its leaf id holds a copy of the pane that shows want.
+func checkCopy(t *testing.T, l *tabs.Loss, id string, want shown) {
+	t.Helper()
+	for _, w := range l.Windows {
+		for _, tab := range w.Tabs {
+			if n := findLeaf(tab.Tree, id); n != nil && n.Copy != nil {
+				p := n.Copy
+				if got := (shown{Kind: p.Kind, Host: p.Host, Session: p.Session, Title: p.Title,
+					Worktree: p.Worktree}); got != want {
+					t.Errorf("the loss's copy of %s shows %+v, want %+v", id, got, want)
+				}
+				return
+			}
+		}
+	}
+	t.Errorf("the loss holds no copy of %s", id)
+}
+
+// findLeaf is tree n's leaf of pane id, nil for none.
+func findLeaf(n *tabs.Node, id string) *tabs.Node {
+	switch {
+	case n == nil, n.Pane == id:
+		return n
+	case n.Pane != "":
+		return nil
+	}
+	if found := findLeaf(n.First, id); found != nil {
+		return found
+	}
+	return findLeaf(n.Second, id)
+}
+
 // Panes in no window that Ghostty still lists are never closed: the quick terminal, never in a
 // window, enters no record. A window minimized or hidden stays the record's, last. A ghostty
 // +ssh process, which runs Ghostty's own binary, is no new run of Ghostty.

@@ -92,6 +92,22 @@ func front(m *mac.Model, id string, jobs ...[]string) {
 	}
 }
 
+// endLogins ends the processes of the panes ids, their logins among them: Ghostty frees a closed
+// pane's surface once its undo has passed.
+func endLogins(m *mac.Model, ids ...string) {
+	ttys := map[string]bool{}
+	for _, id := range ids {
+		ttys[strings.TrimPrefix(m.Terminals[id].TTY, "/dev/")] = true
+	}
+	kept := m.Processes[:0]
+	for _, p := range m.Processes {
+		if !ttys[p.TTY] {
+			kept = append(kept, p)
+		}
+	}
+	m.Processes = kept
+}
+
 // ssh is ssh's words as ps gives them, with args after its name.
 func ssh(args ...string) []string { return append([]string{"ssh"}, args...) }
 

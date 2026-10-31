@@ -11,7 +11,7 @@ import (
 
 // Merge folds o into r as a tick does (decision 59.4). A run it has not seen before takes the
 // place of the one before. Then the panes o shows update, the windows o shows nowhere go pending,
-// and the windows follow o's.
+// the windows follow o's, and pending losses whose logins are gone count.
 func Merge(r *Record, o *Observation) {
 	switch {
 	case r.Run.ID != o.Run:
@@ -22,6 +22,7 @@ func Merge(r *Record, o *Observation) {
 	mergePanes(r, o)
 	vanish(r, o)
 	mergeWindows(r, o)
+	settlePending(r, o.Procs)
 }
 
 // shows reports whether a window of o holds terminal id.

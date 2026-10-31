@@ -1,6 +1,10 @@
 package tabs
 
-import "slices"
+import (
+	"iter"
+	"slices"
+	"strings"
+)
 
 // vanish makes a pending loss of each window, tab and split of r's windows whose panes o holds
 // nowhere, and takes those panes out of the record's. Ghostty keeps a closed pane's login while
@@ -46,4 +50,53 @@ func copyWindow(w Window, panes map[string]*Pane) Window {
 func copyTab(t Tab, panes map[string]*Pane) Tab {
 	t.Tree = copyTree(t.Tree, panes)
 	return t
+}
+
+// settlePending moves to r.Losses each pending loss none of whose logins procs still shows: the
+// close is past Ghostty's undo. A loss keeps the time of its close. UNVERIFIED until #177's
+// check 9 (decision 59.12): that a pane's login lives as long as Ghostty keeps its surface.
+func settlePending(r *Record, procs Table) {
+	kept := r.Pending[:0]
+	for _, l := range r.Pending {
+		if lives(l, procs) {
+			kept = append(kept, l)
+		} else {
+			r.Losses = append(r.Losses, l)
+		}
+	}
+	r.Pending = kept
+}
+
+// lives reports whether procs shows the login of a pane of loss l on that pane's tty.
+func lives(l *Loss, procs Table) bool {
+	for _, p := range lossCopies(l) {
+		if p != nil && p.Login != 0 && procs.Has(p.Login, strings.TrimPrefix(p.TTY, "/dev/")) {
+			return true
+		}
+	}
+	return false
+}
+
+// lossCopies are loss l's leaves: each terminal id, and the pane as last seen, nil where none.
+func lossCopies(l *Loss) iter.Seq2[string, *Pane] {
+	return func(yield func(string, *Pane) bool) {
+		for _, w := range l.Windows {
+			for _, tab := range w.Tabs {
+				if !leafCopies(tab.Tree, yield) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// leafCopies yields the leaves of tree n, and reports whether yield asked for more.
+func leafCopies(n *Node, yield func(string, *Pane) bool) bool {
+	switch {
+	case n == nil:
+		return true
+	case isLeaf(n):
+		return n.Pane == "" || yield(n.Pane, n.Copy)
+	}
+	return leafCopies(n.First, yield) && leafCopies(n.Second, yield)
 }
