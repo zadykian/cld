@@ -47,12 +47,15 @@ func classify(t ghostty.Terminal, procs Table, g int) Seen {
 	return seen
 }
 
-// front is what the leader of a pane's foreground group shows, group being its members. A
-// wrapper's ssh is its child, and only that ssh counts: one deeper in the group, such as a git
-// push's, does not.
+// front is what the leader of a pane's foreground group shows, group being its members. cld in
+// front is a restore in its own pane, before its exec of ssh, or another of cld's commands: the
+// pane keeps what it showed. A wrapper's ssh is its child, and only that ssh counts: one deeper
+// in the group, such as a git push's, does not.
 func front(leader Process, group []Process) Seen {
 	name := program(leader)
 	switch {
+	case name == "cld":
+		return Seen{Keep: true}
 	case name == "ssh":
 		return sshSeen(leader.Args[1:])
 	case wraps(leader, name):

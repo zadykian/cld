@@ -140,3 +140,36 @@ func checkPane(t *testing.T, what string, p *tabs.Pane, want shown, login int) {
 		t.Errorf("%s: recorded %+v, login %d, want %+v, login %d", what, got, p.Login, want, login)
 	}
 }
+
+// A tick where ps cannot tell what a pane shows keeps what the record had. cld may run in front,
+// as a restore does before it joins there, or ps may lack the pane's pid or name it on another
+// tty. A dead pane keeps its binding too. Its directory moves all the same.
+func TestTabsClassifyKeeps(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyAt(812, ghosttyStart)
+	id, other := addPane(m, "✳ cld-app", ssh("ws")), addPane(m, "~")
+	m.Windows = []mac.Window{windowOf(tabOf(id), tabOf(other))}
+	want := shown{Kind: "cld", Host: "ws", Session: "app", Title: "✳ cld-app"}
+	checkPane(t, "first", tick(t, s, m).Panes[id], want, loginOf(m, id))
+	terminal := m.Terminals[id]
+	for _, step := range []struct {
+		name string
+		edit func()
+	}{
+		{"cld in front", func() { front(m, id, []string{"cld", "restore", "tabs"}) }},
+		{"a pid ps lacks", func() { terminal.PID = 99999 }},
+		{"a pid on another tty", func() { terminal.PID = m.Terminals[other].PID }},
+	} {
+		step.edit()
+		terminal.Cwd = "/Users/me/" + strings.ReplaceAll(step.name, " ", "-")
+		p := tick(t, s, m).Panes[id]
+		checkPane(t, step.name, p, want, loginOf(m, id))
+		if p != nil && p.Cwd != terminal.Cwd {
+			t.Errorf("%s: directory %q, want %q", step.name, p.Cwd, terminal.Cwd)
+		}
+	}
+	terminal.PID, terminal.Name = 0, "~"
+	checkPane(t, "dead", tick(t, s, m).Panes[id], shown{Kind: "dead", Host: "ws", Session: "app",
+		Title: "✳ cld-app"}, loginOf(m, id))
+}
