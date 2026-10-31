@@ -4,10 +4,12 @@
 // They share one function, in which this file's Application, ObjC, $ and delay hide JXA's own:
 // UNVERIFIED until the macos job first runs it (decision 59.12).
 // The mock reads a model, argv[1], written as tests/internal/mac writes a Model, and logs each
-// Apple Event a script sends. Its key mock holds the mock's own settings.
+// Apple Event a script sends. Its key mock may hold:
+//   then: windows that replace the model's, one after each first read of the windows' ids, as
+//     the user changes them while a script reads them.
 var mockRun;
 (function () {
-  const ghosttyMock = {model: null, log: []};
+  const ghosttyMock = {model: null, log: [], idReads: 0};
 
   // event logs an Apple Event.
   ghosttyMock.event = function (what) {
@@ -52,6 +54,18 @@ var mockRun;
     };
   };
 
+  // ids reads every window's tabs' terminal ids. After a first read of an attempt, the windows
+  // of mock.then replace the model's.
+  ghosttyMock.ids = function () {
+    const ids = ghosttyMock.property('id', (id) => id)();
+    const then = ghosttyMock.model.mock.then || [];
+    ghosttyMock.idReads++;
+    if (ghosttyMock.idReads % 2 === 1 && then.length > 0) {
+      ghosttyMock.model.windows = then.shift();
+    }
+    return ids;
+  };
+
   // focused reads each tab's focused terminal in one Apple Event, which fails where a tab has
   // none, as a missing value fails JXA's bulk read.
   ghosttyMock.focused = function () {
@@ -67,7 +81,7 @@ var mockRun;
   // windowsSpec is G.windows: the bulk getters, and each window by its index.
   ghosttyMock.windowsSpec = function () {
     const terminals = {
-      id: ghosttyMock.property('id', (id) => id),
+      id: ghosttyMock.ids,
       name: ghosttyMock.property('name', (id, t) => t.name || ''),
       workingDirectory: ghosttyMock.property('workingDirectory', (id, t) => t.cwd || ''),
       pid: ghosttyMock.property('pid', (id, t) => t.pid || 0),

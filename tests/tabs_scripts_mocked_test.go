@@ -103,14 +103,27 @@ type mockedSnapshot struct {
 	want  string
 }
 
-// mockedSnapshots are TestTabsScriptsMocked's cases for snapshot.js.
+// mockedSnapshots are TestTabsScriptsMocked's cases for snapshot.js. Between its reads, the
+// user moves @6 into @2's window, then splits @2's tab.
 func mockedSnapshots() []mockedSnapshot {
+	moved := []mac.Window{windowOf(tabOf(mac.TerminalID(2)), tabOf(mac.TerminalID(6)))}
+	grown := []mac.Window{windowOf(tabOf(mac.TerminalID(2), mac.TerminalID(4)))}
 	several := fakeGhostty()
 	several.Apps = 2
 	stopped := fakeGhostty()
 	stopped.Running = false
 	return []mockedSnapshot{
 		{"windows", windowsModel(), nil, windowsSnapshot},
+		{"changed between reads", windowsModel(), map[string]any{"then": [][]mac.Window{moved}},
+			`{"running": true, "apps": [` + ghosttyAppJSON + `], "version": "1.4.0",
+			  "terminals": ["@2", "@6", "@1"], "windows": [{"tabs": [
+			    {"selected": true, "focused": "@2", "terminals": [{"id": "@2",
+			      "name": "◐ cld-app-3", "cwd": "/Users/me", "pid": 4250, "tty": "/dev/ttys016"}]},
+			    {"selected": false, "focused": "@6", "terminals": [{"id": "@6", "name": "~",
+			      "cwd": "/", "pid": 4500, "tty": "/dev/ttys020"}]}]}]}`},
+		{"changed twice", windowsModel(), map[string]any{"then": [][]mac.Window{moved, grown}},
+			`{"error": {"step": "changed", "number": 0,
+			  "message": "the windows changed while cld read them", "version": "1.4.0"}}`},
 		{"several", several, nil, `{"running": true, "apps": [` + ghosttyAppJSON + `, ` +
 			ghosttyAppJSON + `], "version": "1.4.0", "terminals": [], "windows": []}`},
 		{"not running", stopped, nil, `{"running": false, "apps": []}`},
