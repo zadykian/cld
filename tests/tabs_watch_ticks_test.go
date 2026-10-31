@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +34,14 @@ func waitSnapshots(t *testing.T, s *sandbox.Sandbox, n int) {
 	t.Helper()
 	sandbox.WaitFor(t, 20*time.Second, "the watcher's ticks", func() bool {
 		return snapshots(t, s) >= n
+	})
+}
+
+// waitGone waits for process pid to go: kill(pid, 0) finds a zombie until its reaping.
+func waitGone(t *testing.T, pid int) {
+	t.Helper()
+	sandbox.WaitFor(t, 5*time.Second, "the watcher's pid to go", func() bool {
+		return errors.Is(unix.Kill(pid, 0), unix.ESRCH)
 	})
 }
 
