@@ -14,7 +14,9 @@ type Observation struct {
 	Time    time.Time // in UTC, to the second
 	Run     string    // Ghostty's run, PID@START (see runID)
 	Version string
-	Ghostty int // Ghostty's pid
+	Ghostty int              // Ghostty's pid
+	Windows []ghostty.Window // front to back
+	Seen    map[string]Seen  // by terminal id, every window's
 	Procs   Table
 }
 
@@ -26,7 +28,7 @@ func Observe(ctx context.Context, snap *ghostty.Snapshot) (*Observation, error) 
 		return nil, err
 	}
 	o := &Observation{Time: time.Now().UTC().Truncate(time.Second), Version: snap.Version,
-		Ghostty: app.PID}
+		Ghostty: app.PID, Windows: snap.Windows, Seen: map[string]Seen{}}
 	if o.Procs, err = Processes(ctx); err != nil {
 		return nil, err
 	}
@@ -35,7 +37,19 @@ func Observe(ctx context.Context, snap *ghostty.Snapshot) (*Observation, error) 
 		return nil, &ghostty.Error{Kind: ghostty.Gone}
 	}
 	o.Run = run
+	for _, window := range snap.Windows {
+		for _, tab := range window.Tabs {
+			for _, t := range tab.Terminals {
+				o.see(t)
+			}
+		}
+	}
 	return o, nil
+}
+
+// see classifies terminal t.
+func (o *Observation) see(t ghostty.Terminal) {
+	o.Seen[t.ID] = classify(t)
 }
 
 // runID is Ghostty's run, by its pid and its start as ps gives it, and false where ps lacks the

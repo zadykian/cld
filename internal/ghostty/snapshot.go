@@ -16,6 +16,7 @@ type Snapshot struct {
 	Running bool         `json:"running"`
 	Apps    []App        `json:"apps"`              // more than one is Ghostty run by open -n
 	Version string       `json:"version,omitempty"` // "" where the read failed
+	Windows []Window     `json:"windows,omitempty"` // front to back
 	Error   *ScriptError `json:"error,omitempty"`
 }
 
@@ -24,6 +25,28 @@ type App struct {
 	PID        int     `json:"pid"`
 	Launched   float64 `json:"launched"`   // launchDate, seconds since 1970; 0 unknown
 	Executable string  `json:"executable"` // executableURL's path, "" unknown
+}
+
+// Window is a window, as Ghostty's AppleScript sees one: an AppKit tab group.
+type Window struct {
+	Tabs []Tab `json:"tabs"` // in tab-bar order
+}
+
+// Tab is a tab and its split tree's leaves. Ghostty's AppleScript gives no split's direction or
+// ratio, nor any id that lasts (decision 59.4).
+type Tab struct {
+	Selected  bool       `json:"selected"`
+	Focused   string     `json:"focused"`   // the focused terminal's id, "" where missing
+	Terminals []Terminal `json:"terminals"` // the leaves, left or top first
+}
+
+// Terminal is a pane: a surface, whose id Ghostty keeps for the surface's life.
+type Terminal struct {
+	ID   string `json:"id"`
+	Name string `json:"name"` // the title
+	Cwd  string `json:"cwd"`  // the working directory Ghostty last accepted
+	PID  int    `json:"pid"`  // the foreground process group, 0 unknown
+	TTY  string `json:"tty"`  // /dev/ttysNNN, "" not ready
 }
 
 // Take runs snapshot.js. A Snapshot whose Error is set is returned as an *Error instead.
