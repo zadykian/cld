@@ -94,9 +94,15 @@ func (c clock) when(l *Loss) string {
 	return "closed at " + c.at(l.At)
 }
 
-// noun names a loss of one tab or one split, and is empty for windows.
+// noun is what loss l is, in the singular: a window, a tab or a split.
 func noun(l *Loss) string {
-	return map[string]string{CauseTab: "a tab", CausePane: "a split"}[l.Cause]
+	switch l.Cause {
+	case CauseTab:
+		return "a tab"
+	case CausePane:
+		return "a split"
+	}
+	return "a window"
 }
 
 // size is what loss l holds: a tab, a split, or windows with their tabs and panes.
@@ -106,7 +112,9 @@ func size(l *Loss) string {
 		tabs += len(w.Tabs)
 		panes += len(windowLeaves(w))
 	}
-	if what := noun(l); what != "" {
+	switch l.Cause {
+	case CauseTab, CausePane:
+		what := noun(l)
 		if panes > 1 {
 			what += " of " + count(panes, "pane")
 		}

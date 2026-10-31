@@ -108,8 +108,8 @@ func (c clock) wouldReopen(p *Planned, report *Report) {
 			lines = append(lines, "  "+c.panes(p.script.Builds[n], p.builds[n]))
 		}
 		what := count(n-i, "window")
-		if a := noun(l); a != "" {
-			what = a + " as a window"
+		if l.Cause == CauseTab || l.Cause == CausePane {
+			what = noun(l) + " as a window"
 		}
 		report.section("Would reopen "+what+", "+c.when(l)+":", lines)
 		i = n
