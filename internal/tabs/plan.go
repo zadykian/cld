@@ -18,7 +18,8 @@ const buildWindow = "window"
 type Planned struct {
 	script ghostty.Plan
 	typed  []joining  // the pane of each of script.Typed
-	builds []building // the loss and bindings of each of script.Builds
+	builds []building // the loss, leaves and bindings of each of script.Builds
+	chosen []*Loss
 	// uncached are the hosts whose terminfo Ghostty has not cached, in the order asked.
 	uncached []string
 }
@@ -30,9 +31,11 @@ type joining struct {
 	cached  bool // Ghostty has the host's terminfo
 }
 
-// building is a build's loss, and the binding of each of its leaves that types a line, by key.
+// building is a build's loss, its leaves' panes as last seen, and the binding of each of its leaves
+// that types a line, by key.
 type building struct {
 	loss     *Loss
+	copies   map[string]*Pane
 	bindings map[string]Binding
 }
 
@@ -55,7 +58,7 @@ func plan(r *Record, o *Observation, chosen []*Loss, cached func(host string) bo
 		o = &Observation{}
 	}
 	pl := &planner{o: o, cached: cached, hosts: map[string]bool{},
-		out: &Planned{script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{},
+		out: &Planned{chosen: chosen, script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{},
 			Builds: []ghostty.Build{}}}}
 	pl.typings(pl.inPlace(r))
 	pl.order(chosen)
@@ -122,7 +125,8 @@ func (pl *planner) order(chosen []*Loss) {
 // else its first.
 func (pl *planner) key(p placement) {
 	k := &keyer{pl: pl, prefix: fmt.Sprintf("b%dl", len(pl.out.builds)),
-		b: building{loss: p.loss, bindings: map[string]Binding{}}}
+		b: building{loss: p.loss, copies: map[string]*Pane{},
+			bindings: map[string]Binding{}}}
 	build := p.build
 	selected := max(slices.IndexFunc(p.tabs, func(t Tab) bool { return t.Selected }), 0)
 	for i, tab := range p.tabs {

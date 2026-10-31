@@ -94,7 +94,7 @@ func (pl *planner) cachedHost(host string) bool {
 }
 
 // keyer turns a placement's record trees into apply.js's, keying each leaf with prefix and the
-// next number, and keeps each leaf's binding in b.
+// next number, and keeps each leaf's copy and binding in b.
 type keyer struct {
 	pl     *planner
 	prefix string
@@ -112,6 +112,7 @@ func (k *keyer) node(n *Node, keys map[string]string) *ghostty.Node {
 	key := fmt.Sprintf("%s%d", k.prefix, k.next)
 	k.next++
 	keys[n.Pane] = key
+	k.b.copies[key] = n.Copy
 	leaf := &ghostty.Leaf{Key: key}
 	if n.Copy != nil {
 		leaf.Cwd = n.Copy.Cwd
