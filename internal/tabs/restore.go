@@ -14,6 +14,11 @@ func Restore(ctx context.Context) (*Report, error) {
 	if err != nil {
 		return nil, failure(err)
 	}
+	if snap.Running {
+		if _, err := snap.Ghostty(); err != nil {
+			return nil, failure(err)
+		}
+	}
 	return &Report{Lines: []string{ghosttyLine(snap)}}, nil
 }
 

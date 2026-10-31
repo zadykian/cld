@@ -13,13 +13,17 @@ type Kind int
 // The kinds of Error. NoOsascript is permanent: another try finds it again until the user acts.
 const (
 	NoOsascript Kind = iota + 1 // osascript is not on the PATH
+	Gone                        // Ghostty quit or went away during the run
+	Several                     // more than one Ghostty process
 	Timeout                     // no answer before the deadline, or JXA's own timeout
 	Failed                      // anything else: osascript's own failure, or another of Ghostty's
 )
 
 // JXA's error numbers that cld tells apart.
 const (
-	timedOut = -1712 // errAETimeout: no answer to an Apple Event
+	procNotFound      = -600  // the application is not running
+	connectionInvalid = -609  // the connection to the application went away
+	timedOut          = -1712 // errAETimeout: no answer to an Apple Event
 )
 
 // ScriptError is the error document a script prints in place of its result. Number is JXA's
@@ -40,6 +44,7 @@ type Error struct {
 	Number  int
 	Message string
 	Version string
+	apps    int           // Several: the Ghostty processes
 	limit   time.Duration // Timeout: the deadline cld gave osascript, 0 for JXA's own
 }
 
@@ -47,7 +52,10 @@ type Error struct {
 func classify(se *ScriptError) *Error {
 	e := &Error{Kind: Failed, Step: se.Step, Number: se.Number, Message: se.Message,
 		Version: se.Version}
-	if se.Number == timedOut {
+	switch {
+	case se.Number == procNotFound || se.Number == connectionInvalid || se.Step == "running":
+		e.Kind = Gone
+	case se.Number == timedOut:
 		e.Kind = Timeout
 	}
 	return e
@@ -58,6 +66,10 @@ func (e *Error) Error() string {
 	switch e.Kind {
 	case NoOsascript:
 		return "restore tabs runs on a Mac: osascript is not installed"
+	case Gone:
+		return "Ghostty quit while cld read it"
+	case Several:
+		return fmt.Sprintf("Ghostty runs %d times, as open -n starts it: quit all but one", e.apps)
 	case Timeout:
 		if e.limit == 0 {
 			return "Ghostty did not answer an Apple Event in time"
