@@ -210,3 +210,55 @@ cld finds the pane it runs in by its input's device number, matched to each pane
 than by running `tty`. A restore never types into it, and its own merge counts it a shell at its
 prompt. Where the pane has a `last`, cld execs the same ssh there itself, as `join` execs tmux.
 
+### 59.10 Not taken
+
+Rejected:
+
+- `cld setup tabs`, writing the startup line: ssh's config and the guide's line cover the start.
+- A LaunchAgent running cld: its Apple Events would be charged to cld, with a prompt of its own,
+  and an update may lose the grant.
+- `cld list --json` before a restore: the typed line refuses at join time, with no gap (58.7).
+- A record of terminals on the host, set by each join and move: an ssh per lookup, and a contract of
+  four parts where the title is one.
+- `cld join --on HOST` on the Mac, which changes the habit, and `cld remote` for the command's name.
+- Joining Ghostty's restored panes unasked: the user asks with `cld restore tabs`.
+- Rebuilt windows' frames, through System Events: a broad grant, and Ghostty keeps the frames of
+  the windows it restores itself. Its own window frames are none of the dictionary's.
+- Ghostty 1.3.1, whose terminals have no `pid` or `tty`.
+
+Deferred: a connection that drops in a pane that stays open. A detach then an exit within a tick
+looks the same, so telling them apart needs `cut: drop` and a typed line's status. ws's `ws-join`
+covers drops meanwhile (`zadykian/ws` #56). So within a run no pane gets a `last`.
+
+### 59.11 Help and completion
+
+`restore tabs` has its own help and completes its options, never `--watching`. `--watch` and the
+hidden `--watching` stay in every later release with these meanings, as the keys' options do
+([decision 51.2](0051-moving-between-sessions.md)): ssh's config and the watcher's exec name them.
+Until 59.6 lands, `restore tabs` without `--watch` or `--dry-run` fails with status 2, and its
+help names the record alone. `--dry-run` shows Ghostty, the watcher, the panes and losses the record
+holds, and notes from `ghostty +show-config`.
+
+### 59.12 Tests
+
+No runner automates Ghostty, as none automates iTerm2 ([decision 8](0008-iterm2.md)). The tests
+run cld against a model Mac instead ([testing](../testing/harness.md#the-macs-fakes)): fakes for
+osascript, ps, ssh, open and ghostty, ptys for the panes' sizes, and real tmux behind the fake ssh.
+A test holds every term the scripts use to Ghostty's dictionary. On the macos job, osacompile checks
+their syntax, osascript runs them against a mock Ghostty in JavaScript, and cld reads the real ps.
+
+Ghostty's real answers come from #177's spike alone, and its results go into the findings. Until
+then, each behaviour that only a Mac shows is marked UNVERIFIED, with its check, in the one file
+that rests on it. A check that fails changes that file, the part of this decision it backs, and
+the guide where users see it.
+
+## Consequences
+
+- Each pane comes back to its session with one command, on any Mac that runs the watcher. The
+  guide says how to start it, and which of Ghostty's settings it needs.
+- A move then a close within one tick records the session before the move. A title fixed in
+  Ghostty's config, or set by hand, hides a pane's session.
+- Rebuilt windows lose their frame, fullscreen state, tab titles and colours.
+- The title and `--existing` are a contract across releases of cld on two machines.
+- This release keeps the record and shows it; joining and reopening (59.6 to 59.9) follow in
+  #176's next changes.
