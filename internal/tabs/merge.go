@@ -10,9 +10,9 @@ import (
 )
 
 // Merge folds o into r as a tick does, lastTick being the watcher's last tick before this one
-// (decision 59.4). A new run is a quit of the one before. Then
-// the pending losses o shows are undone, the panes o shows update, those it shows nowhere go
-// pending, the windows follow o's, and pending losses whose logins are gone count.
+// (decision 59.4). A new run is a quit of the one before. Then the pending losses o shows are
+// undone, and the panes o shows update. Those it shows nowhere go pending, and the windows follow
+// o's. Pending losses whose logins are gone count, and the losses are bounded.
 func Merge(r *Record, o *Observation, lastTick time.Time) {
 	switch {
 	case r.Run.ID == "":
@@ -27,6 +27,7 @@ func Merge(r *Record, o *Observation, lastTick time.Time) {
 	vanish(r, o)
 	mergeWindows(r, o, undone)
 	settlePending(r, o.Procs)
+	bound(r, o.Time)
 }
 
 // shows reports whether a window of o holds terminal id.
@@ -101,8 +102,8 @@ func mergePane(p *Pane, t ghostty.Terminal, sizes map[string]Size, seen Seen, no
 }
 
 // mergeWindows makes r's windows o's, front to back, then the old windows o shows only hidden
-// panes of, last. Each tab keeps its tree where an old or undone tab had its panes in that order. A pane in
-// no window then leaves r.Panes.
+// panes of, last. Each tab keeps its tree where an old or undone tab had its panes in that order.
+// A pane in no window then leaves r.Panes.
 func mergeWindows(r *Record, o *Observation, undone []Window) {
 	old := r.Windows
 	windows := make([]Window, 0, len(o.Windows))

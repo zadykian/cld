@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -167,4 +168,39 @@ func quitAt(got, want, before time.Time) bool {
 		return !got.Before(before) && !got.After(time.Now())
 	}
 	return got.Equal(want)
+}
+
+// The record keeps 32 losses at most, the newest, of this run and the one before, none older than
+// 30 days.
+func TestTabsQuitBounds(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a := addPane(m, "~")
+	m.Windows = []mac.Window{windowOf(tabOf(a))}
+	now := time.Now().UTC().Truncate(time.Second)
+	r := recordOf(m, map[string]*tabs.Pane{a: {Kind: "local"}})
+	r.Previous = "1@2025-01-01T00:00:00Z"
+	loss := func(run string, ago time.Duration) *tabs.Loss {
+		return &tabs.Loss{At: now.Add(-ago), Run: run, Cause: "closed",
+			Windows: []tabs.Window{{Tabs: []tabs.Tab{{Shape: "made", Tree: leaf("gone")}}}}}
+	}
+	r.Losses = []*tabs.Loss{loss("2@2025-01-01T00:00:00Z", time.Minute),
+		loss(r.Run.ID, 31*24*time.Hour), loss(r.Previous, time.Second)}
+	for i := range 33 {
+		r.Losses = append(r.Losses, loss(r.Run.ID, time.Duration(40-i)*time.Minute))
+	}
+	writeRecord(t, s, r)
+	var got []string
+	for _, l := range tick(t, s, m).Losses {
+		got = append(got, fmt.Sprintf("%s %v", l.Run, now.Sub(l.At)))
+	}
+	var want []string
+	for i := 2; i < 33; i++ {
+		want = append(want, fmt.Sprintf("%s %v", r.Run.ID, time.Duration(40-i)*time.Minute))
+	}
+	want = append(want, r.Previous+" 1s")
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("losses\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
 }

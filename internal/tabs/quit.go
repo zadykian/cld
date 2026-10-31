@@ -4,6 +4,15 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/zadykian/cld/internal/session"
+)
+
+// The record's bounds on its losses: at most maxLosses, from this run and the one before. None is
+// older than lossSpan, after which cld forgets an ended session's entry (decision 40.6).
+const (
+	maxLosses = 32
+	lossSpan  = session.Expiry
 )
 
 // runChange is Ghostty's quit of r's run, seen as o shows another (decision 59.4). What o shows
@@ -64,4 +73,17 @@ func quitWindows(r *Record, o *Observation) []Window {
 	}
 	r.Windows = kept
 	return quit
+}
+
+// bound keeps r's losses within the record's bounds at time now, oldest first. Pending losses are
+// never bounded, as each settles within Ghostty's undo or at the next run change.
+func bound(r *Record, now time.Time) {
+	r.Losses = slices.DeleteFunc(r.Losses, func(l *Loss) bool {
+		ours := l.Run != "" && (l.Run == r.Run.ID || l.Run == r.Previous)
+		return !ours || now.Sub(l.At) > lossSpan
+	})
+	slices.SortStableFunc(r.Losses, func(a, b *Loss) int { return a.At.Compare(b.At) })
+	if over := len(r.Losses) - maxLosses; over > 0 {
+		r.Losses = slices.Delete(r.Losses, 0, over)
+	}
 }
