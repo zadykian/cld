@@ -25,7 +25,7 @@ func recorded(suffix string) (entry, bool) {
 // none, as a socket directory that ignores case reads another's file (decision 40.7).
 func readEntry(file, suffix string) (entry, bool) {
 	info, err := os.Stat(file)
-	if err != nil || time.Since(info.ModTime()) > expiry {
+	if err != nil || time.Since(info.ModTime()) > Expiry {
 		return entry{}, false
 	}
 	data, err := os.ReadFile(file)
@@ -66,7 +66,7 @@ func entries() []entry {
 }
 
 // indexes are the highest indexes given, by the start of the names they follow: "NAME-", or ""
-// for the names that are an index alone. Those given longer ago than expiry are left out.
+// for the names that are an index alone. Those given longer ago than Expiry are left out.
 func indexes(dir string) map[string]given {
 	data, err := os.ReadFile(filepath.Join(dir, "indexes.json"))
 	if err != nil {
@@ -77,7 +77,7 @@ func indexes(dir string) map[string]given {
 		return map[string]given{}
 	}
 	for prefix, g := range all {
-		if time.Since(g.Time) > expiry {
+		if time.Since(g.Time) > Expiry {
 			delete(all, prefix)
 		}
 	}

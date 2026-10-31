@@ -17,9 +17,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// expiry is how long cld keeps an entry, and an index given: claude's default cleanupPeriodDays,
+// Expiry is how long cld keeps an entry, and an index given: claude's default cleanupPeriodDays,
 // after which claude removes a conversation not written since (decision 40.6).
-const expiry = 30 * 24 * time.Hour
+const Expiry = 30 * 24 * time.Hour
 
 // lockWait is how long join waits for the lock that another cld holds, and for a session that
 // another cld is starting (decisions 40.6 and 50.4).
