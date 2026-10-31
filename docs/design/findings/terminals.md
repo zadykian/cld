@@ -134,3 +134,76 @@ v1.4.0 both. Main at b3dc3d7 was read on 2026-10-16. Then v1.4.0 was checked aga
   addressed app-wide by its UUID. It replaces T's leaf with a split at ratio 0.5, and focus moves
   to the new terminal. For `right` and `down`, T keeps the left or top half. v1.3.1 finds T's
   controller by T's window, and v1.4.0 by the tree that holds T (PR #13640).
+- **Typing** (v1.3.1 and v1.4.0, but where marked; `ScriptInputTextCommand.swift`,
+  `Ghostty.Surface.swift`, `src/Surface.zig`, `ScriptKeyEventCommand.swift`). `input text` takes
+  the paste path with paste protection skipped. So the text is encoded as the pastes in
+  [Ghostty](#ghostty) are, and bracketed when the program asked for bracketed pastes.
+  `send key NAME modifiers MODS` presses a key named as in `Ghostty.Input.Key`, such as `u` or
+  `enter`, with shift, control, option or command. v1.3.1 sends the key with no text, and v1.4.0
+  derives its text through the keyboard layout (PR #13205).
+- **`perform action`** (v1.3.1 and v1.4.0; `src/input/Binding.zig`, `TerminalController.swift`,
+  `Ghostty.App.swift`, `SplitTree.swift`). `move_tab:N` moves by N places. On macOS it moves the
+  window's selected tab, clamped at either end, where `Binding.zig` says it wraps. With titlebar
+  tabs on macOS 26, v1.4.0 moves the tabs passed instead, to the same order. It acts only when the
+  terminal is its tab's focused one, yet returns true for any tab with siblings. `equalize_splits`
+  gives each split its first child's share of the leaves along its direction, a crossing subtree
+  counting as one.
+- **`focus` and `select tab`** (v1.3.1 and v1.4.0; `ScriptTerminal.swift`,
+  `BaseTerminalController.swift`, `ScriptTab.swift`). `focus` moves focus on a later turn of the
+  main run loop, then orders the window front and activates Ghostty. `select tab` orders the tab's
+  own window front and makes it key.
+- **`window-save-state`** (v1.3.1 and v1.4.0; `src/config/Config.zig`, `AppDelegate.swift`,
+  `TerminalController.swift`, `SurfaceView_AppKit.swift`). Ghostty maps it onto AppKit's
+  `NSQuitAlwaysKeepsWindows`. Its docs say `default`, the default, saves state only after a forced
+  quit or where macOS's own setting asks. So under `default`, what a normal quit saves rests on
+  that setting, whose default the spike finds (check 8); `always` saves at every exit. A pane
+  comes back with its pwd, UUID and title in a fresh shell, since no command is saved. v1.4.0 also
+  marks no window restorable under `never`.
+- **`undo-timeout`** (v1.3.1 and v1.4.0; `src/config/Config.zig`, `TerminalController.swift`,
+  `BaseTerminalController.swift`, `ExpiringUndoManager.swift`, `src/termio/Exec.zig`). The default
+  is 5 s, and 0 turns undo off. Closing a window, tab or split registers an undo that holds its
+  live surfaces until the timeout ends. Until then their ptys and processes run on; the code calls
+  these "undo/redo operations that contain running ptys". A freed surface tries a SIGHUP to its
+  child's process group through `killpg`, and on Darwin ignores an EPERM, which the code calls
+  expected. On macOS that child is `/usr/bin/login [-q] -flp USER`.
+- **The ssh wrapper** (v1.3.1's `src/shell-integration/zsh/ghostty-integration`; v1.4.0's
+  `src/cli/ssh.zig`). `shell-integration-features` holds `ssh-env` and `ssh-terminfo`, both off by
+  default, and either makes the shell integration define an `ssh` function. On v1.3.1 that zsh
+  function runs `command ssh "$@"` itself. On v1.4.0 it runs `ghostty +ssh FLAGS -- "$@"`, which
+  spawns ssh as its child and waits. Both install the terminfo through an ssh of its own, before
+  the session's, given the user's words and then the install script. So a remote command among
+  those words gets the script appended.
+- **`ghostty +ssh-cache`** (v1.3.1's `src/cli/ssh_cache.zig` and
+  `src/shell-integration/zsh/ghostty-integration`; v1.4.0's `src/cli/ssh_cache.zig` and
+  `src/cli/ssh.zig`). The wrapper keys its cache by `ssh -G`'s `user@hostname`, not by the alias
+  typed, and v1.4.0 adds `:port` for a port other than 22. `+ssh-cache --host=KEY` exits 1 for a key
+  the cache lacks. v1.4.0 also takes `+ssh-cache KEY`, and still takes `--host=KEY` with a
+  deprecation warning on stderr, so that spelling works on both. On v1.4.0 a bare hostname matches
+  every user and port, and `+ssh` also wants the entry's terminfo version, which the query
+  ignores. v1.3.1 adds the entry once the install succeeds, and v1.4.0 only once the session's ssh
+  exits 0.
+- **Reading the settings** (v1.3.1 and v1.4.0; `src/cli/args.zig`, `src/cli/show_config.zig`,
+  `src/config/formatter_file.zig`). Ghostty parses each value of a packed struct, such as
+  `shell-integration-features`, from the struct's defaults. So a later line, in the same file or a
+  later one, replaces the whole list. `+show-config` prints, by default, only the options whose
+  value differs from the default. So an option set to its default prints no line. On v1.4.0 the
+  output goes to a pager only when stdout is a tty.
+- **What a pane's programs send** (v1.3.1 and v1.4.0; `src/termio/Exec.zig`,
+  `src/termio/stream_handler.zig`, `src/os/hostname.zig`, `src/Surface.zig`,
+  `SurfaceView_AppKit.swift`). Every pane's environment has `TERM_PROGRAM=ghostty`. OSC 7 counts
+  only when its host is `localhost` or the Mac's own `gethostname`; Ghostty logs and drops one from
+  any other host. OSC 0 and 2 set the title, unless a `title` in the config fixes it, and one of 256
+  bytes or more is ignored. A title set by hand, in Ghostty's Change Terminal Title dialog or
+  through v1.4.0's `name override`, holds later ones back until either clears it. `name` then reads
+  it, and a restored window brings it back still holding. Changes settle after 75 ms.
+- **Pane sizes** (v1.3.1 and v1.4.0; `src/pty.zig`, `src/termio/Exec.zig`, `src/termio/Termio.zig`,
+  `src/renderer/size.zig`, `src/Surface.zig`). `Pty.open` sets the winsize, rows, columns and
+  pixels, and each resize sets it again with `TIOCSWINSZ`. The size starts as the grid's: columns
+  and rows times the cell's size in pixels. A resize gives the surface's pixels less its padding:
+  `window-padding-x` and `-y`, 2 points a side by default, times the display's scale. With
+  `window-padding-balance` on, the padding also takes the space the grid leaves.
+- **One binary** (v1.3.1 and v1.4.0; `macos/Ghostty.xcodeproj/project.pbxproj`, `main.swift`,
+  `src/termio/Exec.zig`). The app's executable is `ghostty`, and `main.swift` runs a `+ACTION`
+  argument as a CLI action, exiting before AppKit starts. `GHOSTTY_BIN_DIR`, and the `PATH` entry
+  Ghostty appends, name the running binary's directory, where the shell integration finds
+  `ghostty`. So the app and `ghostty +ssh` both run `Contents/MacOS/ghostty`.
