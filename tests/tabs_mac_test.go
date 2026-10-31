@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -54,6 +55,16 @@ func windowOf(tabs ...mac.Tab) mac.Window {
 	return mac.Window{Tabs: tabs}
 }
 
+// runOf is the run of m's Ghostty, as the record names it: its pid and its ps row's start.
+func runOf(m *mac.Model) string {
+	for _, p := range m.Processes {
+		if p.PID == m.PID {
+			return fmt.Sprintf("%d@%s", p.PID, p.Start.UTC().Format(time.RFC3339))
+		}
+	}
+	panic("the model's Ghostty has no row")
+}
+
 // addPane adds a pane to m, in no window yet, titled title, and returns its terminal's id. Its
 // login runs -zsh, with jobs in front of it as front puts them.
 func addPane(m *mac.Model, title string, jobs ...[]string) string {
@@ -92,6 +103,22 @@ func front(m *mac.Model, id string, jobs ...[]string) {
 	}
 }
 
+// endLogins ends the processes of the panes ids, their logins among them: Ghostty frees a closed
+// pane's surface once its undo has passed.
+func endLogins(m *mac.Model, ids ...string) {
+	ttys := map[string]bool{}
+	for _, id := range ids {
+		ttys[strings.TrimPrefix(m.Terminals[id].TTY, "/dev/")] = true
+	}
+	kept := m.Processes[:0]
+	for _, p := range m.Processes {
+		if !ttys[p.TTY] {
+			kept = append(kept, p)
+		}
+	}
+	m.Processes = kept
+}
+
 // ssh is ssh's words as ps gives them, with args after its name.
 func ssh(args ...string) []string { return append([]string{"ssh"}, args...) }
 
@@ -104,4 +131,30 @@ func loginOf(m *mac.Model, id string) int {
 		}
 	}
 	return 0
+}
+
+// relaunch is m's Ghostty started again, as pid at start, once m's has quit. It brings the panes
+// back: each is a new login at its prompt, with the terminal's id, title and directory. The
+// windows of m whose panes are all back come back too.
+//
+//nolint:unparam // pid is always 4242 until the last-typed tests
+func relaunch(m *mac.Model, pid int, start time.Time, back ...string) *mac.Model {
+	n := ghosttyAt(pid, start)
+	n.Serial = m.Serial
+	for _, id := range back {
+		made := n.AddTerminal(m.Terminals[id].Cwd, "")
+		n.Terminals[id] = n.Terminals[made]
+		n.Terminals[id].Name = m.Terminals[id].Name
+		delete(n.Terminals, made)
+	}
+	for _, w := range m.Windows {
+		var leaves []string
+		for _, tab := range w.Tabs {
+			leaves = append(leaves, tab.Tree.Leaves()...)
+		}
+		if !slices.ContainsFunc(leaves, func(id string) bool { return !slices.Contains(back, id) }) {
+			n.Windows = append(n.Windows, w)
+		}
+	}
+	return n
 }

@@ -2,8 +2,14 @@ package tabs
 
 import "slices"
 
-// splitRight is Ghostty's split word for a split whose halves lie side by side.
-const splitRight = "right"
+// Ghostty's split words: right and down are a split's directions, and left and up the other
+// sides of a pane a lost split goes back on.
+const (
+	splitRight = "right"
+	splitDown  = "down"
+	splitLeft  = "left"
+	splitUp    = "up"
+)
 
 // isLeaf reports whether node n is a leaf: a pane, with no halves.
 func isLeaf(n *Node) bool { return n.First == nil && n.Second == nil }
@@ -47,11 +53,83 @@ func flat(ids []string) *Node {
 	return n
 }
 
-// copyTree is a copy of tree n that shares nothing with it, nil for nil.
-func copyTree(n *Node) *Node {
+// copyTree is a copy of tree n whose leaves carry a copy of their panes in panes, as a loss holds
+// them: the panes as last seen. A leaf panes lacks carries none, so a nil panes strips the copies.
+func copyTree(n *Node, panes map[string]*Pane) *Node {
 	if n == nil {
 		return nil
 	}
-	return &Node{Pane: n.Pane, Split: n.Split, Ratio: n.Ratio, First: copyTree(n.First),
-		Second: copyTree(n.Second)}
+	c := &Node{Pane: n.Pane, Split: n.Split, Ratio: n.Ratio, First: copyTree(n.First, panes),
+		Second: copyTree(n.Second, panes)}
+	if isLeaf(n) {
+		c.Copy = clonePane(panes[n.Pane])
+	}
+	return c
+}
+
+// clonePane is a copy of p that shares nothing with it, nil for nil.
+func clonePane(p *Pane) *Pane {
+	if p == nil {
+		return nil
+	}
+	c := *p
+	if p.Size != nil {
+		size := *p.Size
+		c.Size = &size
+	}
+	return &c
+}
+
+// allGone reports whether tree n has panes, and gone holds for each.
+func allGone(n *Node, gone func(id string) bool) bool {
+	ids := Leaves(n)
+	return len(ids) > 0 && !slices.ContainsFunc(ids, func(id string) bool { return !gone(id) })
+}
+
+// firstOpen is tree n's first pane that gone does not hold for, "" for none.
+func firstOpen(n *Node, gone func(id string) bool) string {
+	for _, id := range Leaves(n) {
+		if !gone(id) {
+			return id
+		}
+	}
+	return ""
+}
+
+// cut is a split that closed: a subtree of a tab whose panes are all gone, under a parent whose
+// other half has one still open. anchor is that half's first open pane. side is where the subtree
+// was beside it: the parent's split for the second half, the opposite side for the first.
+type cut struct {
+	tree   *Node
+	anchor string
+	side   string
+}
+
+// goneSubtrees are the cuts of tree n, left or top first, gone telling a gone pane by its id. n's
+// panes must not all be gone, as a whole tab gone is no split's loss.
+func goneSubtrees(n *Node, gone func(id string) bool) []cut {
+	if n == nil || isLeaf(n) {
+		return nil
+	}
+	var cuts []cut
+	if allGone(n.First, gone) {
+		cuts = append(cuts, cut{tree: n.First, anchor: firstOpen(n.Second, gone),
+			side: opposite(n.Split)})
+	} else {
+		cuts = append(cuts, goneSubtrees(n.First, gone)...)
+	}
+	if allGone(n.Second, gone) {
+		cuts = append(cuts, cut{tree: n.Second, anchor: firstOpen(n.First, gone), side: n.Split})
+	} else {
+		cuts = append(cuts, goneSubtrees(n.Second, gone)...)
+	}
+	return cuts
+}
+
+// opposite is the side opposite split's: left for right, up for down.
+func opposite(split string) string {
+	if split == splitDown {
+		return splitUp
+	}
+	return splitLeft
 }

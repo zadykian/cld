@@ -2,6 +2,7 @@ package tests
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,6 +47,22 @@ func readRecord(t *testing.T, s *sandbox.Sandbox) *tabs.Record {
 	return &r
 }
 
+// writeRecord writes r as the record of Ghostty's tabs in s, as cld would: for times beyond a
+// test's span.
+func writeRecord(t *testing.T, s *sandbox.Sandbox, r *tabs.Record) {
+	t.Helper()
+	data, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(recordPath(s), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // dryRun runs cld restore tabs --dry-run in s.
 func dryRun(t *testing.T, s *sandbox.Sandbox) sandbox.Result {
 	t.Helper()
@@ -64,7 +81,8 @@ func TestTabsDryRunRuns(t *testing.T) {
 	}{
 		{"running", func(*mac.Model) {}, started},
 		{"no launch date", func(m *mac.Model) { m.Launched = 0 }, started},
-		{"not running", func(m *mac.Model) { m.Running = false }, "Ghostty is not running\n"},
+		{"not running", func(m *mac.Model) { m.Running = false },
+			"Ghostty is not running: the record as if it brought nothing back\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -152,6 +170,20 @@ func TestTabsWritesOnlyChanges(t *testing.T) {
 	}
 }
 
+// recordOf is a record of the run of m's Ghostty, of panes and windows, for writeRecord.
+func recordOf(m *mac.Model, panes map[string]*tabs.Pane, windows ...tabs.Window) *tabs.Record {
+	return &tabs.Record{Format: tabs.Format, Run: tabs.Run{ID: runOf(m), Version: m.Version},
+		Panes: panes, Windows: windows, Pending: []*tabs.Loss{}, Losses: []*tabs.Loss{}}
+}
+
+// leaf is a record's leaf of pane id.
+func leaf(id string) *tabs.Node { return &tabs.Node{Pane: id} }
+
+// split is a record's split of first and second, right or down.
+func split(direction string, first, second *tabs.Node) *tabs.Node {
+	return &tabs.Node{Split: direction, First: first, Second: second}
+}
+
 // named names the panes ids a, b, c and on, for drawWindows.
 func named(ids ...string) map[string]string {
 	names := map[string]string{}
@@ -231,4 +263,32 @@ func TestTabsNeedsNoTmux(t *testing.T) {
 	if r := readRecord(t, s); len(r.Panes) != 1 {
 		t.Errorf("recorded %d panes, want 1", len(r.Panes))
 	}
+}
+
+// drawLosses draws losses, a line each: the cause, where a tab or split goes back, and its
+// windows as drawWindows draws them. A tab goes back as "tab 2 beside a", the second in a's
+// window, and a split as "pane right of a".
+func drawLosses(losses []*tabs.Loss, names map[string]string) string {
+	var lines []string
+	for _, l := range losses {
+		line := l.Cause
+		switch a := l.Anchor; {
+		case a == nil:
+		case a.Split != "":
+			line += " " + a.Split + " of " + names[a.Pane]
+		default:
+			line += fmt.Sprintf(" %d beside %s", a.Index, names[a.Pane])
+		}
+		lines = append(lines, line+": "+drawWindows(l.Windows, names))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// clockAt is time at as the dry-run writes it: in UTC, as 15:04 today, else with its date.
+func clockAt(at time.Time) string {
+	now, at := time.Now().UTC(), at.UTC()
+	if now.Format(time.DateOnly) == at.Format(time.DateOnly) {
+		return at.Format("15:04")
+	}
+	return at.Format("2006-01-02 15:04")
 }
