@@ -56,12 +56,13 @@ type Pane struct {
 	Host     string    `json:"host,omitempty"`    // ssh's destination as typed: cld and ssh only
 	Session  string    `json:"session,omitempty"` // the whole NAME: cld only
 	Worktree bool      `json:"worktree,omitempty"`
-	Title    string    `json:"title,omitempty"`
+	Title    string    `json:"title,omitempty"` // busy markers as ✳
 	Cwd      string    `json:"cwd,omitempty"`
 	TTY      string    `json:"tty,omitempty"`
 	Login    int       `json:"login,omitempty"` // the pane's /usr/bin/login, Ghostty's child
 	Size     *Size     `json:"size,omitempty"`
 	Since    time.Time `json:"since"` // when Host or Session last changed
+	Last     *Last     `json:"last,omitempty"`
 }
 
 // Size is a pane's winsize. The pixels are the surface's, less its padding.
@@ -70,6 +71,18 @@ type Size struct {
 	Rows   int `json:"rows"`
 	Width  int `json:"width"`
 	Height int `json:"height"`
+}
+
+// Last is the binding a pane had when a quit cut it, or that a restore typed into it. The next
+// restore joins it again where the pane is back at its prompt.
+type Last struct {
+	Host     string     `json:"host"`
+	Session  string     `json:"session,omitempty"`
+	Worktree bool       `json:"worktree,omitempty"`
+	Cut      string     `json:"cut"`
+	Run      string     `json:"run"` // the run whose end, or whose restore, set it
+	At       time.Time  `json:"at"`
+	Typed    *time.Time `json:"typed"` // nil until a restore types the line
 }
 
 // Window is a window's tabs, in tab-bar order.

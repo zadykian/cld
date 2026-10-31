@@ -10,9 +10,8 @@ import (
 )
 
 // Merge folds o into r as a tick does, lastTick being the watcher's last tick before this one
-// (decision 59.4). A new run is a quit of the one before. Then the pending losses o shows are
-// undone, and the panes o shows update. Those it shows nowhere go pending, and the windows follow
-// o's. Pending losses whose logins are gone count, and the losses are bounded.
+// (decision 59.4). A new run is a quit of the one before. Then the panes o shows update, those it
+// shows nowhere go pending, the windows follow o's, and pending losses whose logins are gone count.
 func Merge(r *Record, o *Observation, lastTick time.Time) {
 	switch {
 	case r.Run.ID == "":
@@ -99,6 +98,7 @@ func mergePane(p *Pane, t ghostty.Terminal, sizes map[string]Size, seen Seen, no
 		p.Kind, p.Host, p.Session = seen.Kind, seen.Host, seen.Session
 		p.Worktree, p.Title = seen.Worktree, seen.Title
 	}
+	clearLast(p, seen, now)
 }
 
 // mergeWindows makes r's windows o's, front to back, then the old windows o shows only hidden
@@ -171,8 +171,7 @@ func tabFor(ids []string, selected bool, focused string, old, undone []Window) (
 
 // treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old or undone with
 // those panes in that order gives its own, so that a tree cld made stays made, through an undo
-// too. Else the panes make a
-// row: Ghostty's AppleScript gives no split's direction (decision 59.8).
+// too. Else the panes make a row: Ghostty's AppleScript gives no split's direction (decision 59.8).
 func treeFor(ids []string, old, undone []Window) (*Node, string) {
 	if len(ids) == 1 {
 		return &Node{Pane: ids[0]}, ShapeMade
