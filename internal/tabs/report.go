@@ -2,6 +2,7 @@ package tabs
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -25,6 +26,9 @@ func (r *Report) warn(warning string) {
 	}
 }
 
+// note adds note: what cld did, or left, beside what was asked of it.
+func (r *Report) note(note string) { r.Notes = append(r.Notes, note) }
+
 // section adds a heading and its lines, where it has any.
 func (r *Report) section(heading string, lines []string) {
 	if len(lines) > 0 {
@@ -37,6 +41,13 @@ func (r *Report) section(heading string, lines []string) {
 type clock struct {
 	now  time.Time
 	home string
+}
+
+// newClock is the clock of a report written now.
+func newClock() clock {
+	c := clock{now: time.Now()}
+	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
+	return c
 }
 
 func (c clock) at(t time.Time) string { return c.format(t, "15:04") }
@@ -83,9 +94,15 @@ func (c clock) when(l *Loss) string {
 	return "closed at " + c.at(l.At)
 }
 
-// noun names a loss of one tab or one split, and is empty for windows.
+// noun is what loss l is, in the singular: a window, a tab or a split.
 func noun(l *Loss) string {
-	return map[string]string{CauseTab: "a tab", CausePane: "a split"}[l.Cause]
+	switch l.Cause {
+	case CauseTab:
+		return "a tab"
+	case CausePane:
+		return "a split"
+	}
+	return "a window"
 }
 
 // size is what loss l holds: a tab, a split, or windows with their tabs and panes.
@@ -95,7 +112,9 @@ func size(l *Loss) string {
 		tabs += len(w.Tabs)
 		panes += len(windowLeaves(w))
 	}
-	if what := noun(l); what != "" {
+	switch l.Cause {
+	case CauseTab, CausePane:
+		what := noun(l)
 		if panes > 1 {
 			what += " of " + count(panes, "pane")
 		}
@@ -107,6 +126,19 @@ func size(l *Loss) string {
 	}
 	what += " of " + count(tabs, "tab")
 	if panes > tabs {
+		what += " and " + count(panes, "pane")
+	}
+	return what
+}
+
+// windowSize is a window of tabs, with their panes.
+func windowSize(tabs []ghostty.TabBuild) string {
+	panes := 0
+	for _, tab := range tabs {
+		panes += len(buildLeaves(tab.Tree))
+	}
+	what := "a window of " + count(len(tabs), "tab")
+	if panes > len(tabs) {
 		what += " and " + count(panes, "pane")
 	}
 	return what

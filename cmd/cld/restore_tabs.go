@@ -73,8 +73,7 @@ func (t *tabsCommand) run(*cobra.Command, []string) error {
 }
 
 // together refuses the options that exclude each other: --watching takes none, --watch only
-// starts the watcher, and --all reopens what --older would. It refuses a run with neither --watch
-// nor --dry-run, which restores nothing yet.
+// starts the watcher, and --all reopens what --older would.
 func (t *tabsCommand) together() error {
 	restoring := []struct {
 		set  bool
@@ -96,8 +95,6 @@ func (t *tabsCommand) together() error {
 	case t.older && t.all:
 		return fail.Usage(t.typed + ": --older and --all exclude each other: --all reopens every " +
 			"burst (see cld help)")
-	case !t.watch && !t.watching && !t.dryRun:
-		return fail.Usage(t.typed + ": give --watch or --dry-run (see cld help)")
 	}
 	return nil
 }

@@ -18,7 +18,8 @@ const buildWindow = "window"
 type Planned struct {
 	script ghostty.Plan
 	typed  []joining  // the pane of each of script.Typed
-	builds []building // the loss and bindings of each of script.Builds
+	builds []building // the loss, leaves and bindings of each of script.Builds
+	chosen []*Loss
 	// uncached are the hosts whose terminfo Ghostty has not cached, in the order asked.
 	uncached []string
 }
@@ -30,9 +31,11 @@ type joining struct {
 	cached  bool // Ghostty has the host's terminfo
 }
 
-// building is a build's loss, and the binding of each of its leaves that types a line, by key.
+// building is a build's loss, its leaves' panes as last seen, and the binding of each of its leaves
+// that types a line, by key.
 type building struct {
 	loss     *Loss
+	copies   map[string]*Pane
 	bindings map[string]Binding
 }
 
@@ -55,10 +58,10 @@ func plan(r *Record, o *Observation, chosen []*Loss, cached func(host string) bo
 		o = &Observation{}
 	}
 	pl := &planner{o: o, cached: cached, hosts: map[string]bool{},
-		out: &Planned{script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{},
+		out: &Planned{chosen: chosen, script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{},
 			Builds: []ghostty.Build{}}}}
 	pl.typings(pl.inPlace(r))
-	pl.order(chosen)
+	pl.order(pl.leavesOf(chosen))
 	return pl.out
 }
 
@@ -94,6 +97,32 @@ func (pl *planner) typings(kept []keptPane) {
 	}
 }
 
+// pruned is a chosen loss, and its windows less the leaves a restore does not rebuild.
+type pruned struct {
+	loss    *Loss
+	windows []Window
+}
+
+// leavesOf is chosen, each with its leaves to rebuild. A leaf open again, in a window of o or
+// hidden, is not rebuilt. Nor is one that a newer loss of chosen holds too, which rebuilds it.
+func (pl *planner) leavesOf(chosen []*Loss) []pruned {
+	out := make([]pruned, len(chosen))
+	taken := map[string]bool{}
+	drop := func(id string) bool { return taken[id] || !pl.o.gone(id) }
+	for i := len(chosen) - 1; i >= 0; i-- {
+		out[i].loss = chosen[i]
+		for _, w := range chosen[i].Windows {
+			if kept, ok := pruneWindow(w, drop); ok {
+				out[i].windows = append(out[i].windows, kept)
+			}
+		}
+		for id := range windowCopies(out[i].windows) {
+			taken[id] = true
+		}
+	}
+	return out
+}
+
 // placement is a build before its keys: its loss, and the tabs it makes.
 type placement struct {
 	loss  *Loss
@@ -101,13 +130,13 @@ type placement struct {
 	tabs  []Tab
 }
 
-// order makes chosen's builds, a window each, back to front as the loss holds them. Oldest loss
+// order makes lost's builds, a window each, back to front as the loss holds them. Oldest loss
 // first, so that the newest loss's front window comes last and ends in front.
-func (pl *planner) order(chosen []*Loss) {
+func (pl *planner) order(lost []pruned) {
 	var all []placement
-	for _, l := range chosen {
-		for _, w := range slices.Backward(l.Windows) {
-			all = append(all, placement{loss: l, build: ghostty.Build{Kind: buildWindow},
+	for _, l := range lost {
+		for _, w := range slices.Backward(l.windows) {
+			all = append(all, placement{loss: l.loss, build: ghostty.Build{Kind: buildWindow},
 				tabs: w.Tabs})
 		}
 	}
@@ -122,7 +151,8 @@ func (pl *planner) order(chosen []*Loss) {
 // else its first.
 func (pl *planner) key(p placement) {
 	k := &keyer{pl: pl, prefix: fmt.Sprintf("b%dl", len(pl.out.builds)),
-		b: building{loss: p.loss, bindings: map[string]Binding{}}}
+		b: building{loss: p.loss, copies: map[string]*Pane{},
+			bindings: map[string]Binding{}}}
 	build := p.build
 	selected := max(slices.IndexFunc(p.tabs, func(t Tab) bool { return t.Selected }), 0)
 	for i, tab := range p.tabs {
