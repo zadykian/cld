@@ -1,6 +1,7 @@
 package tabs
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -21,6 +22,13 @@ func (r *Report) warn(warning string) {
 	if warning != "" {
 		r.Warnings = append(r.Warnings, warning)
 		r.Failed = true
+	}
+}
+
+// section adds a heading and its lines, where it has any.
+func (r *Report) section(heading string, lines []string) {
+	if len(lines) > 0 {
+		r.Lines = append(append(r.Lines, heading), lines...)
 	}
 }
 
@@ -58,4 +66,39 @@ func (c clock) ghostty(snap *ghostty.Snapshot, app ghostty.App, procs Table) str
 		return line + ", started " + c.at(p.Start)
 	}
 	return line
+}
+
+// settingsNotes are the notes on the settings in Ghostty's config that keep a restore from working
+// as it should, as ghostty +show-config gives them. app is the Ghostty that runs, if any.
+func settingsNotes(ctx context.Context, app ghostty.App) []string {
+	bin, ok := ghostty.Binary(app)
+	if !ok {
+		return []string{"  cld cannot read Ghostty's config: ghostty is not installed"}
+	}
+	s, err := ghostty.ReadSettings(ctx, bin)
+	if err != nil {
+		return []string{"  cld cannot read Ghostty's config: " + err.Error()}
+	}
+	var notes []string
+	switch s.SaveState {
+	case "always":
+	case "default":
+		notes = append(notes, "  window-save-state is default: whether Ghostty brings back its"+
+			" windows after Cmd+Q rests on macOS's own setting; set it to always")
+	default:
+		notes = append(notes, "  window-save-state is "+s.SaveState+
+			": Ghostty brings back no window after Cmd+Q")
+	}
+	if s.Title {
+		notes = append(notes, "  title is set in Ghostty's config: it hides cld's title,"+
+			" and with it each pane's session")
+	}
+	if !s.SSHTerminfo {
+		notes = append(notes, "  shell-integration-features lacks ssh-terminfo: cld types"+
+			" TERM=xterm-256color for hosts Ghostty has no terminfo cached for")
+	}
+	if s.HiddenTitlebar {
+		notes = append(notes, "  macos-titlebar-style is hidden: rebuilt tabs open as windows")
+	}
+	return notes
 }

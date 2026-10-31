@@ -20,6 +20,7 @@ func Restore(ctx context.Context) (*Report, error) {
 	report := &Report{}
 	if !snap.Running {
 		report.Lines = []string{c.ghostty(snap, ghostty.App{}, nil)}
+		report.section("Notes:", settingsNotes(ctx, ghostty.App{}))
 		return report, nil
 	}
 	app, err := snap.Ghostty()
@@ -34,6 +35,7 @@ func Restore(ctx context.Context) (*Report, error) {
 		return nil, err
 	}
 	report.Lines = []string{c.ghostty(snap, app, o.Procs)}
+	report.section("Notes:", settingsNotes(ctx, app))
 	return report, nil
 }
 

@@ -3,9 +3,11 @@ package tests
 import (
 	"slices"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/zadykian/cld/tests/internal/mac"
+	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
 // The model Mac that the tabs_* files give cld restore tabs: a Ghostty and its windows.
@@ -22,6 +24,16 @@ func ghosttyAt(pid int, start time.Time) *mac.Model {
 		Executable: ghosttyExecutable, Version: "1.4.0", Terminals: map[string]*mac.Terminal{},
 		Processes: []mac.Process{{PID: pid, PPID: 1, PGID: pid, Start: start,
 			Args: []string{ghosttyExecutable}}}}
+}
+
+// quietConfig is what ghostty +show-config prints where Ghostty's config gives no note.
+const quietConfig = "window-save-state = always\nshell-integration-features = cursor,ssh-terminfo\n"
+
+// ghosttyApp is ghosttyAt for s, whose ghostty prints quietConfig.
+func ghosttyApp(t *testing.T, s *sandbox.Sandbox) *mac.Model {
+	t.Helper()
+	s.WriteProbeFile(mac.ShowConfig, quietConfig)
+	return ghosttyAt(ghosttyPID, ghosttyStart)
 }
 
 // tabOf is a tab of the panes ids in a row, left to right, the first focused.
