@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
+	"time"
 
 	"github.com/zadykian/cld/internal/tabs"
 	"github.com/zadykian/cld/tests/internal/mac"
@@ -73,18 +75,71 @@ func TestTabsDryRunRuns(t *testing.T) {
 	}
 }
 
-// A first dry-run writes the record, readable by the user alone, with Ghostty's run: its pid and
-// its ps row's start, and its version.
+// tick saves m as s's Mac, and merges what it shows into the record by a dry-run, which must
+// succeed. It returns the record then.
+func tick(t *testing.T, s *sandbox.Sandbox, m *mac.Model) *tabs.Record {
+	t.Helper()
+	saveModel(t, s, m)
+	if result := dryRun(t, s); result.Code != 0 || result.Stderr != "" {
+		t.Fatalf("restore tabs --dry-run: exit %d, stderr %q", result.Code, result.Stderr)
+	}
+	return readRecord(t, s)
+}
+
+// sinceTimes matches each pane's since in tabs.json, the tick's time, which
+// testdata/tabs/record.json gives as T.
+var sinceTimes = regexp.MustCompile(`"since": "[^"]*"`)
+
+// A first dry-run writes the record, readable by the user alone. It holds Ghostty's run, and every
+// pane by its terminal's id.
 func TestTabsDryRunRecords(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	saveModel(t, s, ghosttyAt(812, ghosttyStart))
+	m := ghosttyAt(812, ghosttyStart)
+	first, second := addPane(m, "~"), addPane(m, "vim")
+	m.Terminals[second].Cwd = "/Users/me/src"
+	m.Windows = []mac.Window{windowOf(tabOf(first), tabOf(second))}
+	saveModel(t, s, m)
+	before := time.Now().UTC().Truncate(time.Second)
 	checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0,
 		"Ghostty 1.4.0, pid 812, started 2025-01-02 09:12\n", "")
 	want := readFile(t, filepath.Join("testdata", "tabs", "record.json"))
-	if got := readFile(t, recordPath(s)); got != want {
+	got := sinceTimes.ReplaceAllString(readFile(t, recordPath(s)), `"since": "T"`)
+	if got != want {
 		t.Errorf("tabs.json:\n%s\nwant testdata/tabs/record.json:\n%s", got, want)
+	}
+	for id, p := range readRecord(t, s).Panes {
+		if p.Since.Before(before) || p.Since.After(time.Now()) {
+			t.Errorf("pane %s since %v, not the dry-run's time", id, p.Since)
+		}
 	}
 	checkMode(t, recordPath(s), 0o600)
 	checkMode(t, tabsDir(s), 0o700)
+}
+
+// A dry-run that finds the record as Ghostty shows it writes nothing: the file keeps its bytes,
+// its inode and its time.
+func TestTabsWritesOnlyChanges(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyAt(812, ghosttyStart)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	tick(t, s, m)
+	old := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := os.Chtimes(recordPath(s), old, old); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.Stat(recordPath(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := readFile(t, recordPath(s))
+	tick(t, s, m)
+	info, err := os.Stat(recordPath(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(first, info) || !info.ModTime().Equal(old) || readFile(t, recordPath(s)) != data {
+		t.Error("tabs.json written again")
+	}
 }

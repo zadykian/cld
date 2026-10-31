@@ -40,3 +40,10 @@ func windowOf(tabs ...mac.Tab) mac.Window {
 	tabs[0].Selected = true
 	return mac.Window{Tabs: tabs}
 }
+
+// addPane adds a pane to m, in no window yet, titled title, and returns its terminal's id.
+func addPane(m *mac.Model, title string) string {
+	id := m.AddTerminal("/Users/me", "")
+	m.Terminals[id].Name = title
+	return id
+}
