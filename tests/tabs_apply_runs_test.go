@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zadykian/cld/internal/tabs"
 	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
@@ -171,4 +172,60 @@ func TestTabsApplyStartsWatcher(t *testing.T) {
 	waitTicked(t, s, m)
 	checkExit(t, "restore tabs elsewhere, the watcher running",
 		s.RunCld(tabsEnv, "restore", "tabs"), 0, "", "")
+}
+
+// watchedMac is a Ghostty of one shell, a, whose record lost a window on session x on ws a minute
+// ago, and the watcher that reads it. It returns a and the loss.
+func watchedMac(t *testing.T, s *sandbox.Sandbox) (string, *tabs.Loss) {
+	t.Helper()
+	s.WriteProbeFile(mac.SSHCache, "me@ws\n")
+	m := ghosttyApp(t, s)
+	a := addPane(m, "~")
+	m.Windows = []mac.Window{windowOf(tabOf(a))}
+	r := tick(t, s, m)
+	lost := shellLoss(r.Run.ID, "closed", time.Now().UTC().Add(-time.Minute).Truncate(time.Second),
+		"x")
+	lost.Windows[0].Tabs[0].Tree.Copy = &tabs.Pane{Kind: "cld", Host: "ws", Session: "x"}
+	r.Losses = []*tabs.Loss{lost}
+	writeRecord(t, s, r)
+	startWatch(t, s)
+	waitTicked(t, s, m)
+	return a, lost
+}
+
+// A watcher's snapshot begun before a restore, and answered after it, is dropped. So the window
+// the restore made, and its pane's last, survive the watcher's next ticks.
+func TestTabsApplyStale(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	a, lost := watchedMac(t, s)
+	s.WriteProbeFile(mac.DelayFile, "6\n")
+	sandbox.WaitFor(t, 10*time.Second, "the watcher's slow snapshot", func() bool {
+		return !exists(filepath.Join(s.ProbeDir, mac.DelayFile))
+	})
+	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0,
+		"Reopened a window of 1 tab, closed at "+clockAt(lost.At)+"\n", "")
+	made := loadModel(t, s).Windows[0].Tabs[0].Focused
+	s.WriteProbeFile(mac.FailFile, "changed\n")
+	waitSnapshots(t, s, snapshots(t, s)+1)
+	checkStale(t, s, "after the slow snapshot", a, made)
+	ticked := watchTime(t, s)
+	if err := os.Remove(filepath.Join(s.ProbeDir, mac.FailFile)); err != nil {
+		t.Fatal(err)
+	}
+	sandbox.WaitFor(t, 15*time.Second, "the watcher's next merge", func() bool {
+		return watchTime(t, s).After(ticked)
+	})
+	checkStale(t, s, "after the next merge", a, made)
+}
+
+// checkStale reports the record in s, as the watcher left it when. It must hold the window that
+// TestTabsApplyStale's restore made, in front of a's, and its pane's last.
+func checkStale(t *testing.T, s *sandbox.Sandbox, when, a, made string) {
+	t.Helper()
+	r := readRecord(t, s)
+	checkRecord(t, when, r, named(a, made), "*b/made | *a/made", "", "closed: */made")
+	if p := r.Panes[made]; p == nil || p.Last == nil || p.Last.Session != "x" {
+		t.Errorf("%s: the pane made is %+v, want its last on session x", when, p)
+	}
 }
