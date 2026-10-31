@@ -10,17 +10,50 @@
 //   versionFails: true, where reading Ghostty's version fails;
 //   noTty: true, for Ghostty 1.3.1, whose terminals have no tty;
 //   then: windows that replace the model's, one after each first read of the windows' ids, as
-//     the user changes them while a script reads them.
+//     the user changes them while a script reads them;
+//   raises: the starts of log lines, an event's or a delay's, after the first of which the user
+//     brings the back window to the front, each in turn; quits: the start of a log line after
+//     which Ghostty quits.
 var mockRun;
 (function () {
-  const ghosttyMock = {model: null, log: [], idReads: 0};
+  const ghosttyMock = {model: null, log: [], idReads: 0, queue: []};
 
-  // event logs an Apple Event, which fails where macOS denies them all.
+  // event logs an Apple Event, which fails where macOS denies them all. A split's or a focus's
+  // move of focus lands first, as Ghostty's main queue runs it before the next event.
   ghosttyMock.event = function (what) {
+    ghosttyMock.settle();
     ghosttyMock.log.push(what);
     if (ghosttyMock.model.mock.fail === 'denied') {
       ghosttyMock.fail(-1743, 'Not authorized to send Apple events to Ghostty.');
     }
+    ghosttyMock.user(what);
+  };
+
+  // user acts after the log line what, as mock.raises and mock.quits say.
+  ghosttyMock.user = function (what) {
+    const m = ghosttyMock.model;
+    if (ghosttyMock.next(m.mock.raises, what) && m.windows.length > 1) {
+      m.windows.unshift(m.windows.pop());
+    }
+    if (m.mock.quits && what.startsWith(m.mock.quits)) {
+      m.running = false;
+    }
+  };
+
+  // next reports whether what starts with the first of list, which it then takes off.
+  ghosttyMock.next = function (list, what) {
+    if (!list || list.length === 0 || !what.startsWith(list[0])) {
+      return false;
+    }
+    list.shift();
+    return true;
+  };
+
+  // settle runs the moves of focus queued so far.
+  ghosttyMock.settle = function () {
+    const queued = ghosttyMock.queue;
+    ghosttyMock.queue = [];
+    queued.forEach((f) => f());
   };
 
   // fail throws as JXA does, with Apple's error number.
@@ -284,7 +317,8 @@ var mockRun;
     return {count: found.length, objectAtIndex: (i) => found[i]};
   }}};
 
-  // delay only logs: the mock keeps no pace.
+  // delay only logs, and lets the user act: the mock keeps no pace.
   function delay(seconds) {
     ghosttyMock.log.push('delay ' + seconds);
+    ghosttyMock.user('delay ' + seconds);
   }
