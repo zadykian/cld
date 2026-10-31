@@ -45,11 +45,10 @@ ends as Ghostty quits, so start it again at each launch: from ssh, or from your 
 - Its log is `tabs/watch.log` in `$XDG_STATE_HOME/cld`, by default `~/.local/state/cld`, emptied
   past 1 MB. After `cld update`, the watcher runs the new cld at its next read.
 
-## The Automation prompt
+## The Automation grant
 
-The watcher asks Ghostty through AppleScript, and runs under Ghostty. So macOS may ask, once,
-whether Ghostty may control Ghostty: allow it. System Settings › Privacy & Security › Automation
-lists the grant under Ghostty. `cld restore tabs`, run from Terminal.app or another app's terminal,
+The watcher asks Ghostty through AppleScript, and runs under Ghostty. macOS allows that with no
+prompt and no grant to give. `cld restore tabs`, run from Terminal.app or another app's terminal,
 asks for that app's grant instead. There a restore starts no watcher, and `--watch` fails.
 
 ## What a restore reopens
@@ -183,6 +182,6 @@ does not run, it plans as if Ghostty brought nothing back, and writes nothing.
 
 No test runs Ghostty. What cld relies on was read in Ghostty's source, 1.3.1 and 1.4.0
 ([findings](../design/findings/terminals.md#ghosttys-applescript-on-macos)), and the tests run cld
-against a model of it. A run on a real Mac is still to come (#177): the prompt, the watcher's grant
-after its pane closes, and Ghostty's answers. Among them are a restore's typing, its tab moves and
-its spacing, and the panes' sizes that give a tab's layout.
+against a model of it. A run on a Mac (#177) probed Ghostty 1.4.0
+([results](../design/findings/terminals.md#the-mac-spikes-results)). What it skipped is in
+[status](../design/testing/status.md).

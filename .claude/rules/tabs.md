@@ -25,8 +25,8 @@ its reasons. Ghostty's behaviour is in the
   `macos-applescript`'s text ([59.2](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - A script sends no Apple Event where Ghostty does not run, nor once the Ghostty an apply began
   with has gone, as one would launch it ([59.2](../../docs/design/decisions/0059-ghostty-tabs.md)).
-- Until #177's spike, each behaviour that only a Mac shows is marked UNVERIFIED with its check. It
-  lives in the one file that rests on it, whose comment names decision 59
+- Each behaviour that only a Mac shows, and #177's spike left out, is marked UNVERIFIED with its
+  check. It lives in the one file that rests on it, whose comment names decision 59
   ([59.12](../../docs/design/decisions/0059-ghostty-tabs.md)).
 
 ## The record

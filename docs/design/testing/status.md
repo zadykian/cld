@@ -51,7 +51,19 @@ Each entry says what is left.
   bold `waiting` seen only in tmux's rendering.
 - `restore tabs` ([59](../decisions/0059-ghostty-tabs.md)): run against fakes of osascript, ps,
   ssh, open and ghostty, and its scripts' own logic against a mock Ghostty, on the macos job only.
-  Ghostty's real answers to them come only from #177's spike, still to come.
+  Ghostty's real answers come from #177's spike, on 1.4.0 and macOS 27.0.1
+  ([findings](../findings/terminals.md#the-mac-spikes-results)). It skipped these checks, or parts
+  of them:
+  1. Check 3, 1.4's terms against 1.3.1's `Ghostty.sdef`, and check 5, no relaunch.
+  2. Check 7: ids through undo and drag; minimized, hidden, other-Space and fullscreen windows; the
+     quick terminal. Check 16: Cmd+Q in the middle of a read, and the exec of `cld update`.
+  3. Check 4: `macos-applescript = false`, and a denial from another app. Part of check 1: the
+     Automation list in System Settings, and `tccutil reset`.
+  4. Check 8: restoration under `default`, after kill -9 and after a reboot.
+  5. Check 10: non-default padding, `window-padding-balance` and a display at scale 1. Check 11: a
+     slow `.zshrc` and a Dvorak layout.
+  6. Checks 9 and 6: an `undo-timeout` of 20 s, and the cost at 15 and 30 minutes.
+  7. Check 14, the line on ws and cld on the host, and check 15, the pace under load.
 - `--host` ([62](../decisions/0062-commands-on-another-host.md)): run against the fake ssh, whose
   host is the sandbox itself, with bash as the login shell. Not a real sshd, ssh's own `-t`,
   `LogLevel` and `RemoteCommand=none`, nor a login shell other than bash.
