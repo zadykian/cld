@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,14 @@ func parsePS(out string) Table {
 	return table
 }
 
+// program is the name p runs as: its first word's base, without the "-" of a login shell.
+func program(p Process) string {
+	if len(p.Args) == 0 {
+		return ""
+	}
+	return strings.TrimPrefix(path.Base(p.Args[0]), "-")
+}
+
 // ByPID is the process pid.
 func (t Table) ByPID(pid int) (Process, bool) {
 	for _, p := range t {
@@ -88,4 +97,41 @@ func (t Table) ByPID(pid int) (Process, bool) {
 		}
 	}
 	return Process{}, false
+}
+
+// Group is the process group pgid on tty: a pane's foreground job, whose leader has the pid
+// Ghostty reads. The tty guards against a pid reused elsewhere. UNVERIFIED until #177's check 9
+// (decision 59.12): that macOS's ps names a tty as Ghostty's tty does, less /dev/.
+func (t Table) Group(pgid int, tty string) []Process {
+	var group []Process
+	for _, p := range t {
+		if p.PGID == pgid && p.TTY == tty {
+			group = append(group, p)
+		}
+	}
+	return group
+}
+
+// Login is the pid of the pane on tty's login, Ghostty's child there, 0 for none. Ghostty frees
+// a closed pane's surface, and with it the login, only once its undo has passed.
+func (t Table) Login(tty string, ghosttyPID int) int {
+	found := 0
+	for _, p := range t {
+		if p.TTY != tty || p.PPID != ghosttyPID {
+			continue
+		}
+		if program(p) == "login" {
+			return p.PID
+		}
+		if found == 0 {
+			found = p.PID
+		}
+	}
+	return found
+}
+
+// Has reports whether process pid runs on tty.
+func (t Table) Has(pid int, tty string) bool {
+	p, ok := t.ByPID(pid)
+	return ok && p.TTY == tty
 }

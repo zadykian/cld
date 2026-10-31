@@ -2,6 +2,7 @@ package tests
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/zadykian/cld/tests/internal/mac"
@@ -43,9 +44,54 @@ func windowOf(tabs ...mac.Tab) mac.Window {
 	return mac.Window{Tabs: tabs}
 }
 
-// addPane adds a pane to m, in no window yet, titled title, and returns its terminal's id.
-func addPane(m *mac.Model, title string) string {
+// addPane adds a pane to m, in no window yet, titled title, and returns its terminal's id. Its
+// login runs -zsh, with jobs in front of it as front puts them.
+func addPane(m *mac.Model, title string, jobs ...[]string) string {
 	id := m.AddTerminal("/Users/me", "")
 	m.Terminals[id].Name = title
+	front(m, id, jobs...)
 	return id
+}
+
+// front puts jobs in front of pane id's shell, in place of those there. The first, the shell's
+// child, leads the foreground group, and each other is a child of the first, in its group. With
+// no job, the shell is at its prompt.
+func front(m *mac.Model, id string, jobs ...[]string) {
+	terminal := m.Terminals[id]
+	tty, login := strings.TrimPrefix(terminal.TTY, "/dev/"), loginOf(m, id)
+	var kept []mac.Process
+	for _, p := range m.Processes {
+		if p.TTY != tty || p.PID == login || p.PPID == login {
+			kept = append(kept, p)
+		}
+		if p.TTY == tty && p.PPID == login {
+			terminal.PID = p.PID
+		}
+	}
+	m.Processes = kept
+	if len(jobs) == 0 {
+		return
+	}
+	shell, start := terminal.PID, time.Now().UTC().Truncate(time.Second)
+	terminal.PID = m.NewPID()
+	m.Processes = append(m.Processes, mac.Process{PID: terminal.PID, PPID: shell,
+		PGID: terminal.PID, TTY: tty, Start: start, Args: jobs[0]})
+	for _, args := range jobs[1:] {
+		m.Processes = append(m.Processes, mac.Process{PID: m.NewPID(), PPID: terminal.PID,
+			PGID: terminal.PID, TTY: tty, Start: start, Args: args})
+	}
+}
+
+// ssh is ssh's words as ps gives them, with args after its name.
+func ssh(args ...string) []string { return append([]string{"ssh"}, args...) }
+
+// loginOf is the pid of pane id's login in m: Ghostty's child on the pane's tty.
+func loginOf(m *mac.Model, id string) int {
+	tty := strings.TrimPrefix(m.Terminals[id].TTY, "/dev/")
+	for _, p := range m.Processes {
+		if p.TTY == tty && p.PPID == m.PID {
+			return p.PID
+		}
+	}
+	return 0
 }

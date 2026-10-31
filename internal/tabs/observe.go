@@ -49,7 +49,7 @@ func Observe(ctx context.Context, snap *ghostty.Snapshot) (*Observation, error) 
 
 // see classifies terminal t.
 func (o *Observation) see(t ghostty.Terminal) {
-	o.Seen[t.ID] = classify(t)
+	o.Seen[t.ID] = classify(t, o.Procs, o.Ghostty)
 }
 
 // runID is Ghostty's run, by its pid and its start as ps gives it, and false where ps lacks the

@@ -6,15 +6,19 @@
  },
  "panes": {
   "A1000000-0000-4000-8000-000000000001": {
+   "kind": "local",
    "title": "~",
    "cwd": "/Users/me",
    "tty": "/dev/ttys901",
+   "login": 50002,
    "since": "T"
   },
   "A1000000-0000-4000-8000-000000000004": {
+   "kind": "local",
    "title": "vim",
    "cwd": "/Users/me/src",
    "tty": "/dev/ttys904",
+   "login": 50005,
    "since": "T"
   }
  },

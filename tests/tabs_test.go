@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zadykian/cld/internal/session"
 	"github.com/zadykian/cld/internal/tabs"
 	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
@@ -119,12 +120,13 @@ func TestTabsDryRunRecords(t *testing.T) {
 }
 
 // A dry-run that finds the record as Ghostty shows it writes nothing: the file keeps its bytes,
-// its inode and its time.
+// its inode and its time. claude's busy markers, which turn every second, are its idle ✳ there.
 func TestTabsWritesOnlyChanges(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	m := ghosttyAt(812, ghosttyStart)
-	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	cldPane := addPane(m, "✳ cld-app", ssh("ws"))
+	m.Windows = []mac.Window{windowOf(tabOf(cldPane, addPane(m, "~")))}
 	tick(t, s, m)
 	old := time.Now().Add(-time.Hour).Truncate(time.Second)
 	if err := os.Chtimes(recordPath(s), old, old); err != nil {
@@ -135,13 +137,18 @@ func TestTabsWritesOnlyChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := readFile(t, recordPath(s))
-	tick(t, s, m)
-	info, err := os.Stat(recordPath(s))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !os.SameFile(first, info) || !info.ModTime().Equal(old) || readFile(t, recordPath(s)) != data {
-		t.Error("tabs.json written again")
+	for _, marker := range []string{"✳", session.BusyEven, session.BusyOdd} {
+		title := marker + " cld-app"
+		m.Terminals[cldPane].Name = title
+		tick(t, s, m)
+		info, err := os.Stat(recordPath(s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !os.SameFile(first, info) || !info.ModTime().Equal(old) ||
+			readFile(t, recordPath(s)) != data {
+			t.Errorf("titled %q: tabs.json written again", title)
+		}
 	}
 }
 

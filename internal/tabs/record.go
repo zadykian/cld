@@ -5,6 +5,15 @@ import "time"
 // Format is tabs.json's format. A record of a newer one is refused, and one of 0 is corrupt.
 const Format = 1
 
+// What a pane shows, as classify reads it.
+const (
+	KindCld   = "cld"   // ssh, with cld's title naming a session
+	KindSSH   = "ssh"   // ssh, with any other title
+	KindLocal = "local" // a shell at its prompt
+	KindOther = "other" // any other program in front: an editor, a local tmux, mosh
+	KindDead  = "dead"  // no program: the pane is not ready, or its program exited
+)
+
 // How a tab's split tree came to be: cld built it, worked it out from the panes' sizes, or made
 // it a row.
 const (
@@ -32,10 +41,15 @@ type Run struct {
 // Pane is a terminal as the record keeps it, by its id. UNVERIFIED until #177's checks 7 and 8
 // (decision 59.12): that the id lasts through an undo, a tab's drag and Ghostty's restoration.
 type Pane struct {
-	Title string    `json:"title,omitempty"`
-	Cwd   string    `json:"cwd,omitempty"`
-	TTY   string    `json:"tty,omitempty"`
-	Since time.Time `json:"since"` // when the pane was first seen
+	Kind     string    `json:"kind"`
+	Host     string    `json:"host,omitempty"`    // ssh's destination as typed: cld and ssh only
+	Session  string    `json:"session,omitempty"` // the whole NAME: cld only
+	Worktree bool      `json:"worktree,omitempty"`
+	Title    string    `json:"title,omitempty"`
+	Cwd      string    `json:"cwd,omitempty"`
+	TTY      string    `json:"tty,omitempty"`
+	Login    int       `json:"login,omitempty"` // the pane's /usr/bin/login, Ghostty's child
+	Since    time.Time `json:"since"`           // when Host or Session last changed
 }
 
 // Window is a window's tabs, in tab-bar order.

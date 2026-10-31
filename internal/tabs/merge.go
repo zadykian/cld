@@ -4,6 +4,7 @@ import (
 	"iter"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
@@ -39,25 +40,43 @@ func terminals(windows []ghostty.Window) iter.Seq[ghostty.Terminal] {
 // mergePanes updates r's pane of each terminal of o's windows, adding the new ones.
 func mergePanes(r *Record, o *Observation) {
 	for t := range terminals(o.Windows) {
+		seen := o.Seen[t.ID]
 		p, ok := r.Panes[t.ID]
 		if !ok {
 			p = &Pane{Since: o.Time}
 			r.Panes[t.ID] = p
+			if seen.Keep {
+				seen = Seen{Kind: KindOther, Title: seen.Title, Login: seen.Login}
+			}
 		}
-		mergePane(p, t, o.Seen[t.ID])
+		mergePane(p, t, seen, o.Time)
 	}
 }
 
 // mergePane updates pane p from terminal t and seen. A field the tick could not read keeps its
-// value.
-func mergePane(p *Pane, t ghostty.Terminal, seen Seen) {
+// value: a dead pane keeps its binding, and a pane ps could not place keeps what it showed. Since
+// moves where the host or the session changes.
+func mergePane(p *Pane, t ghostty.Terminal, seen Seen, now time.Time) {
 	if t.Cwd != "" {
 		p.Cwd = t.Cwd
 	}
 	if t.TTY != "" {
 		p.TTY = t.TTY
 	}
-	p.Title = seen.Title
+	if seen.Login != 0 {
+		p.Login = seen.Login
+	}
+	switch {
+	case seen.Keep:
+	case seen.Kind == KindDead:
+		p.Kind = KindDead
+	default:
+		if seen.Host != p.Host || seen.Session != p.Session {
+			p.Since = now
+		}
+		p.Kind, p.Host, p.Session = seen.Kind, seen.Host, seen.Session
+		p.Worktree, p.Title = seen.Worktree, seen.Title
+	}
 }
 
 // mergeWindows makes r's windows o's, front to back. Each tab keeps its tree where an old tab had
