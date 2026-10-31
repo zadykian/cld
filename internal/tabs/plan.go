@@ -21,6 +21,12 @@ type joining struct {
 	cached  bool // Ghostty has the host's terminfo
 }
 
+// building is a build's loss, and the binding of each of its leaves that types a line, by key.
+type building struct {
+	loss     *Loss
+	bindings map[string]Binding
+}
+
 // Script is the plan apply.js runs.
 func (p *Planned) Script() *ghostty.Plan { return &p.script }
 
