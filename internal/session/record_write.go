@@ -33,7 +33,7 @@ func remember(
 func write(
 	r entry, claudeDir string, s started, runs func(suffix string) bool,
 ) (file, run string, err error) {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return "", "", err
 	}

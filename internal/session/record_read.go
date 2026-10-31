@@ -14,7 +14,7 @@ import (
 // recorded is the entry of session cld-SUFFIX, and whether there is one: none where it has
 // expired, or cannot be read.
 func recorded(suffix string) (entry, bool) {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return entry{}, false
 	}
@@ -44,7 +44,7 @@ func readEntry(file, suffix string) (entry, bool) {
 
 // entries are the entries of the record that have not expired, in the order of their file names.
 func entries() []entry {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return nil
 	}
