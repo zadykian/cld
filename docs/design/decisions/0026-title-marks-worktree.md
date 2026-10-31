@@ -1,6 +1,7 @@
 # 26. The tab marks a worktree
 
-Status: Accepted. Amended by [39](0039-hook-cost.md).
+Status: Accepted. Amended by [39](0039-hook-cost.md) and [59](0059-ghostty-tabs.md), under which
+the title is a contract with another machine's cld.
 
 ## Context
 
