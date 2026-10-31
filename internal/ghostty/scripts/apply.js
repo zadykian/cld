@@ -1,15 +1,15 @@
 // cld: apply
-// Types into the panes Ghostty kept and builds the windows and splits of cld's plan, then prints
-// what it made as one JSON document (internal/ghostty/apply.go). Between commands it holds
-// terminal ids alone. Where Ghostty does not run, or the Ghostty it began with has gone, it sends
-// no more Apple Events.
+// Types into the panes Ghostty kept and builds the windows, tabs and splits of cld's plan, then
+// prints what it made as one JSON document (internal/ghostty/apply.go). Between commands it holds
+// terminal ids alone: a window's id can change, and a tab's goes through its window's. Where
+// Ghostty does not run, or the Ghostty it began with has gone, it sends no more Apple Events.
 // UNVERIFIED until #177's check 11 (decision 59.12): a JS object as a command's surface
 // configuration, initialWorkingDirectory among its keys; a new window's or tab's terminal among
 // the terminals at once, and its window among the windows within 3 s (check 7 too); split's
-// result answering id(); new tabs in the order made; select tab and focus; pid read again just
-// before typing; Ctrl+U, input text and Enter in zsh with half-typed input and no paste prompt;
-// Ctrl+U under a layout that moves U, Dvorak's say, as send key names a key by its place; initial
-// input run once under a slow .zshrc.
+// result answering id(); new tabs in the order made, the index read back; select tab and focus;
+// pid read again just before typing; Ctrl+U, input text and Enter in zsh with half-typed input and
+// no paste prompt; Ctrl+U under a layout that moves U, Dvorak's say, as send key names a key by its
+// place; initial input run once under a slow .zshrc.
 ObjC.import('AppKit');
 
 const BUNDLE = 'com.mitchellh.ghostty';
@@ -182,6 +182,33 @@ function buildWindow(b, keys) {
   return {keys: keys};
 }
 
+// buildTab opens a lost tab in the window holding its anchor, found once the pace has passed, or
+// as a window, and reports the index it took. Its key goes in at once, so a failure reports it. A
+// tab that lands beside other terminals than its anchor's fails, once built.
+function buildTab(b, keys) {
+  const tab = b.tabs[0];
+  const id = open(firstLeaf(tab.tree), c => {
+    const home = b.anchor ? G.windows.terminals.id().findIndex(ids => ids.includes(b.anchor)) : -1;
+    return home >= 0
+      ? G.newTab({in: G.windows[home], withConfiguration: c})
+      : G.newWindow({withConfiguration: c});
+  });
+  keys[firstLeaf(tab.tree).key] = id;
+  const found = windowWith(id);
+  const beside = found.ids;
+  const result = {keys: keys};
+  if (b.anchor && beside.includes(b.anchor)) {
+    result.index = tabOf(found.index, id) + 1;
+  } else if (beside.length === 1) {
+    result.window = true;
+  } else {
+    result.error = 'it opened in another window than the pane that was beside it';
+  }
+  grow(tab.tree, id, keys);
+  settle(tab, keys);
+  return result;
+}
+
 // buildPane splits b's anchor for a lost split's tree, the new terminal taking the side b names.
 function buildPane(b, keys) {
   const tab = b.tabs[0];
@@ -205,7 +232,7 @@ function type(typing) {
   return true;
 }
 
-const BUILDERS = {window: buildWindow, pane: buildPane};
+const BUILDERS = {window: buildWindow, tab: buildTab, pane: buildPane};
 
 // attempt runs f, one typing or build, and is its entry of the result, or caught's entry for its
 // error. It is null where Ghostty has gone, before f or during it, which ends the apply.
