@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,8 +17,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The watcher's life: the lock it holds, and its ticks. It reads Ghostty every 5 s, so these tests
-// wait for them. The helpers that tabs_watch_ticks_test.go shares are here.
+// The watcher's life: the lock it holds, its ticks and its log. It reads Ghostty every 5 s, so
+// these tests wait for its ticks. The helpers that tabs_watch_ticks_test.go shares are here.
 
 // watchEnv is a Ghostty pane's environment beside the sandbox's: --watch starts a watcher there.
 var watchEnv = map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"}
@@ -25,14 +26,24 @@ var watchEnv = map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"}
 // watchPath is the watcher's file in s: locked for its life, its pid and Ghostty's within.
 func watchPath(s *sandbox.Sandbox) string { return filepath.Join(tabsDir(s), "watch") }
 
-// startWatch runs cld restore tabs --watching in s, as a Ghostty pane's environment has it. The
-// watchers in s are killed as the test ends.
+// startWatch runs cld restore tabs --watching in s, as a Ghostty pane's environment has it, with
+// its stderr in watch.log. The watchers in s are killed as the test ends.
 func startWatch(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
 	t.Cleanup(func() { killWatchers(t, s) })
 	argv := s.CldArgv("restore", "tabs", "--watching")
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Args[0], cmd.Env, cmd.Dir = "cld", s.Environ(watchEnv), s.Work
+	if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	log, err := os.OpenFile(filepath.Join(tabsDir(s), "watch.log"),
+		os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close() //nolint:errcheck // the watcher holds its own copy
+	cmd.Stderr = log
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +128,38 @@ func waitTicked(t *testing.T, s *sandbox.Sandbox, m *mac.Model) int {
 	})
 	pid, _ := watchPIDs(s)
 	return pid
+}
+
+// logLine is a line of watch.log: the time in UTC, then what happened.
+var logLine = regexp.MustCompile(`^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ (.*)$`)
+
+// watchLog is what watch.log in s holds, a line each, without the times.
+func watchLog(t *testing.T, s *sandbox.Sandbox) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(tabsDir(s), "watch.log"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for line := range strings.Lines(string(data)) {
+		match := logLine.FindStringSubmatch(strings.TrimSuffix(line, "\n"))
+		if match == nil {
+			t.Fatalf("watch.log: %q has no time", line)
+		}
+		lines = append(lines, match[1])
+	}
+	return lines
+}
+
+// checkLog reports watch.log in s where it does not hold want's lines.
+func checkLog(t *testing.T, s *sandbox.Sandbox, want ...string) {
+	t.Helper()
+	if got := watchLog(t, s); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("watch.log holds %q, want %q", got, want)
+	}
 }
 
 // The watcher holds watch's lock for its life, and merges a tick at once.

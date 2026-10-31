@@ -3,6 +3,7 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -32,6 +33,39 @@ func waitSnapshots(t *testing.T, s *sandbox.Sandbox, n int) {
 	sandbox.WaitFor(t, 20*time.Second, "the watcher's ticks", func() bool {
 		return snapshots(t, s) >= n
 	})
+}
+
+// repeated matches the line that counts a repeated error, logged once a tick goes well again.
+var repeated = regexp.MustCompile(`^the last error repeated [2-9] times$`)
+
+// A failure that may pass is logged once, and counted while it repeats: the count comes as a
+// tick goes well again.
+func TestTabsWatchRepeats(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	saveModel(t, s, m)
+	startWatch(t, s)
+	waitTicked(t, s, m)
+	s.WriteProbeFile(mac.FailFile, "changed\n")
+	// The fake logs a call before it reads its failure mode. So the second failing snapshot is over
+	// only once a third is logged, as the watcher takes one at a time.
+	waitSnapshots(t, s, snapshots(t, s)+3)
+	if err := os.Remove(filepath.Join(s.ProbeDir, mac.FailFile)); err != nil {
+		t.Fatal(err)
+	}
+	sandbox.WaitFor(t, 20*time.Second, "the count of the repeated error", func() bool {
+		return len(watchLog(t, s)) == 2
+	})
+	got := watchLog(t, s)
+	if got[0] != "Ghostty's windows changed twice while cld read them" ||
+		!repeated.MatchString(got[1]) {
+		t.Errorf("watch.log holds %q, want the error, then its count", got)
+	}
+	if !watching(t, s) {
+		t.Error("the watcher stopped")
+	}
 }
 
 // A tick whose snapshot began before another cld wrote the record merges nothing: it would take
@@ -106,10 +140,12 @@ func TestTabsWatchBusy(t *testing.T) {
 	if readFile(t, recordPath(s)) != before {
 		t.Error("tabs.json changed while another cld held its lock")
 	}
+	checkLog(t, s)
 	if err := lock.Close(); err != nil {
 		t.Fatal(err)
 	}
 	sandbox.WaitFor(t, 15*time.Second, "a merge once the lock went", func() bool {
 		return readRecord(t, s).Panes[b] != nil
 	})
+	checkLog(t, s)
 }
