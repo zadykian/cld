@@ -76,3 +76,75 @@ Rejected:
 - `ghostty +new-tab`, which runs on GTK alone.
 - tmux's control mode: Ghostty's macOS app does not use it, and it would need a client per server.
 
+### 59.3 The watcher
+
+`--watch` starts one watcher, unless one runs, and returns at once. The watcher is cld again, as
+`restore tabs --watching`, in a session of its own, its stdin and stdout `/dev/null`, its stderr
+`tabs/watch.log`. It holds the lock of `tabs/watch` on fd 3 for its life, so a second `--watch`
+finds it and exits 0, printing nothing.
+
+- **Its starts.** ssh's `LocalCommand` on the Mac, as the author's playbook `zadykian/ws` writes
+  it, or a line in the shell's startup file. A restore (59.6) run in a Ghostty pane starts one too.
+- **Its guard.** It runs only where `TERM_PROGRAM` is `ghostty`, which Ghostty sets in its panes;
+  elsewhere `--watch` fails with status 1.
+- **Its identity.** macOS charges an Apple Event to the responsible process, here Ghostty, which
+  is signed and carries the Apple Events entitlement. So cld's signature and `cld update` change no
+  grant. Started from another app's terminal, the watcher would be charged to that app. #177's
+  check 1 sees whether Ghostty asks once to control itself.
+- **Its fallback.** That a watcher in its own session stays charged to Ghostty after its pane
+  closes is #177's check 2. If not, a LaunchAgent runs `/usr/bin/osascript`, whose identity is
+  Apple's, and hands its snapshots to cld.
+- **Its ticks.** Every 5 s it takes a snapshot by one osascript, then reads ps and each pane's
+  size. A long-lived JXA loop would spare osascript's start at each tick. It waits for #177's
+  check 6: the loop's memory, and how long each read stalls Ghostty.
+- **Its end.** Before each snapshot it checks Ghostty's pid, sending no Apple Event. As the pid
+  goes, it notes the end of the run in the record and exits: it lives as long as one Ghostty run.
+  It never takes an osascript error for a quit.
+- **Its failures.** Automation denied, AppleScript off, a Ghostty older than 1.4 or a newer record
+  stop it, with one line in its log; the next `--watch` starts another. A transient error is
+  logged once, then counted.
+- **Its races.** It merges under the record's lock. It skips a tick where another cld holds the
+  lock, or wrote the record since the snapshot began. That older view would take the windows a
+  restore just made for closed.
+- **After `cld update`.** It execs the new cld in its own process, keeping its pid, its session,
+  the lock and, as #177's check 16 is to show, the responsible process.
+- **A handover.** A `--watch` whose watcher reads a Ghostty that has gone starts a new one, which
+  waits up to 30 s for the lock as the old one ends. One that finds the lock held while `watch`
+  names a watcher that has ended leaves the start to the `--watch` that holds it.
+
+### 59.4 The record
+
+The record lives in `tabs/` beside cld's record of its sessions
+([decision 40](0040-session-record.md)), outside `sessions/`, whose expiry removes files it does
+not know. The directory is the user's alone. `tabs.json` is written by rename, only where its bytes
+change, so a tick that sees nothing new writes nothing. `lock` guards each read and write. A
+restore waits for it up to 10 s, and the watcher not at all at a tick, but up to 10 s to note the
+end of its run. `watch`'s time is the last tick, `restore` keeps two restores apart, and
+`watch.log` is emptied past 1 MB. A record that does not parse is moved aside, with a warning. One
+of a newer format is refused, so the newer cld still finds it.
+
+- **Identity.** A pane is its terminal's id, which Ghostty keeps for the surface's life, through
+  its restoration and an undo. Window and tab ids are addresses, so the record never stores them.
+- **Runs.** A run is Ghostty's pid and its start in ps. The pid comes from `NSRunningApplication`,
+  as every `ghostty +ACTION` runs the app's binary too. A new run is a quit of the one before.
+- **Panes.** Each holds what it shows: `cld` with its host and session, `ssh` with its host,
+  `local`, `other` or `dead`, and since when the binding holds. A field a tick cannot read keeps
+  its value, so a pane read badly once is not lost at once.
+- **Windows.** Front to back, each tab with its split tree. A terminal that only the app-wide list
+  holds is never pending. The quick terminal never enters the record. A window gone from the window
+  list but not from the app-wide one, minimized perhaps, stays as last seen, less what closed.
+- **Pending.** A window, tab or split whose terminals left every list goes pending. It becomes a
+  loss once its panes' logins, Ghostty's children, leave ps: Ghostty keeps a closed surface alive
+  until `undo-timeout` ends, whatever its value. Back first, the close was undone: nothing is lost.
+- **Losses.** A tab or split lost alone keeps an anchor: a pane still open beside it. At a quit,
+  the windows that did not come back are one loss, empty when Ghostty brought every one back. A
+  window pending at the quit joins that loss, while a tab or split stays a loss of its own. The
+  quit's time is the run's end as the watcher noted it, else its last tick in that run, else now.
+- **Bounds.** 32 losses, of this run and the one before, none older than 30 days, as an ended
+  session's entry expires after 30 days on the host (40.6).
+- **`last`.** A quit gives each `cld` pane, and each `ssh` pane with a host, `last`: the binding
+  it cut, for a restore to join again. A restore's typed line sets it too. A tick clears it where
+  the pane shows `cld` on any host, another program, or ssh to that host. ssh clears it at once
+  until a restore types the line, then after two minutes, as a refused join leaves the host's
+  shell. The second run change clears it too.
+
