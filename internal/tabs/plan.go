@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
@@ -24,10 +25,11 @@ var buildRank = map[string]int{buildPane: 0, buildTab: 1, buildWindow: 2}
 
 // Planned is a restore's plan: the script apply.js runs, and what the report needs of it.
 type Planned struct {
-	script ghostty.Plan
-	typed  []joining  // the pane of each of script.Typed
-	builds []building // the loss, leaves and bindings of each of script.Builds
-	chosen []*Loss
+	script  ghostty.Plan
+	typed   []joining  // the pane of each of script.Typed
+	builds  []building // the loss, leaves and bindings of each of script.Builds
+	chosen  []*Loss
+	deduped []string // kept panes whose binding shows in a pane opened since: Last goes
 	// uncached are the hosts whose terminfo Ghostty has not cached, in the order asked.
 	uncached []string
 }
@@ -52,10 +54,11 @@ func (p *Planned) Script() *ghostty.Plan { return &p.script }
 
 // planner makes a Planned against observation o, asking cached once per host.
 type planner struct {
-	out    *Planned
-	o      *Observation
-	cached func(host string) bool
-	hosts  map[string]bool
+	out     *Planned
+	o       *Observation
+	cached  func(host string) bool
+	hosts   map[string]bool
+	deduped map[string]bool
 }
 
 // plan is the restore of chosen against record r after its merge of o, nil where Ghostty does not
@@ -68,8 +71,11 @@ func plan(r *Record, o *Observation, chosen []*Loss, cached func(host string) bo
 	pl := &planner{o: o, cached: cached, hosts: map[string]bool{},
 		out: &Planned{chosen: chosen, script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{},
 			Builds: []ghostty.Build{}}}}
-	pl.typings(pl.inPlace(r))
-	pl.order(pl.leavesOf(chosen))
+	kept := pl.inPlace(r)
+	lost := pl.leavesOf(chosen)
+	pl.deduped = dedupe(r.Panes, wants(kept, lost))
+	pl.typings(kept)
+	pl.order(lost)
 	return pl.out
 }
 
@@ -78,6 +84,7 @@ type keptPane struct {
 	pane    string
 	pid     int
 	binding Binding
+	at      time.Time
 }
 
 // inPlace are the panes of o's windows that the snapshot shows a shell at its prompt, with a Last
@@ -89,15 +96,20 @@ func (pl *planner) inPlace(r *Record) []keptPane {
 		if seen.Kind != KindLocal || seen.Keep || p == nil || p.Last == nil || p.Last.Host == "" {
 			continue
 		}
-		out = append(out, keptPane{pane: t.ID, pid: t.PID,
+		out = append(out, keptPane{pane: t.ID, pid: t.PID, at: p.Last.At,
 			binding: Binding{Host: p.Last.Host, Session: p.Last.Session}})
 	}
 	return out
 }
 
-// typings plans each kept pane: the line that joins its binding again, typed into it.
+// typings plans each kept pane: left unchanged where the dedupe took it, else the line that joins
+// its binding again, typed into it.
 func (pl *planner) typings(kept []keptPane) {
 	for _, k := range kept {
+		if pl.deduped[k.pane] {
+			pl.out.deduped = append(pl.out.deduped, k.pane)
+			continue
+		}
 		j := joining{pane: k.pane, binding: k.binding, cached: pl.cachedHost(k.binding.Host)}
 		pl.out.typed = append(pl.out.typed, j)
 		pl.out.script.Typed = append(pl.out.script.Typed,

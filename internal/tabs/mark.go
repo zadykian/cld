@@ -8,9 +8,15 @@ import (
 )
 
 // mark records in r, at time now, what apply did of plan p, under the record's lock (decision
-// 59.6). res is apply's result, nil where it gave none. Each build's terminals enter the record
-// as panes at their prompt, in the windows it made.
+// 59.6). res is apply's result, nil where it gave none. A nil res changes only the dedupe's
+// panes: a merge enters the panes made instead. Each build's terminals enter the record as panes
+// at their prompt, in the windows it made.
 func mark(r *Record, p *Planned, res *ghostty.Result, now time.Time) {
+	for _, id := range p.deduped {
+		if pane := r.Panes[id]; pane != nil {
+			pane.Last = nil
+		}
+	}
 	if res == nil {
 		return
 	}

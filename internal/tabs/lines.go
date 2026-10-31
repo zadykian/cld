@@ -93,6 +93,13 @@ func (pl *planner) cachedHost(host string) bool {
 	return cached
 }
 
+// leafBinding is the binding lost leaf n joins again, false for a shell alone: a pane that showed
+// no ssh, or a binding the dedupe took.
+func (pl *planner) leafBinding(n *Node) (Binding, bool) {
+	b, ok := paneBinding(n.Copy)
+	return b, ok && !pl.deduped[n.Pane]
+}
+
 // keyer turns a placement's record trees into apply.js's, keying each leaf with prefix and the
 // next number, and keeps each leaf's copy and binding in b.
 type keyer struct {
@@ -117,7 +124,7 @@ func (k *keyer) node(n *Node, keys map[string]string) *ghostty.Node {
 	if n.Copy != nil {
 		leaf.Cwd = n.Copy.Cwd
 	}
-	if b, ok := paneBinding(n.Copy); ok {
+	if b, ok := k.pl.leafBinding(n); ok {
 		k.b.bindings[key] = b
 		leaf.Line = Line(b, k.pl.cachedHost(b.Host))
 	}
