@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -132,8 +133,18 @@ func findLeaf(n *tabs.Node, id string) *tabs.Node {
 	return findLeaf(n.Second, id)
 }
 
+// checkReport reports what the dry-run prints in s where it lacks want.
+func checkReport(t *testing.T, s *sandbox.Sandbox, want string) {
+	t.Helper()
+	result := dryRun(t, s)
+	if result.Code != 0 || !strings.Contains(result.Stdout, want) {
+		t.Errorf("restore tabs --dry-run: exit %d, stdout\n%s\nwant within it\n%s", result.Code,
+			result.Stdout, want)
+	}
+}
+
 // Ghostty's undo of a closed window, before its logins end, loses nothing: its panes come back
-// with their since, and a tree that cld made stays made.
+// with their since and last, and a tree that cld made stays made.
 func TestTabsMergeUndo(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -142,9 +153,11 @@ func TestTabsMergeUndo(t *testing.T) {
 	names := named(a, b, c)
 	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b, c))}
 	since := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	last := &tabs.Last{Host: "ws", Session: "y", Cut: "quit", Run: "1@2025-01-01T00:00:00Z",
+		At: since}
 	writeRecord(t, s, recordOf(m, map[string]*tabs.Pane{a: {Kind: "local", Since: since},
 		b: {Kind: "cld", Host: "ws", Session: "x", Since: since},
-		c: {Kind: "local", Since: since}},
+		c: {Kind: "local", Since: since, Last: last}},
 		tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made", Tree: leaf(a)}}},
 		tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made",
 			Tree: split("down", leaf(b), leaf(c))}}}))
@@ -159,6 +172,9 @@ func TestTabsMergeUndo(t *testing.T) {
 		if p := r.Panes[id]; p == nil || !p.Since.Equal(since) {
 			t.Errorf("undone: pane %s is %+v, want since %v", names[id], p, since)
 		}
+	}
+	if p := r.Panes[c]; p != nil && fmt.Sprint(p.Last) != fmt.Sprint(last) {
+		t.Errorf("undone: pane c's last is %+v, want %+v", p.Last, last)
 	}
 }
 
@@ -261,18 +277,8 @@ func TestTabsMergeHidden(t *testing.T) {
 	m.Processes = m.Processes[:len(m.Processes)-1]
 	r = tick(t, s, m)
 	checkRecord(t, "back, the quick terminal closed", r, names, "*a/made | *b/made", "", "")
-	if r.Panes[quick] != nil || r.Run.ID != run {
-		t.Errorf("the record holds %+v and run %s, want no quick terminal and run %s",
-			r.Panes[quick], r.Run.ID, run)
-	}
-}
-
-// checkReport reports what the dry-run prints in s where it lacks want.
-func checkReport(t *testing.T, s *sandbox.Sandbox, want string) {
-	t.Helper()
-	result := dryRun(t, s)
-	if result.Code != 0 || !strings.Contains(result.Stdout, want) {
-		t.Errorf("restore tabs --dry-run: exit %d, stdout\n%s\nwant within it\n%s", result.Code,
-			result.Stdout, want)
+	if r.Panes[quick] != nil || r.Run.ID != run || r.Previous != "" {
+		t.Errorf("the record holds %+v and run %s, previous %q, want no quick terminal and run %s",
+			r.Panes[quick], r.Run.ID, r.Previous, run)
 	}
 }
