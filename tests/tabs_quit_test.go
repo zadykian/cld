@@ -35,7 +35,7 @@ func quitMac(t *testing.T, s *sandbox.Sandbox) (*mac.Model, []string) {
 }
 
 // Where Ghostty brings every window back, the quit loses nothing. Each pane that was on ssh to a
-// host keeps that binding as last, which the dry-run lists to join again. Where Ghostty does not
+// host keeps that binding as last, which the dry-run would type into it. Where Ghostty does not
 // run, the dry-run reads the record as if it brought nothing back, and writes nothing.
 func TestTabsQuitBroughtAllBack(t *testing.T) {
 	t.Parallel()
@@ -74,11 +74,17 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 		}
 	}
 	at := clockAt(quit)
-	checkReport(t, s, "Panes to join again:\n"+
-		"  in ~/src: session 'app' on ws, as Ghostty quit at "+at+"\n"+
-		"  in /Users/me: ssh to ws, as Ghostty quit at "+at+"\n"+
-		"  in /Users/me: session 'x' on ws2, as Ghostty quit at "+at+"\n"+
+	checkReport(t, s, "Would type into 3 panes:\n"+
+		"  in ~/src, as Ghostty quit at "+at+": "+joinLine("ws", "app")+"\n"+
+		"  in /Users/me, as Ghostty quit at "+at+": ssh ws\n"+
+		"  in /Users/me, as Ghostty quit at "+at+": "+joinLine("ws2", "x")+"\n"+
 		"Ghostty brought back every window as it quit at "+at+"\n")
+}
+
+// joinLine is the line typed to join session, a NAME that does not split, on host.
+func joinLine(host, session string) string {
+	return "ssh -t -o ConnectTimeout=10 " + host +
+		` 'exec $SHELL -lc "cd / && cld join --existing -s ` + session + `; cd; exec $SHELL -l"'`
 }
 
 // The windows Ghostty does not bring back are the quit's one loss, with their panes as they were.

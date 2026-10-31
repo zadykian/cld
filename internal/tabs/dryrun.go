@@ -9,16 +9,16 @@ import (
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// dryRun reports what the record in dir holds after a restore's merge, seen. Ghostty and the
-// watcher come first, then the panes a restore would join again, the losses, and those that wait
+// dryRun reports what a restore would do of plan p, made against the record in dir as seen.
+// Ghostty and the watcher come first, then the panes to type into, the losses, and those that wait
 // for Ghostty's undo. Notes on Ghostty's config end it.
-func dryRun(ctx context.Context, dir string, seen *observed, report *Report) {
+func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, report *Report) {
 	c := clock{now: time.Now()}
 	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
 	r := seen.record
 	report.Lines = append(report.Lines, c.ghostty(seen))
 	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)
-	report.section("Panes to join again:", c.joinAgain(r))
+	c.wouldType(r, p, report)
 	report.section("Losses:", c.losses(r.Losses))
 	for _, l := range r.Losses {
 		if l.Cause == CauseQuit && len(l.Windows) == 0 {
@@ -59,6 +59,20 @@ func (c clock) watcher(s Status) []string {
 		return []string{line}
 	}
 	return []string{line, "The watcher's last line: " + s.LastLine}
+}
+
+// wouldType adds a line per pane Ghostty kept that plan p joins again: its directory, what cut its
+// binding, and the line typed.
+func (c clock) wouldType(r *Record, p *Planned, report *Report) {
+	var lines []string
+	for i, j := range p.typed {
+		where := "in " + c.dir(paneCwd(r, j.pane))
+		if p := r.Panes[j.pane]; p != nil && p.Last != nil {
+			where += ", " + c.cut(p.Last)
+		}
+		lines = append(lines, "  "+where+": "+p.script.Typed[i].Line)
+	}
+	report.section("Would type into "+count(len(lines), "pane")+":", lines)
 }
 
 // cut is what ended last's binding: a typed line that left the pane at its prompt, or a quit.

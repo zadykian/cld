@@ -65,21 +65,12 @@ func (c clock) dir(path string) string {
 	return path
 }
 
-// joinAgain is a line per pane a restore would join again: a shell at its prompt, with a binding.
-// A quit cut that binding, or a restore typed it, and it did not hold.
-func (c clock) joinAgain(r *Record) []string {
-	var lines []string
-	for _, w := range r.Windows {
-		for _, id := range windowLeaves(w) {
-			p := r.Panes[id]
-			if p == nil || p.Kind != KindLocal || p.Last == nil {
-				continue
-			}
-			b := Binding{Host: p.Last.Host, Session: p.Last.Session}
-			lines = append(lines, fmt.Sprintf("  in %s: %s, %s", c.dir(p.Cwd), b, c.cut(p.Last)))
-		}
+// paneCwd is the directory of record r's pane id, "" where unknown.
+func paneCwd(r *Record, id string) string {
+	if p := r.Panes[id]; p != nil {
+		return p.Cwd
 	}
-	return lines
+	return ""
 }
 
 // size is what loss l holds: a tab, a split, or windows with their tabs and panes.

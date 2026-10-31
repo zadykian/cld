@@ -36,7 +36,7 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	dryRun(ctx, dir, seen, report)
+	dryRun(ctx, dir, seen, restorePlan(seen), report)
 	return report, nil
 }
 
