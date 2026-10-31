@@ -34,29 +34,6 @@ func waitSnapshots(t *testing.T, s *sandbox.Sandbox, n int) {
 	})
 }
 
-// A dry-run waits 10 s for the record's lock, which another cld holds, then fails.
-func TestTabsWatchBusy(t *testing.T) {
-	t.Parallel()
-	s := sandbox.New(t)
-	m := ghosttyApp(t, s)
-	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
-	tick(t, s, m)
-	lock, err := os.OpenFile(filepath.Join(tabsDir(s), "lock"), os.O_RDWR, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = lock.Close() }) //nolint:errcheck // closed already, but at a failure
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
-		t.Fatal(err)
-	}
-	before := readFile(t, recordPath(s))
-	checkFailed(t, dryRun(t, s), 1, "cld: cannot lock cld's record of Ghostty's tabs: another "+
-		"cld restore tabs holds it\n")
-	if readFile(t, recordPath(s)) != before {
-		t.Error("tabs.json changed while another cld held its lock")
-	}
-}
-
 // A tick whose snapshot began before another cld wrote the record merges nothing: it would take
 // the windows that cld saw for closed. A merge touches watch, so its time tells whether the slow
 // tick merged before the dry-run wrote, which would test nothing.
@@ -95,4 +72,44 @@ func watchTime(t *testing.T, s *sandbox.Sandbox) time.Time {
 		t.Fatal(err)
 	}
 	return info.ModTime()
+}
+
+// The watcher never waits for the record's lock: while another cld holds it, a tick every 5 s
+// merges nothing and logs nothing. A dry-run waits 10 s for it, then fails. The first tick after
+// the lock goes merges.
+func TestTabsWatchBusy(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	saveModel(t, s, m)
+	startWatch(t, s)
+	waitTicked(t, s, m)
+	lock, err := os.OpenFile(filepath.Join(tabsDir(s), "lock"), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lock.Close() }) //nolint:errcheck // closed already, but at a failure
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	held, before, n := time.Now(), readFile(t, recordPath(s)), snapshots(t, s)
+	b := addPane(m, "~")
+	m.Windows = append(m.Windows, windowOf(tabOf(b)))
+	saveModel(t, s, m)
+	checkFailed(t, dryRun(t, s), 1, "cld: cannot lock cld's record of Ghostty's tabs: another "+
+		"cld restore tabs holds it\n")
+	// A watcher that waited 10 s for the lock at a tick would take its third snapshot 20 s in, at
+	// the soonest.
+	sandbox.WaitFor(t, time.Until(held.Add(19*time.Second)), "3 ticks under the lock",
+		func() bool { return snapshots(t, s) >= n+3 })
+	if readFile(t, recordPath(s)) != before {
+		t.Error("tabs.json changed while another cld held its lock")
+	}
+	if err := lock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sandbox.WaitFor(t, 15*time.Second, "a merge once the lock went", func() bool {
+		return readRecord(t, s).Panes[b] != nil
+	})
 }
