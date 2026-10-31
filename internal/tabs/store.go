@@ -43,15 +43,34 @@ func load(dir string) (r *Record, old []byte, err error) {
 	if err := json.Unmarshal(data, r); err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", filepath.Join(dir, recordFile), err)
 	}
+	normalize(r)
 	return r, data, nil
 }
 
 // newRecord is the record before any observation.
-func newRecord() *Record { return &Record{Format: Format} }
+func newRecord() *Record {
+	r := &Record{Format: Format}
+	normalize(r)
+	return r
+}
+
+// normalize gives r an empty map for a nil one, so that its bytes do not depend on what made it.
+// It drops the nil panes that a record edited by hand may hold.
+func normalize(r *Record) {
+	if r.Panes == nil {
+		r.Panes = map[string]*Pane{}
+	}
+	for id, p := range r.Panes {
+		if p == nil {
+			delete(r.Panes, id)
+		}
+	}
+}
 
 // save writes r to the record in dir, by a temporary file renamed over it. Where r's bytes are
 // old, it writes nothing, so that a record that did not change keeps its file and time.
 func save(dir string, r *Record, old []byte) error {
+	normalize(r)
 	var data bytes.Buffer
 	encoder := json.NewEncoder(&data)
 	encoder.SetEscapeHTML(false)
