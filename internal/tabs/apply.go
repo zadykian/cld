@@ -3,20 +3,29 @@ package tabs
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// apply types plan p's lines into Ghostty's panes, under the locks Restore holds (decision 59.6).
-// A plan with nothing to type runs nothing, and its result is empty. The result is nil where the
-// apply gave none.
-func apply(ctx context.Context, p *Planned, report *Report) *ghostty.Result {
+// apply types plan p's lines into Ghostty's panes, then records them in the record seen, under the
+// locks Restore holds (decision 59.6). A plan with nothing to type runs nothing, and its result is
+// empty. The result is nil where the apply gave none. A record it cannot write is a warning, as
+// what the apply typed is typed: the report still says so.
+func apply(
+	ctx context.Context, dir string, seen *observed, p *Planned, report *Report,
+) *ghostty.Result {
 	res := &ghostty.Result{}
 	if typed := p.Script().Typed; len(typed) > 0 {
 		var err error
 		if res, err = ghostty.Apply(ctx, &ghostty.Plan{Pace: pace, Typed: typed}); err != nil {
 			report.warn(failure(err).Error())
 		}
+	}
+	mark(seen.record, p, res, time.Now())
+	if err := save(dir, seen.record, nil); err != nil {
+		report.warn("cannot record what the restore made, so the next one may type it again: " +
+			err.Error())
 	}
 	return res
 }

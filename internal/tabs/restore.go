@@ -46,7 +46,7 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 		dryRun(ctx, dir, seen, p, left, opts, report)
 		return report, nil
 	}
-	res := apply(ctx, p, report)
+	res := apply(ctx, dir, seen, p, report)
 	unlock()
 	finish(dir, seen, p, res, report)
 	return report, nil
