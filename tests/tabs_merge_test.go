@@ -155,6 +155,58 @@ func TestTabsMergeClosedTab(t *testing.T) {
 		"tab 2 beside a: b/made")
 }
 
+// A closed split waits, then counts as lost. It goes back beside the first open pane of its
+// sibling: right or down of it where the split was the second half, left or up where the first.
+func TestTabsMergeClosedSplit(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		tree func(a, b, c *tabs.Node) *tabs.Node
+		open []int // the panes left open, by place in a, b, c
+		want string
+	}{
+		{"right", func(a, b, _ *tabs.Node) *tabs.Node { return split("right", a, b) },
+			[]int{0}, "pane right of a: b/made"},
+		{"left", func(a, b, _ *tabs.Node) *tabs.Node { return split("right", a, b) },
+			[]int{1}, "pane left of b: a/made"},
+		{"down", func(a, b, _ *tabs.Node) *tabs.Node { return split("down", a, b) },
+			[]int{0}, "pane down of a: b/made"},
+		{"up", func(a, b, _ *tabs.Node) *tabs.Node { return split("down", a, b) },
+			[]int{1}, "pane up of b: a/made"},
+		{"a nested split", func(a, b, c *tabs.Node) *tabs.Node {
+			return split("right", a, split("down", b, c))
+		}, []int{0}, "pane right of a: down(b,c)/made"},
+		{"within a nested split", func(a, b, c *tabs.Node) *tabs.Node {
+			return split("right", a, split("down", b, c))
+		}, []int{0, 1}, "pane down of b: c/made"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m := ghosttyApp(t, s)
+			ids := []string{addPane(m, "~"), addPane(m, "~"), addPane(m, "~")}
+			tree := test.tree(leaf(ids[0]), leaf(ids[1]), leaf(ids[2]))
+			panes := map[string]*tabs.Pane{}
+			for _, id := range tabs.Leaves(tree) {
+				panes[id] = &tabs.Pane{Kind: "local"}
+			}
+			writeRecord(t, s, recordOf(m, panes, tabs.Window{Tabs: []tabs.Tab{{Selected: true,
+				Shape: "made", Tree: tree}}}))
+			m.Windows = []mac.Window{windowOf(tabOf(tabs.Leaves(tree)...))}
+			tick(t, s, m)
+			var open []string
+			for _, i := range test.open {
+				open = append(open, ids[i])
+			}
+			m.Windows = []mac.Window{windowOf(tabOf(open...))}
+			r := tick(t, s, m)
+			if got := drawLosses(r.Pending, named(ids...)); got != test.want {
+				t.Errorf("pending %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 // Panes in no window that Ghostty still lists are never closed: the quick terminal, never in a
 // window, enters no record. A window minimized or hidden stays the record's, last. A ghostty
 // +ssh process, which runs Ghostty's own binary, is no new run of Ghostty.

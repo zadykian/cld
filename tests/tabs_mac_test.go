@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -52,6 +53,16 @@ func tabOf(ids ...string) mac.Tab {
 func windowOf(tabs ...mac.Tab) mac.Window {
 	tabs[0].Selected = true
 	return mac.Window{Tabs: tabs}
+}
+
+// runOf is the run of m's Ghostty, as the record names it: its pid and its ps row's start.
+func runOf(m *mac.Model) string {
+	for _, p := range m.Processes {
+		if p.PID == m.PID {
+			return fmt.Sprintf("%d@%s", p.PID, p.Start.UTC().Format(time.RFC3339))
+		}
+	}
+	panic("the model's Ghostty has no row")
 }
 
 // addPane adds a pane to m, in no window yet, titled title, and returns its terminal's id. Its

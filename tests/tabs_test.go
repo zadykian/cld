@@ -47,6 +47,22 @@ func readRecord(t *testing.T, s *sandbox.Sandbox) *tabs.Record {
 	return &r
 }
 
+// writeRecord writes r as the record of Ghostty's tabs in s, as cld would: for times beyond a
+// test's span.
+func writeRecord(t *testing.T, s *sandbox.Sandbox, r *tabs.Record) {
+	t.Helper()
+	data, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(recordPath(s), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // dryRun runs cld restore tabs --dry-run in s.
 func dryRun(t *testing.T, s *sandbox.Sandbox) sandbox.Result {
 	t.Helper()
@@ -151,6 +167,20 @@ func TestTabsWritesOnlyChanges(t *testing.T) {
 			t.Errorf("titled %q: tabs.json written again", title)
 		}
 	}
+}
+
+// recordOf is a record of the run of m's Ghostty, of panes and windows, for writeRecord.
+func recordOf(m *mac.Model, panes map[string]*tabs.Pane, windows ...tabs.Window) *tabs.Record {
+	return &tabs.Record{Format: tabs.Format, Run: tabs.Run{ID: runOf(m), Version: m.Version},
+		Panes: panes, Windows: windows, Pending: []*tabs.Loss{}, Losses: []*tabs.Loss{}}
+}
+
+// leaf is a record's leaf of pane id.
+func leaf(id string) *tabs.Node { return &tabs.Node{Pane: id} }
+
+// split is a record's split of first and second, right or down.
+func split(direction string, first, second *tabs.Node) *tabs.Node {
+	return &tabs.Node{Split: direction, First: first, Second: second}
 }
 
 // named names the panes ids a, b, c and on, for drawWindows.
