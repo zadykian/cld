@@ -11,13 +11,14 @@
 //   noTty: true, for Ghostty 1.3.1, whose terminals have no tty;
 //   then: windows that replace the model's, one after each first read of the windows' ids, as
 //     the user changes them while a script reads them;
-//   raises: the starts of log lines, an event's or a delay's, after the first of which the user
-//     brings the back window to the front, each in turn; quits: the start of a log line after
-//     which Ghostty quits.
+//   opens: the starts of log lines, an event's or a delay's, after the first of which the user
+//     opens a window, each in turn; raises: likewise, the user bringing the back window to the
+//     front; quits: the start of a log line after which Ghostty quits.
 // Its commands keep Ghostty's rules as v1.4.0's source has them
-// (docs/design/findings/terminals.md): a new window joins the windows with its terminal; send key
-// and input text record what they type in the terminal. The model's failAt is the terminal,
-// counted from 1, that Ghostty fails to make: a new window's never appears. delay only logs.
+// (docs/design/findings/terminals.md): a new window joins the windows with its terminal; a new tab
+// goes after its window's selected tab, selected, its terminal focused at once; focus moves focus
+// at the next Apple Event; send key and input text record what they type in the terminal. The model's failAt is the terminal,
+// counted from 1, that Ghostty fails to make: a new window's or tab's never appears. delay only logs.
 var mockRun;
 (function () {
   const ghosttyMock = {model: null, log: [], idReads: 0, queue: [], made: 0};
@@ -33,9 +34,12 @@ var mockRun;
     ghosttyMock.user(what);
   };
 
-  // user acts after the log line what, as mock.raises and mock.quits say.
+  // user acts after the log line what, as mock.opens, mock.raises and mock.quits say.
   ghosttyMock.user = function (what) {
     const m = ghosttyMock.model;
+    if (ghosttyMock.next(m.mock.opens, what)) {
+      m.windows.unshift(ghosttyMock.newWindow(ghosttyMock.add({})));
+    }
     if (ghosttyMock.next(m.mock.raises, what) && m.windows.length > 1) {
       m.windows.unshift(m.windows.pop());
     }
@@ -334,6 +338,38 @@ var mockRun;
         ghosttyMock.model.windows.unshift(ghosttyMock.newWindow(id));
       }
       return {};
+    },
+    newTab: function (opts) {
+      ghosttyMock.event('new tab in windows[' + opts.in.mockIndex + ']');
+      ghosttyMock.command();
+      const w = opts.in.mockWindow();
+      const id = ghosttyMock.make(opts.withConfiguration, false);
+      if (id) {
+        const selected = w.tabs.findIndex((t) => t.selected);
+        const tab = {selected: true, focused: id, tree: {pane: id}};
+        w.tabs.splice(selected >= 0 ? selected + 1 : w.tabs.length, 0, tab);
+        ghosttyMock.front(w, tab);
+      }
+      return {};
+    },
+    focus: function (terminal) {
+      const id = terminal.mockId;
+      ghosttyMock.event('focus ' + id);
+      ghosttyMock.command();
+      ghosttyMock.found(id);
+      ghosttyMock.queue.push(() => {
+        const at = ghosttyMock.locate(id);
+        if (at) {
+          at.tab.focused = id;
+          ghosttyMock.front(at.window, at.tab);
+        }
+      });
+    },
+    selectTab: function (tab) {
+      ghosttyMock.event('select tab ' + tab.mockName);
+      ghosttyMock.command();
+      const selected = tab.mockTab();
+      ghosttyMock.front(ghosttyMock.locate(ghosttyMock.leaves(selected.tree)[0]).window, selected);
     },
     sendKey: function (key, opts) {
       const mods = opts.modifiers ? ' ' + opts.modifiers : '';

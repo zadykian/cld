@@ -32,7 +32,25 @@ var mockedApplies = []mockedApply{
 	{"a window of one tab", "", `{"kind": "window", "tabs": [
 	   {"selected": true, "tree": {"leaf": {"key": "a", "line": "ssh ws"}}}]}`, nil, nil,
 		`{"typed": [], "builds": [{"keys": {"a": "@10"}}]}`, "*[10] | *[1] [4] | *[7]",
-		[]string{"get terminals.id", "get terminals.id", "new window", "get terminals.id"}},
+		[]string{"get terminals.id", "get terminals.id", "new window", "get terminals.id",
+			"get windows.terminals.id", "get windows[0].tabs.terminals.id",
+			"select tab windows[0].tabs[0]", "focus @10"}},
+	{"a window found by its terminal", "", `{"kind": "window", "tabs": [
+	   {"focused": "a", "tree": {"leaf": {"key": "a", "line": "ssh ws"}}},
+	   {"selected": true, "tree": {"leaf": {"key": "c"}}}]}`, nil, nil,
+		`{"typed": [], "builds": [{"keys": {"a": "@10", "c": "@13"}}]}`,
+		"[10] *[13] | *[1] [4] | *[7]", []string{"get terminals.id", "get terminals.id",
+			"new window", "get terminals.id", "get terminals.id", "get windows.terminals.id",
+			"new tab in windows[0]", "get terminals.id", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[1]", "focus @13"}},
+	{"a window the user opens before a build", `{"pane": "@1", "pid": 50003, "line": "ls"}`,
+		`{"kind": "window", "tabs": [{"tree": {"leaf": {"key": "a"}}}]}`, nil,
+		map[string]any{"opens": []string{"send key enter"}},
+		`{"typed": [{"pane": "@1"}], "builds": [{"keys": {"a": "@13"}}]}`,
+		"*[13] | *[10] | *[1] [4] | *[7]", []string{"get terminals.id", "get pid of @1",
+			"send key u control to @1", "input text to @1", "send key enter to @1",
+			"get terminals.id", "new window", "get terminals.id", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @13"}},
 }
 
 // mockedFailures are apply.js's own cases as it fails.
@@ -41,15 +59,35 @@ var mockedFailures = []mockedApply{
 		func(m *mac.Model) { m.Running = false }, nil, `{"error": {"step": "running",
 		  "number": 0, "message": "Ghostty is not running", "version": ""}}`, "*[1] [4] | *[7]",
 		nil},
+	{"Ghostty quits meanwhile", "", `{"kind": "window",
+	   "tabs": [{"tree": {"leaf": {"key": "a"}}}]},
+	  {"kind": "window", "tabs": [{"tree": {"leaf": {"key": "b"}}}]}`, nil,
+		map[string]any{"quits": "new window"}, `{"error": {"step": "running",
+		  "number": 0, "message": "Ghostty is not running", "version": ""}}`,
+		"*[10] | *[1] [4] | *[7]", []string{"get terminals.id", "get terminals.id", "new window"}},
 	{"denied", `{"pane": "@1", "pid": 50003, "line": "ls"}`, "", nil,
 		map[string]any{"fail": "denied"}, `{"error": {"step": "count", "number": -1743,
 		  "message": "Not authorized to send Apple events to Ghostty.", "version": ""}}`,
 		"*[1] [4] | *[7]", []string{"get terminals.id"}},
 }
 
-// testMockedApply runs apply.js against fakeGhostty(2, 1) as the mock Ghostty.
+// testMockedApply runs apply.js against fakeGhostty(2, 1) as the mock Ghostty. The fake
+// osascript's apply cases give the same results and shapes: those apply.js builds so far, which
+// are the windows of tabs of one pane each. apply.js's own cases follow.
 func testMockedApply(t *testing.T) {
 	t.Parallel()
+	for _, test := range applyTests {
+		if test.name != "a window with no tab selected" {
+			continue
+		}
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			m := fakeGhostty(2, 1)
+			m.FailAt = test.failAt
+			checkMockedApply(t, test.typed, test.builds, m, nil,
+				`{"typed": [], "builds": [`+test.result+`]}`, test.shape)
+		})
+	}
 	for _, test := range slices.Concat(mockedApplies, mockedFailures) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
