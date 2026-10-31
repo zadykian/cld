@@ -83,7 +83,10 @@ func (c clock) built(b ghostty.Build, info building, res ghostty.BuildResult, re
 		return
 	}
 	what := windowSize(b.Tabs)
-	if l.Cause == CauseTab || l.Cause == CausePane {
+	switch {
+	case l.Cause == CauseTab && b.Kind == buildTab && !res.Window:
+		what = fmt.Sprintf("a tab at %d in its window", res.Index)
+	case l.Cause == CauseTab || l.Cause == CausePane:
 		what = noun(l) + " as a window"
 	}
 	report.Lines = append(report.Lines, "Reopened "+what+", "+c.when(l))
