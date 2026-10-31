@@ -94,6 +94,30 @@ func copyTab(t Tab, panes map[string]*Pane) Tab {
 	return t
 }
 
+// undo drops each pending loss of which o shows a pane in a window: Ghostty's undo brought it
+// back, and nothing was lost. Its panes shown go back into r.Panes as they were, keeping Since
+// and Last. Its windows, stripped, are what undo returns, so that their trees stay (treeFor).
+func undo(r *Record, o *Observation) []Window {
+	var undone []Window
+	kept := r.Pending[:0]
+	for _, l := range r.Pending {
+		if !showsAny(o, l) {
+			kept = append(kept, l)
+			continue
+		}
+		for id, p := range lossCopies(l) {
+			if _, in := r.Panes[id]; p != nil && !in && o.shows(id) {
+				r.Panes[id] = p
+			}
+		}
+		for _, w := range l.Windows {
+			undone = append(undone, copyWindow(w, nil))
+		}
+	}
+	r.Pending = kept
+	return undone
+}
+
 // settlePending moves to r.Losses each pending loss none of whose logins procs still shows: the
 // close is past Ghostty's undo. A loss keeps the time of its close. UNVERIFIED until #177's
 // check 9 (decision 59.12): that a pane's login lives as long as Ghostty keeps its surface.
@@ -113,6 +137,16 @@ func settlePending(r *Record, procs Table) {
 func lives(l *Loss, procs Table) bool {
 	for _, p := range lossCopies(l) {
 		if p != nil && p.Login != 0 && procs.Has(p.Login, strings.TrimPrefix(p.TTY, "/dev/")) {
+			return true
+		}
+	}
+	return false
+}
+
+// showsAny reports whether a window of o shows a pane of loss l.
+func showsAny(o *Observation, l *Loss) bool {
+	for id := range lossCopies(l) {
+		if o.shows(id) {
 			return true
 		}
 	}

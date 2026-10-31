@@ -132,6 +132,36 @@ func findLeaf(n *tabs.Node, id string) *tabs.Node {
 	return findLeaf(n.Second, id)
 }
 
+// Ghostty's undo of a closed window, before its logins end, loses nothing: its panes come back
+// with their since, and a tree that cld made stays made.
+func TestTabsMergeUndo(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a, b, c := addPane(m, "~"), addPane(m, "✳ cld-x", ssh("ws")), addPane(m, "~")
+	names := named(a, b, c)
+	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b, c))}
+	since := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	writeRecord(t, s, recordOf(m, map[string]*tabs.Pane{a: {Kind: "local", Since: since},
+		b: {Kind: "cld", Host: "ws", Session: "x", Since: since},
+		c: {Kind: "local", Since: since}},
+		tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made", Tree: leaf(a)}}},
+		tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made",
+			Tree: split("down", leaf(b), leaf(c))}}}))
+	checkRecord(t, "made", tick(t, s, m), names, "*a/made | *down(b,c)/made", "", "")
+	open := m.Windows
+	m.Windows = open[:1]
+	checkRecord(t, "closed", tick(t, s, m), names, "*a/made", "closed: *down(b,c)/made", "")
+	m.Windows = []mac.Window{open[1], open[0]}
+	r := tick(t, s, m)
+	checkRecord(t, "undone", r, names, "*down(b,c)/made | *a/made", "", "")
+	for _, id := range []string{b, c} {
+		if p := r.Panes[id]; p == nil || !p.Since.Equal(since) {
+			t.Errorf("undone: pane %s is %+v, want since %v", names[id], p, since)
+		}
+	}
+}
+
 // A closed tab waits, then is lost, with its place in its window beside the nearest open tab:
 // the one before it, or else the one after.
 func TestTabsMergeClosedTab(t *testing.T) {
