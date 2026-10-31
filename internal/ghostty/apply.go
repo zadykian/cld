@@ -70,11 +70,12 @@ type Leaf struct {
 	Line string `json:"line,omitempty"` // "" for the shell alone
 }
 
-// Result is what apply.js did: an entry per Typing, in the plan's order. Error is set where it
-// did nothing, and Apply returns it as an *Error instead.
+// Result is what apply.js did: an entry per Typing and per Build, in the plan's order. Error is
+// set where it did nothing, and Apply returns it as an *Error instead.
 type Result struct {
-	Typed []TypedResult `json:"typed"`
-	Error *ScriptError  `json:"error,omitempty"`
+	Typed  []TypedResult `json:"typed"`
+	Builds []BuildResult `json:"builds"`
+	Error  *ScriptError  `json:"error,omitempty"`
 }
 
 // TypedResult is a Typing's outcome: typed, left busy, or failed.
@@ -84,8 +85,17 @@ type TypedResult struct {
 	Error string `json:"error,omitempty"` // JXA's text, then its number in brackets
 }
 
+// BuildResult is a Build's outcome. Keys holds the terminals it made, a failed build's too, as
+// Ghostty keeps them.
+type BuildResult struct {
+	Keys   map[string]string `json:"keys"`             // a leaf's key to its terminal's id
+	Index  int               `json:"index,omitempty"`  // tab: its place, read back
+	Window bool              `json:"window,omitempty"` // tab: it opened as a window
+	Error  string            `json:"error,omitempty"`
+}
+
 // Apply runs apply.js with plan. A Result whose Error is set is returned as an *Error instead,
-// and so is one that lacks an entry for each typing: a later step indexes them.
+// and so is one that lacks an entry for each typing and build: a later step indexes them.
 func Apply(ctx context.Context, plan *Plan) (*Result, error) {
 	in := *plan
 	if in.Typed == nil {
@@ -101,9 +111,9 @@ func Apply(ctx context.Context, plan *Plan) (*Result, error) {
 	switch {
 	case result.Error != nil:
 		return nil, classify(result.Error)
-	case len(result.Typed) != len(in.Typed):
-		return nil, failed("", fmt.Sprintf("apply.js answered %d of %d typings",
-			len(result.Typed), len(in.Typed)))
+	case len(result.Typed) != len(in.Typed) || len(result.Builds) != len(in.Builds):
+		return nil, failed("", fmt.Sprintf("apply.js answered %d of %d typings and %d of %d builds",
+			len(result.Typed), len(in.Typed), len(result.Builds), len(in.Builds)))
 	}
 	return result, nil
 }
