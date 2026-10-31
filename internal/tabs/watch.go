@@ -3,7 +3,6 @@ package tabs
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,6 +22,7 @@ type watcher struct {
 	watch *os.File // kept for the process's life: its lock is the watcher's
 	run   string
 	pid   int
+	log   *logger
 }
 
 // Watch is the watcher, cld restore tabs --watching. Each tick it merges what Ghostty shows into
@@ -32,11 +32,11 @@ func Watch() error {
 	if err != nil {
 		return err
 	}
-	w := &watcher{dir: dir}
+	w := &watcher{dir: dir, log: &logger{}}
 	watch, locked, err := tryLock(filepath.Join(dir, watchFile))
 	if err != nil || !locked {
 		if err == nil {
-			w.line("another watcher holds the record")
+			w.log.line("another watcher holds the record")
 		}
 		return err
 	}
@@ -117,7 +117,7 @@ func (w *watcher) merge(o *Observation, before os.FileInfo) error {
 		return w.failed(err)
 	}
 	if warning != "" {
-		w.line(warning)
+		w.log.line(warning)
 	}
 	Merge(r, o, last)
 	if err := save(w.dir, r, old); err != nil {
@@ -127,16 +127,17 @@ func (w *watcher) merge(o *Observation, before os.FileInfo) error {
 	if err := os.Chtimes(w.watch.Name(), now, now); err != nil {
 		return w.failed(err)
 	}
+	w.log.flush()
 	return nil
 }
 
 // ended is the end of Ghostty's run. The watcher then exits, with status 0.
 func (w *watcher) ended() error {
 	if w.run == "" {
-		w.line("Ghostty is not running")
+		w.log.line("Ghostty is not running")
 		return nil
 	}
-	w.line("Ghostty's run " + w.run + " ended")
+	w.log.line("Ghostty's run " + w.run + " ended")
 	return nil
 }
 
@@ -149,19 +150,14 @@ func (w *watcher) failed(err error) error {
 	if newer := (formatError{}); errors.As(err, &newer) {
 		return w.stop(err)
 	}
-	w.line(err.Error())
+	w.log.failed(err.Error())
 	return nil
 }
 
 // stop logs err as what stopped the watcher, and ends it with status 1.
 func (w *watcher) stop(err error) error {
-	w.line("stopped: " + err.Error())
+	w.log.line("stopped: " + err.Error())
 	return fail.Status(1)
-}
-
-// line writes text to stderr, after the time in UTC.
-func (w *watcher) line(text string) {
-	_, _ = fmt.Fprintf(os.Stderr, "%s %s\n", time.Now().UTC().Format(time.RFC3339), text)
 }
 
 // statRecord is the record in dir as it stands, nil where missing.
