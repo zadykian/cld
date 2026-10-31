@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,4 +143,43 @@ func TestTabsWritesOnlyChanges(t *testing.T) {
 	if !os.SameFile(first, info) || !info.ModTime().Equal(old) || readFile(t, recordPath(s)) != data {
 		t.Error("tabs.json written again")
 	}
+}
+
+// named names the panes ids a, b, c and on, for drawWindows.
+func named(ids ...string) map[string]string {
+	names := map[string]string{}
+	for i, id := range ids {
+		names[id] = string(rune('a' + i))
+	}
+	return names
+}
+
+// drawWindows draws a record's windows as the model's shape: " | " between windows and " "
+// between tabs, * before a selected tab, and each tab's tree, then / and its shape. A pane is
+// drawn by its name in names, and a split as right(A,B) or down(A,B).
+func drawWindows(windows []tabs.Window, names map[string]string) string {
+	drawn := make([]string, 0, len(windows))
+	for _, w := range windows {
+		tabList := make([]string, 0, len(w.Tabs))
+		for _, tab := range w.Tabs {
+			mark := ""
+			if tab.Selected {
+				mark = "*"
+			}
+			tabList = append(tabList, mark+drawNode(tab.Tree, names)+"/"+tab.Shape)
+		}
+		drawn = append(drawn, strings.Join(tabList, " "))
+	}
+	return strings.Join(drawn, " | ")
+}
+
+// drawNode draws a record's tree for drawWindows.
+func drawNode(n *tabs.Node, names map[string]string) string {
+	switch {
+	case n == nil:
+		return "nil"
+	case n.Pane != "":
+		return names[n.Pane]
+	}
+	return n.Split + "(" + drawNode(n.First, names) + "," + drawNode(n.Second, names) + ")"
 }
