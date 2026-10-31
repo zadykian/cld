@@ -2,6 +2,7 @@ package ghostty
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/zadykian/cld/internal/fail"
@@ -10,13 +11,16 @@ import (
 // Kind is what went wrong in a script's run, as cld tells it apart.
 type Kind int
 
-// The kinds of Error. NoOsascript is permanent: another try finds it again until the user acts.
+// The kinds of Error. NoOsascript, Denied and ScriptingOff are permanent: another try finds them
+// again until the user acts.
 const (
-	NoOsascript Kind = iota + 1 // osascript is not on the PATH
-	Gone                        // Ghostty quit or went away during the run
-	Several                     // more than one Ghostty process
-	Timeout                     // no answer before the deadline, or JXA's own timeout
-	Failed                      // anything else: osascript's own failure, or another of Ghostty's
+	NoOsascript  Kind = iota + 1 // osascript is not on the PATH
+	Denied                       // -1743 on the first getter: macOS denies Automation
+	ScriptingOff                 // -1743 with Ghostty's text on the probe: macos-applescript off
+	Gone                         // Ghostty quit or went away during the run
+	Several                      // more than one Ghostty process
+	Timeout                      // no answer before the deadline, or JXA's own timeout
+	Failed                       // anything else: osascript's own failure, or another of Ghostty's
 )
 
 // JXA's error numbers that cld tells apart.
@@ -24,6 +28,7 @@ const (
 	procNotFound      = -600  // the application is not running
 	connectionInvalid = -609  // the connection to the application went away
 	timedOut          = -1712 // errAETimeout: no answer to an Apple Event
+	notPermitted      = -1743 // errAEEventNotPermitted: Automation denied, or AppleScript off
 )
 
 // ScriptError is the error document a script prints in place of its result. Number is JXA's
@@ -48,7 +53,9 @@ type Error struct {
 	limit   time.Duration // Timeout: the deadline cld gave osascript, 0 for JXA's own
 }
 
-// classify tells what a script's error document means, by its step and JXA's error number.
+// classify tells what a script's error document means, by its step and JXA's error number. Only
+// the probe's -1743 also reads the text, which names macos-applescript where Ghostty's config
+// turned AppleScript off (AppDelegate+AppleScript.swift's validateScript in Ghostty's source).
 func classify(se *ScriptError) *Error {
 	e := &Error{Kind: Failed, Step: se.Step, Number: se.Number, Message: se.Message,
 		Version: se.Version}
@@ -57,6 +64,15 @@ func classify(se *ScriptError) *Error {
 		e.Kind = Gone
 	case se.Number == timedOut:
 		e.Kind = Timeout
+	// UNVERIFIED until #177's check 4 (decision 59.12). macOS's denial fails the getter with
+	// -1743, and AppleScript off fails the probe so, with Ghostty's text.
+	case se.Step == "count" && se.Number == notPermitted:
+		e.Kind = Denied
+	case se.Step == "probe" && se.Number == notPermitted:
+		e.Kind = Denied
+		if strings.Contains(se.Message, "macos-applescript") {
+			e.Kind = ScriptingOff
+		}
 	}
 	return e
 }
@@ -66,6 +82,11 @@ func (e *Error) Error() string {
 	switch e.Kind {
 	case NoOsascript:
 		return "restore tabs runs on a Mac: osascript is not installed"
+	case Denied:
+		return "macOS denies control of Ghostty"
+	case ScriptingOff:
+		// Ghostty's text ends its sentence, and Fail's advice follows it after a ";".
+		return "Ghostty says: " + strings.TrimSuffix(e.Message, ".")
 	case Gone:
 		return "Ghostty quit while cld read it"
 	case Several:
@@ -88,7 +109,14 @@ func (e *Error) Error() string {
 // Fail is e as cld ends with it: status 1, with what to do about it where cld can say.
 func (e *Error) Fail() error {
 	advice := ""
-	if e.Kind == Timeout {
+	switch e.Kind {
+	case Denied:
+		advice = ": in System Settings › Privacy & Security › Automation, allow Ghostty under the" +
+			" app cld runs in, Ghostty itself in its panes; as a last resort in Ghostty's panes," +
+			" tccutil reset AppleEvents " + Bundle + " resets every Automation grant Ghostty holds"
+	case ScriptingOff:
+		advice = "; set macos-applescript = true in Ghostty's config"
+	case Timeout:
 		advice = "; if macOS asked whether the app cld runs in may control Ghostty, answer, then" +
 			" run cld restore tabs again"
 	}
