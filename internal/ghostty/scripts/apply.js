@@ -38,15 +38,6 @@ function alive() {
   if (gone()) throw GONE;
 }
 
-// step waits before each line that starts an ssh: pace.gap apart, and pace.pause more after
-// every pace.every, so that sshd's MaxStartups and a fail2ban see no burst (decision 59.7).
-function step() {
-  if (paced > 0) {
-    delay(paced % pace.every === 0 ? pace.gap + pace.pause : pace.gap);
-  }
-  paced++;
-}
-
 // message is a typing's or a build's error: JXA's text, then its number in brackets.
 function message(e) {
   const text = String(e.message === undefined ? e : e.message);
@@ -64,6 +55,15 @@ function failure(step, e) {
   }});
 }
 
+// step waits before each line that starts an ssh: pace.gap apart, and pace.pause more after
+// every pace.every, so that sshd's MaxStartups and a fail2ban see no burst (decision 59.7).
+function step() {
+  if (paced > 0) {
+    delay(paced % pace.every === 0 ? pace.gap + pace.pause : pace.gap);
+  }
+  paced++;
+}
+
 // config is leaf's surface configuration: its line as initial input, never a command, and its
 // directory (decision 59.7).
 function config(leaf) {
@@ -75,6 +75,10 @@ function config(leaf) {
 
 function firstLeaf(node) {
   return node.leaf ? node.leaf : firstLeaf(node.first);
+}
+
+function leaves(node) {
+  return node.leaf ? [node.leaf] : leaves(node.first).concat(leaves(node.second));
 }
 
 // created is the one terminal id the last new window or new tab added to terminals, waited for
@@ -113,9 +117,9 @@ function tabOf(w, id) {
   return G.windows[w].tabs.terminals.id().findIndex(ids => ids.includes(id));
 }
 
-// open runs create, a new window or a new tab, with leaf's configuration and returns the terminal
-// it made. It reads the terminals just before, once the pace has passed, so that one the user
-// opened meanwhile counts as no new one.
+// open runs create, a new window or a new tab, with leaf's configuration and returns the
+// terminal it made. It reads the terminals just before, once the pace has passed, so that one the
+// user opened meanwhile counts as no new one.
 function open(leaf, create) {
   if (leaf.line) step();
   alive();
@@ -145,10 +149,6 @@ function grow(node, id, keys) {
   keys[firstLeaf(node.second).key] = made;
   grow(node.first, id, keys);
   grow(node.second, made, keys);
-}
-
-function leaves(node) {
-  return node.leaf ? [node.leaf] : leaves(node.first).concat(leaves(node.second));
 }
 
 // settle evens a tab's splits (decision 59.8) and focuses its focused terminal.
@@ -205,6 +205,8 @@ function type(typing) {
   return true;
 }
 
+const BUILDERS = {window: buildWindow, pane: buildPane};
+
 // attempt runs f, one typing or build, and is its entry of the result, or caught's entry for its
 // error. It is null where Ghostty has gone, before f or during it, which ends the apply.
 function attempt(f, caught) {
@@ -215,8 +217,6 @@ function attempt(f, caught) {
     return e === GONE || gone() ? null : caught(e);
   }
 }
-
-const BUILDERS = {window: buildWindow, pane: buildPane};
 
 function run(argv) {
   const plan = JSON.parse(argv[0]);
