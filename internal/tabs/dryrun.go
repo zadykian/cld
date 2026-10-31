@@ -155,10 +155,9 @@ func (c clock) panes(b ghostty.Build, info building) string {
 func (c clock) losses(list []*Loss) []string {
 	var lines []string
 	for _, l := range list {
-		if l.Restored != nil || len(l.Windows) == 0 {
-			continue
+		if l.Restored == nil && len(l.Windows) > 0 {
+			lines = append(lines, "  "+size(l)+", "+c.when(l))
 		}
-		lines = append(lines, "  "+size(l)+", "+c.when(l))
 	}
 	return lines
 }

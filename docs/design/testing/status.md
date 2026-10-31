@@ -49,9 +49,9 @@ Each entry says what is left.
   looked into.
 - The list's status ([49](../decisions/0049-status-in-the-list.md)): format probed on 3.5a and 3.7c;
   bold `waiting` seen only in tmux's rendering.
-- `restore tabs` ([59](../decisions/0059-ghostty-tabs.md)): run against fakes of osascript, ps and
-  ghostty, and its scripts' own logic against a mock Ghostty, on the macos job only. Ghostty's
-  real answers to them come only from #177's spike, still to come.
+- `restore tabs` ([59](../decisions/0059-ghostty-tabs.md)): run against fakes of osascript, ps,
+  ssh, open and ghostty, and its scripts' own logic against a mock Ghostty, on the macos job only.
+  Ghostty's real answers to them come only from #177's spike, still to come.
 - `--host` ([62](../decisions/0062-commands-on-another-host.md)): run against the fake ssh, whose
   host is the sandbox itself, with bash as the login shell. Not a real sshd, ssh's own `-t`,
   `LogLevel` and `RemoteCommand=none`, nor a login shell other than bash.

@@ -23,17 +23,16 @@ const (
 
 var buildRank = map[string]int{buildPane: 0, buildTab: 1, buildWindow: 2}
 
-// Planned is a restore's plan: the script apply.js runs, and what the report needs of it.
+// Planned is a restore's plan: the script apply.js runs, and what mark and the report need of it.
 type Planned struct {
-	script  ghostty.Plan
-	typed   []joining  // the pane of each of script.Typed
-	builds  []building // the loss, leaves and bindings of each of script.Builds
-	own     *joining   // cld's own pane, which cld joins again by exec; nil for none
-	chosen  []*Loss
-	deduped []string // kept panes whose binding shows in a pane opened since: Last goes
-	skipped []skip
-	// uncached are the hosts whose terminfo Ghostty has not cached, in the order asked.
-	uncached []string
+	script   ghostty.Plan
+	typed    []joining  // the pane of each of script.Typed
+	builds   []building // the loss and leaves of each of script.Builds
+	own      *joining   // cld's own pane, which cld joins again by exec; nil for none
+	chosen   []*Loss
+	deduped  []string // kept panes whose binding shows in a pane opened since: Last goes
+	skipped  []skip
+	uncached []string // the hosts whose terminfo Ghostty has not cached, in the order asked
 }
 
 // joining is a pane Ghostty kept that a restore joins to binding again.
@@ -43,8 +42,8 @@ type joining struct {
 	cached  bool // Ghostty has the host's terminfo
 }
 
-// building is a build's loss, its leaves' panes as last seen, and the binding of each of its leaves
-// that types a line, by key.
+// building is a build's loss, and its leaves by key: each pane as the loss holds it, and the
+// binding of each leaf that types a line.
 type building struct {
 	loss     *Loss
 	copies   map[string]*Pane
@@ -63,16 +62,15 @@ type planner struct {
 	deduped map[string]bool
 }
 
-// plan is the restore of chosen against record r after its merge of o, nil where Ghostty does not
-// run (decision 59.6). Kept panes at their prompt with a Last are typed into, and chosen's windows
-// rebuilt. cached tells a host's terminfo cached.
+// plan is the restore of chosen against r after its merge of o, nil where Ghostty does not run
+// (decision 59.6). Kept panes at their prompt with a Last are typed into, and chosen's windows,
+// tabs and splits rebuilt but for their leaves open again. cached tells a host's terminfo cached.
 func plan(r *Record, o *Observation, chosen []*Loss, cached func(host string) bool) *Planned {
 	if o == nil {
 		o = &Observation{}
 	}
-	pl := &planner{o: o, cached: cached, hosts: map[string]bool{},
-		out: &Planned{chosen: chosen, script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{},
-			Builds: []ghostty.Build{}}}}
+	pl := &planner{o: o, cached: cached, hosts: map[string]bool{}, out: &Planned{chosen: chosen,
+		script: ghostty.Plan{Pace: pace, Typed: []ghostty.Typing{}, Builds: []ghostty.Build{}}}}
 	kept := pl.inPlace(r)
 	lost := pl.leavesOf(chosen)
 	pl.deduped = dedupe(r.Panes, wants(kept, lost))
@@ -209,8 +207,7 @@ func (pl *planner) order(lost []pruned) {
 // else its first.
 func (pl *planner) key(p placement) {
 	k := &keyer{pl: pl, prefix: fmt.Sprintf("b%dl", len(pl.out.builds)),
-		b: building{loss: p.loss, copies: map[string]*Pane{},
-			bindings: map[string]Binding{}}}
+		b: building{loss: p.loss, copies: map[string]*Pane{}, bindings: map[string]Binding{}}}
 	build := p.build
 	selected := max(slices.IndexFunc(p.tabs, func(t Tab) bool { return t.Selected }), 0)
 	for i, tab := range p.tabs {

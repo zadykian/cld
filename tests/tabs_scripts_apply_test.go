@@ -1,15 +1,18 @@
 package tests
 
 import (
+	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/zadykian/cld/internal/ghostty"
 	"github.com/zadykian/cld/tests/internal/mac"
 )
 
-// apply.js against the mock Ghostty, in TestTabsScriptsMocked: apply.js's own cases, with their
-// results and the Apple Events it sends, in their order.
+// apply.js against the mock Ghostty, in TestTabsScriptsMocked: the plans of the fake osascript's
+// apply, with its results, then the Apple Events apply.js sends, in their order.
 
 // mockedApply is a case of apply.js's own against fakeGhostty(2, 1). It has a plan's typed and
 // builds, what changes the model first, the mock's settings, the result, the shape, and every
@@ -112,6 +115,17 @@ var mockedApplies = []mockedApply{
 
 // mockedFailures are apply.js's own cases as it fails.
 var mockedFailures = []mockedApply{
+	{"a build after one that fails", "", `{"kind": "window", "tabs": [{"tree": {"split": "right",
+	   "first": {"leaf": {"key": "a"}}, "second": {"leaf": {"key": "b"}}}}]},
+	  {"kind": "window", "tabs": [{"tree": {"leaf": {"key": "c"}}}]}`,
+		func(m *mac.Model) { m.FailAt = 2 }, nil,
+		`{"typed": [], "builds": [{"keys": {"a": "@10"},
+		  "error": "Failed to create split. (-10000)"}, {"keys": {"c": "@13"}}]}`,
+		"*[13] | *[10] | *[1] [4] | *[7]", []string{"get terminals.id",
+			"get terminals.id", "new window", "get terminals.id", "split @10 right",
+			"get terminals.id", "new window", "get terminals.id", "focus @13",
+			"get windows.terminals.id", "delay 0.1", "get windows.terminals.id",
+			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @13"}},
 	{"a tab whose window does not show", "", `{"kind": "tab",
 	   "tabs": [{"selected": true, "tree": {"leaf": {"key": "t"}}}]}`, nil,
 		map[string]any{"lag": 40},
@@ -135,27 +149,16 @@ var mockedFailures = []mockedApply{
 		func(m *mac.Model) { m.Running = false }, nil, `{"error": {"step": "running",
 		  "number": 0, "message": "Ghostty is not running", "version": ""}}`, "*[1] [4] | *[7]",
 		nil},
-	{"a build after one that fails", "", `{"kind": "window", "tabs": [{"tree": {"split": "right",
-	   "first": {"leaf": {"key": "a"}}, "second": {"leaf": {"key": "b"}}}}]},
-	  {"kind": "window", "tabs": [{"tree": {"leaf": {"key": "c"}}}]}`,
-		func(m *mac.Model) { m.FailAt = 2 }, nil,
-		`{"typed": [], "builds": [{"keys": {"a": "@10"},
-		  "error": "Failed to create split. (-10000)"}, {"keys": {"c": "@13"}}]}`,
-		"*[13] | *[10] | *[1] [4] | *[7]", []string{"get terminals.id",
-			"get terminals.id", "new window", "get terminals.id", "split @10 right",
-			"get terminals.id", "new window", "get terminals.id", "focus @13",
-			"get windows.terminals.id", "delay 0.1", "get windows.terminals.id",
-			"get windows[0].tabs.terminals.id", "select tab windows[0].tabs[0]", "focus @13"}},
+	{"denied", `{"pane": "@1", "pid": 50003, "line": "ls"}`, "", nil,
+		map[string]any{"fail": "denied"}, `{"error": {"step": "count", "number": -1743,
+		  "message": "Not authorized to send Apple events to Ghostty.", "version": ""}}`,
+		"*[1] [4] | *[7]", []string{"get terminals.id"}},
 	{"Ghostty quits meanwhile", "", `{"kind": "window",
 	   "tabs": [{"tree": {"leaf": {"key": "a"}}}]},
 	  {"kind": "window", "tabs": [{"tree": {"leaf": {"key": "b"}}}]}`, nil,
 		map[string]any{"quits": "new window"}, `{"error": {"step": "running",
 		  "number": 0, "message": "Ghostty is not running", "version": ""}}`,
 		"*[10] | *[1] [4] | *[7]", []string{"get terminals.id", "get terminals.id", "new window"}},
-	{"denied", `{"pane": "@1", "pid": 50003, "line": "ls"}`, "", nil,
-		map[string]any{"fail": "denied"}, `{"error": {"step": "count", "number": -1743,
-		  "message": "Not authorized to send Apple events to Ghostty.", "version": ""}}`,
-		"*[1] [4] | *[7]", []string{"get terminals.id"}},
 }
 
 // testMockedApply runs apply.js against fakeGhostty(2, 1) as the mock Ghostty. The fake
@@ -198,15 +201,19 @@ func testMockedApply(t *testing.T) {
 }
 
 // checkMockedApply runs apply.js on a plan of cld's pace with typed and builds, against the mock
-// Ghostty of m, with mock's settings. It reports a result other than want, or a model whose shape
-// is not drawn.
+// Ghostty of m, with mock's settings. It reports a result other than want, as Go reads them both,
+// or a model whose shape is not drawn.
 func checkMockedApply(
 	t *testing.T, typed, builds string, m *mac.Model, mock map[string]any, want, drawn string,
 ) mockedResult {
 	t.Helper()
 	got := runMocked(t, "apply", withIDs(`{`+pace+`, "typed": [`+typed+`], "builds": [`+builds+
 		`]}`), m, mock)
-	if !sameJSON(t, got.Result, []byte(withIDs(want))) {
+	var gotResult, wantResult ghostty.Result
+	if err := json.Unmarshal([]byte(withIDs(want)), &wantResult); err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal(got.Result, &gotResult) != nil || !reflect.DeepEqual(gotResult, wantResult) {
 		t.Errorf("printed %s, want %s", got.Result, withIDs(want))
 	}
 	if got.Model == nil || shape(got.Model) != drawn {

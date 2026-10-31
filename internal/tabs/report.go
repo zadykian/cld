@@ -38,6 +38,14 @@ func (r *Report) section(heading string, lines []string) {
 	}
 }
 
+// paneCwd is the directory of record r's pane id, "" where unknown.
+func paneCwd(r *Record, id string) string {
+	if p := r.Panes[id]; p != nil {
+		return p.Cwd
+	}
+	return ""
+}
+
 // clock writes the report's times, in local time: of today as 15:04, of another day with its
 // date. A directory under home starts with ~.
 type clock struct {
@@ -78,14 +86,6 @@ func (c clock) dir(path string) string {
 		return "~" + path[len(c.home):]
 	}
 	return path
-}
-
-// paneCwd is the directory of record r's pane id, "" where unknown.
-func paneCwd(r *Record, id string) string {
-	if p := r.Panes[id]; p != nil {
-		return p.Cwd
-	}
-	return ""
 }
 
 // when is when loss l was lost: closed, or as Ghostty quit.
@@ -146,14 +146,6 @@ func windowSize(tabs []ghostty.TabBuild) string {
 	return what
 }
 
-// count is n of thing, in the plural but for one.
-func count(n int, thing string) string {
-	if n == 1 {
-		return "1 " + thing
-	}
-	return fmt.Sprintf("%d %ss", n, thing)
-}
-
 // buildLeaves are the leaves of apply.js's tree n, left or top first.
 func buildLeaves(n *ghostty.Node) []*ghostty.Leaf {
 	switch {
@@ -163,4 +155,12 @@ func buildLeaves(n *ghostty.Node) []*ghostty.Leaf {
 		return []*ghostty.Leaf{n.Leaf}
 	}
 	return append(buildLeaves(n.First), buildLeaves(n.Second)...)
+}
+
+// count is n of thing, in the plural but for one.
+func count(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
 }

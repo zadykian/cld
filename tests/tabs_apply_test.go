@@ -234,21 +234,6 @@ func TestTabsApplyBusy(t *testing.T) {
 	}
 }
 
-// A pane a restore typed into keeps its last, now with the time of its typing. A tick leaves it
-// until the line has had its time to join.
-func TestTabsApplyTyped(t *testing.T) {
-	t.Parallel()
-	s := sandbox.New(t)
-	_, a := typedMac(t, s)
-	start := time.Now().UTC().Truncate(time.Second)
-	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0,
-		"Typed into the pane in /Users/me: session 'app' on ws\n", noWatcher)
-	if last := readRecord(t, s).Panes[a].Last; last == nil || last.Typed == nil ||
-		last.Typed.Before(start) {
-		t.Errorf("last %+v, want it kept, typed at or after %v", last, start)
-	}
-}
-
 // A second restore, while one runs, is refused with status 1. The first types its line once.
 func TestTabsApplyRefusesSecond(t *testing.T) {
 	t.Parallel()

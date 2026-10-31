@@ -96,10 +96,11 @@ sessions claude makes on its server, then behave as plain tmux.
   (decisions [48](decisions/0048-restore-after-reboot.md) and
   [60](decisions/0060-a-command-for-each-restore.md)).
 - `internal/ghostty`: Ghostty on a Mac, for `cld restore tabs`: the JXA scripts osascript runs,
-  the snapshot, Ghostty's errors and their advice, and its CLI's `+show-config`
-  ([decision 59](decisions/0059-ghostty-tabs.md)).
+  the snapshot and the apply, Ghostty's errors and their advice, and its CLI's `+show-config` and
+  `+ssh-cache` ([decision 59](decisions/0059-ghostty-tabs.md)).
 - `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, each pane's classification
-  through ps and cld's title, the merge, the watcher and the dry-run.
+  through ps and cld's title, the merge and the watcher. Then the restore: what it reopens, the
+  dedupe, the plan and its typed lines, the record after the apply, and the report.
 - `internal/remote`: `--host`, the ssh that runs a command through cld on another host, and the
   words it carries there ([decision 62](decisions/0062-commands-on-another-host.md)).
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld as a shell would when

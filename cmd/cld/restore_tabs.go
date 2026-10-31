@@ -14,6 +14,20 @@ import (
 	"github.com/zadykian/cld/internal/tool"
 )
 
+// tabsLong is restore tabs's help.
+const tabsLong = `reopen, on a Mac, the Ghostty windows, tabs and splits that showed ssh and cld
+sessions, from the record cld restore tabs --watch keeps, and join those
+sessions again. In each pane Ghostty brought back after it quit, cld types what
+you would: ssh -t HOST, with cld join --existing for the session the pane
+showed last. Then the windows closed in the last 15 minutes, and those Ghostty
+did not bring back after it quit, open again with their tabs and splits, each
+pane typing its own line. A session you have joined again since is not joined
+twice, and one that HOST no longer runs, or that ended there on purpose, stays
+gone, with cld's message in its pane. Run --watch in a Ghostty pane, from ssh's
+LocalCommand or your shell's startup file. Needs Ghostty 1.4 or newer with
+macos-applescript on; with window-save-state = always, Ghostty brings its own
+windows back.`
+
 // tabsCommand is cld restore tabs, named in its messages as typed, and its options (decision
 // 59.11). --watching is the watcher that --watch starts, hidden.
 type tabsCommand struct {
@@ -22,15 +36,15 @@ type tabsCommand struct {
 	older, all, closed      bool
 }
 
-// restoreTabs is cld restore tabs, which keeps a record of Ghostty's tabs on a Mac (decision 59).
+// restoreTabs is cld restore tabs, which reopens Ghostty's tabs on a Mac (decision 59).
 func restoreTabs(typed string) *cobra.Command {
 	t := &tabsCommand{typed: typed}
 	command := &cobra.Command{
-		Use:    "tabs",
-		Short:  "keep a record of a Mac's Ghostty windows, tabs and splits",
-		Hidden: true,
-		Args:   cmdline.NoArguments(typed),
-		RunE:   t.run,
+		Use:   "tabs",
+		Short: "reopen a Mac's Ghostty windows, tabs and splits of cld sessions",
+		Long:  tabsLong,
+		Args:  cmdline.NoArguments(typed),
+		RunE:  t.run,
 	}
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
 	flags := command.Flags()
