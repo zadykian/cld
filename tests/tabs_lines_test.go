@@ -24,17 +24,21 @@ const (
 	uncached = "TERM=xterm-256color command "
 )
 
-// lineCase is a typed line run where the host has sessions: the session it joins, by its NAME.
+// lineCase is a typed line run where the host has sessions: the session it joins, by its NAME,
+// or what cld says as it refuses.
 type lineCase struct {
 	name, line string
-	sessions   func(t *testing.T, s *sandbox.Sandbox) // the host's sessions
+	sessions   func(t *testing.T, s *sandbox.Sandbox) // the host's sessions; nil for none
 	joins      string
 	resumes    bool // the session has stopped: joining it starts its claude again
+	refusal    string
+	older      bool // the host's cld knows no --existing
 }
 
 // Each line, run as a pane's shell runs it, joins its session on the host: one that runs, or one
-// that a stop ended, whose run mark remains. Where Ghostty has no terminfo, the line's TERM is one
-// the host knows.
+// that a stop ended, whose run mark remains. One that a kill or claude's exit ended, or that never
+// was, is refused, and the host's shell follows. So does an older cld, which knows no --existing,
+// and makes nothing. Where Ghostty has no terminfo, the line's TERM is one the host knows.
 func TestTabsLinesJoin(t *testing.T) {
 	t.Parallel()
 	for _, test := range []lineCase{
@@ -43,6 +47,13 @@ func TestTabsLinesJoin(t *testing.T) {
 			joins: "x"},
 		{name: "stopped", line: splitLine, sessions: stoppedSession, joins: "app-3",
 			resumes: true},
+		{name: "killed", line: splitLine, sessions: endedSession("app-3", killSession),
+			refusal: "session 'app-3' has ended: cld join -n app -s 3 resumes it"},
+		{name: "exited", line: wholeLine, sessions: endedSession("x", exitClaude),
+			refusal: "session 'x' has ended: cld join -s x resumes it"},
+		{name: "missing", line: splitLine, refusal: "no session 'app-3' (see cld list)"},
+		{name: "an older cld", line: splitLine, older: true,
+			refusal: "join: unexpected argument '--existing' (see cld help)"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -57,15 +68,30 @@ func TestTabsLinesJoin(t *testing.T) {
 func runLine(t *testing.T, test lineCase) {
 	t.Helper()
 	s := sandbox.New(t)
-	test.sessions(t, s)
-	probes := len(s.Probes())
-	writeProfile(t, s, filepath.Dir(sandbox.Cld)+":"+s.RealTools("tmux"))
+	if test.sessions != nil {
+		test.sessions(t, s)
+	}
+	before, sockets, probes := recordState(t, s), s.Servers(), len(s.Probes())
+	cld := filepath.Dir(sandbox.Cld)
+	if test.older {
+		cld = filepath.Join(s.Root, "old")
+		makeDirs(t, cld)
+		s.WriteProgram(filepath.Join(cld, "cld"), "#!/bin/sh\necho \"cld: join: unexpected "+
+			"argument '--existing' (see cld help)\" >&2\nexit 2\n", 0o755)
+	}
+	writeProfile(t, s, cld+":"+s.RealTools("tmux"))
 	env := maps.Clone(s.Env)
 	if strings.HasPrefix(test.line, uncached) {
 		env["TERM"] = "dumb"
 	}
 	term := terminal.New(t, "tmux", s)
 	term.Start([]string{"bash", "-c", test.line}, env, s.Work)
+	if test.joins == "" {
+		waitScreen(t, term, "cld: "+test.refusal)
+		leaveShell(t, term)
+		checkNothingMade(t, s, before, sockets, probes)
+		return
+	}
 	waitClients(t, s, 1)
 	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-" + test.joins}) {
 		t.Errorf("clients on %q, want one on cld-%s", clients, test.joins)
@@ -128,4 +154,28 @@ func stoppedSession(t *testing.T, s *sandbox.Sandbox) {
 	sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !claude.Alive() })
 	waitServerExit(t, s, "app-3")
 	sandbox.WaitFor(t, 10*time.Second, "join to end", func() bool { return !term.Running() })
+}
+
+// endedSession makes session name on the host, then ends it with end, which removes its run mark.
+func endedSession(
+	name string, end func(t *testing.T, s *sandbox.Sandbox, name string, claude *sandbox.Probe),
+) func(t *testing.T, s *sandbox.Sandbox) {
+	return func(t *testing.T, s *sandbox.Sandbox) {
+		t.Helper()
+		claude := detachedSessions(t, s, name)[name]
+		end(t, s, name, claude)
+		sandbox.WaitFor(t, 10*time.Second, "claude to exit", func() bool { return !claude.Alive() })
+		waitServerExit(t, s, name)
+	}
+}
+
+// killSession ends session name with cld kill.
+func killSession(t *testing.T, s *sandbox.Sandbox, name string, _ *sandbox.Probe) {
+	t.Helper()
+	mustKill(t, s, name)
+}
+
+// exitClaude ends session name as claude exits with status 0, as /exit does.
+func exitClaude(_ *testing.T, _ *sandbox.Sandbox, _ string, claude *sandbox.Probe) {
+	claude.Send("exit")
 }
