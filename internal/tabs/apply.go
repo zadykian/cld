@@ -14,7 +14,7 @@ import (
 // apply runs plan p's script in Ghostty, then records what it made in the record seen, under the
 // locks Restore holds (decision 59.6). A plan with nothing to do runs nothing, and its result is
 // empty. The result is nil where the apply gave none. A record it cannot write is a warning, as
-// what the apply made is made: the report still says so.
+// what the apply made is made: the report still says so, and cld's own pane joins again.
 func apply(
 	ctx context.Context, dir string, seen *observed, p *Planned, report *Report,
 ) *ghostty.Result {
@@ -68,7 +68,8 @@ func appeared(o *Observation, snap *ghostty.Snapshot) int {
 
 // finish ends a restore that ran plan p against the record seen, apply giving res: its report and
 // notes, the losses waiting for Ghostty's undo among them, then the watcher, started where cld
-// runs in a Ghostty pane.
+// runs in a Ghostty pane. cmd joins cld's own pane again by exec once the report is out (decision
+// 59.9).
 func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report *Report) {
 	c := newClock()
 	c.restored(seen.record, p, res, report)
@@ -83,6 +84,9 @@ func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report 
 		}
 	} else if _, err := Start(); err != nil {
 		report.warn(cannotStart + strings.TrimPrefix(err.Error(), cannotStart))
+	}
+	if p.own != nil {
+		report.Own = ownJoin(p.own)
 	}
 }
 

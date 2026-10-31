@@ -73,15 +73,20 @@ func (c clock) watcher(s Status) []string {
 }
 
 // wouldType adds a line per pane Ghostty kept that plan p joins again: its directory, what cut its
-// binding, and the line typed.
+// binding, and the line typed. cld's own pane is joined by exec, here.
 func (c clock) wouldType(r *Record, p *Planned, report *Report) {
 	var lines []string
-	for i, j := range p.typed {
-		where := "in " + c.dir(paneCwd(r, j.pane))
-		if p := r.Panes[j.pane]; p != nil && p.Last != nil {
+	pane := func(where, id, line string) {
+		if p := r.Panes[id]; p != nil && p.Last != nil {
 			where += ", " + c.cut(p.Last)
 		}
-		lines = append(lines, "  "+where+": "+p.script.Typed[i].Line)
+		lines = append(lines, "  "+where+": "+line)
+	}
+	for i, j := range p.typed {
+		pane("in "+c.dir(paneCwd(r, j.pane)), j.pane, p.script.Typed[i].Line)
+	}
+	if j := p.own; j != nil {
+		pane("here, in "+c.dir(paneCwd(r, j.pane)), j.pane, Line(j.binding, j.cached))
 	}
 	report.section("Would type into "+count(len(lines), "pane")+":", lines)
 }

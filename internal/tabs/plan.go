@@ -28,6 +28,7 @@ type Planned struct {
 	script  ghostty.Plan
 	typed   []joining  // the pane of each of script.Typed
 	builds  []building // the loss, leaves and bindings of each of script.Builds
+	own     *joining   // cld's own pane, which cld joins again by exec; nil for none
 	chosen  []*Loss
 	deduped []string // kept panes whose binding shows in a pane opened since: Last goes
 	skipped []skip
@@ -89,7 +90,7 @@ type keptPane struct {
 }
 
 // inPlace are the panes of o's windows that the snapshot shows a shell at its prompt, with a Last
-// in r. One whose Last names no host gets a note.
+// in r: cld's own among them. One whose Last names no host gets a note.
 func (pl *planner) inPlace(r *Record) []keptPane {
 	var out []keptPane
 	for t := range terminals(pl.o.Windows) {
@@ -106,19 +107,23 @@ func (pl *planner) inPlace(r *Record) []keptPane {
 	return out
 }
 
-// typings plans each kept pane: left unchanged where the dedupe took it, else the line that joins
-// its binding again, typed into it.
+// typings plans each kept pane: left unchanged where the dedupe took it, joined by exec where
+// cld runs in it, else typed into.
 func (pl *planner) typings(kept []keptPane) {
 	for _, k := range kept {
-		if pl.deduped[k.pane] {
+		switch {
+		case pl.deduped[k.pane]:
 			pl.out.deduped = append(pl.out.deduped, k.pane)
 			pl.out.skipped = append(pl.out.skipped, skip{binding: k.binding, cwd: k.cwd, kept: true})
-			continue
+		case k.pane == pl.o.Own:
+			pl.out.own = &joining{pane: k.pane, binding: k.binding,
+				cached: pl.cachedHost(k.binding.Host)}
+		default:
+			j := joining{pane: k.pane, binding: k.binding, cached: pl.cachedHost(k.binding.Host)}
+			pl.out.typed = append(pl.out.typed, j)
+			pl.out.script.Typed = append(pl.out.script.Typed,
+				ghostty.Typing{Pane: k.pane, PID: k.pid, Line: Line(j.binding, j.cached)})
 		}
-		j := joining{pane: k.pane, binding: k.binding, cached: pl.cachedHost(k.binding.Host)}
-		pl.out.typed = append(pl.out.typed, j)
-		pl.out.script.Typed = append(pl.out.script.Typed,
-			ghostty.Typing{Pane: k.pane, PID: k.pid, Line: Line(j.binding, j.cached)})
 	}
 }
 

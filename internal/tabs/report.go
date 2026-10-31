@@ -10,12 +10,14 @@ import (
 )
 
 // Report is what a restore did or would do, for cmd to print: Lines on stdout, then Warnings and
-// Notes on stderr. Failed is a step that failed, which makes the status 1 (decision 48.8).
+// Notes on stderr. Failed is a step that failed, which makes the status 1 (decision 48.8). Own is
+// cld's own pane, which cmd joins again by exec once the report is out, nil for none.
 type Report struct {
 	Lines    []string
 	Warnings []string
 	Notes    []string
 	Failed   bool
+	Own      *Own
 }
 
 // warn adds warning, where there is one: a failed step.
