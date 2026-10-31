@@ -58,3 +58,59 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 	checkReport(t, s, "Ghostty brought back every window as it quit at "+
 		clockAt(r.Losses[len(r.Losses)-1].At)+"\n")
 }
+
+// The windows Ghostty does not bring back are the quit's one loss, with their panes as they were.
+func TestTabsQuitBroughtSomeBack(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name          string
+		back          []int // the panes back, by place
+		windows, want string
+		report        string
+	}{
+		{"some", []int{0, 3}, "*a/made | *d/made", "quit: *right(b,c)/flat",
+			"a window of 1 tab and 2 panes"},
+		{"none", nil, "", "quit: *a/made | *right(b,c)/flat | *d/made",
+			"3 windows of 3 tabs and 4 panes"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m, ids := quitMac(t, s)
+			var back []string
+			for _, i := range test.back {
+				back = append(back, ids[i])
+			}
+			r := tick(t, s, relaunch(m, 4242, relaunched, back...))
+			checkRecord(t, test.name, r, named(ids...), test.windows, "", test.want)
+			if len(r.Losses) == 1 {
+				checkCopy(t, r.Losses[0], ids[1], shown{Kind: "ssh", Host: "ws", Title: "me@ws: ~"})
+				checkReport(t, s, "Losses:\n  "+test.report+", lost as Ghostty quit at "+
+					clockAt(r.Losses[0].At)+"\n")
+			}
+			for _, id := range ids[1:3] {
+				if r.Panes[id] != nil {
+					t.Errorf("a pane lost in the quit is still the record's: %+v", r.Panes[id])
+				}
+			}
+		})
+	}
+}
+
+// A window still waiting for Ghostty's undo as Ghostty quits joins the quit's loss. A tab waiting
+// so stays a tab's loss, which only --closed reopens.
+func TestTabsQuitWhilePending(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a, b, c, d := addPane(m, "~"), addPane(m, "~"), addPane(m, "~"), addPane(m, "~")
+	names := named(a, b, c, d)
+	m.Windows = []mac.Window{windowOf(tabOf(a), tabOf(b)), windowOf(tabOf(c)), windowOf(tabOf(d))}
+	tick(t, s, m)
+	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(d))}
+	checkRecord(t, "closed", tick(t, s, m), names, "*a/made | *d/made",
+		"tab 2 beside a: b/made\nclosed: *c/made", "")
+	r := tick(t, s, relaunch(m, 4242, relaunched, a, d))
+	checkRecord(t, "quit", r, names, "*a/made | *d/made", "",
+		"tab 2 beside a: b/made\nquit: *c/made")
+}
