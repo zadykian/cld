@@ -114,7 +114,7 @@ func mergeWindows(r *Record, o *Observation, undone []Window) {
 			for i, terminal := range t.Terminals {
 				ids[i] = terminal.ID
 			}
-			if tab, ok := tabFor(ids, t.Selected, t.Focused, old, undone); ok {
+			if tab, ok := tabFor(ids, t.Selected, t.Focused, o.Sizes, old, undone); ok {
 				tabs = append(tabs, tab)
 			}
 		}
@@ -149,7 +149,7 @@ func hiddenWindow(w Window, o *Observation, old []Window) (Window, bool) {
 	var tabs []Tab
 	for _, t := range w.Tabs {
 		ids := slices.DeleteFunc(Leaves(t.Tree), o.gone)
-		if tab, ok := tabFor(ids, t.Selected, t.Focused, old, nil); ok {
+		if tab, ok := tabFor(ids, t.Selected, t.Focused, nil, old, nil); ok {
 			tabs = append(tabs, tab)
 		}
 	}
@@ -157,22 +157,25 @@ func hiddenWindow(w Window, o *Observation, old []Window) (Window, bool) {
 }
 
 // tabFor is the tab of the panes ids, selected or not, with focused its focused pane where ids
-// holds that pane. False means ids is empty.
-func tabFor(ids []string, selected bool, focused string, old, undone []Window) (Tab, bool) {
+// holds that pane, and sizes the panes' sizes. False means ids is empty.
+func tabFor(ids []string, selected bool, focused string, sizes map[string]Size,
+	old, undone []Window,
+) (Tab, bool) {
 	if len(ids) == 0 {
 		return Tab{}, false
 	}
 	if !slices.Contains(ids, focused) {
 		focused = ""
 	}
-	tree, shape := treeFor(ids, old, undone)
+	tree, shape := treeFor(ids, sizes, old, undone)
 	return Tab{Selected: selected, Focused: focused, Shape: shape, Tree: tree}, true
 }
 
 // treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old or undone with
 // those panes in that order gives its own, so that a tree cld made stays made, through an undo
-// too. Else the panes make a row: Ghostty's AppleScript gives no split's direction (decision 59.8).
-func treeFor(ids []string, old, undone []Window) (*Node, string) {
+// too. Else the sizes give the tree, failing that the panes make a row: Ghostty's AppleScript gives
+// no split's direction (decision 59.8).
+func treeFor(ids []string, sizes map[string]Size, old, undone []Window) (*Node, string) {
 	if len(ids) == 1 {
 		return &Node{Pane: ids[0]}, ShapeMade
 	}
@@ -182,6 +185,9 @@ func treeFor(ids []string, old, undone []Window) (*Node, string) {
 				return copyTree(tab.Tree, nil), tab.Shape
 			}
 		}
+	}
+	if tree, ok := infer(ids, sizes); ok {
+		return tree, ShapeInferred
 	}
 	return flat(ids), ShapeFlat
 }
