@@ -134,6 +134,7 @@ The `adr` skill in `.claude/skills` adds a record.
 - [57. Renaming from the list](design/decisions/0057-renaming-from-the-list.md): Accepted (#172).
 - [58. Joining only a session that
   exists](design/decisions/0058-joining-only-a-session-that-exists.md): Accepted (#175).
+- [59. Ghostty's tabs on a Mac](design/decisions/0059-ghostty-tabs.md): Accepted (#176).
 - [60. A command for each restore](design/decisions/0060-a-command-for-each-restore.md): Accepted
   (#185).
 - [61. Running in another directory](design/decisions/0061-running-in-another-directory.md):
