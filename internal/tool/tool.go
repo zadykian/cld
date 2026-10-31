@@ -44,10 +44,14 @@ func Command(name string, args ...string) (*exec.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(path, args...)
+	return attach(exec.Command(path, args...), name), nil
+}
+
+// attach gives cmd the program's name as its first word, and cld's stdin and stderr.
+func attach(cmd *exec.Cmd, name string) *exec.Cmd {
 	cmd.Args[0] = name
 	cmd.Stdin, cmd.Stderr = os.Stdin, os.Stderr
-	return cmd, nil
+	return cmd
 }
 
 // CannotRun ends cld when the system cannot run the program at path at all - a #! naming no
