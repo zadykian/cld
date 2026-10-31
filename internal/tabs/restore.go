@@ -121,3 +121,6 @@ func failure(err error) error {
 	}
 	return err
 }
+
+// restorePlan plans the restore of the record seen against Ghostty as seen.
+func restorePlan(seen *observed) *Planned { return plan(seen.record, seen.o) }
