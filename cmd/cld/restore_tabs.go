@@ -15,14 +15,13 @@ import (
 )
 
 // tabsCommand is cld restore tabs, named in its messages as typed, and its options (decision
-// 59.11). --watching is the watcher, hidden.
+// 59.11). --watching is the watcher that --watch starts, hidden.
 type tabsCommand struct {
-	typed            string
-	watching, dryRun bool
+	typed                   string
+	watch, watching, dryRun bool
 }
 
 // restoreTabs is cld restore tabs, which keeps a record of Ghostty's tabs on a Mac (decision 59).
-// cld hides it until it does all that decision 59 says.
 func restoreTabs(typed string) *cobra.Command {
 	t := &tabsCommand{typed: typed}
 	command := &cobra.Command{
@@ -35,28 +34,49 @@ func restoreTabs(typed string) *cobra.Command {
 	command.SetFlagErrorFunc(cmdline.FlagError(typed))
 	flags := command.Flags()
 	flags.BoolVar(&t.dryRun, "dry-run", false, "print what the record holds, and do nothing")
+	flags.BoolVar(&t.watch, "watch", false, "keep the record: start, unless one runs, a process "+
+		"that\nreads Ghostty's tabs every 5 s and ends as Ghostty quits")
 	flags.BoolVar(&t.watching, "watching", false, "")
 	cmdline.Hide(flags, "watching")
 	return command
 }
 
-// run runs restore tabs. It reopens nothing yet, so it asks for --dry-run. A usage error ends it
-// before any tool runs. Then osascript, which only a Mac has, must be on the PATH.
+// run runs restore tabs: the watcher, its start, or the dry-run. A usage error ends it before any
+// tool runs. Then osascript, which only a Mac has, must be on the PATH.
 func (t *tabsCommand) run(*cobra.Command, []string) error {
-	if !t.dryRun && !t.watching {
-		return fail.Usage(t.typed + ": give --dry-run (see cld help)")
+	if err := t.together(); err != nil {
+		return err
 	}
 	if _, err := tool.LookPath("osascript"); err != nil {
 		return (&ghostty.Error{Kind: ghostty.NoOsascript}).Fail()
 	}
-	if t.watching {
+	switch {
+	case t.watching:
 		return tabs.Watch()
+	case t.watch:
+		_, err := tabs.Start()
+		return err
 	}
 	report, err := tabs.Restore(context.Background(), tabs.Options{DryRun: t.dryRun})
 	if err != nil {
 		return err
 	}
 	return printReport(report)
+}
+
+// together refuses the options that exclude each other, and a run with neither --watch nor
+// --dry-run, which reopens nothing yet.
+func (t *tabsCommand) together() error {
+	switch {
+	case t.watching && (t.watch || t.dryRun):
+		return fail.Usage(t.typed + ": --watching takes no other option (see cld help)")
+	case t.watch && t.dryRun:
+		return fail.Usage(t.typed + ": --watch and --dry-run exclude each other: --watch only " +
+			"starts the record's watcher (see cld help)")
+	case !t.watch && !t.watching && !t.dryRun:
+		return fail.Usage(t.typed + ": give --watch or --dry-run (see cld help)")
+	}
+	return nil
 }
 
 // printReport prints report: its lines, then its warnings and notes. A failed step makes the

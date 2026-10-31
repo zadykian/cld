@@ -2,6 +2,7 @@ package tests
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,8 +18,9 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The watcher's life: the lock it holds, its ticks and its log. It reads Ghostty every 5 s, so
-// these tests wait for its ticks. The helpers that tabs_watch_ticks_test.go shares are here.
+// The watcher's life: how --watch starts it, the lock it holds, and its end as Ghostty quits.
+// It reads Ghostty every 5 s, so these tests wait for its ticks. The helpers that
+// tabs_watch_ticks_test.go shares are here.
 
 // watchEnv is a Ghostty pane's environment beside the sandbox's: --watch starts a watcher there.
 var watchEnv = map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"}
@@ -26,28 +28,13 @@ var watchEnv = map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"}
 // watchPath is the watcher's file in s: locked for its life, its pid and Ghostty's within.
 func watchPath(s *sandbox.Sandbox) string { return filepath.Join(tabsDir(s), "watch") }
 
-// startWatch runs cld restore tabs --watching in s, as a Ghostty pane's environment has it, with
-// its stderr in watch.log. The watchers in s are killed as the test ends.
+// startWatch runs cld restore tabs --watch in s from a Ghostty pane, which exits 0 printing
+// nothing. The watchers in s are killed as the test ends.
 func startWatch(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
 	t.Cleanup(func() { killWatchers(t, s) })
-	argv := s.CldArgv("restore", "tabs", "--watching")
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Args[0], cmd.Env, cmd.Dir = "cld", s.Environ(watchEnv), s.Work
-	if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	log, err := os.OpenFile(filepath.Join(tabsDir(s), "watch.log"),
-		os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer log.Close() //nolint:errcheck // the watcher holds its own copy
-	cmd.Stderr = log
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	go func() { _ = cmd.Wait() }() //nolint:errcheck // the watcher's status is no test's
+	checkExit(t, "restore tabs --watch", s.RunCld(watchEnv, "restore", "tabs", "--watch"), 0, "",
+		"")
 }
 
 // killWatchers kills the watcher whose pid watch names, while one holds its lock, until none
@@ -162,7 +149,8 @@ func checkLog(t *testing.T, s *sandbox.Sandbox, want ...string) {
 	}
 }
 
-// The watcher holds watch's lock for its life, and merges a tick at once.
+// --watch starts the watcher in a session of its own, which holds watch's lock and merges a tick
+// at once. The dry-run reports it. It ends as Ghostty's process does, and the record notes when.
 func TestTabsWatch(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -171,10 +159,98 @@ func TestTabsWatch(t *testing.T) {
 	m.Windows = []mac.Window{windowOf(tabOf(a))}
 	saveModel(t, s, m)
 	startWatch(t, s)
-	waitTicked(t, s, m)
-	if !watching(t, s) {
-		t.Error("the watcher does not hold watch's lock")
+	pid := waitTicked(t, s, m)
+	if sid, err := unix.Getsid(pid); err != nil || sid != pid || !watching(t, s) {
+		t.Errorf("the watcher %d: session %d (%v), its lock held %t", pid, sid, err,
+			watching(t, s))
 	}
 	checkPane(t, "the watcher's tick", readRecord(t, s).Panes[a],
 		shown{Kind: "cld", Host: "ws", Session: "x", Title: "✳ cld-x"}, loginOf(m, a))
+	checkReport(t, s, fmt.Sprintf("The watcher: pid %d, last read at ", pid))
+	quit := time.Now().UTC().Truncate(time.Second)
+	quitGhostty(m)
+	sandbox.WaitFor(t, 15*time.Second, "the watcher to end", func() bool {
+		return !watching(t, s)
+	})
+	if ended := readRecord(t, s).Run.Ended; ended.Before(quit) || ended.After(time.Now()) {
+		t.Errorf("run.ended is %v, want the time Ghostty quit, %v", ended, quit)
+	}
+	checkLog(t, s, "Ghostty's run "+runOf(m)+" ended")
+}
+
+// Two --watch at once, and a third after them, leave one watcher: the one that took the lock.
+// Another would have logged that it gave up, after waiting 30 s for the lock.
+func TestTabsWatchOnce(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	saveModel(t, s, m)
+	t.Cleanup(func() { killWatchers(t, s) })
+	first := startCldAsync(t, s, s.Work, watchEnv, "restore", "tabs", "--watch")
+	second := startCldAsync(t, s, s.Work, watchEnv, "restore", "tabs", "--watch")
+	checkExit(t, "the first --watch", first(), 0, "", "")
+	checkExit(t, "the second --watch", second(), 0, "", "")
+	pid := waitTicked(t, s, m)
+	startWatch(t, s)
+	time.Sleep(31 * time.Second)
+	if now, _ := watchPIDs(s); now != pid || !watching(t, s) {
+		t.Errorf("the watcher is %d, its lock held %t, want %d", now, watching(t, s), pid)
+	}
+	checkLog(t, s)
+}
+
+// --watch refuses to start a watcher outside a Ghostty pane, where macOS would not give its
+// osascript Ghostty's grant.
+func TestTabsWatchInGhosttyOnly(t *testing.T) {
+	t.Parallel()
+	for _, program := range []string{"", "Apple_Terminal"} {
+		t.Run(program, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			saveModel(t, s, ghosttyApp(t, s))
+			result := s.RunCld(map[string]string{"TERM_PROGRAM": program}, "restore", "tabs",
+				"--watch")
+			checkFailed(t, result, 1, "cld: restore tabs --watch runs in a Ghostty pane: "+
+				"TERM_PROGRAM is not ghostty\n")
+			if _, err := os.Stat(watchPath(s)); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("watch: %v, want none", err)
+			}
+		})
+	}
+}
+
+// --watch empties watch.log where it has grown past 1 MB, before the watcher writes there. A
+// smaller log keeps its lines, and the watcher's follow them.
+func TestTabsWatchLog(t *testing.T) {
+	t.Parallel()
+	old := "2026-10-16T09:00:00Z a line of an old watcher\n"
+	for _, test := range []struct {
+		name  string
+		lines int
+		want  []string
+	}{
+		{"past 1 MB", 1 << 15, nil},
+		{"smaller", 2, []string{"a line of an old watcher", "a line of an old watcher"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m := ghosttyApp(t, s)
+			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+			saveModel(t, s, m)
+			if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			s.WriteFile(filepath.Join(tabsDir(s), "watch.log"), strings.Repeat(old, test.lines))
+			startWatch(t, s)
+			waitTicked(t, s, m)
+			checkMode(t, watchPath(s), 0o600)
+			quitGhostty(m)
+			sandbox.WaitFor(t, 15*time.Second, "the watcher to end", func() bool {
+				return !watching(t, s)
+			})
+			checkLog(t, s, append(test.want, "Ghostty's run "+runOf(m)+" ended")...)
+		})
+	}
 }

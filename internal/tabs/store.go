@@ -23,6 +23,7 @@ const (
 	lockFile    = "lock"      // locked for each read, merge and write of the record
 	watchFile   = "watch"     // locked by the watcher for its life; its time is the last tick
 	restoreFile = "restore"   // locked by a restore, so that two never type into one pane
+	logFile     = "watch.log" // the watcher's stderr
 )
 
 // errBusy is lockRecord's refusal where another cld holds the record's lock.

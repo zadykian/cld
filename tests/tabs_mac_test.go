@@ -2,8 +2,10 @@ package tests
 
 import (
 	"fmt"
+	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,11 +13,54 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The model Mac that the tabs_* files give cld restore tabs: a Ghostty and its windows.
+// The model Mac that the tabs_* files give cld restore tabs: a Ghostty, its windows, and its
+// panes' processes, as ps lists them.
 
 // ghosttyStart is when the model Ghostty started, as its ps row says: a day no test runs on, so
 // that the dry-run writes it with its date.
 var ghosttyStart = time.Date(2025, time.January, 2, 9, 12, 0, 0, time.UTC)
+
+// quietConfig is what ghostty +show-config prints where Ghostty's config gives no note.
+const quietConfig = "window-save-state = always\nshell-integration-features = cursor,ssh-terminfo\n"
+
+// ghosttys are the sleeps that play the model Ghosttys' processes, by pid.
+var ghosttys sync.Map
+
+// ghosttyApp is a running Ghostty 1.4.0 with no window, which the test saves. Its pid is a sleep
+// that quitGhostty or the test's end stops, so that the watcher sees the pid go. Its config gives
+// no note.
+func ghosttyApp(t *testing.T, s *sandbox.Sandbox) *mac.Model {
+	t.Helper()
+	s.WriteProbeFile(mac.ShowConfig, quietConfig)
+	return ghosttyAt(startSleep(t), ghosttyStart)
+}
+
+// startSleep starts a sleep for a Ghostty's process, stopped at the test's end, and is its pid.
+func startSleep(t *testing.T) int {
+	t.Helper()
+	sleep := exec.Command("sleep", "600")
+	if err := sleep.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ghosttys.Store(sleep.Process.Pid, sleep)
+	t.Cleanup(func() { stopSleep(sleep.Process.Pid) })
+	return sleep.Process.Pid
+}
+
+// stopSleep kills the sleep of pid, and reaps it: kill(pid, 0) finds a zombie still, on Linux and
+// macOS alike.
+func stopSleep(pid int) {
+	if sleep, ok := ghosttys.LoadAndDelete(pid); ok {
+		cmd := sleep.(*exec.Cmd)
+		_ = cmd.Process.Kill() //nolint:errcheck // it may have ended
+		_ = cmd.Wait()         //nolint:errcheck // a killed sleep's status is no failure
+	}
+}
+
+// quitGhostty quits the Ghostty of m, as Cmd+Q does: its process ends.
+func quitGhostty(m *mac.Model) {
+	stopSleep(m.PID)
+}
 
 // ghosttyAt is a running Ghostty 1.4.0 with no window, of pid, which started at start.
 func ghosttyAt(pid int, start time.Time) *mac.Model {
@@ -23,36 +68,6 @@ func ghosttyAt(pid int, start time.Time) *mac.Model {
 		Executable: ghosttyExecutable, Version: "1.4.0", Terminals: map[string]*mac.Terminal{},
 		Processes: []mac.Process{{PID: pid, PPID: 1, PGID: pid, Start: start,
 			Args: []string{ghosttyExecutable}}}}
-}
-
-// quietConfig is what ghostty +show-config prints where Ghostty's config gives no note.
-const quietConfig = "window-save-state = always\nshell-integration-features = cursor,ssh-terminfo\n"
-
-// ghosttyApp is ghosttyAt for s, whose ghostty prints quietConfig.
-func ghosttyApp(t *testing.T, s *sandbox.Sandbox) *mac.Model {
-	t.Helper()
-	s.WriteProbeFile(mac.ShowConfig, quietConfig)
-	return ghosttyAt(ghosttyPID, ghosttyStart)
-}
-
-// tabOf is a tab of the panes ids in a row, left to right, the first focused.
-func tabOf(ids ...string) mac.Tab {
-	var tree *mac.Node
-	for _, id := range slices.Backward(ids) {
-		leaf := &mac.Node{Pane: id}
-		if tree == nil {
-			tree = leaf
-		} else {
-			tree = &mac.Node{Split: "right", First: leaf, Second: tree}
-		}
-	}
-	return mac.Tab{Focused: ids[0], Tree: tree}
-}
-
-// windowOf is a window of tabs, the first selected.
-func windowOf(tabs ...mac.Tab) mac.Window {
-	tabs[0].Selected = true
-	return mac.Window{Tabs: tabs}
 }
 
 // runOf is the run of m's Ghostty, as the record names it: its pid and its ps row's start.
@@ -101,6 +116,26 @@ func front(m *mac.Model, id string, jobs ...[]string) {
 		m.Processes = append(m.Processes, mac.Process{PID: m.NewPID(), PPID: terminal.PID,
 			PGID: terminal.PID, TTY: tty, Start: start, Args: args})
 	}
+}
+
+// tabOf is a tab of the panes ids in a row, left to right, the first focused.
+func tabOf(ids ...string) mac.Tab {
+	var tree *mac.Node
+	for _, id := range slices.Backward(ids) {
+		leaf := &mac.Node{Pane: id}
+		if tree == nil {
+			tree = leaf
+		} else {
+			tree = &mac.Node{Split: "right", First: leaf, Second: tree}
+		}
+	}
+	return mac.Tab{Focused: ids[0], Tree: tree}
+}
+
+// windowOf is a window of tabs, the first selected.
+func windowOf(tabs ...mac.Tab) mac.Window {
+	tabs[0].Selected = true
+	return mac.Window{Tabs: tabs}
 }
 
 // endLogins ends the processes of the panes ids, their logins among them: Ghostty frees a closed

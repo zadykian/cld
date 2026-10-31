@@ -2,6 +2,7 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -10,7 +11,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What restore tabs refuses: a Mac it cannot read Ghostty on.
+// What restore tabs refuses: a Mac it cannot read Ghostty on, a record it cannot read, and
+// options that exclude each other.
 
 // automationAdvice is what cld says to do where macOS denies it Automation of Ghostty.
 const automationAdvice = ": in System Settings › Privacy & Security › Automation, allow " +
@@ -18,34 +20,34 @@ const automationAdvice = ": in System Settings › Privacy & Security › Automa
 	"Ghostty's panes, tccutil reset AppleEvents com.mitchellh.ghostty resets every Automation " +
 	"grant Ghostty holds"
 
-// Where cld cannot read Ghostty, the dry-run fails with status 1 and cld's message. So do
-// osascript missing, macOS's Automation denied, AppleScript off in Ghostty's config and Ghostty
-// 1.3.1. So do a read that changed twice, and a Ghostty that quit as cld read it or ps. So do
-// osascript's own failure, no answer in 15 s, a Ghostty that quit as cld read it, and Ghostty run
-// twice.
+// Where cld cannot read Ghostty, the dry-run fails with status 1 and cld's message, and leaves the
+// record's bytes. So do osascript missing, macOS's Automation denied, AppleScript off in Ghostty's
+// config and Ghostty 1.3.1. So do a read that changed twice, and a Ghostty that quit as cld read
+// it or ps. So do osascript's own failure, no answer in 15 s, and Ghostty run twice.
 func TestTabsRefusesGhostty(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		name, mode, want string
-		apps             int
+		name, mode string
+		apps       int
+		want       string
 	}{
-		{"no osascript", "", "restore tabs runs on a Mac: osascript is not installed", 0},
-		{"denied", "denied", "macOS denies control of Ghostty" + automationAdvice, 0},
-		{"off", "off", "Ghostty says: AppleScript is disabled by the macos-applescript " +
-			"configuration; set macos-applescript = true in Ghostty's config", 0},
-		{"1.3.1", "old", "restore tabs needs Ghostty 1.4 or newer, and Ghostty 1.3.1 runs", 0},
-		{"changed", "changed", "Ghostty's windows changed twice while cld read them", 0},
-		{"gone", "gone", "Ghostty quit while cld read it", 0},
-		{"no ps row", "", "Ghostty quit while cld read it", 0},
-		{"garbage", "garbage", "osascript: fake osascript: execution error", 0},
-		{"timeout", "timeout", "Ghostty did not answer in 15 s; if macOS asked whether " +
-			"the app cld runs in may control Ghostty, answer, then run cld restore tabs again", 0},
-		{"several", "", "Ghostty runs 2 times, as open -n starts it: quit all but one", 2},
+		{"no osascript", "", 0, "restore tabs runs on a Mac: osascript is not installed"},
+		{"denied", "denied", 0, "macOS denies control of Ghostty" + automationAdvice},
+		{"off", "off", 0, "Ghostty says: AppleScript is disabled by the macos-applescript " +
+			"configuration; set macos-applescript = true in Ghostty's config"},
+		{"1.3.1", "old", 0, "restore tabs needs Ghostty 1.4 or newer, and Ghostty 1.3.1 runs"},
+		{"changed", "changed", 0, "Ghostty's windows changed twice while cld read them"},
+		{"gone", "gone", 0, "Ghostty quit while cld read it"},
+		{"no ps row", "", 0, "Ghostty quit while cld read it"},
+		{"garbage", "garbage", 0, "osascript: fake osascript: execution error"},
+		{"timeout", "timeout", 0, "Ghostty did not answer in 15 s; if macOS asked whether " +
+			"the app cld runs in may control Ghostty, answer, then run cld restore tabs again"},
+		{"several", "", 2, "Ghostty runs 2 times, as open -n starts it: quit all but one"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			m := ghosttyAt(ghosttyPID, ghosttyStart)
+			m := ghosttyApp(t, s)
 			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "✳ cld-x", ssh("ws"))))}
 			tick(t, s, m)
 			before := readFile(t, recordPath(s))
@@ -83,7 +85,7 @@ func TestTabsRefusesRecord(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			m := ghosttyAt(ghosttyPID, ghosttyStart)
+			m := ghosttyApp(t, s)
 			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
 			saveModel(t, s, m)
 			if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
@@ -118,4 +120,61 @@ func checkMovedAside(t *testing.T, s *sandbox.Sandbox, result sandbox.Result, re
 	if r := readRecord(t, s); r.Format != 1 || len(r.Panes) != 1 {
 		t.Errorf("the new record is %+v, want one of format 1 with a pane", r)
 	}
+}
+
+// --watch and --dry-run exclude each other, and --watching, which --watch starts, takes no other
+// option. Run by hand, --watching refuses to run.
+func TestTabsRefusesOptions(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"--watch", "--dry-run"}, 2, "cld: restore tabs: --watch and --dry-run exclude " +
+			"each other: --watch only starts the record's watcher (see cld help)\n"},
+		{[]string{"--watching", "--watch"}, 2,
+			"cld: restore tabs: --watching takes no other option (see cld help)\n"},
+		{[]string{"--watching", "--dry-run"}, 2,
+			"cld: restore tabs: --watching takes no other option (see cld help)\n"},
+		{[]string{"--watching"}, 1, "cld: restore tabs --watching runs only as --watch starts it\n"},
+	} {
+		t.Run(test.args[0]+" "+test.args[len(test.args)-1], func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			saveModel(t, s, ghosttyApp(t, s))
+			result := s.RunCld(map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"},
+				append([]string{"restore", "tabs"}, test.args...)...)
+			checkFailed(t, result, test.code, test.want)
+			if calls := s.OsascriptCalls(); len(calls) != 0 {
+				t.Errorf("osascript ran: %+v", calls)
+			}
+		})
+	}
+}
+
+// --watching run by hand, with fd 3 open on a file other than watch, refuses to run, and leaves
+// that file alone. Only the watch file that --watch locks makes a watcher.
+func TestTabsRefusesWatching(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	saveModel(t, s, ghosttyApp(t, s))
+	if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s.WriteFile(watchPath(s), "")
+	other := filepath.Join(s.Root, "other")
+	s.WriteFile(other, "kept\n")
+	file, err := os.OpenFile(other, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close() //nolint:errcheck // cld wrote nothing through it
+	argv := s.CldArgv("restore", "tabs", "--watching")
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env, cmd.Dir, cmd.ExtraFiles = s.Environ(watchEnv), s.Work, []*os.File{file}
+	checkFailed(t, runCommand(t, cmd), 1,
+		"cld: restore tabs --watching runs only as --watch starts it\n")
+	checkContent(t, other, "kept\n")
+	checkContent(t, watchPath(s), "")
 }

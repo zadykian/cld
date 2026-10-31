@@ -95,6 +95,11 @@ sessions claude makes on its server, then behave as plain tmux.
 - `internal/restore`: `cld setup restore`, a systemd user unit that runs `cld restore sessions`
   (decisions [48](decisions/0048-restore-after-reboot.md) and
   [60](decisions/0060-a-command-for-each-restore.md)).
+- `internal/ghostty`: Ghostty on a Mac, for `cld restore tabs`: the JXA scripts osascript runs,
+  the snapshot, Ghostty's errors and their advice, and its CLI's `+show-config`
+  ([decision 59](decisions/0059-ghostty-tabs.md)).
+- `internal/tabs`: `cld restore tabs`: the record of Ghostty's tabs, each pane's classification
+  through ps and cld's title, the merge, the watcher and the dry-run.
 - `internal/remote`: `--host`, the ssh that runs a command through cld on another host, and the
   words it carries there ([decision 62](decisions/0062-commands-on-another-host.md)).
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld as a shell would when
@@ -122,7 +127,7 @@ line ([decision 12](decisions/0012-help-from-cobra.md)). The comments in `cmd/cl
 - cld checks the first argument before cobra, which takes an unknown command for an argument of
   the root and runs `cld -n x join` as `join -n x`. It checks the word after `setup`, after
   `setup config` and after `restore` the same way (decisions
-  [53.2](decisions/0053-project-and-user-settings.md) and
+  [53.2](decisions/0053-project-and-user-settings.md), [59.1](decisions/0059-ghostty-tabs.md) and
   [60.1](decisions/0060-a-command-for-each-restore.md)).
 - A first word `__host` is not cobra's: another host's cld sends a command's words in its value,
   which cld runs as typed ([decision 62.4](decisions/0062-commands-on-another-host.md)).
@@ -151,6 +156,10 @@ mark, the busy mark and the start mark ([decision 48](decisions/0048-restore-aft
 - An entry or index older than 30 days, claude's default `cleanupPeriodDays`, goes, but for a
   session whose server runs.
 - Where cld cannot write the record, it warns and makes the session all the same.
+
+On a Mac, `cld restore tabs` keeps a record of Ghostty's tabs in `tabs/`, outside the entries'
+`sessions/`, whose expiry removes the files it does not know. cld writes it by rename, under a lock
+of its own ([decision 59.4](decisions/0059-ghostty-tabs.md)).
 
 ## A session's life
 

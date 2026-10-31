@@ -69,32 +69,6 @@ func dryRun(t *testing.T, s *sandbox.Sandbox) sandbox.Result {
 	return s.RunCld(tabsEnv, "restore", "tabs", "--dry-run")
 }
 
-// The dry-run says whether Ghostty runs, and its version, pid and start. A Ghostty that does not
-// run is no failure. NSRunningApplication gives the start, or else ps's row does.
-func TestTabsDryRunRuns(t *testing.T) {
-	t.Parallel()
-	const started = "Ghostty 1.4.0, pid 812, started 2025-01-02 09:12\n"
-	for _, test := range []struct {
-		name string
-		edit func(*mac.Model)
-		want string
-	}{
-		{"running", func(*mac.Model) {}, started},
-		{"no launch date", func(m *mac.Model) { m.Launched = 0 }, started},
-		{"not running", func(m *mac.Model) { m.Running = false },
-			"Ghostty is not running: the record as if it brought nothing back\n"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			s := sandbox.New(t)
-			m := ghosttyApp(t, s)
-			test.edit(m)
-			saveModel(t, s, m)
-			checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0, test.want, "")
-		})
-	}
-}
-
 // tick saves m as s's Mac, and merges what it shows into the record by a dry-run, which must
 // succeed. It returns the record then.
 func tick(t *testing.T, s *sandbox.Sandbox, m *mac.Model) *tabs.Record {
@@ -110,19 +84,22 @@ func tick(t *testing.T, s *sandbox.Sandbox, m *mac.Model) *tabs.Record {
 // testdata/tabs/record.json gives as T.
 var sinceTimes = regexp.MustCompile(`"since": "[^"]*"`)
 
-// A first dry-run writes the record, readable by the user alone. It holds Ghostty's run, and every
-// pane by its terminal's id. It prints Ghostty, and the notes on Ghostty's config.
+// A first dry-run writes the record, readable by the user alone, of every pane by its terminal's
+// id. It prints Ghostty, that no watcher runs, and the notes on Ghostty's config.
 func TestTabsDryRunRecords(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	s.WriteProbeFile(mac.ShowConfig, "title = x\nmacos-titlebar-style = hidden\n")
 	m := ghosttyAt(812, ghosttyStart)
-	first, second := addPane(m, "~"), addPane(m, "vim")
-	m.Terminals[second].Cwd = "/Users/me/src"
-	m.Windows = []mac.Window{windowOf(tabOf(first), tabOf(second))}
+	ssh := addPane(m, "◐ cld-app-3", []string{"ssh", "ws"})
+	shell := addPane(m, "~")
+	vim := addPane(m, "vim", []string{"vim", "notes"})
+	m.Terminals[shell].Cwd = "/Users/me/src"
+	m.Windows = []mac.Window{windowOf(tabOf(ssh), tabOf(shell, vim))}
 	saveModel(t, s, m)
 	before := time.Now().UTC().Truncate(time.Second)
-	checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0, dryRunReport, "")
+	result := dryRun(t, s)
+	checkExit(t, "restore tabs --dry-run", result, 0, dryRunReport, "")
 	want := readFile(t, filepath.Join("testdata", "tabs", "record.json"))
 	got := sinceTimes.ReplaceAllString(readFile(t, recordPath(s)), `"since": "T"`)
 	if got != want {
@@ -137,14 +114,56 @@ func TestTabsDryRunRecords(t *testing.T) {
 	checkMode(t, tabsDir(s), 0o700)
 }
 
+// dryRunReport is what the dry-run prints of TestTabsDryRunRecords's Ghostty.
+const dryRunReport = `Ghostty 1.4.0, pid 812, started 2025-01-02 09:12
+The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one
+Notes:
+  window-save-state is default: whether Ghostty brings back its windows after Cmd+Q rests on ` +
+	`macOS's own setting; set it to always
+  title is set in Ghostty's config: it hides cld's title, and with it each pane's session
+  shell-integration-features lacks ssh-terminfo: cld types TERM=xterm-256color for hosts ` +
+	`Ghostty has no terminfo cached for
+  macos-titlebar-style is hidden: rebuilt tabs open as windows
+`
+
+// Under window-save-state = never, Ghostty brings back no window, whatever macOS's setting.
+func TestTabsDryRunNever(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	s.WriteProbeFile(mac.ShowConfig, "window-save-state = never\n"+
+		"shell-integration-features = ssh-terminfo\n")
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+	saveModel(t, s, m)
+	checkReport(t, s, "Notes:\n  window-save-state is never: Ghostty brings back no window "+
+		"after Cmd+Q\n")
+}
+
+// restore tabs runs neither tmux nor claude: a PATH of the tools it runs is enough.
+func TestTabsNeedsNoTmux(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "✳ cld-x", []string{"ssh", "ws"})))}
+	saveModel(t, s, m)
+	tools := s.Tools("osascript", "ps", "ghostty")
+	result := s.RunCld(map[string]string{"TZ": "UTC", "PATH": tools}, "restore", "tabs", "--dry-run")
+	if result.Code != 0 || result.Stderr != "" {
+		t.Errorf("exit %d, stderr %q, want exit 0 and no stderr", result.Code, result.Stderr)
+	}
+	if r := readRecord(t, s); len(r.Panes) != 1 {
+		t.Errorf("recorded %d panes, want 1", len(r.Panes))
+	}
+}
+
 // A dry-run that finds the record as Ghostty shows it writes nothing: the file keeps its bytes,
 // its inode and its time. claude's busy markers, which turn every second, are its idle ✳ there.
 func TestTabsWritesOnlyChanges(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	m := ghosttyAt(812, ghosttyStart)
-	cldPane := addPane(m, "✳ cld-app", ssh("ws"))
-	m.Windows = []mac.Window{windowOf(tabOf(cldPane, addPane(m, "~")))}
+	m := ghosttyApp(t, s)
+	ssh := addPane(m, "✳ cld-app", []string{"ssh", "ws"})
+	m.Windows = []mac.Window{windowOf(tabOf(ssh, addPane(m, "~")))}
 	tick(t, s, m)
 	old := time.Now().Add(-time.Hour).Truncate(time.Second)
 	if err := os.Chtimes(recordPath(s), old, old); err != nil {
@@ -157,7 +176,7 @@ func TestTabsWritesOnlyChanges(t *testing.T) {
 	data := readFile(t, recordPath(s))
 	for _, marker := range []string{"✳", session.BusyEven, session.BusyOdd} {
 		title := marker + " cld-app"
-		m.Terminals[cldPane].Name = title
+		m.Terminals[ssh].Name = title
 		tick(t, s, m)
 		info, err := os.Stat(recordPath(s))
 		if err != nil {
@@ -184,7 +203,7 @@ func split(direction string, first, second *tabs.Node) *tabs.Node {
 	return &tabs.Node{Split: direction, First: first, Second: second}
 }
 
-// named names the panes ids a, b, c and on, for drawWindows.
+// named names the panes ids a, b, c and on, for drawRecord.
 func named(ids ...string) map[string]string {
 	names := map[string]string{}
 	for i, id := range ids {
@@ -193,7 +212,7 @@ func named(ids ...string) map[string]string {
 	return names
 }
 
-// drawWindows draws a record's windows as the model's shape: " | " between windows and " "
+// drawWindows draws a record's windows as shape draws the model's: " | " between windows and " "
 // between tabs, * before a selected tab, and each tab's tree, then / and its shape. A pane is
 // drawn by its name in names, and a split as right(A,B) or down(A,B).
 func drawWindows(windows []tabs.Window, names map[string]string) string {
@@ -221,48 +240,6 @@ func drawNode(n *tabs.Node, names map[string]string) string {
 		return names[n.Pane]
 	}
 	return n.Split + "(" + drawNode(n.First, names) + "," + drawNode(n.Second, names) + ")"
-}
-
-// dryRunReport is what the dry-run prints of TestTabsDryRunRecords's Ghostty.
-const dryRunReport = `Ghostty 1.4.0, pid 812, started 2025-01-02 09:12
-Notes:
-  window-save-state is default: whether Ghostty brings back its windows after Cmd+Q rests on ` +
-	`macOS's own setting; set it to always
-  title is set in Ghostty's config: it hides cld's title, and with it each pane's session
-  shell-integration-features lacks ssh-terminfo: cld types TERM=xterm-256color for hosts ` +
-	`Ghostty has no terminfo cached for
-  macos-titlebar-style is hidden: rebuilt tabs open as windows
-`
-
-// Under window-save-state = never, Ghostty brings back no window, whatever macOS's setting.
-func TestTabsDryRunNever(t *testing.T) {
-	t.Parallel()
-	s := sandbox.New(t)
-	m := ghosttyApp(t, s)
-	s.WriteProbeFile(mac.ShowConfig, "window-save-state = never\n"+
-		"shell-integration-features = ssh-terminfo\n")
-	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
-	saveModel(t, s, m)
-	checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0,
-		"Ghostty 1.4.0, pid 812, started 2025-01-02 09:12\nNotes:\n  window-save-state is never: "+
-			"Ghostty brings back no window after Cmd+Q\n", "")
-}
-
-// restore tabs runs neither tmux nor claude: a PATH of the tools it runs is enough.
-func TestTabsNeedsNoTmux(t *testing.T) {
-	t.Parallel()
-	s := sandbox.New(t)
-	m := ghosttyApp(t, s)
-	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "✳ cld-x", ssh("ws"))))}
-	saveModel(t, s, m)
-	tools := s.Tools("osascript", "ps", "ghostty")
-	result := s.RunCld(map[string]string{"TZ": "UTC", "PATH": tools}, "restore", "tabs", "--dry-run")
-	if result.Code != 0 || result.Stderr != "" {
-		t.Errorf("exit %d, stderr %q, want exit 0 and no stderr", result.Code, result.Stderr)
-	}
-	if r := readRecord(t, s); len(r.Panes) != 1 {
-		t.Errorf("recorded %d panes, want 1", len(r.Panes))
-	}
 }
 
 // drawLosses draws losses, a line each: the cause, where a tab or split goes back, and its
