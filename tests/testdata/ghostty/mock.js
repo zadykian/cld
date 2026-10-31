@@ -14,6 +14,9 @@
 //   raises: the starts of log lines, an event's or a delay's, after the first of which the user
 //     brings the back window to the front, each in turn; quits: the start of a log line after
 //     which Ghostty quits.
+// Its commands keep Ghostty's rules as v1.4.0's source has them
+// (docs/design/findings/terminals.md): send key and input text record what they type in the
+// terminal. delay only logs.
 var mockRun;
 (function () {
   const ghosttyMock = {model: null, log: [], idReads: 0, queue: []};
@@ -54,6 +57,13 @@ var mockRun;
     const queued = ghosttyMock.queue;
     ghosttyMock.queue = [];
     queued.forEach((f) => f());
+  };
+
+  // command fails where Ghostty's config has AppleScript off, as each command does then.
+  ghosttyMock.command = function () {
+    if (ghosttyMock.model.mock.fail === 'off') {
+      ghosttyMock.fail(-1743, 'AppleScript is disabled by the macos-applescript configuration.');
+    }
   };
 
   // fail throws as JXA does, with Apple's error number.
@@ -267,12 +277,39 @@ var mockRun;
       pid: get('pid', () => ghosttyMock.terminal(id).pid || 0)};
   };
 
+  // type types text into the terminal to, as the fake osascript records it.
+  ghosttyMock.type = function (to, text) {
+    const t = ghosttyMock.model.terminals[to.mockId];
+    t.typed = (t.typed || []).concat([text]);
+  };
+
+  // commands are Ghostty's commands as the scripts send them.
+  ghosttyMock.commands = {
+    sendKey: function (key, opts) {
+      const mods = opts.modifiers ? ' ' + opts.modifiers : '';
+      ghosttyMock.event('send key ' + key + mods + ' to ' + opts.to.mockId);
+      ghosttyMock.command();
+      ghosttyMock.found(opts.to.mockId);
+      if (key === 'enter') {
+        ghosttyMock.type(opts.to, '\r');
+      } else {
+        ghosttyMock.type(opts.to, opts.modifiers === 'control' ? '^' + key.toUpperCase() : key);
+      }
+    },
+    inputText: function (text, opts) {
+      ghosttyMock.event('input text to ' + opts.to.mockId);
+      ghosttyMock.command();
+      ghosttyMock.found(opts.to.mockId);
+      ghosttyMock.type(opts.to, text);
+    },
+  };
+
   // Application is Ghostty's application object, as JXA gives it by bundle id.
   function Application(bundle) {
     if (bundle !== 'com.mitchellh.ghostty') {
       ghosttyMock.fail(-2700, 'Application can\'t be found.');
     }
-    const G = {
+    const G = Object.assign({
       version: function () {
         ghosttyMock.event('get version');
         if (ghosttyMock.model.mock.versionFails) {
@@ -282,13 +319,10 @@ var mockRun;
       },
       newSurfaceConfiguration: function () {
         ghosttyMock.event('new surface configuration');
-        if (ghosttyMock.model.mock.fail === 'off') {
-          ghosttyMock.fail(-1743,
-            'AppleScript is disabled by the macos-applescript configuration.');
-        }
+        ghosttyMock.command();
         return {};
       },
-    };
+    }, ghosttyMock.commands);
     Object.defineProperty(G, 'windows', {get: ghosttyMock.windowsSpec});
     Object.defineProperty(G, 'terminals', {get: ghosttyMock.terminalsSpec});
     return G;
