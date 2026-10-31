@@ -44,7 +44,8 @@ func dryRun(ctx context.Context, dir string, seen *observed, p *Planned, left []
 // ghostty is the report's first line: Ghostty's version, pid and start, or that none runs.
 func (c clock) ghostty(seen *observed) string {
 	if seen.o == nil {
-		return "Ghostty is not running: the record as if it brought nothing back"
+		return "Ghostty is not running: cld restore tabs opens it, and reopens what it does not" +
+			" bring back"
 	}
 	line := "Ghostty"
 	if seen.o.Version != "" {
@@ -102,18 +103,25 @@ func (c clock) cut(last *Last) string {
 	return "as it closed at " + c.at(last.At)
 }
 
-// wouldReopen adds a section per loss that plan p rebuilds: the time of its loss, then a line per
-// window. Each pane shows what its line joins, or a shell in its directory.
+// wouldReopen adds a section per loss that plan p rebuilds: where it goes back, then a line per
+// window, tab or split. Each pane shows what its line joins, or a shell in its directory.
 func (c clock) wouldReopen(p *Planned, report *Report) {
 	for i := 0; i < len(p.builds); {
-		l := p.builds[i].loss
+		l, b := p.builds[i].loss, p.script.Builds[i]
 		var lines []string
 		n := i
 		for ; n < len(p.builds) && p.builds[n].loss == l; n++ {
 			lines = append(lines, "  "+c.panes(p.script.Builds[n], p.builds[n]))
 		}
 		what := count(n-i, "window")
-		if l.Cause == CauseTab || l.Cause == CausePane {
+		switch {
+		case l.Cause == CauseTab && b.Kind == buildTab && b.Index > 0:
+			what = fmt.Sprintf("a tab at %d in its window", b.Index)
+		case l.Cause == CauseTab && b.Kind == buildTab && b.Anchor != "":
+			what = "a tab in its window"
+		case l.Cause == CausePane && b.Kind == buildPane:
+			what = "a split beside its pane"
+		case l.Cause == CauseTab || l.Cause == CausePane:
 			what = noun(l) + " as a window"
 		}
 		report.section("Would reopen "+what+", "+c.when(l)+":", lines)
@@ -135,6 +143,9 @@ func (c clock) panes(b ghostty.Build, info building) string {
 			}
 		}
 		tabs = append(tabs, strings.Join(panes, " | "))
+	}
+	if b.Kind != buildWindow {
+		return strings.Join(tabs, ", ")
 	}
 	return count(len(tabs), "tab") + ": " + strings.Join(tabs, ", ")
 }

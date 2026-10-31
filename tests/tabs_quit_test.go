@@ -36,7 +36,7 @@ func quitMac(t *testing.T, s *sandbox.Sandbox) (*mac.Model, []string) {
 
 // Where Ghostty brings every window back, the quit loses nothing. Each pane that was on ssh to a
 // host keeps that binding as last, which the dry-run would type into it. Where Ghostty does not
-// run, the dry-run reads the record as if it brought nothing back, and writes nothing.
+// run, the dry-run plans as if it brought nothing back, every window reopening, and writes nothing.
 func TestTabsQuitBroughtAllBack(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -45,9 +45,9 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 	saveModel(t, s, &mac.Model{})
 	merged := time.Now()
 	result := dryRun(t, s)
-	want := "Ghostty is not running: the record as if it brought nothing back\n" +
-		"The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one\n" +
-		"Would reopen 3 windows, lost as Ghostty quit at "
+	want := "Ghostty is not running: cld restore tabs opens it, and reopens what it does not " +
+		"bring back\nThe watcher: none runs; cld restore tabs --watch in a Ghostty pane starts " +
+		"one\nWould reopen 3 windows, lost as Ghostty quit at "
 	rest := strings.TrimPrefix(result.Stdout, want)
 	if result.Code != 0 || !strings.HasPrefix(result.Stdout, want) ||
 		!slices.ContainsFunc([]string{clockAt(merged), clockAt(time.Now())}, func(at string) bool {
