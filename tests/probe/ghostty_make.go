@@ -8,9 +8,9 @@ import (
 
 // How the fake Ghostty makes an apply's terminals, tabs and windows, and where it puts them.
 
-// grow builds a tree at the terminal id, made for its first leaf, as apply.js's grow does. The
-// key goes in first, so a split that fails still reports that terminal. A split makes its second
-// half's first terminal, then each half grows from its own.
+// grow builds a tree at the terminal id, made for its first leaf, as apply.js's grow does. A split
+// makes its second half's first terminal, then each half grows from its own. Each key goes in as
+// its terminal is made, so a split that fails still reports every terminal made before it.
 func (a *applier) grow(n *node, id string, keys map[string]string) error {
 	first, err := firstLeaf(n)
 	if err != nil {
@@ -28,6 +28,7 @@ func (a *applier) grow(n *node, id string, keys map[string]string) error {
 	if err != nil {
 		return err
 	}
+	keys[second.Key] = made
 	if err := a.grow(n.First, id, keys); err != nil {
 		return err
 	}

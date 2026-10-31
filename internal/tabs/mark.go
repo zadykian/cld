@@ -67,6 +67,8 @@ func enter(r *Record, b ghostty.Build, info building, res ghostty.BuildResult, n
 	tabs := madeTabs(b.Tabs, res.Keys)
 	switch {
 	case len(tabs) == 0:
+	case b.Kind == buildPane:
+		graftSplit(r, b, tabs[0])
 	case b.Kind == buildTab:
 		insertTab(r, b, res, tabs[0])
 	default:
@@ -139,4 +141,42 @@ func insertTab(r *Record, b ghostty.Build, res ghostty.BuildResult, tab Tab) {
 		at = min(res.Index-1, len(tabs))
 	}
 	r.Windows[w].Tabs = slices.Insert(tabs, at, tab)
+}
+
+// graftSplit puts split's tree, which pane build b made, beside b's anchor in r's windows, or as
+// a window in front where none holds the anchor.
+func graftSplit(r *Record, b ghostty.Build, split Tab) {
+	for _, w := range r.Windows {
+		for _, tab := range w.Tabs {
+			if graft(tab.Tree, b.Anchor, split.Tree, b.Split) {
+				return
+			}
+		}
+	}
+	split.Selected = true
+	r.Windows = slices.Insert(r.Windows, 0, Window{Tabs: []Tab{split}})
+}
+
+// graft turns the leaf of tree n holding pane anchor into a split of it and sub, sub on side of
+// it. sub is the second half for right and down, the first for left and up, as Ghostty splits.
+// False means n holds no such leaf.
+func graft(n *Node, anchor string, sub *Node, side string) bool {
+	switch {
+	case n == nil:
+		return false
+	case !isLeaf(n):
+		return graft(n.First, anchor, sub, side) || graft(n.Second, anchor, sub, side)
+	case n.Pane != anchor:
+		return false
+	}
+	leaf := &Node{Pane: n.Pane, Copy: n.Copy}
+	switch side {
+	case splitLeft:
+		*n = Node{Split: splitRight, First: sub, Second: leaf}
+	case splitUp:
+		*n = Node{Split: splitDown, First: sub, Second: leaf}
+	default:
+		*n = Node{Split: side, First: leaf, Second: sub}
+	}
+	return true
 }

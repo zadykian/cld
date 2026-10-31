@@ -89,6 +89,8 @@ func (c clock) built(r *Record, b ghostty.Build, info building, res ghostty.Buil
 	switch {
 	case l.Cause == CauseTab && b.Kind == buildTab && !res.Window:
 		what = fmt.Sprintf("a tab at %d in its window", res.Index)
+	case l.Cause == CausePane && b.Kind == buildPane:
+		what = "a split beside its pane"
 	case l.Cause == CauseTab || l.Cause == CausePane:
 		what = noun(l) + " as a window"
 	}

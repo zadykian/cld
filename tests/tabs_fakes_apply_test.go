@@ -95,6 +95,12 @@ var applyTests = []struct {
 	     "first": {"leaf": {"key": "b"}}, "second": {"leaf": {"key": "c"}}}}}]}`,
 		`{"keys": {"a": "@10", "b": "@13"}, "error": "Failed to create split. (-10000)"}`,
 		"*right(10,[13]) | *[1] [4] | *[7]", 3},
+	{"a split that fails in the first half", "", `{"kind": "window", "tabs": [{"tree": {
+	   "split": "right", "first": {"split": "down",
+	     "first": {"leaf": {"key": "a"}}, "second": {"leaf": {"key": "b"}}},
+	   "second": {"leaf": {"key": "c"}}}}]}`,
+		`{"keys": {"a": "@10", "c": "@13"}, "error": "Failed to create split. (-10000)"}`,
+		"*right(10,[13]) | *[1] [4] | *[7]", 3},
 }
 
 // The apply builds windows, tabs and panes where Ghostty puts them, and types into panes in place.

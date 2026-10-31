@@ -62,8 +62,8 @@ type selectCase struct {
 
 // A restore without options reopens the windows lost in the last 15 minutes, 14 minutes ago but
 // not 16, and the run before's quit at any age. --older adds a burst at each run, those within 10
-// minutes of the newest left, and --all every one; --closed the tabs closed alone. A restored
-// loss stays closed, so a second such restore reopens nothing.
+// minutes of the newest left, and --all every one; --closed the tabs and splits closed alone. A
+// restored loss stays closed, so a second such restore reopens nothing.
 func TestTabsPlanSelects(t *testing.T) {
 	t.Parallel()
 	for _, test := range []selectCase{
@@ -71,6 +71,7 @@ func TestTabsPlanSelects(t *testing.T) {
 		{[]string{"--older"}, "q w25 w20 w16 w14 w5 r2", "q w50 w25 w20 w16 w14 w5 r2"},
 		{[]string{"--all"}, "q w50 w25 w20 w16 w14 w5 r2", ""},
 		{[]string{"--closed"}, "q w14 w5 t3 r2", ""},
+		{[]string{"--closed", "--all"}, "q w50 s40 w25 w20 w16 w14 w5 t3 r2", ""},
 	} {
 		t.Run(strings.Join(append([]string{"restore tabs"}, test.args...), " "), func(t *testing.T) {
 			t.Parallel()
