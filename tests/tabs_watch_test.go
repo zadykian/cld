@@ -147,7 +147,8 @@ func checkLog(t *testing.T, s *sandbox.Sandbox, want ...string) {
 	}
 }
 
-// The watcher holds watch's lock for its life, and merges a tick at once.
+// The watcher holds watch's lock for its life, merges a tick at once, and ends as Ghostty's process
+// does, the record noting when.
 func TestTabsWatch(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -162,4 +163,13 @@ func TestTabsWatch(t *testing.T) {
 	}
 	checkPane(t, "the watcher's tick", readRecord(t, s).Panes[a],
 		shown{Kind: "cld", Host: "ws", Session: "x", Title: "✳ cld-x"}, loginOf(m, a))
+	quit := time.Now().UTC().Truncate(time.Second)
+	quitGhostty(m)
+	sandbox.WaitFor(t, 15*time.Second, "the watcher to end", func() bool {
+		return !watching(t, s)
+	})
+	if ended := readRecord(t, s).Run.Ended; ended.Before(quit) || ended.After(time.Now()) {
+		t.Errorf("run.ended is %v, want the time Ghostty quit, %v", ended, quit)
+	}
+	checkLog(t, s, "Ghostty's run "+runOf(m)+" ended")
 }

@@ -46,7 +46,7 @@ func TestTabsRefusesGhostty(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			m := ghosttyAt(ghosttyPID, ghosttyStart)
+			m := ghosttyApp(t, s)
 			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "✳ cld-x", ssh("ws"))))}
 			tick(t, s, m)
 			before := readFile(t, recordPath(s))
@@ -84,7 +84,7 @@ func TestTabsRefusesRecord(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			s := sandbox.New(t)
-			m := ghosttyAt(ghosttyPID, ghosttyStart)
+			m := ghosttyApp(t, s)
 			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
 			saveModel(t, s, m)
 			if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {

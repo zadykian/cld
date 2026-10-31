@@ -95,7 +95,7 @@ var classifyCases = []struct {
 func TestTabsClassify(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	m := ghosttyAt(812, ghosttyStart)
+	m := ghosttyApp(t, s)
 	var shells []string
 	for _, shell := range []string{"sh", "bash", "-bash", "zsh", "fish", "ksh", "dash", "tcsh",
 		"csh", "nu"} {
@@ -147,7 +147,7 @@ func checkPane(t *testing.T, what string, p *tabs.Pane, want shown, login int) {
 func TestTabsClassifyKeeps(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	m := ghosttyAt(812, ghosttyStart)
+	m := ghosttyApp(t, s)
 	id, other := addPane(m, "✳ cld-app", ssh("ws")), addPane(m, "~")
 	m.Windows = []mac.Window{windowOf(tabOf(id), tabOf(other))}
 	want := shown{Kind: "cld", Host: "ws", Session: "app", Title: "✳ cld-app"}

@@ -53,6 +53,7 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 		t.Errorf("no Ghostty: exit %d, stdout\n%s\nwant %q and the time, and tabs.json as it was",
 			result.Code, result.Stdout, want)
 	}
+	quitGhostty(m)
 	n := relaunch(m, 4242, relaunched, ids...)
 	r := tick(t, s, n)
 	checkRecord(t, "all back", r, named(ids...), "*a/made | *right(b,c)/flat | *d/made", "",

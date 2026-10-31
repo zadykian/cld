@@ -126,3 +126,8 @@ func writeWatch(watch *os.File, pids ...int) error {
 	}
 	return os.Chtimes(watch.Name(), time.Time{}, info.ModTime())
 }
+
+// alive reports whether process pid exists: kill(pid, 0) finds it, or may not signal it.
+func alive(pid int) bool {
+	return pid > 0 && !errors.Is(unix.Kill(pid, 0), unix.ESRCH)
+}

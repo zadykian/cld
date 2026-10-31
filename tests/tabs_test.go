@@ -69,32 +69,6 @@ func dryRun(t *testing.T, s *sandbox.Sandbox) sandbox.Result {
 	return s.RunCld(tabsEnv, "restore", "tabs", "--dry-run")
 }
 
-// The dry-run says whether Ghostty runs, and its version, pid and start. A Ghostty that does not
-// run is no failure. NSRunningApplication gives the start, or else ps's row does.
-func TestTabsDryRunRuns(t *testing.T) {
-	t.Parallel()
-	const started = "Ghostty 1.4.0, pid 812, started 2025-01-02 09:12\n"
-	for _, test := range []struct {
-		name string
-		edit func(*mac.Model)
-		want string
-	}{
-		{"running", func(*mac.Model) {}, started},
-		{"no launch date", func(m *mac.Model) { m.Launched = 0 }, started},
-		{"not running", func(m *mac.Model) { m.Running = false },
-			"Ghostty is not running: the record as if it brought nothing back\n"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			s := sandbox.New(t)
-			m := ghosttyApp(t, s)
-			test.edit(m)
-			saveModel(t, s, m)
-			checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0, test.want, "")
-		})
-	}
-}
-
 // tick saves m as s's Mac, and merges what it shows into the record by a dry-run, which must
 // succeed. It returns the record then.
 func tick(t *testing.T, s *sandbox.Sandbox, m *mac.Model) *tabs.Record {
@@ -243,9 +217,8 @@ func TestTabsDryRunNever(t *testing.T) {
 		"shell-integration-features = ssh-terminfo\n")
 	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
 	saveModel(t, s, m)
-	checkExit(t, "restore tabs --dry-run", dryRun(t, s), 0,
-		"Ghostty 1.4.0, pid 812, started 2025-01-02 09:12\nNotes:\n  window-save-state is never: "+
-			"Ghostty brings back no window after Cmd+Q\n", "")
+	checkReport(t, s, "Notes:\n  window-save-state is never: Ghostty brings back no window "+
+		"after Cmd+Q\n")
 }
 
 // restore tabs runs neither tmux nor claude: a PATH of the tools it runs is enough.

@@ -14,7 +14,11 @@ import (
 )
 
 // tick is how often the watcher reads Ghostty, from the end of one read to the start of the next.
-const tick = 5 * time.Second
+// endWait is how long it waits for the record's lock to note the end of Ghostty's run.
+const (
+	tick    = 5 * time.Second
+	endWait = 10 * time.Second
+)
 
 // watcher is the watcher's state. run and pid are Ghostty's run and pid, once a tick knows them.
 type watcher struct {
@@ -48,13 +52,17 @@ func Watch() error {
 	return w.loop(context.Background())
 }
 
-// loop runs the watcher's ticks.
+// loop runs the watcher's ticks. Before each snapshot, it checks Ghostty's pid, so that a tick
+// after Ghostty quit runs no osascript.
 func (w *watcher) loop(ctx context.Context) error {
 	src := ghostty.Poll(tick)
 	defer src.Close() //nolint:errcheck // Poll's closes nothing
 	for {
 		if err := src.Wait(ctx); err != nil {
 			return w.stop(err)
+		}
+		if w.pid != 0 && !alive(w.pid) {
+			return w.ended()
 		}
 		ended, err := w.tick(ctx, src)
 		switch {
@@ -132,14 +140,39 @@ func (w *watcher) merge(o *Observation, before os.FileInfo) error {
 	return nil
 }
 
-// ended is the end of Ghostty's run. The watcher then exits, with status 0.
+// ended is the end of Ghostty's run: the record notes when, as the next run's quit loss takes
+// that time (decision 59.4). The watcher then exits, with status 0.
 func (w *watcher) ended() error {
 	if w.run == "" {
 		w.log.line("Ghostty is not running")
 		return nil
 	}
+	if err := w.noteEnd(); err != nil {
+		w.log.line("cannot record the end of Ghostty's run: " + err.Error())
+	}
 	w.log.line("Ghostty's run " + w.run + " ended")
 	return nil
+}
+
+// noteEnd sets the record's Run.Ended, where the record's run is still the watcher's.
+func (w *watcher) noteEnd() error {
+	unlock, err := lockRecord(w.dir, endWait)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, old, warning, err := load(w.dir)
+	if err != nil {
+		return err
+	}
+	if warning != "" {
+		w.log.line(warning)
+	}
+	if r.Run.ID != w.run {
+		return nil
+	}
+	r.Run.Ended = time.Now().UTC().Truncate(time.Second)
+	return save(w.dir, r, old)
 }
 
 // failed logs err, a tick's failure. A permanent one stops the watcher, with status 1: macOS or
