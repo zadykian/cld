@@ -97,8 +97,8 @@ v1.4.0 both. Main at b3dc3d7 was read on 2026-10-16. Then v1.4.0 was checked aga
   call fails. By default a child's exit closes its pane, which then leaves `terminals`
   (`src/Surface.zig`). A pane stays open under `wait-after-command`, or after an exit within
   `abnormal-command-exit-runtime`, which macOS counts as abnormal whatever its code. There the pty
-  stays open until the surface is freed (`src/termio/Exec.zig`), so `tty` keeps its name, and what
-  `pid` reads then is the spike's (check 9).
+  stays open until the surface is freed (`src/termio/Exec.zig`), so `tty` keeps its name, and the
+  spike found `pid` 0 then (check 9).
 - **No events** (v1.3.1 and v1.4.0; `macos/Ghostty.sdef`). The dictionary declares no event, and
   Ghostty's only distributed notification tells its own Dock tile plugin of an icon change. So a
   program outside learns of a change only by asking again. The scripting classes are
@@ -156,9 +156,9 @@ v1.4.0 both. Main at b3dc3d7 was read on 2026-10-16. Then v1.4.0 was checked aga
   `TerminalController.swift`, `SurfaceView_AppKit.swift`). Ghostty maps it onto AppKit's
   `NSQuitAlwaysKeepsWindows`. Its docs say `default`, the default, saves state only after a forced
   quit or where macOS's own setting asks. So under `default`, what a normal quit saves rests on
-  that setting, whose default the spike finds (check 8); `always` saves at every exit. A pane
-  comes back with its pwd and UUID in a fresh shell, since no command is saved. v1.4.0 also
-  marks no window restorable under `never`.
+  that setting, which the spike found unset under `default` (check 8); `always` saves at every
+  exit. A pane comes back with its pwd and UUID in a fresh shell, since no command is saved. v1.4.0
+  also marks no window restorable under `never`.
 - **`undo-timeout`** (v1.3.1 and v1.4.0; `src/config/Config.zig`, `TerminalController.swift`,
   `BaseTerminalController.swift`, `ExpiringUndoManager.swift`, `src/termio/Exec.zig`). The default
   is 5 s, and 0 turns undo off. Closing a window, tab or split registers an undo that holds its
@@ -255,3 +255,32 @@ rest of 1, 6, 8, 9, 10 and 11, were not probed. [status.md](../testing/status.md
   that prefers side by side matches this build. Other paddings, `window-padding-balance` and scale
   1 were not probed. By the arithmetic, a pane beside a split along x is off by 4p+1 px, p being
   `window-padding-x` in points at scale 2.
+- **apply.js.** 42 checks passed. 30 panes took 2.8 s. A split's result answers `id()`, and a tab
+  build leaves its new tab selected and returns its index. `withConfiguration` takes a JS object
+  with `initialWorkingDirectory`. Each initial-input line ran once. A typed line ran once after
+  Ctrl+U over half-typed input, with no paste-protection dialog. A slow `.zshrc`, Ctrl+U under
+  Dvorak and the wait for a new window beyond 3 s were not probed.
+- **A missing directory falls back.** An `initial working directory` that is no directory is
+  ignored, as read, and the pane opened in the previous tab's directory, which was also
+  osascript's. The source of the fallback is ambiguous. The fallback is not home.
+- **The selected-tab anomaly.** Right after the restore, the snapshot showed a rebuilt window's
+  first tab selected, where the second had been before the quit. A later snapshot showed the second.
+  The user saw the second throughout. So `selected` may lag for a rebuilt window.
+- **show-config and ssh-cache.** `+show-config` printed the user's `window-save-state` and none once
+  the option is `default`. A later `shell-integration-features` line reset the list, as read.
+  `--host=` prints the deprecation warning. An uncached host exits 1, a cached one 0, and the
+  positional key prints the entry. The alias alone exits 1, so the key comes from `ssh -G`.
+- **A pane's process.** Plain ssh: the pid is `ssh` and leads its group, and its login is Ghostty's
+  child. With `ssh-env`, the pid is `ghostty +ssh --terminfo=false -- HOST`, and its child is ssh,
+  in the same group. A prompt's pid is the shell's. A command window shows an empty name and cwd
+  with a live pid, and later a glyph name, so the name never marks a dead pane. "Process exited"
+  gives pid 0 and keeps the tty. At the default `undo-timeout`, a closed tab's login lived 4.6 s.
+  `ps` prints `lstart` in UTC under `TZ=UTC`. Over ssh the title is `USER@HOST: ~` while the cwd
+  stays local.
+- **Restored titles.** The titles were not seen stale. The user saw fresh ones, and two of three
+  panes changed from `~` to `USER@HOST:~` 28 s after the open, so the shell may have retitled them
+  first. A pane comes back with its pwd and UUID. Its title is unsettled.
+- **Cmd+Q under `always`.** `NSQuitAlwaysKeepsWindows` was 1 in Ghostty's domain, and absent under
+  `default`. The quit took 28 s. After `open -b`, the snapshot settled in 4.7 s. All four
+  restorable terminals came back, at their places, in fresh shells with their cwd. The `command`
+  window did not. The four ids were the same under a new Ghostty pid.
