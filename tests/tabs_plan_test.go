@@ -12,7 +12,7 @@ import (
 )
 
 // What a restore reopens (decision 59.6): the losses it picks, as its options ask, and what it
-// leaves.
+// leaves. Then the dedupe, a lost pane open again, and the dry-run's report of it all.
 
 // shellLoss is a loss of run, of cause at time at: a window of one tab of the pane id. The record
 // last saw that pane a shell in /Users/me/ID.
@@ -54,24 +54,30 @@ func restoredOf(r *tabs.Record) string {
 }
 
 // selectCase is a restore of selectRecord's losses with args: the losses restored after it, and
-// after a second run, "" for none.
+// after a second run, "" for none, and its note on what it leaves.
 type selectCase struct {
 	args            []string
 	restored, again string
+	left            string
 }
 
 // A restore without options reopens the windows lost in the last 15 minutes, 14 minutes ago but
 // not 16, and the run before's quit at any age. --older adds a burst at each run, those within 10
 // minutes of the newest left, and --all every one; --closed the tabs and splits closed alone. A
-// restored loss stays closed, so a second such restore reopens nothing.
+// restored loss stays closed, so a second such restore reopens nothing. Each notes what it leaves.
 func TestTabsPlanSelects(t *testing.T) {
 	t.Parallel()
 	for _, test := range []selectCase{
-		{nil, "q w14 w5 r2", "q w14 w5 r2"},
-		{[]string{"--older"}, "q w25 w20 w16 w14 w5 r2", "q w50 w25 w20 w16 w14 w5 r2"},
-		{[]string{"--all"}, "q w50 w25 w20 w16 w14 w5 r2", ""},
-		{[]string{"--closed"}, "q w14 w5 t3 r2", ""},
-		{[]string{"--closed", "--all"}, "q w50 s40 w25 w20 w16 w14 w5 t3 r2", ""},
+		{nil, "q w14 w5 r2", "q w14 w5 r2",
+			"4 lost windows, 1 closed tab and 1 closed split are left"},
+		{[]string{"--older"}, "q w25 w20 w16 w14 w5 r2", "q w50 w25 w20 w16 w14 w5 r2",
+			"1 lost window, 1 closed tab and 1 closed split are left"},
+		{[]string{"--all"}, "q w50 w25 w20 w16 w14 w5 r2", "",
+			"1 closed tab and 1 closed split are left"},
+		{[]string{"--closed"}, "q w14 w5 t3 r2", "", "4 lost windows and 1 closed split are left"},
+		{[]string{"--closed", "--older"}, "q w25 w20 w16 w14 w5 t3 r2", "",
+			"1 lost window and 1 closed split are left"},
+		{[]string{"--closed", "--all"}, "q w50 s40 w25 w20 w16 w14 w5 t3 r2", "", ""},
 	} {
 		t.Run(strings.Join(append([]string{"restore tabs"}, test.args...), " "), func(t *testing.T) {
 			t.Parallel()
@@ -90,10 +96,14 @@ func checkSelects(t *testing.T, test selectCase) {
 	saveModel(t, s, m)
 	writeRecord(t, s, selectRecord(m, a, time.Now().UTC().Truncate(time.Second)))
 	args := append([]string{"restore", "tabs"}, test.args...)
+	left := noWatcher
+	if test.left != "" {
+		left = "cld: " + test.left + ": cld restore tabs --dry-run lists them\n" + noWatcher
+	}
 	result := s.RunCld(tabsEnv, args...)
-	if result.Code != 0 || result.Stdout == "" || result.Stderr != noWatcher {
+	if result.Code != 0 || result.Stdout == "" || result.Stderr != left {
 		t.Errorf("exit %d, stdout %q, stderr %q, want exit 0, what reopened, and %q",
-			result.Code, result.Stdout, result.Stderr, noWatcher)
+			result.Code, result.Stdout, result.Stderr, left)
 	}
 	if got := restoredOf(readRecord(t, s)); got != test.restored {
 		t.Errorf("restored %s, want %s", got, test.restored)

@@ -48,7 +48,7 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 	}
 	res := apply(ctx, dir, seen, p, report)
 	unlock()
-	finish(dir, seen, p, res, report)
+	finish(dir, seen, p, res, left, report)
 	return report, nil
 }
 
