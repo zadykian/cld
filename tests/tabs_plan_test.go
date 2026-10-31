@@ -176,25 +176,6 @@ func TestTabsPlanEmptyQuit(t *testing.T) {
 	}
 }
 
-// A window closed, whose panes' logins live while Ghostty's undo can bring it back, waits: a
-// restore reopens nothing, and notes it.
-func TestTabsPlanPending(t *testing.T) {
-	t.Parallel()
-	s := sandbox.New(t)
-	m := ghosttyApp(t, s)
-	a, b := addPane(m, "~"), addPane(m, "~")
-	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b))}
-	tick(t, s, m)
-	m.Windows = m.Windows[:1]
-	r := tick(t, s, m)
-	if len(r.Pending) != 1 {
-		t.Fatalf("pending %s, want the closed window", drawLosses(r.Pending, named(a, b)))
-	}
-	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0, "",
-		"cld: a window closed at "+clockAt(r.Pending[0].At)+" waits for Ghostty's undo: run "+
-			"cld restore tabs again once it has passed\n"+noWatcher)
-}
-
 // A lost pane open again in Ghostty is never rebuilt: its window comes back without it.
 func TestTabsPlanOpenAgain(t *testing.T) {
 	t.Parallel()
@@ -214,4 +195,23 @@ func TestTabsPlanOpenAgain(t *testing.T) {
 	writeRecord(t, s, r)
 	checkReport(t, s, "Would reopen 1 window, closed at "+clockAt(lost.At)+
 		":\n  1 tab: a shell in /Users/me/b\n")
+}
+
+// A window closed, whose panes' logins live while Ghostty's undo can bring it back, waits: a
+// restore reopens nothing, and notes it.
+func TestTabsPlanPending(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a, b := addPane(m, "~"), addPane(m, "~")
+	m.Windows = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b))}
+	tick(t, s, m)
+	m.Windows = m.Windows[:1]
+	r := tick(t, s, m)
+	if len(r.Pending) != 1 {
+		t.Fatalf("pending %s, want the closed window", drawLosses(r.Pending, named(a, b)))
+	}
+	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0, "",
+		"cld: a window closed at "+clockAt(r.Pending[0].At)+" waits for Ghostty's undo: run "+
+			"cld restore tabs again once it has passed\n"+noWatcher)
 }
