@@ -169,3 +169,42 @@ func readWatch(path string) (watcher, app int) {
 func alive(pid int) bool {
 	return pid > 0 && !errors.Is(unix.Kill(pid, 0), unix.ESRCH)
 }
+
+// Status is the watcher, as a dry-run reports it.
+type Status struct {
+	PID      int       // 0: none runs
+	LastTick time.Time // watch's time
+	LastLine string    // watch.log's last line, "" for none
+}
+
+// WatcherStatus is the watcher of the record in dir, read without a lock: a --watch that met the
+// lock while held here would start none. A pid reused since its watcher ended misleads it.
+func WatcherStatus(dir string) Status {
+	path := filepath.Join(dir, watchFile)
+	status := Status{LastLine: lastLine(filepath.Join(dir, logFile))}
+	if pid, _ := readWatch(path); alive(pid) {
+		status.PID = pid
+		if info, err := os.Stat(path); err == nil {
+			status.LastTick = info.ModTime()
+		}
+	}
+	return status
+}
+
+// lastLine is the last line of the file at path, read from its last 4 KiB, "" for none.
+func lastLine(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close() //nolint:errcheck // a file only read loses nothing
+	info, err := file.Stat()
+	if err != nil {
+		return ""
+	}
+	from := max(info.Size()-4096, 0)
+	tail := make([]byte, info.Size()-from)
+	n, _ := file.ReadAt(tail, from) //nolint:errcheck // what was read is the tail
+	text := strings.TrimRight(string(tail[:n]), "\n")
+	return text[strings.LastIndexByte(text, '\n')+1:]
+}

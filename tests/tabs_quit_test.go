@@ -46,6 +46,7 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 	merged := time.Now()
 	result := dryRun(t, s)
 	want := "Ghostty is not running: the record as if it brought nothing back\n" +
+		"The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one\n" +
 		"Losses:\n  3 windows of 3 tabs and 4 panes, lost as Ghostty quit at "
 	if result.Code != 0 || !strings.HasPrefix(result.Stdout, want) ||
 		!slices.Contains([]string{clockAt(merged) + "\n", clockAt(time.Now()) + "\n"},

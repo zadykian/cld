@@ -199,6 +199,7 @@ func drawNode(n *tabs.Node, names map[string]string) string {
 
 // dryRunReport is what the dry-run prints of TestTabsDryRunRecords's Ghostty.
 const dryRunReport = `Ghostty 1.4.0, pid 812, started 2025-01-02 09:12
+The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one
 Notes:
   window-save-state is default: whether Ghostty brings back its windows after Cmd+Q rests on ` +
 	`macOS's own setting; set it to always

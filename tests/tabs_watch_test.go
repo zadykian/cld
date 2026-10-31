@@ -2,6 +2,7 @@ package tests
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,8 +148,8 @@ func checkLog(t *testing.T, s *sandbox.Sandbox, want ...string) {
 	}
 }
 
-// The watcher holds watch's lock for its life, merges a tick at once, and ends as Ghostty's process
-// does, the record noting when.
+// --watch starts the watcher in a session of its own, which holds watch's lock and merges a tick
+// at once. The dry-run reports it. It ends as Ghostty's process does, and the record notes when.
 func TestTabsWatch(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -157,12 +158,14 @@ func TestTabsWatch(t *testing.T) {
 	m.Windows = []mac.Window{windowOf(tabOf(a))}
 	saveModel(t, s, m)
 	startWatch(t, s)
-	waitTicked(t, s, m)
-	if !watching(t, s) {
-		t.Error("the watcher does not hold watch's lock")
+	pid := waitTicked(t, s, m)
+	if sid, err := unix.Getsid(pid); err != nil || sid != pid || !watching(t, s) {
+		t.Errorf("the watcher %d: session %d (%v), its lock held %t", pid, sid, err,
+			watching(t, s))
 	}
 	checkPane(t, "the watcher's tick", readRecord(t, s).Panes[a],
 		shown{Kind: "cld", Host: "ws", Session: "x", Title: "✳ cld-x"}, loginOf(m, a))
+	checkReport(t, s, fmt.Sprintf("The watcher: pid %d, last read at ", pid))
 	quit := time.Now().UTC().Truncate(time.Second)
 	quitGhostty(m)
 	sandbox.WaitFor(t, 15*time.Second, "the watcher to end", func() bool {

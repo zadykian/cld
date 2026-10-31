@@ -34,14 +34,15 @@ func (r *Report) section(heading string, lines []string) {
 	}
 }
 
-// dryRun reports what the record holds after a restore's merge, seen. Ghostty comes first, then the
-// panes a restore would join again, the losses, and those that wait for Ghostty's undo. Notes on
-// Ghostty's config end it.
-func dryRun(ctx context.Context, seen *observed, report *Report) {
+// dryRun reports what the record in dir holds after a restore's merge, seen. Ghostty and the
+// watcher come first, then the panes a restore would join again, the losses, and those that wait
+// for Ghostty's undo. Notes on Ghostty's config end it.
+func dryRun(ctx context.Context, dir string, seen *observed, report *Report) {
 	c := clock{now: time.Now()}
 	c.home, _ = os.UserHomeDir() //nolint:errcheck // without one, directories stay whole
 	r := seen.record
 	report.Lines = append(report.Lines, c.ghostty(seen))
+	report.Lines = append(report.Lines, c.watcher(WatcherStatus(dir))...)
 	report.section("Panes to join again:", c.joinAgain(r))
 	report.section("Losses:", c.losses(r.Losses))
 	for _, l := range r.Losses {
@@ -62,6 +63,9 @@ type clock struct {
 }
 
 func (c clock) at(t time.Time) string { return c.format(t, "15:04") }
+
+// atSecond is at, to the second.
+func (c clock) atSecond(t time.Time) string { return c.format(t, "15:04:05") }
 
 func (c clock) format(t time.Time, layout string) string {
 	t = t.In(c.now.Location())
@@ -103,6 +107,18 @@ func (c clock) ghostty(seen *observed) string {
 		return line + ", started " + c.at(p.Start)
 	}
 	return line
+}
+
+// watcher is the watcher's lines: its pid and last tick, or that none runs, and its last line.
+func (c clock) watcher(s Status) []string {
+	line := "The watcher: none runs; cld restore tabs --watch in a Ghostty pane starts one"
+	if s.PID != 0 {
+		line = fmt.Sprintf("The watcher: pid %d, last read at %s", s.PID, c.atSecond(s.LastTick))
+	}
+	if s.LastLine == "" {
+		return []string{line}
+	}
+	return []string{line, "The watcher's last line: " + s.LastLine}
 }
 
 // joinAgain is a line per pane a restore would join again: a shell at its prompt, with a binding.
