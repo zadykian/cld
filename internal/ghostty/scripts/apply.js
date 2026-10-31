@@ -182,6 +182,15 @@ function buildWindow(b, keys) {
   return {keys: keys};
 }
 
+// buildPane splits b's anchor for a lost split's tree, the new terminal taking the side b names.
+function buildPane(b, keys) {
+  const tab = b.tabs[0];
+  const id = splitAt(b.anchor, b.split, firstLeaf(tab.tree));
+  grow(tab.tree, id, keys);
+  G.focus(G.terminals.byId(keys[tab.focused] || id));
+  return {keys: keys};
+}
+
 // type empties the prompt's line, pastes line, and presses Enter: input text is a paste, which a
 // prompt in bracketed-paste mode does not run. Once the pace has passed, it types nothing, and is
 // false, where another group than the snapshot's shell is in front: the user started a program
@@ -207,7 +216,7 @@ function attempt(f, caught) {
   }
 }
 
-const BUILDERS = {window: buildWindow};
+const BUILDERS = {window: buildWindow, pane: buildPane};
 
 function run(argv) {
   const plan = JSON.parse(argv[0]);

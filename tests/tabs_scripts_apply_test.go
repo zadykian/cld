@@ -99,10 +99,11 @@ var mockedFailures = []mockedApply{
 		"*[1] [4] | *[7]", []string{"get terminals.id"}},
 }
 
-// builtSoFar are the fake osascript's apply cases that apply.js builds so far: windows and their
-// splits.
+// builtSoFar are the fake osascript's apply cases that apply.js builds so far: windows, their
+// splits and lost panes.
 var builtSoFar = []string{"a window", "a window with no tab selected", "a tree split left",
-	"a split that fails"}
+	"a split that fails", "a pane right", "two panes down", "a pane left", "a pane up",
+	"a pane whose anchor is gone"}
 
 // testMockedApply runs apply.js against fakeGhostty(2, 1) as the mock Ghostty. The fake
 // osascript's apply cases give the same results and shapes. apply.js's own cases follow.
