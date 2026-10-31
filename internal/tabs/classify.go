@@ -1,22 +1,26 @@
 package tabs
 
 import (
+	"path"
 	"slices"
 	"strings"
 
 	"github.com/zadykian/cld/internal/ghostty"
+	"github.com/zadykian/cld/internal/remote"
 )
 
 // Seen is what a pane shows at an observation (decision 59.5).
 type Seen struct {
 	Kind  string
+	Host  string
 	Title string
 	Login int
 	Keep  bool // ps cannot tell: keep the earlier observation
 }
 
 // classify reads what terminal t shows from ps's rows, Ghostty's pid being g. The leader of the
-// pane's foreground group tells it: ssh, a shell at its prompt, or another program.
+// pane's foreground group tells it: ssh, directly or under a wrapper, a shell at its prompt, or
+// another program.
 func classify(t ghostty.Terminal, procs Table, g int) Seen {
 	if t.PID == 0 || t.TTY == "" {
 		return Seen{Kind: KindDead, Title: t.Name}
@@ -29,20 +33,89 @@ func classify(t ghostty.Terminal, procs Table, g int) Seen {
 	if !ok || leader.TTY != tty {
 		return Seen{Keep: true, Title: t.Name, Login: login}
 	}
-	seen := front(leader)
+	seen := front(leader, procs.Group(t.PID, tty))
 	seen.Title, seen.Login = t.Name, login
 	return seen
 }
 
-// front is what the leader of a pane's foreground group shows.
-func front(leader Process) Seen {
-	switch name := program(leader); {
+// front is what the leader of a pane's foreground group shows, group being its members. A
+// wrapper's ssh is its child, and only that ssh counts: one deeper in the group, such as a git
+// push's, does not.
+func front(leader Process, group []Process) Seen {
+	name := program(leader)
+	switch {
 	case name == "ssh":
-		return Seen{Kind: KindSSH}
+		return sshSeen(leader.Args[1:])
+	case wraps(leader, name):
+		for _, p := range group {
+			if p.PPID == leader.PID && program(p) == "ssh" {
+				return sshSeen(p.Args[1:])
+			}
+		}
+		return Seen{Keep: true}
 	case isShell(name):
 		return Seen{Kind: KindLocal}
 	}
 	return Seen{Kind: KindOther}
+}
+
+// wraps reports whether the leader named name runs ssh as its child: Ghostty's ssh wrapper,
+// ghostty +ssh, or ws's ws-join, a sh script. UNVERIFIED until #177's check 9 (decision 59.12):
+// the shapes both take in macOS's ps.
+func wraps(leader Process, name string) bool {
+	switch name {
+	case "ghostty":
+		return len(leader.Args) > 1 && leader.Args[1] == "+ssh"
+	case "ws-join":
+		return true
+	}
+	return isShell(name) && len(leader.Args) > 1 && path.Base(leader.Args[1]) == "ws-join"
+}
+
+// sshSeen is an ssh pane, with ssh's words after its name. A host --host would refuse is no host:
+// a restore types it unchanged, and never sanitises one.
+func sshSeen(args []string) Seen {
+	host, ok := sshHost(args)
+	if !ok || !remote.ValidHost(host) {
+		return Seen{Kind: KindSSH}
+	}
+	return Seen{Kind: KindSSH, Host: host}
+}
+
+// sshOptions are the options of ssh(1) that take a value.
+const sshOptions = "BbcDEeFIiJLlmOoPpQRSWw"
+
+// sshHost is ssh's destination: the first word that is no option, past the values of the options
+// that take one. "--" ends the options. The words after it, a remote command, do not count.
+func sshHost(args []string) (string, bool) {
+	for i := 0; i < len(args); i++ {
+		word := args[i]
+		switch {
+		case word == "--":
+			if i+1 < len(args) {
+				return args[i+1], true
+			}
+			return "", false
+		case len(word) > 1 && word[0] == '-':
+			if valueNext(word[1:]) {
+				i++
+			}
+		default:
+			return word, true
+		}
+	}
+	return "", false
+}
+
+// valueNext reports whether the letters of an option word end in an option whose value is the
+// next word. An option that takes a value ends the word: what follows it in the word is its value.
+func valueNext(letters string) bool {
+	for i, letter := range letters {
+		if strings.ContainsRune(sshOptions, letter) {
+			return i == len(letters)-1
+		}
+	}
+	return false
 }
 
 // shells are the programs whose pane is at its prompt.

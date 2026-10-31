@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zadykian/cld/internal/tabs"
@@ -12,7 +13,7 @@ import (
 
 // shown is what the record keeps of a pane that classification sets.
 type shown struct {
-	Kind, Title string
+	Kind, Host, Title string
 }
 
 // classifyCases are TestTabsClassify's panes: a title, the jobs in front of the pane's shell,
@@ -22,18 +23,46 @@ var classifyCases = []struct {
 	jobs        [][]string
 	want        shown
 }{
-	{"ssh", "me@ws: ~", [][]string{ssh("ws")}, shown{Kind: "ssh"}},
-	{"ssh by its path", "", [][]string{{"/usr/bin/ssh", "ws"}}, shown{Kind: "ssh"}},
-	{"a login's ssh", "", [][]string{{"-ssh", "ws"}}, shown{Kind: "ssh"}},
+	{"ssh", "me@ws: ~", [][]string{ssh("ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"ssh by its path", "", [][]string{{"/usr/bin/ssh", "ws"}}, shown{Kind: "ssh", Host: "ws"}},
+	{"a login's ssh", "", [][]string{{"-ssh", "ws"}}, shown{Kind: "ssh", Host: "ws"}},
 	{"-zsh", "~", nil, shown{Kind: "local"}},
 	{"a shell by its path", "~", [][]string{{"/bin/zsh"}}, shown{Kind: "local"}},
 	{"a stale title at a prompt", "✳ cld-app-3", nil, shown{Kind: "local"}},
+	{"ghostty +ssh", "~", [][]string{{ghosttyExecutable, "+ssh", "ws"}, ssh("ws")},
+		shown{Kind: "ssh", Host: "ws"}},
+	{"ghostty +ssh before its ssh", "~", [][]string{{ghosttyExecutable, "+ssh", "ws"}},
+		shown{Kind: "other"}},
+	{"ws-join", "~", [][]string{{"/bin/sh", "/Users/me/bin/ws-join", "-n", "app", "-s", "3"},
+		ssh("-t", "ws", "cld", "join", "-n", "app", "-s", "3")}, shown{Kind: "ssh", Host: "ws"}},
+	{"ws-join by its name", "~", [][]string{{"ws-join", "-n", "app"}, ssh("ws")},
+		shown{Kind: "ssh", Host: "ws"}},
+	{"git push", "~", [][]string{{"git", "push"},
+		ssh("git@github.com", "git-receive-pack", "me/app.git")}, shown{Kind: "other"}},
+	{"a host like an option", "~", [][]string{ssh("--", "-x")}, shown{Kind: "ssh"}},
+	{"a host with a ;", "~", [][]string{ssh("ws;x")}, shown{Kind: "ssh"}},
+	{"a host of 256", "~", [][]string{ssh(strings.Repeat("h", 256))}, shown{Kind: "ssh"}},
+	{"no host", "~", [][]string{ssh("-v")}, shown{Kind: "ssh"}},
+	{"-p 22 ws", "", [][]string{ssh("-p", "22", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-p22 ws", "", [][]string{ssh("-p22", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-lroot ws", "", [][]string{ssh("-lroot", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-l root ws", "", [][]string{ssh("-l", "root", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-o X=Y ws", "", [][]string{ssh("-o", "X=Y", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-oX=Y ws", "", [][]string{ssh("-oX=Y", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-tt ws", "", [][]string{ssh("-tt", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-- ws", "", [][]string{ssh("--", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"-tl root ws", "", [][]string{ssh("-tl", "root", "ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"a remote command", "", [][]string{ssh("-i", "key", "-J", "jump", "ws", "ls", "-l")},
+		shown{Kind: "ssh", Host: "ws"}},
+	{"flags", "", [][]string{ssh("-46AaCfGgKkMNnqsTtVvXxYy", "ws")},
+		shown{Kind: "ssh", Host: "ws"}},
 	{"vim", "vim", [][]string{{"vim", "notes"}}, shown{Kind: "other"}},
 	{"a local tmux", "~", [][]string{{"tmux", "attach"}}, shown{Kind: "other"}},
 	{"mosh", "~", [][]string{{"mosh", "ws"}}, shown{Kind: "other"}},
 }
 
-// Each pane is what the leader of its foreground group shows. ssh is ssh, a shell is local,
+// Each pane is what the leader of its foreground group shows. ssh names its host, past its
+// options' values, directly or as the child of ghostty +ssh or ws-join. A shell is local,
 // whatever its title, and any other program other.
 func TestTabsClassify(t *testing.T) {
 	t.Parallel()
@@ -77,7 +106,7 @@ func checkPane(t *testing.T, what string, p *tabs.Pane, want shown, login int) {
 		t.Errorf("%s: no pane in the record", what)
 		return
 	}
-	got := shown{Kind: p.Kind, Title: p.Title}
+	got := shown{Kind: p.Kind, Host: p.Host, Title: p.Title}
 	if got != want || p.Login != login {
 		t.Errorf("%s: recorded %+v, login %d, want %+v, login %d", what, got, p.Login, want, login)
 	}

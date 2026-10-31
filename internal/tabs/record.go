@@ -41,11 +41,12 @@ type Run struct {
 // (decision 59.12): that the id lasts through an undo, a tab's drag and Ghostty's restoration.
 type Pane struct {
 	Kind  string    `json:"kind"`
+	Host  string    `json:"host,omitempty"` // ssh's destination as typed: ssh panes only
 	Title string    `json:"title,omitempty"`
 	Cwd   string    `json:"cwd,omitempty"`
 	TTY   string    `json:"tty,omitempty"`
 	Login int       `json:"login,omitempty"` // the pane's /usr/bin/login, Ghostty's child
-	Since time.Time `json:"since"`           // when the pane was first seen
+	Since time.Time `json:"since"`           // when Host last changed
 }
 
 // Window is a window's tabs, in tab-bar order.
