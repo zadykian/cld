@@ -29,6 +29,10 @@ var mockedApplies = []mockedApply{
 		`{"typed": [{"pane": "@1"}, {"pane": "@4", "busy": true}], "builds": []}`,
 		"*[1] [4] | *[7]", []string{"get terminals.id", "get pid of @1", "send key u control to @1",
 			"input text to @1", "send key enter to @1", "delay 0.3", "get pid of @4"}},
+	{"a window of one tab", "", `{"kind": "window", "tabs": [
+	   {"selected": true, "tree": {"leaf": {"key": "a", "line": "ssh ws"}}}]}`, nil, nil,
+		`{"typed": [], "builds": [{"keys": {"a": "@10"}}]}`, "*[10] | *[1] [4] | *[7]",
+		[]string{"get terminals.id", "get terminals.id", "new window", "get terminals.id"}},
 }
 
 // mockedFailures are apply.js's own cases as it fails.
@@ -82,13 +86,14 @@ func checkMockedApply(
 	return got
 }
 
-// apply.js waits before each line that starts an ssh but the first. It waits the pace's gap, and
-// its pause too after every eighth line.
+// apply.js waits before each line that starts an ssh but the first, typed or a new terminal's.
+// It waits the pace's gap, and its pause too after every eighth line.
 func testMockedPace(t *testing.T) {
 	t.Parallel()
 	typing := `{"pane": "@1", "pid": 50003, "line": "ls"}`
 	got := runMocked(t, "apply", withIDs(`{`+pace+`, "typed": [`+
-		strings.Repeat(typing+", ", 8)+typing+`], "builds": []}`), fakeGhostty(2, 1), nil)
+		strings.Repeat(typing+", ", 7)+typing+`], "builds": [{"kind": "window", "tabs": [
+	    {"tree": {"leaf": {"key": "a", "line": "ssh ws"}}}]}]}`), fakeGhostty(2, 1), nil)
 	var delays []string
 	for _, event := range got.Log {
 		if strings.HasPrefix(event, "delay ") {

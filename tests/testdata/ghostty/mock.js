@@ -15,11 +15,12 @@
 //     brings the back window to the front, each in turn; quits: the start of a log line after
 //     which Ghostty quits.
 // Its commands keep Ghostty's rules as v1.4.0's source has them
-// (docs/design/findings/terminals.md): send key and input text record what they type in the
-// terminal. delay only logs.
+// (docs/design/findings/terminals.md): a new window joins the windows with its terminal; send key
+// and input text record what they type in the terminal. The model's failAt is the terminal,
+// counted from 1, that Ghostty fails to make: a new window's never appears. delay only logs.
 var mockRun;
 (function () {
-  const ghosttyMock = {model: null, log: [], idReads: 0, queue: []};
+  const ghosttyMock = {model: null, log: [], idReads: 0, queue: [], made: 0};
 
   // event logs an Apple Event, which fails where macOS denies them all. A split's or a focus's
   // move of focus lands first, as Ghostty's main queue runs it before the next event.
@@ -277,6 +278,46 @@ var mockRun;
       pid: get('pid', () => ghosttyMock.terminal(id).pid || 0)};
   };
 
+  // make makes a terminal for a command, with a surface configuration c, and is its id. The
+  // model's failAt-th fails: a split throws, and a new window's or tab's never appears, its id
+  // null.
+  ghosttyMock.make = function (c, split) {
+    if (++ghosttyMock.made !== ghosttyMock.model.failAt) {
+      return ghosttyMock.add(c);
+    }
+    if (split) {
+      ghosttyMock.fail(-10000, 'Failed to create split.');
+    }
+    return null;
+  };
+
+  // add adds a terminal with a surface configuration c, whose shell waits at its prompt, as the
+  // fake osascript's AddTerminal does, and is its id.
+  ghosttyMock.add = function (c) {
+    const m = ghosttyMock.model;
+    m.serial = (m.serial || 0) + 1;
+    const id = 'A1000000-0000-4000-8000-' + String(m.serial).padStart(12, '0');
+    const tty = '/dev/ttys9' + String(m.serial).padStart(2, '0');
+    const login = 50000 + ++m.serial;
+    const shell = 50000 + ++m.serial;
+    const start = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    const name = tty.slice('/dev/'.length);
+    m.processes = (m.processes || []).concat([
+      {pid: login, ppid: m.pid, pgid: login, tty: name, start: start,
+        args: ['/usr/bin/login', '-flp', 'me', '/bin/bash', '--noprofile', '--norc', '-c',
+          'exec -l /bin/zsh']},
+      {pid: shell, ppid: login, pgid: shell, tty: name, start: start, args: ['-zsh']}]);
+    m.terminals = m.terminals || {};
+    m.terminals[id] = {name: '', cwd: (c && c.initialWorkingDirectory) || '', pid: shell, tty: tty,
+      typed: null, input: (c && c.initialInput) || ''};
+    return id;
+  };
+
+  // newWindow is a new window of one tab, the terminal id's.
+  ghosttyMock.newWindow = function (id) {
+    return {tabs: [{selected: true, focused: id, tree: {pane: id}}]};
+  };
+
   // type types text into the terminal to, as the fake osascript records it.
   ghosttyMock.type = function (to, text) {
     const t = ghosttyMock.model.terminals[to.mockId];
@@ -285,6 +326,15 @@ var mockRun;
 
   // commands are Ghostty's commands as the scripts send them.
   ghosttyMock.commands = {
+    newWindow: function (opts) {
+      ghosttyMock.event('new window');
+      ghosttyMock.command();
+      const id = ghosttyMock.make(opts.withConfiguration, false);
+      if (id) {
+        ghosttyMock.model.windows.unshift(ghosttyMock.newWindow(id));
+      }
+      return {};
+    },
     sendKey: function (key, opts) {
       const mods = opts.modifiers ? ' ' + opts.modifiers : '';
       ghosttyMock.event('send key ' + key + mods + ' to ' + opts.to.mockId);
