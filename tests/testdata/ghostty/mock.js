@@ -1,7 +1,7 @@
 // cld: mock
 // A mock Ghostty for cld's scripts, which TestTabsScriptsMocked runs under osascript
 // (tests/tabs_scripts_test.go): this file, a script of internal/ghostty/scripts, then mock-end.js.
-// They share one function, in which this file's Application, ObjC, $ and delay hide JXA's own:
+// They share one function, in which this file's Application, ObjC, $, Ref and delay hide JXA's own:
 // UNVERIFIED until the macos job first runs it (decision 59.12).
 // The mock reads a model, argv[1], written as tests/internal/mac writes a Model, and logs each
 // Apple Event a script sends. Its key mock may hold:
@@ -14,7 +14,8 @@
 //   opens: the starts of log lines, an event's or a delay's, after the first of which the user
 //     opens a window, each in turn; raises: likewise, the user bringing the back window to the
 //     front; quits: the start of a log line after which Ghostty quits;
-//   lag: the reads of the windows that a new window misses, 1 where unset.
+//   lag: the reads of the windows that a new window misses, 1 where unset;
+//   gone: the directories that do not exist, where every other one does. The home is /Users/me.
 // Its commands keep Ghostty's rules as v1.4.0's source has them
 // (docs/design/findings/terminals.md): a new window joins the windows a read after the terminals; a
 // new tab goes after its window's selected tab, selected, its terminal focused at once; split
@@ -479,8 +480,8 @@ var mockRun;
     return G;
   }
 
-  // ObjC and $ are the bridge as the scripts use it: NSRunningApplication's Ghostty processes,
-  // which a script reads without an Apple Event.
+  // ObjC, $ and Ref are the bridge as the scripts use it: NSRunningApplication's Ghostty
+  // processes, which a script reads without an Apple Event, and the directories that exist.
   const ObjC = {
     import: function () {},
     unwrap: function (value) {
@@ -500,7 +501,15 @@ var mockRun;
       }
     }
     return {count: found.length, objectAtIndex: (i) => found[i]};
-  }}};
+  }},
+  NSFileManager: {defaultManager: {fileExistsAtPathIsDirectory: function (path, isDirectory) {
+    isDirectory[0] = !(ghosttyMock.model.mock.gone || []).includes(path);
+    return isDirectory[0];
+  }}},
+  NSHomeDirectory: () => '/Users/me'};
+  function Ref() {
+    return [];
+  }
 
   // delay only logs, and lets the user act: the mock keeps no pace.
   function delay(seconds) {
