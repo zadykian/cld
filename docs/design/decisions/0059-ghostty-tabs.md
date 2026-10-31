@@ -231,7 +231,7 @@ fit none, or show the focused pane over the rest: a zoom. Rejected: a tree kept 
 are, which a zoom or a half-read resize can leave wrong. Rejected too: side by side at every tie,
 which makes two equal stacked panes a row, and each run's first tree alone, which loses
 `right(a, down(b, c))`. A rebuilt tab gets its tree, then `equalize_splits`. Rejected for now:
-ratios through `resize_split`, which wait for the sizes of check 10 in #177.
+ratios through `resize_split`, though #177's check 10 has measured the sizes.
 
 ### 59.9 cld's own pane
 
@@ -282,10 +282,10 @@ osascript, ps, ssh, open and ghostty, ptys for the panes' sizes, and real tmux b
 A test holds every term the scripts use to Ghostty's dictionary. On the macos job, osacompile checks
 their syntax, osascript runs them against a mock Ghostty in JavaScript, and cld reads the real ps.
 
-Ghostty's real answers come from #177's spike alone, and its results go into the findings. Until
-then, each behaviour that only a Mac shows is marked UNVERIFIED, with its check, in the one file
-that rests on it. A check that fails changes that file, the part of this decision it backs, and
-the guide where users see it.
+Ghostty's real answers come from #177's spike alone, and its results go into the findings. Each
+behaviour that only a Mac shows, and the spike left out, is marked UNVERIFIED, with its check, in
+the one file that rests on it. A check that fails changes that file, the part of this decision it
+backs, and the guide where users see it.
 
 ## Consequences
 
