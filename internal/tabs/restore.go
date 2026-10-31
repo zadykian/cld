@@ -8,8 +8,9 @@ import (
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// Restore reads Ghostty and reports what it finds. This release has the dry-run's report alone:
-// Ghostty's version, pid and start (decision 59.11).
+// Restore reads Ghostty and merges what it shows into the record, as a tick does, then reports.
+// This release has the dry-run's report alone: Ghostty's version, pid and start (decision 59.11).
+// Where Ghostty does not run, it merges nothing.
 func Restore(ctx context.Context) (*Report, error) {
 	snap, err := ghostty.Take(ctx)
 	if err != nil {
@@ -23,11 +24,28 @@ func Restore(ctx context.Context) (*Report, error) {
 	if err != nil {
 		return nil, failure(err)
 	}
-	procs, err := Processes(ctx)
+	o, err := Observe(ctx, snap)
 	if err != nil {
+		return nil, failure(err)
+	}
+	if err := merge(o); err != nil {
 		return nil, err
 	}
-	return &Report{Lines: []string{c.ghostty(snap, app, procs)}}, nil
+	return &Report{Lines: []string{c.ghostty(snap, app, o.Procs)}}, nil
+}
+
+// merge folds o into the record in cld's state directory, and saves it.
+func merge(o *Observation) error {
+	dir, err := Dir()
+	if err != nil {
+		return err
+	}
+	r, old, err := load(dir)
+	if err != nil {
+		return err
+	}
+	Merge(r, o)
+	return save(dir, r, old)
 }
 
 // failure is err as a restore ends with it: Ghostty's errors with cld's advice, status 1.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,6 +27,23 @@ func Dir() (string, error) {
 		return "", reason(err)
 	}
 	return dir, nil
+}
+
+// load reads the record in dir, and old, its bytes for save. A missing record is a new one, with
+// no bytes.
+func load(dir string) (r *Record, old []byte, err error) {
+	data, err := os.ReadFile(filepath.Join(dir, recordFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return newRecord(), nil, nil
+	}
+	if err != nil {
+		return nil, nil, reason(err)
+	}
+	r = &Record{}
+	if err := json.Unmarshal(data, r); err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", filepath.Join(dir, recordFile), err)
+	}
+	return r, data, nil
 }
 
 // newRecord is the record before any observation.
