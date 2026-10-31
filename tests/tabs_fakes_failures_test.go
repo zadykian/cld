@@ -158,9 +158,9 @@ func testTimeout(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	saveModel(t, s, fakeGhostty(1))
+	start := time.Now() // before the deadline, which counts from WithTimeout's call
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	start := time.Now()
 	extra := map[string]string{"CLD_FAKE_OSASCRIPT_FAIL": "timeout"}
 	result := runCommand(t, fakeCommand(ctx, s, extra, filepath.Join(sandbox.ProbeBin, "osascript"),
 		"-l", "JavaScript", "-e", snapshotScript, "{}"))
