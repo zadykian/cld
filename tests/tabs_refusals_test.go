@@ -2,6 +2,7 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -118,4 +119,30 @@ func checkMovedAside(t *testing.T, s *sandbox.Sandbox, result sandbox.Result, re
 	if r := readRecord(t, s); r.Format != 1 || len(r.Panes) != 1 {
 		t.Errorf("the new record is %+v, want one of format 1 with a pane", r)
 	}
+}
+
+// --watching run by hand, with fd 3 open on a file other than watch, refuses to run, and leaves
+// that file alone. Only the watch file that --watch locks makes a watcher.
+func TestTabsRefusesWatching(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	saveModel(t, s, ghosttyApp(t, s))
+	if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s.WriteFile(watchPath(s), "")
+	other := filepath.Join(s.Root, "other")
+	s.WriteFile(other, "kept\n")
+	file, err := os.OpenFile(other, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close() //nolint:errcheck // cld wrote nothing through it
+	argv := s.CldArgv("restore", "tabs", "--watching")
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env, cmd.Dir, cmd.ExtraFiles = s.Environ(watchEnv), s.Work, []*os.File{file}
+	checkFailed(t, runCommand(t, cmd), 1,
+		"cld: restore tabs --watching runs only as --watch starts it\n")
+	checkContent(t, other, "kept\n")
+	checkContent(t, watchPath(s), "")
 }

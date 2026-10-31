@@ -5,9 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/ghostty"
@@ -19,28 +19,29 @@ const tick = 5 * time.Second
 // watcher is the watcher's state. run and pid are Ghostty's run and pid, once a tick knows them.
 type watcher struct {
 	dir   string
-	watch *os.File // kept for the process's life: its lock is the watcher's
+	watch *os.File // fd 3, kept for the process's life: see holdsLock
 	run   string
 	pid   int
 	log   *logger
 }
 
-// Watch is the watcher, cld restore tabs --watching. Each tick it merges what Ghostty shows into
-// the record, until Ghostty's run ends (decision 59.3).
+// Watch is the watcher, cld restore tabs --watching, which Start runs with watch's lock on fd 3.
+// Each tick it merges what Ghostty shows into the record, until Ghostty's run ends (decision
+// 59.3).
 func Watch() error {
 	dir, err := Dir()
 	if err != nil {
 		return err
 	}
 	w := &watcher{dir: dir, log: &logger{}}
-	watch, locked, err := tryLock(filepath.Join(dir, watchFile))
-	if err != nil || !locked {
+	if w.watch, err = holdsLock(dir); err != nil || w.watch == nil {
 		if err == nil {
 			w.log.line("another watcher holds the record")
 		}
 		return err
 	}
-	w.watch = watch
+	// osascript and ps inherit no lock: only the watcher's own exec keeps fd 3.
+	unix.CloseOnExec(watchFD)
 	if err := writeWatch(w.watch, os.Getpid()); err != nil {
 		return w.stop(err)
 	}
@@ -176,24 +177,4 @@ func sameRecord(a, b os.FileInfo) bool {
 		return a == nil && b == nil
 	}
 	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
-}
-
-// writeWatch writes pids to watch, a line each: the watcher's, then Ghostty's once a tick knows
-// it. watch keeps its time, the last tick's.
-func writeWatch(watch *os.File, pids ...int) error {
-	info, err := watch.Stat()
-	if err != nil {
-		return err
-	}
-	var text strings.Builder
-	for _, pid := range pids {
-		text.WriteString(strconv.Itoa(pid) + "\n")
-	}
-	if err := watch.Truncate(0); err != nil {
-		return err
-	}
-	if _, err := watch.WriteAt([]byte(text.String()), 0); err != nil {
-		return err
-	}
-	return os.Chtimes(watch.Name(), time.Time{}, info.ModTime())
 }
