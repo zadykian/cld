@@ -79,10 +79,11 @@ func lock(dir string, opts Options) (unlock func(), err error) {
 	return func() { unlockRecord(); release() }, nil
 }
 
-// observed is what a restore saw: the record after its merge, and Ghostty, with o nil where
-// Ghostty does not run.
+// observed is what a restore saw: the record after its merge and its bytes as saved, and
+// Ghostty, with o nil where Ghostty does not run.
 type observed struct {
 	record *Record
+	saved  []byte
 	app    ghostty.App
 	o      *Observation
 }
@@ -118,7 +119,8 @@ func observe(ctx context.Context, dir string, opts Options, report *Report) (*ob
 		return nil, failure(err)
 	}
 	Merge(r, o, lastTick(dir))
-	return &observed{record: r, app: app, o: o}, save(dir, r, old)
+	saved, err := save(dir, r, old)
+	return &observed{record: r, saved: saved, app: app, o: o}, err
 }
 
 // ownTTY tells the tty of the pane cld runs in, which a restore never types into: nil where cld's

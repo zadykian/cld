@@ -26,7 +26,7 @@ func apply(
 		}
 	}
 	mark(seen.record, p, res, time.Now())
-	if err := save(dir, seen.record, nil); err != nil {
+	if _, err := save(dir, seen.record, seen.saved); err != nil {
 		report.warn("cannot record what the restore made, so the next one may reopen it: " +
 			err.Error())
 	}
