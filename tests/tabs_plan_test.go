@@ -182,3 +182,24 @@ func TestTabsPlanPending(t *testing.T) {
 		"cld: a window closed at "+clockAt(r.Pending[0].At)+" waits for Ghostty's undo: run "+
 			"cld restore tabs again once it has passed\n"+noWatcher)
 }
+
+// A lost pane open again in Ghostty is never rebuilt: its window comes back without it.
+func TestTabsPlanOpenAgain(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a := addPane(m, "~")
+	m.Windows = []mac.Window{windowOf(tabOf(a))}
+	saveModel(t, s, m)
+	now := time.Now().UTC().Truncate(time.Second)
+	r := recordOf(m, map[string]*tabs.Pane{a: {Kind: "local", Since: now}},
+		tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made", Tree: leaf(a)}}})
+	lost := shellLoss(r.Run.ID, "closed", now.Add(-5*time.Minute), "b")
+	tree := &lost.Windows[0].Tabs[0].Tree
+	*tree = split("right", &tabs.Node{Pane: a, Copy: &tabs.Pane{Kind: "local", Cwd: "/Users/me/a"}},
+		*tree)
+	r.Losses = []*tabs.Loss{lost}
+	writeRecord(t, s, r)
+	checkReport(t, s, "Would reopen 1 window, closed at "+clockAt(lost.At)+
+		":\n  1 tab: a shell in /Users/me/b\n")
+}
