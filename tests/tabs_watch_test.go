@@ -18,8 +18,9 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The watcher's life: the lock it holds, its ticks and its log. It reads Ghostty every 5 s, so
-// these tests wait for its ticks. The helpers that tabs_watch_ticks_test.go shares are here.
+// The watcher's life: how --watch starts it, the lock it holds, and its end as Ghostty quits.
+// It reads Ghostty every 5 s, so these tests wait for its ticks. The helpers that
+// tabs_watch_ticks_test.go shares are here.
 
 // watchEnv is a Ghostty pane's environment beside the sandbox's: --watch starts a watcher there.
 var watchEnv = map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"}
@@ -215,6 +216,41 @@ func TestTabsWatchInGhosttyOnly(t *testing.T) {
 			if _, err := os.Stat(watchPath(s)); !errors.Is(err, os.ErrNotExist) {
 				t.Errorf("watch: %v, want none", err)
 			}
+		})
+	}
+}
+
+// --watch empties watch.log where it has grown past 1 MB, before the watcher writes there. A
+// smaller log keeps its lines, and the watcher's follow them.
+func TestTabsWatchLog(t *testing.T) {
+	t.Parallel()
+	old := "2026-10-16T09:00:00Z a line of an old watcher\n"
+	for _, test := range []struct {
+		name  string
+		lines int
+		want  []string
+	}{
+		{"past 1 MB", 1 << 15, nil},
+		{"smaller", 2, []string{"a line of an old watcher", "a line of an old watcher"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m := ghosttyApp(t, s)
+			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+			saveModel(t, s, m)
+			if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			s.WriteFile(filepath.Join(tabsDir(s), "watch.log"), strings.Repeat(old, test.lines))
+			startWatch(t, s)
+			waitTicked(t, s, m)
+			checkMode(t, watchPath(s), 0o600)
+			quitGhostty(m)
+			sandbox.WaitFor(t, 15*time.Second, "the watcher to end", func() bool {
+				return !watching(t, s)
+			})
+			checkLog(t, s, append(test.want, "Ghostty's run "+runOf(m)+" ended")...)
 		})
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The watcher's ticks, and the record's lock that each merge takes.
+// The watcher's ticks: the failures it stops at, and those it logs and goes on after. Then a
+// record that another cld holds or wrote since the snapshot, and the restart as cld is replaced.
 
 // snapshots is how many snapshots the fake osascript has taken in s.
 func snapshots(t *testing.T, s *sandbox.Sandbox) int {
@@ -35,6 +37,61 @@ func waitSnapshots(t *testing.T, s *sandbox.Sandbox, n int) {
 	sandbox.WaitFor(t, 20*time.Second, "the watcher's ticks", func() bool {
 		return snapshots(t, s) >= n
 	})
+}
+
+// A failure that lasts until the user acts stops the watcher with one line, and leaves the
+// record's bytes. So do AppleScript off in Ghostty's config, and a record a newer cld wrote. A
+// dry-run then shows that no watcher runs, and that line.
+func TestTabsWatchStops(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, mode, record, want string
+	}{
+		{"AppleScript off", "off", "", "stopped: Ghostty says: AppleScript is disabled by the " +
+			"macos-applescript configuration"},
+		{"a newer record", "", `{"format": 2}`,
+			"stopped: tabs.json has format 2, which this cld cannot read: run cld update"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m := ghosttyApp(t, s)
+			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+			tick(t, s, m)
+			if test.record != "" {
+				s.WriteFile(recordPath(s), test.record)
+			}
+			before := readFile(t, recordPath(s))
+			if test.mode != "" {
+				s.WriteProbeFile(mac.FailFile, test.mode+"\n")
+			}
+			startWatch(t, s)
+			sandbox.WaitFor(t, 15*time.Second, "the watcher to stop", func() bool {
+				return !watching(t, s)
+			})
+			checkLog(t, s, test.want)
+			if readFile(t, recordPath(s)) != before {
+				t.Error("tabs.json changed")
+			}
+			if test.mode != "" {
+				checkStoppedReport(t, s)
+			}
+		})
+	}
+}
+
+// checkStoppedReport reports the dry-run in s unless it shows that no watcher runs, and the
+// stopped watcher's last line, as watch.log holds it. It waits for the watcher's pid to go first.
+func checkStoppedReport(t *testing.T, s *sandbox.Sandbox) {
+	t.Helper()
+	pid, _ := watchPIDs(s)
+	waitGone(t, pid)
+	if err := os.Remove(filepath.Join(s.ProbeDir, mac.FailFile)); err != nil {
+		t.Fatal(err)
+	}
+	last := strings.TrimSuffix(readFile(t, filepath.Join(tabsDir(s), "watch.log")), "\n")
+	checkReport(t, s, "The watcher: none runs; cld restore tabs --watch in a Ghostty pane "+
+		"starts one\nThe watcher's last line: "+last+"\n")
 }
 
 // waitGone waits for process pid to go: kill(pid, 0) finds a zombie until its reaping.
