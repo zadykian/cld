@@ -30,13 +30,13 @@ session that cannot come back is a warning, and the status 1. cld setup
 restore has your systemd run cld restore sessions as it starts; cld join
 attaches to a session.`
 
-// newRestore is cld restore, whose commands are restore sessions (decision 60) and tabs, hidden
-// (decision 59.1). It runs nothing itself, as newSetup does: restoreCommand has made sure that one
-// of its commands, or -h or --help, follows it.
+// newRestore is cld restore, whose commands are restore sessions (decision 60) and tabs, for a
+// Mac's Ghostty tabs (decision 59.1). It runs nothing itself, as newSetup does: restoreCommand has
+// made sure that one of its commands, or -h or --help, follows it.
 func newRestore(typed string) *cobra.Command {
 	restore := &cobra.Command{
 		Use:   "restore",
-		Short: "bring back the sessions that ran when the machine stopped",
+		Short: "bring back the sessions a reboot ended, or a Mac's Ghostty tabs",
 	}
 	restore.AddCommand(restoreSessions(typed+" sessions"), restoreTabs(typed+" tabs"))
 	return restore
@@ -46,7 +46,7 @@ func newRestore(typed string) *cobra.Command {
 // setup's (decisions 59.1 and 60.1): sessions, tabs, or -h or --help. cobra would run tabs for
 // restore --help=false tabs.
 func restoreCommand(args []string) error {
-	const hint = "cld restore sessions (see cld help)"
+	const hint = "cld restore sessions or cld restore tabs (see cld help)"
 	switch {
 	case len(args) == 0 || args[0] == "":
 		return fail.Usage("restore: missing command: " + hint)

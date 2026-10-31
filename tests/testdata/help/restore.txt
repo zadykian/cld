@@ -1,10 +1,11 @@
-bring back the sessions that ran when the machine stopped
+bring back the sessions a reboot ended, or a Mac's Ghostty tabs
 
 Usage:
   cld restore [command]
 
 Available Commands:
   sessions    bring back the sessions that ran when the machine stopped
+  tabs        reopen a Mac's Ghostty windows, tabs and splits of cld sessions
 
 Flags:
   -h, --help   help for restore
