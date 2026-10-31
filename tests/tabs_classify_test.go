@@ -9,7 +9,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What each pane shows, as the record keeps it: the leader of its foreground group, through ps.
+// What each pane shows, as the record keeps it: the leader of its foreground group, through ps,
+// and cld's title on an ssh pane.
 
 // shown is what the record keeps of a pane that classification sets.
 type shown struct {
@@ -27,9 +28,6 @@ var classifyCases = []struct {
 	{"ssh", "me@ws: ~", [][]string{ssh("ws")}, shown{Kind: "ssh", Host: "ws"}},
 	{"ssh by its path", "", [][]string{{"/usr/bin/ssh", "ws"}}, shown{Kind: "ssh", Host: "ws"}},
 	{"a login's ssh", "", [][]string{{"-ssh", "ws"}}, shown{Kind: "ssh", Host: "ws"}},
-	{"-zsh", "~", nil, shown{Kind: "local"}},
-	{"a shell by its path", "~", [][]string{{"/bin/zsh"}}, shown{Kind: "local"}},
-	{"a stale title at a prompt", "✳ cld-app-3", nil, shown{Kind: "local"}},
 	{"cld", "✳ cld-app-3", [][]string{ssh("ws")}, shown{Kind: "cld", Host: "ws", Session: "app-3"}},
 	{"cld busy", "◐ cld-app-3", [][]string{ssh("ws")},
 		shown{Kind: "cld", Host: "ws", Session: "app-3", Title: "✳ cld-app-3"}},
@@ -50,24 +48,24 @@ var classifyCases = []struct {
 	{"a NAME of a dot", "✳ cld-.", [][]string{ssh("ws")}, shown{Kind: "ssh", Host: "ws"}},
 	{"cld with options", "✳ cld-app", [][]string{ssh("-p", "22", "me@ws")},
 		shown{Kind: "cld", Host: "me@ws", Session: "app"}},
-	{"cld through ghostty +ssh", "✳ cld-x", [][]string{{ghosttyExecutable, "+ssh", "ws"},
-		ssh("ws")}, shown{Kind: "cld", Host: "ws", Session: "x"}},
-	{"cld through ws-join", "✳ cld-app-3", [][]string{{"/bin/sh", "/Users/me/bin/ws-join", "-n",
-		"app", "-s", "3"}, ssh("-t", "ws", "cld", "join", "-n", "app", "-s", "3")},
-		shown{Kind: "cld", Host: "ws", Session: "app-3"}},
-	{"a host like an option, titled", "✳ cld-app", [][]string{ssh("--", "-x")},
-		shown{Kind: "ssh"}},
-	{"ghostty +ssh", "~", [][]string{{ghosttyExecutable, "+ssh", "ws"}, ssh("ws")},
-		shown{Kind: "ssh", Host: "ws"}},
+	{"ghostty +ssh", "✳ cld-x", [][]string{{ghosttyExecutable, "+ssh", "ws"}, ssh("ws")},
+		shown{Kind: "cld", Host: "ws", Session: "x"}},
 	{"ghostty +ssh before its ssh", "~", [][]string{{ghosttyExecutable, "+ssh", "ws"}},
 		shown{Kind: "other"}},
-	{"ws-join", "~", [][]string{{"/bin/sh", "/Users/me/bin/ws-join", "-n", "app", "-s", "3"},
-		ssh("-t", "ws", "cld", "join", "-n", "app", "-s", "3")}, shown{Kind: "ssh", Host: "ws"}},
+	{"ws-join", "✳ cld-app-3", [][]string{{"/bin/sh", "/Users/me/bin/ws-join", "-n", "app",
+		"-s", "3"}, ssh("-t", "ws", "cld", "join", "-n", "app", "-s", "3")},
+		shown{Kind: "cld", Host: "ws", Session: "app-3"}},
 	{"ws-join by its name", "~", [][]string{{"ws-join", "-n", "app"}, ssh("ws")},
 		shown{Kind: "ssh", Host: "ws"}},
-	{"git push", "~", [][]string{{"git", "push"},
+	{"git push", "✳ cld-app", [][]string{{"git", "push"},
 		ssh("git@github.com", "git-receive-pack", "me/app.git")}, shown{Kind: "other"}},
-	{"a host like an option", "~", [][]string{ssh("--", "-x")}, shown{Kind: "ssh"}},
+	{"-zsh", "~", nil, shown{Kind: "local"}},
+	{"a shell by its path", "~", [][]string{{"/bin/zsh"}}, shown{Kind: "local"}},
+	{"a stale title at a prompt", "✳ cld-app-3", nil, shown{Kind: "local"}},
+	{"vim", "vim", [][]string{{"vim", "notes"}}, shown{Kind: "other"}},
+	{"a local tmux", "~", [][]string{{"tmux", "attach"}}, shown{Kind: "other"}},
+	{"mosh", "~", [][]string{{"mosh", "ws"}}, shown{Kind: "other"}},
+	{"a host like an option", "✳ cld-app", [][]string{ssh("--", "-x")}, shown{Kind: "ssh"}},
 	{"a host with a ;", "~", [][]string{ssh("ws;x")}, shown{Kind: "ssh"}},
 	{"a host of 256", "~", [][]string{ssh(strings.Repeat("h", 256))}, shown{Kind: "ssh"}},
 	{"no host", "~", [][]string{ssh("-v")}, shown{Kind: "ssh"}},
@@ -84,9 +82,6 @@ var classifyCases = []struct {
 		shown{Kind: "ssh", Host: "ws"}},
 	{"flags", "", [][]string{ssh("-46AaCfGgKkMNnqsTtVvXxYy", "ws")},
 		shown{Kind: "ssh", Host: "ws"}},
-	{"vim", "vim", [][]string{{"vim", "notes"}}, shown{Kind: "other"}},
-	{"a local tmux", "~", [][]string{{"tmux", "attach"}}, shown{Kind: "other"}},
-	{"mosh", "~", [][]string{{"mosh", "ws"}}, shown{Kind: "other"}},
 }
 
 // Each pane is what the leader of its foreground group shows. ssh names its host, past its

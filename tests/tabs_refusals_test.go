@@ -11,7 +11,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// What restore tabs refuses: a Mac it cannot read Ghostty on.
+// What restore tabs refuses: a Mac it cannot read Ghostty on, a record it cannot read, and
+// options that exclude each other.
 
 // automationAdvice is what cld says to do where macOS denies it Automation of Ghostty.
 const automationAdvice = ": in System Settings › Privacy & Security › Automation, allow " +
@@ -19,29 +20,29 @@ const automationAdvice = ": in System Settings › Privacy & Security › Automa
 	"Ghostty's panes, tccutil reset AppleEvents com.mitchellh.ghostty resets every Automation " +
 	"grant Ghostty holds"
 
-// Where cld cannot read Ghostty, the dry-run fails with status 1 and cld's message. So do
-// osascript missing, macOS's Automation denied, AppleScript off in Ghostty's config and Ghostty
-// 1.3.1. So do a read that changed twice, and a Ghostty that quit as cld read it or ps. So do
-// osascript's own failure, no answer in 15 s, a Ghostty that quit as cld read it, and Ghostty run
-// twice.
+// Where cld cannot read Ghostty, the dry-run fails with status 1 and cld's message, and leaves the
+// record's bytes. So do osascript missing, macOS's Automation denied, AppleScript off in Ghostty's
+// config and Ghostty 1.3.1. So do a read that changed twice, and a Ghostty that quit as cld read
+// it or ps. So do osascript's own failure, no answer in 15 s, and Ghostty run twice.
 func TestTabsRefusesGhostty(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		name, mode, want string
-		apps             int
+		name, mode string
+		apps       int
+		want       string
 	}{
-		{"no osascript", "", "restore tabs runs on a Mac: osascript is not installed", 0},
-		{"denied", "denied", "macOS denies control of Ghostty" + automationAdvice, 0},
-		{"off", "off", "Ghostty says: AppleScript is disabled by the macos-applescript " +
-			"configuration; set macos-applescript = true in Ghostty's config", 0},
-		{"1.3.1", "old", "restore tabs needs Ghostty 1.4 or newer, and Ghostty 1.3.1 runs", 0},
-		{"changed", "changed", "Ghostty's windows changed twice while cld read them", 0},
-		{"gone", "gone", "Ghostty quit while cld read it", 0},
-		{"no ps row", "", "Ghostty quit while cld read it", 0},
-		{"garbage", "garbage", "osascript: fake osascript: execution error", 0},
-		{"timeout", "timeout", "Ghostty did not answer in 15 s; if macOS asked whether " +
-			"the app cld runs in may control Ghostty, answer, then run cld restore tabs again", 0},
-		{"several", "", "Ghostty runs 2 times, as open -n starts it: quit all but one", 2},
+		{"no osascript", "", 0, "restore tabs runs on a Mac: osascript is not installed"},
+		{"denied", "denied", 0, "macOS denies control of Ghostty" + automationAdvice},
+		{"off", "off", 0, "Ghostty says: AppleScript is disabled by the macos-applescript " +
+			"configuration; set macos-applescript = true in Ghostty's config"},
+		{"1.3.1", "old", 0, "restore tabs needs Ghostty 1.4 or newer, and Ghostty 1.3.1 runs"},
+		{"changed", "changed", 0, "Ghostty's windows changed twice while cld read them"},
+		{"gone", "gone", 0, "Ghostty quit while cld read it"},
+		{"no ps row", "", 0, "Ghostty quit while cld read it"},
+		{"garbage", "garbage", 0, "osascript: fake osascript: execution error"},
+		{"timeout", "timeout", 0, "Ghostty did not answer in 15 s; if macOS asked whether " +
+			"the app cld runs in may control Ghostty, answer, then run cld restore tabs again"},
+		{"several", "", 2, "Ghostty runs 2 times, as open -n starts it: quit all but one"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

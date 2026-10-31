@@ -19,8 +19,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// cld's scripts themselves: the terms of Ghostty's dictionary they use, their syntax where macOS
-// has osacompile, and the real ps.
+// cld's scripts themselves: the terms of Ghostty's dictionary they use, their syntax, their logic
+// against a mock Ghostty, where macOS's osascript runs them, and the real ps.
 
 // scriptsDir holds the scripts cld embeds.
 var scriptsDir = filepath.Join("..", "internal", "ghostty", "scripts")
