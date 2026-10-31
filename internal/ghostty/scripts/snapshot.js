@@ -1,8 +1,10 @@
 // cld: snapshot
 // Reads Ghostty's process, then its windows front to back, and prints them as one JSON document
 // (internal/ghostty/snapshot.go). Where Ghostty does not run it sends no Apple Event.
-// UNVERIFIED until #177's spike (decision 59.12): JXA's spellings, -1743's two steps and
-// errorNumber (4), NSRunningApplication sending no Apple Event and launching nothing (5).
+// UNVERIFIED until #177's spike (decision 59.12): JXA's spellings, and its bulk reads nested by
+// window and tab, pid and tty among them (checks 3, 6); -1743's two steps and errorNumber (4);
+// 1.3.1's tty term throwing with no window (3); a bulk focused terminal read failing on a tab that
+// has none (6); NSRunningApplication sending no Apple Event and launching nothing (5).
 ObjC.import('AppKit');
 
 // read: begin
@@ -35,6 +37,43 @@ function failure(step, e, version) {
   }});
 }
 
+// focusedIds is each tab's focused terminal: in bulk, else tab by tab, '' where one is missing.
+function focusedIds(G, ids) {
+  try {
+    return G.windows.tabs.focusedTerminal.id();
+  } catch (e) {
+    return ids.map((tabs, i) => tabs.map((_, j) => {
+      try {
+        return G.windows[i].tabs[j].focusedTerminal.id();
+      } catch (missing) {
+        return '';
+      }
+    }));
+  }
+}
+
+// windows reads every window with bulk getters, an Apple Event each, or is null where the
+// windows changed between its first read and its last.
+function windows(G) {
+  const ids = G.windows.tabs.terminals.id();
+  const names = G.windows.tabs.terminals.name();
+  const cwds = G.windows.tabs.terminals.workingDirectory();
+  const pids = G.windows.tabs.terminals.pid();
+  const ttys = G.windows.tabs.terminals.tty();
+  const selected = G.windows.tabs.selected();
+  const focused = focusedIds(G, ids);
+  if (JSON.stringify(G.windows.tabs.terminals.id()) !== JSON.stringify(ids)) {
+    return null;
+  }
+  return ids.map((tabs, i) => ({tabs: tabs.map((terms, j) => ({
+    selected: selected[i][j],
+    focused: focused[i][j] || '',
+    terminals: terms.map((id, k) => ({
+      id: id, name: names[i][j][k], cwd: cwds[i][j][k], pid: pids[i][j][k], tty: ttys[i][j][k],
+    })),
+  }))}));
+}
+
 // versionOf is Ghostty's version, '' where the read fails: only the wording uses it, and the
 // getter is Cocoa's, not Ghostty's (Ghostty.sdef:15).
 function versionOf(G) {
@@ -46,7 +85,7 @@ function versionOf(G) {
 }
 
 // snapshot reads Ghostty, found running: the getter whose -1743 is macOS denying Automation, the
-// probe whose -1743 is macos-applescript off, then the version.
+// probe whose -1743 is macos-applescript off, the version, then 1.4's tty term, then the windows.
 function snapshot(G, found) {
   let step = 'count';
   let version = '';
@@ -55,7 +94,18 @@ function snapshot(G, found) {
     step = 'probe';
     G.newSurfaceConfiguration();
     version = versionOf(G);
-    return JSON.stringify({running: true, apps: found, version: version});
+    step = 'tty';
+    G.terminals.tty();
+    step = 'read';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const read = windows(G);
+      if (read !== null) {
+        return JSON.stringify({running: true, apps: found, version: version,
+          terminals: G.terminals.id(), windows: read});
+      }
+    }
+    step = 'changed';
+    throw new Error('the windows changed while cld read them');
   } catch (e) {
     return failure(step, e, version);
   }
