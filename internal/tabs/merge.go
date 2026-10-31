@@ -1,0 +1,121 @@
+package tabs
+
+import (
+	"iter"
+	"maps"
+	"slices"
+
+	"github.com/zadykian/cld/internal/ghostty"
+)
+
+// Merge folds o into r as a tick does (decision 59.4). A run it has not seen before takes the
+// place of the one before. Then the panes o shows update, and the windows follow o's.
+func Merge(r *Record, o *Observation) {
+	switch {
+	case r.Run.ID != o.Run:
+		r.Run = Run{ID: o.Run, Version: o.Version}
+	case r.Run.Version == "":
+		r.Run.Version = o.Version
+	}
+	mergePanes(r, o)
+	mergeWindows(r, o)
+}
+
+// terminals are the terminals of windows, front to back, in tab-bar and leaf order.
+func terminals(windows []ghostty.Window) iter.Seq[ghostty.Terminal] {
+	return func(yield func(ghostty.Terminal) bool) {
+		for _, w := range windows {
+			for _, tab := range w.Tabs {
+				for _, t := range tab.Terminals {
+					if !yield(t) {
+						return
+					}
+				}
+			}
+		}
+	}
+}
+
+// mergePanes updates r's pane of each terminal of o's windows, adding the new ones.
+func mergePanes(r *Record, o *Observation) {
+	for t := range terminals(o.Windows) {
+		p, ok := r.Panes[t.ID]
+		if !ok {
+			p = &Pane{Since: o.Time}
+			r.Panes[t.ID] = p
+		}
+		mergePane(p, t, o.Seen[t.ID])
+	}
+}
+
+// mergePane updates pane p from terminal t and seen. A field the tick could not read keeps its
+// value.
+func mergePane(p *Pane, t ghostty.Terminal, seen Seen) {
+	if t.Cwd != "" {
+		p.Cwd = t.Cwd
+	}
+	if t.TTY != "" {
+		p.TTY = t.TTY
+	}
+	p.Title = seen.Title
+}
+
+// mergeWindows makes r's windows o's, front to back. Each tab keeps its tree where an old tab had
+// its panes in that order. A pane in no window then leaves r.Panes.
+func mergeWindows(r *Record, o *Observation) {
+	old := r.Windows
+	windows := make([]Window, 0, len(o.Windows))
+	for _, w := range o.Windows {
+		var tabs []Tab
+		for _, t := range w.Tabs {
+			ids := make([]string, len(t.Terminals))
+			for i, terminal := range t.Terminals {
+				ids[i] = terminal.ID
+			}
+			if tab, ok := tabFor(ids, t.Selected, t.Focused, old); ok {
+				tabs = append(tabs, tab)
+			}
+		}
+		if len(tabs) > 0 {
+			windows = append(windows, Window{Tabs: tabs})
+		}
+	}
+	r.Windows = windows
+	inWindows := map[string]bool{}
+	for _, w := range windows {
+		for _, id := range windowLeaves(w) {
+			inWindows[id] = true
+		}
+	}
+	maps.DeleteFunc(r.Panes, func(id string, _ *Pane) bool { return !inWindows[id] })
+}
+
+// tabFor is the tab of the panes ids, selected or not, with focused its focused pane where ids
+// holds that pane. False means ids is empty.
+func tabFor(ids []string, selected bool, focused string, old []Window) (Tab, bool) {
+	if len(ids) == 0 {
+		return Tab{}, false
+	}
+	if !slices.Contains(ids, focused) {
+		focused = ""
+	}
+	tree, shape := treeFor(ids, old)
+	return Tab{Selected: selected, Focused: focused, Shape: shape, Tree: tree}, true
+}
+
+// treeFor is the split tree of a tab of the panes ids, and its shape. A tab of old with those
+// panes in that order gives its own, so that a tree cld made stays made. Else the panes make a
+// row: Ghostty's AppleScript gives no split's direction (decision 59.8).
+func treeFor(ids []string, old []Window) (*Node, string) {
+	if len(ids) == 1 {
+		return &Node{Pane: ids[0]}, ShapeMade
+	}
+	for _, w := range old {
+		for _, tab := range w.Tabs {
+			if sameLeaves(tab.Tree, ids) {
+				return copyTree(tab.Tree), tab.Shape
+			}
+		}
+	}
+	return flat(ids), ShapeFlat
+}
