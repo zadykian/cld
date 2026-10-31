@@ -143,23 +143,60 @@ var mockRun;
         },
         focusedTerminal: {id: ghosttyMock.focused},
       },
+      terminals: {id: function () {
+        return ghosttyMock.read('get windows.terminals.id', () => ghosttyMock.windows().map((w) =>
+          [].concat(...w.tabs.map((tab) => ghosttyMock.leaves(tab.tree)))));
+      }},
     };
     Object.defineProperty(spec, 'length', {get: function () {
       return ghosttyMock.read('count windows', () => ghosttyMock.windows().length);
     }});
-    ghosttyMock.windows().forEach((w, i) => {
-      spec[i] = {tabs: w.tabs.map((tab, j) => ({focusedTerminal: {id: function () {
-        ghosttyMock.event('get windows[' + i + '].tabs[' + j + '].focusedTerminal.id');
+    return ghosttyMock.indexed(spec, (i) => ghosttyMock.windowSpec(i));
+  };
+
+  // indexed is spec, whose element i is element(i). As JXA's specifiers, an element names its
+  // place, which a getter or a command finds only as it runs.
+  ghosttyMock.indexed = function (spec, element) {
+    return new Proxy(spec, {get: (target, key) =>
+      typeof key === 'string' && /^[0-9]+$/.test(key) ? element(Number(key)) : target[key]});
+  };
+
+  // windowSpec is G.windows[i]: its tabs, each by its index, and its terminals.
+  ghosttyMock.windowSpec = function (i) {
+    const name = 'windows[' + i + ']';
+    const window = function () {
+      const w = ghosttyMock.windows()[i];
+      if (!w) {
+        ghosttyMock.fail(-1719, 'Invalid index.');
+      }
+      return w;
+    };
+    const tabs = {terminals: {id: function () {
+      return ghosttyMock.read('get ' + name + '.tabs.terminals.id', () =>
+        window().tabs.map((tab) => ghosttyMock.leaves(tab.tree)));
+    }}};
+    Object.defineProperty(tabs, 'length', {get: function () {
+      return ghosttyMock.read('count ' + name + '.tabs', () => window().tabs.length);
+    }});
+    return {mockWindow: window, mockIndex: i, tabs: ghosttyMock.indexed(tabs, (j) => ({
+      mockName: name + '.tabs[' + j + ']',
+      mockTab: () => window().tabs[j] || ghosttyMock.fail(-1719, 'Invalid index.'),
+      focusedTerminal: {id: function () {
+        ghosttyMock.event('get ' + name + '.tabs[' + j + '].focusedTerminal.id');
+        const tab = window().tabs[j] || ghosttyMock.fail(-1719, 'Invalid index.');
         if (!tab.focused) {
           ghosttyMock.fail(-1728, "Can't get focused terminal.");
         }
         return tab.focused;
-      }}}))};
-    });
-    return spec;
+      }},
+    })), terminals: {id: function () {
+      return ghosttyMock.read('get ' + name + '.terminals.id', () =>
+        [].concat(...window().tabs.map((tab) => ghosttyMock.leaves(tab.tree))));
+    }}};
   };
 
-  // terminalsSpec is G.terminals: every terminal of the app, its windows' then those of none.
+  // terminalsSpec is G.terminals: every terminal of the app, its windows' then those of none; and
+  // each by its id.
   ghosttyMock.terminalsSpec = function () {
     const all = function () {
       const ids = [];
@@ -168,10 +205,13 @@ var mockRun;
       }));
       return ids.concat(ghosttyMock.model.hidden || []);
     };
-    const spec = {id: function () {
-      ghosttyMock.event('get terminals.id');
-      return all();
-    }};
+    const spec = {
+      id: function () {
+        ghosttyMock.event('get terminals.id');
+        return all();
+      },
+      byId: ghosttyMock.terminalSpec,
+    };
     if (!ghosttyMock.model.mock.noTty) {
       spec.tty = function () {
         ghosttyMock.event('get terminals.tty');
@@ -179,6 +219,19 @@ var mockRun;
       };
     }
     return spec;
+  };
+
+  // terminalSpec is G.terminals.byId(id): the terminal id, as a command takes it, and its getters.
+  ghosttyMock.terminalSpec = function (id) {
+    const get = function (name, value) {
+      return function () {
+        ghosttyMock.event('get ' + name + ' of ' + id);
+        ghosttyMock.found(id);
+        return value();
+      };
+    };
+    return {mockId: id, id: get('id', () => id),
+      pid: get('pid', () => ghosttyMock.terminal(id).pid || 0)};
   };
 
   // Application is Ghostty's application object, as JXA gives it by bundle id.
