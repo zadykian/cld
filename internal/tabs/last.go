@@ -23,3 +23,18 @@ func clearLast(p *Pane, seen Seen, now time.Time) {
 		}
 	}
 }
+
+// cutAtQuit is the quit of run ended at time at, for panes. A Last that another run set clears, as
+// its second run change has come. Each pane on ssh to a host gets the binding it had. Within a
+// run, nothing sets Last: a dropped connection's cut waits (decision 59.10).
+func cutAtQuit(panes map[string]*Pane, ended string, at time.Time) {
+	for _, p := range panes {
+		if p.Last != nil && p.Last.Run != ended {
+			p.Last = nil
+		}
+		if (p.Kind == KindCld || p.Kind == KindSSH) && p.Host != "" {
+			p.Last = &Last{Host: p.Host, Session: p.Session, Worktree: p.Worktree, Cut: CutQuit,
+				Run: ended, At: at}
+		}
+	}
+}

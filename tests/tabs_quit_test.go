@@ -14,7 +14,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// Ghostty's quits, which a merge sees as a new run: what came back, and what is lost.
+// Ghostty's quits, which a merge sees as a new run: what came back, what is lost, and each
+// pane's last. Then the bounds on the record's losses.
 
 // relaunched is when the relaunched Ghostty of the quit tests started.
 var relaunched = ghosttyStart.Add(24 * time.Hour)
@@ -33,8 +34,9 @@ func quitMac(t *testing.T, s *sandbox.Sandbox) (*mac.Model, []string) {
 	return m, ids
 }
 
-// Where Ghostty brings every window back, the quit loses nothing. Where Ghostty does not run, the
-// dry-run reads the record as if it brought nothing back, and writes nothing.
+// Where Ghostty brings every window back, the quit loses nothing. Each pane that was on ssh to a
+// host keeps that binding as last, which the dry-run lists to join again. Where Ghostty does not
+// run, the dry-run reads the record as if it brought nothing back, and writes nothing.
 func TestTabsQuitBroughtAllBack(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -58,8 +60,18 @@ func TestTabsQuitBroughtAllBack(t *testing.T) {
 	if r.Run.ID != runOf(n) || r.Previous != runOf(m) {
 		t.Errorf("run %s, previous %s, want %s and %s", r.Run.ID, r.Previous, runOf(n), runOf(m))
 	}
-	checkReport(t, s, "Ghostty brought back every window as it quit at "+
-		clockAt(r.Losses[len(r.Losses)-1].At)+"\n")
+	quit := r.Losses[len(r.Losses)-1].At
+	for i, want := range []*tabs.Last{
+		{Host: "ws", Session: "app", Cut: "quit", Run: runOf(m), At: quit},
+		{Host: "ws", Cut: "quit", Run: runOf(m), At: quit},
+		nil,
+		{Host: "ws2", Session: "x", Worktree: true, Cut: "quit", Run: runOf(m), At: quit},
+	} {
+		if got := r.Panes[ids[i]].Last; fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("pane %d: last %+v, want %+v", i, got, want)
+		}
+	}
+	checkReport(t, s, "Ghostty brought back every window as it quit at "+clockAt(quit)+"\n")
 }
 
 // The windows Ghostty does not bring back are the quit's one loss, with their panes as they were.
@@ -87,6 +99,7 @@ func TestTabsQuitBroughtSomeBack(t *testing.T) {
 			r := tick(t, s, relaunch(m, 4242, relaunched, back...))
 			checkRecord(t, test.name, r, named(ids...), test.windows, "", test.want)
 			if len(r.Losses) == 1 {
+				checkBackLast(t, r, ids, back, r.Losses[0].At, runOf(m))
 				checkCopy(t, r.Losses[0], ids[1], shown{Kind: "ssh", Host: "ws", Title: "me@ws: ~"})
 				checkReport(t, s, "Losses:\n  "+test.report+", lost as Ghostty quit at "+
 					clockAt(r.Losses[0].At)+"\n")
@@ -97,6 +110,21 @@ func TestTabsQuitBroughtSomeBack(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// checkBackLast reports the panes back, of quitMac's ids, unless each has the last that the quit
+// of run at time at gave it.
+func checkBackLast(t *testing.T, r *tabs.Record, ids, back []string, at time.Time, run string) {
+	t.Helper()
+	want := map[string]*tabs.Last{
+		ids[0]: {Host: "ws", Session: "app", Cut: "quit", Run: run, At: at},
+		ids[3]: {Host: "ws2", Session: "x", Worktree: true, Cut: "quit", Run: run, At: at},
+	}
+	for _, id := range back {
+		if p := r.Panes[id]; p == nil || fmt.Sprint(p.Last) != fmt.Sprint(want[id]) {
+			t.Errorf("pane %s back: %+v, want last %+v", id, p, want[id])
+		}
 	}
 }
 
@@ -116,6 +144,28 @@ func TestTabsQuitWhilePending(t *testing.T) {
 	r := tick(t, s, relaunch(m, 4242, relaunched, a, d))
 	checkRecord(t, "quit", r, names, "*a/made | *d/made", "",
 		"tab 2 beside a: b/made\nquit: *c/made")
+}
+
+// A last that a quit set clears at the next run change, unless the pane was on ssh again by then.
+func TestTabsQuitClearsLast(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a, b := addPane(m, "✳ cld-a", ssh("ws")), addPane(m, "✳ cld-b", ssh("ws"))
+	m.Windows = []mac.Window{windowOf(tabOf(a), tabOf(b))}
+	tick(t, s, m)
+	second := relaunch(m, 4242, relaunched, a, b)
+	tick(t, s, second)
+	front(second, b, ssh("ws"))
+	second.Terminals[b].Name = "✳ cld-c"
+	tick(t, s, second)
+	r := tick(t, s, relaunch(second, 4343, relaunched.Add(time.Hour), a, b))
+	if last := r.Panes[a].Last; last != nil {
+		t.Errorf("a: last %+v, want none after the second quit", last)
+	}
+	if last := r.Panes[b].Last; last == nil || last.Session != "c" || last.Run != runOf(second) {
+		t.Errorf("b: last %+v, want session c of the second run", last)
+	}
 }
 
 // A quit's time is when the watcher saw Ghostty's run end, else its last tick in that run, else the

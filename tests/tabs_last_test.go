@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -69,5 +70,34 @@ func TestTabsLast(t *testing.T) {
 	}
 	if r.Panes[dead].Last == nil {
 		t.Error("dead: last cleared")
+	}
+}
+
+// Within a run of Ghostty nothing sets last (decision 59.10). A pane that left cld has nothing to
+// join again, nor one that left cld for the host's shell, then the host.
+func TestTabsLastNotWithinARun(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	m := ghosttyApp(t, s)
+	a, b := addPane(m, "✳ cld-app", ssh("ws")), addPane(m, "✳ cld-x", ssh("ws"))
+	m.Windows = []mac.Window{windowOf(tabOf(a), tabOf(b))}
+	tick(t, s, m)
+	front(m, a)
+	front(m, b, ssh("ws"))
+	m.Terminals[b].Name = "me@ws: ~"
+	r := tick(t, s, m)
+	checkPane(t, "cld, then local", r.Panes[a], shown{Kind: "local", Title: "✳ cld-app"},
+		loginOf(m, a))
+	checkPane(t, "cld, then ssh", r.Panes[b], shown{Kind: "ssh", Host: "ws", Title: "me@ws: ~"},
+		loginOf(m, b))
+	front(m, b)
+	r = tick(t, s, m)
+	for _, id := range []string{a, b} {
+		if p := r.Panes[id]; p == nil || p.Kind != "local" || p.Last != nil {
+			t.Errorf("pane %s is %+v, want local with no last", id, p)
+		}
+	}
+	if result := dryRun(t, s); strings.Contains(result.Stdout, "Panes to join again") {
+		t.Errorf("restore tabs --dry-run printed\n%s\nwant no pane to join again", result.Stdout)
 	}
 }

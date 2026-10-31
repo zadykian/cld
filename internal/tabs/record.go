@@ -30,6 +30,12 @@ const (
 	ShapeFlat     = "flat"
 )
 
+// What ended a pane's binding. A dropped connection's cut is deferred (decision 59.10).
+const (
+	CutQuit   = "quit"
+	CutClosed = "closed"
+)
+
 // Record is tabs.json: the panes of Ghostty's current run, its windows, and what it lost. Times are
 // in UTC, to the second, so that a record written again has the same bytes (decision 59.4).
 type Record struct {
