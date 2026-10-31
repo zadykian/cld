@@ -26,8 +26,8 @@ overrides cobra.
   [60.1](../../docs/design/decisions/0060-a-command-for-each-restore.md)).
 - cld's output goes through `output.Print`, cobra's help and completion included, so that a failed
   write is an error ([decision 11](../../docs/design/decisions/0011-go-and-cobra.md)).
-- `help` takes one of cld's commands, a command of `setup` or `completion` after it, a command
-  after `setup config` and a shell after `setup completion`; it refuses anything else
+- `help` takes one of cld's commands, a command of `setup`, `restore` or `completion` after it, a
+  command after `setup config` and a shell after `setup completion`; it refuses anything else
   ([decision 12](../../docs/design/decisions/0012-help-from-cobra.md)).
 - A usage error ends with status 2 before any tool runs; what `join` would lose ends with status 1
   ([decision 50](../../docs/design/decisions/0050-one-command-join.md)).

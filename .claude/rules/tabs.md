@@ -23,8 +23,8 @@ its reasons. Ghostty's behaviour is in the
   argument ([59.2](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - Tell Ghostty's errors apart by the step and JXA's number, never by English, but for
   `macos-applescript`'s text ([59.2](../../docs/design/decisions/0059-ghostty-tabs.md)).
-- A script sends no Apple Event where Ghostty does not run, as one would launch it
-  ([59.2](../../docs/design/decisions/0059-ghostty-tabs.md)).
+- A script sends no Apple Event where Ghostty does not run, nor once the Ghostty an apply began
+  with has gone, as one would launch it ([59.2](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - Until #177's spike, each behaviour that only a Mac shows is marked UNVERIFIED with its check. It
   lives in the one file that rests on it, whose comment names decision 59
   ([59.12](../../docs/design/decisions/0059-ghostty-tabs.md)).
@@ -38,6 +38,11 @@ its reasons. Ghostty's behaviour is in the
   ([59.3](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - The record's panes are those of its windows alone, and a field a tick cannot read keeps its
   value ([59.4](../../docs/design/decisions/0059-ghostty-tabs.md)).
+- A restore takes its own lock without waiting, and holds it and the record's from its merge until
+  the record notes what the apply made ([59.4](../../docs/design/decisions/0059-ghostty-tabs.md)).
+- apply.js reports each terminal a build makes as soon as it exists, so that one a later step fails
+  still enters the record. A loss is restored only once a build made a pane of it, or nothing of it
+  remains to build ([59.6](../../docs/design/decisions/0059-ghostty-tabs.md)).
 
 ## The panes
 
@@ -46,6 +51,9 @@ its reasons. Ghostty's behaviour is in the
   ([59.7](../../docs/design/decisions/0059-ghostty-tabs.md) and
   [59.9](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - Never pass `--detach-others`: a restore would detach the session on another device
+  ([59.7](../../docs/design/decisions/0059-ghostty-tabs.md)).
+- A line goes into a pane as typed input, or as a new terminal's `initial input`, never as a
+  Ghostty `command`. Lines that start an ssh go out at the plan's pace
   ([59.7](../../docs/design/decisions/0059-ghostty-tabs.md)).
 - A session's name and a host are validated, never sanitised: a NAME `session.ValidName` refuses is
   no session, and a host outside letters, digits and `._@-` no host
