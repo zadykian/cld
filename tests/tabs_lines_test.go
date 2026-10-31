@@ -14,8 +14,8 @@ import (
 	"github.com/zadykian/cld/tests/internal/terminal"
 )
 
-// The lines a restore will type (decision 59.7), each run by the baseline terminal. The fake ssh
-// runs its remote half in the sandbox, where cld join --existing meets real tmux.
+// The lines a restore types (decision 59.7), byte for byte, and each run by the baseline terminal.
+// The fake ssh runs its remote half in the sandbox, where cld join --existing meets real tmux.
 
 // The lines that join session app-3, whose NAME splits, and x, which -s alone names, on ws.
 const (
@@ -39,11 +39,10 @@ var typedLines = []struct{ host, session, line string }{
 	{"v6", "", "ssh v6"},
 }
 
-// A restore would type into each pane at its prompt with a last the line that joins it again. That
-// is ssh -t with a login shell that joins the session, from / where -s alone names it, then a
-// shell; or ssh alone. TERM=xterm-256color command starts it where Ghostty has no terminfo cached
-// for the host, as ssh -G's user@hostname names it; a port but 22 joins the key. Each host is
-// asked once. Here the dry-run lists the lines.
+// A restore types into each pane at its prompt with a last the line that joins it again. That is
+// ssh -t with a login shell that joins the session, from / where -s alone names it, then a shell;
+// or ssh alone. TERM=xterm-256color command starts it where Ghostty has no terminfo cached for the
+// host, as ssh -G's user@hostname names it; a port but 22 joins the key. Each host is asked once.
 func TestTabsLines(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -51,31 +50,31 @@ func TestTabsLines(t *testing.T) {
 	s.WriteProbeFile(mac.SSHHosts, "ws3 ws3.lan 2222\nv6 fe80::1 2200\n")
 	m := ghosttyApp(t, s)
 	now := time.Now().UTC().Truncate(time.Second)
-	panes, all := map[string]*tabs.Pane{}, []mac.Tab{}
+	panes, ids, all := map[string]*tabs.Pane{}, []string{}, []mac.Tab{}
+	var stdout strings.Builder
 	for _, test := range typedLines {
 		id := addPane(m, "~")
 		panes[id] = &tabs.Pane{Kind: "local", Since: now, Last: &tabs.Last{Host: test.host,
 			Session: test.session, Cut: "quit", Run: "1@x", At: now}}
-		all = append(all, tabOf(id))
+		ids, all = append(ids, id), append(all, tabOf(id))
+		stdout.WriteString("Typed into the pane in /Users/me: " + bindingOf(test.host,
+			test.session) + "\n")
 	}
 	m.Windows = []mac.Window{windowOf(all...)}
 	saveModel(t, s, m)
 	writeRecord(t, s, recordOf(m, panes))
-	result := dryRun(t, s)
-	for _, test := range typedLines {
-		if want := ": " + test.line + "\n"; !strings.Contains(result.Stdout, want) {
-			t.Errorf("%s on %s: dry-run printed\n%s\nwant the line %q", test.session, test.host,
-				result.Stdout, test.line)
-		}
-	}
-	for _, host := range []string{"ws2", "ws3"} {
-		if want := "  " + uncachedNote(host) + "\n"; !strings.Contains(result.Stdout, want) {
-			t.Errorf("dry-run printed\n%s\nwant the note %q", result.Stdout, want)
+	checkExit(t, "restore tabs", s.RunCld(tabsEnv, "restore", "tabs"), 0, stdout.String(),
+		uncachedNote("ws2")+uncachedNote("ws3")+noWatcher)
+	m = loadModel(t, s)
+	for i, test := range typedLines {
+		if got := m.Terminals[ids[i]].Typed; !slices.Equal(got, []string{"^U", test.line, "\r"}) {
+			t.Errorf("%s on %s: typed %q, want Ctrl+U, %q and Enter", test.session, test.host,
+				got, test.line)
 		}
 	}
 	checkContent(t, filepath.Join(s.ProbeDir, mac.GhosttyLog), "+ssh-cache --host=me@ws\n"+
 		"+ssh-cache --host=me@ws2\n+ssh-cache --host=me@ws3.lan:2222\n"+
-		"+ssh-cache --host=me@[fe80::1]:2200\n+show-config\n")
+		"+ssh-cache --host=me@[fe80::1]:2200\n")
 	var asked []string
 	for _, call := range s.SSHCalls() {
 		asked = append(asked, strings.Join(call.Argv, " "))
@@ -85,11 +84,22 @@ func TestTabsLines(t *testing.T) {
 	}
 }
 
-// uncachedNote is the dry-run's note on host, whose terminfo Ghostty has not cached.
+// noWatcher is the restore's note where no watcher runs and cld runs in no Ghostty pane.
+const noWatcher = "cld: no watcher runs here: the next ssh in a Ghostty pane starts one\n"
+
+// uncachedNote is the restore's note on host, whose terminfo Ghostty has not cached.
 func uncachedNote(host string) string {
-	return host + " has no Ghostty terminfo cached: cld types TERM=xterm-256color command ssh;" +
-		" with shell-integration-features = ssh-terminfo, run ssh " + host +
-		" once and later restores keep Ghostty's TERM"
+	return "cld: " + host + " has no Ghostty terminfo cached: cld types TERM=xterm-256color " +
+		"command ssh; with shell-integration-features = ssh-terminfo, run ssh " + host +
+		" once and later restores keep Ghostty's TERM\n"
+}
+
+// bindingOf is what a restore's report calls a pane's binding.
+func bindingOf(host, session string) string {
+	if session == "" {
+		return "ssh to " + host
+	}
+	return "session '" + session + "' on " + host
 }
 
 // lineCase is a typed line run where the host has sessions: the session it joins, by its NAME,
