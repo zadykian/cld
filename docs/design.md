@@ -26,7 +26,8 @@ findings it rests on, and a finding links back.
   `detach-client`.
 - [claude](design/findings/claude.md): its versions and command line, exiting, worktrees, resuming,
   settings, hooks, agent view and background sessions, and what it does in a terminal.
-- [Terminals](design/findings/terminals.md): JediTerm, VS Code, iTerm2 and the other terminals.
+- [Terminals](design/findings/terminals.md): JediTerm, VS Code, iTerm2 and the other terminals,
+  and Ghostty's AppleScript on macOS.
 - [Environment](design/findings/environment.md): shells, completion, cobra, `install.sh` and
   GitHub, git, Go and Linux, telemetry, JetBrains IDEs, systemd and ssh.
 
