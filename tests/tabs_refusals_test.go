@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/zadykian/cld/tests/internal/mac"
@@ -61,5 +64,58 @@ func TestTabsRefusesGhostty(t *testing.T) {
 				t.Error("tabs.json changed")
 			}
 		})
+	}
+}
+
+// A record of a newer format is refused and left for the cld that wrote it. One that does not
+// parse, or of format 0, is moved aside with a warning, and a new one starts.
+func TestTabsRefusesRecord(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, record, want string
+		aside              bool
+	}{
+		{"newer", `{"format": 2, "panes": []}`,
+			"cld: tabs.json has format 2, which this cld cannot read: run cld update\n", false},
+		{"corrupt", `{"format": 1, "panes": [`, "", true},
+		{"format 0", `{"format": 0, "panes": {}}`, "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			s := sandbox.New(t)
+			m := ghosttyAt(ghosttyPID, ghosttyStart)
+			m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "~")))}
+			saveModel(t, s, m)
+			if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			s.WriteFile(recordPath(s), test.record)
+			result := dryRun(t, s)
+			if !test.aside {
+				checkFailed(t, result, 1, test.want)
+				checkContent(t, recordPath(s), test.record)
+				return
+			}
+			checkMovedAside(t, s, result, test.record)
+		})
+	}
+}
+
+// movedAside matches the warning of a record moved aside, and names the file it went to.
+var movedAside = regexp.MustCompile(
+	`^cld: warning: moved aside a record cld cannot read: (.*/tabs\.json\.bad-\d{8}T\d{6}Z)\n$`)
+
+// checkMovedAside reports result unless it warned, with status 1, of the record moved aside to
+// a file that holds record. A new record must have taken its place.
+func checkMovedAside(t *testing.T, s *sandbox.Sandbox, result sandbox.Result, record string) {
+	t.Helper()
+	match := movedAside.FindStringSubmatch(result.Stderr)
+	if result.Code != 1 || match == nil || filepath.Dir(match[1]) != tabsDir(s) {
+		t.Fatalf("exit %d, stderr %q, want status 1 and the record moved aside in %s",
+			result.Code, result.Stderr, tabsDir(s))
+	}
+	checkContent(t, match[1], record)
+	if r := readRecord(t, s); r.Format != 1 || len(r.Panes) != 1 {
+		t.Errorf("the new record is %+v, want one of format 1 with a pane", r)
 	}
 }

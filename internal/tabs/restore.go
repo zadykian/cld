@@ -17,8 +17,10 @@ func Restore(ctx context.Context) (*Report, error) {
 		return nil, failure(err)
 	}
 	c := clock{now: time.Now()}
+	report := &Report{}
 	if !snap.Running {
-		return &Report{Lines: []string{c.ghostty(snap, ghostty.App{}, nil)}}, nil
+		report.Lines = []string{c.ghostty(snap, ghostty.App{}, nil)}
+		return report, nil
 	}
 	app, err := snap.Ghostty()
 	if err != nil {
@@ -28,22 +30,25 @@ func Restore(ctx context.Context) (*Report, error) {
 	if err != nil {
 		return nil, failure(err)
 	}
-	if err := merge(o); err != nil {
+	if err := merge(o, report); err != nil {
 		return nil, err
 	}
-	return &Report{Lines: []string{c.ghostty(snap, app, o.Procs)}}, nil
+	report.Lines = []string{c.ghostty(snap, app, o.Procs)}
+	return report, nil
 }
 
-// merge folds o into the record in cld's state directory, and saves it.
-func merge(o *Observation) error {
+// merge folds o into the record in cld's state directory, and saves it. A record cld cannot read
+// is moved aside, with a warning in report.
+func merge(o *Observation, report *Report) error {
 	dir, err := Dir()
 	if err != nil {
 		return err
 	}
-	r, old, err := load(dir)
+	r, old, warning, err := load(dir)
 	if err != nil {
 		return err
 	}
+	report.warn(warning)
 	Merge(r, o)
 	return save(dir, r, old)
 }

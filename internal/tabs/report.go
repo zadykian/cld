@@ -16,6 +16,14 @@ type Report struct {
 	Failed   bool
 }
 
+// warn adds warning, where there is one: a failed step.
+func (r *Report) warn(warning string) {
+	if warning != "" {
+		r.Warnings = append(r.Warnings, warning)
+		r.Failed = true
+	}
+}
+
 // clock writes the report's times, in local time: of today as 15:04, of another day with its
 // date.
 type clock struct {
