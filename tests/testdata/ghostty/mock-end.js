@@ -9,6 +9,9 @@
     const out = run(argv);
     ghosttyMock.settle();
     delete ghosttyMock.model.mock;
+    ghosttyMock.model.windows.forEach((w) => {
+      delete w.lag;
+    });
     return JSON.stringify({result: JSON.parse(out), model: ghosttyMock.model,
       log: ghosttyMock.log});
   };
