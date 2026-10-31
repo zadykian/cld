@@ -58,7 +58,19 @@ func runMocked(t *testing.T, name, input string, m *mac.Model, mock map[string]a
 	return result
 }
 
-// snapshot.js reads no Ghostty that does not run.
+// snapshotReads are the Apple Events snapshot.js sends to read windowsModel's Ghostty. Each read
+// of a property is one event for every terminal, nested by window and tab. A tab with no focused
+// terminal fails the bulk read of focus, which is then read tab by tab.
+var snapshotReads = []string{"count windows", "new surface configuration", "get version",
+	"get terminals.tty", "get windows.tabs.terminals.id", "get windows.tabs.terminals.name",
+	"get windows.tabs.terminals.workingDirectory", "get windows.tabs.terminals.pid",
+	"get windows.tabs.terminals.tty", "get windows.tabs.selected",
+	"get windows.tabs.focusedTerminal.id", "get windows[0].tabs[0].focusedTerminal.id",
+	"get windows[0].tabs[1].focusedTerminal.id", "get windows[1].tabs[0].focusedTerminal.id",
+	"get windows.tabs.terminals.id", "get terminals.id"}
+
+// snapshot.js reads Ghostty's windows in bulk, nested by window and tab, and reads no Ghostty that
+// does not run.
 func TestTabsScriptsMocked(t *testing.T) {
 	t.Parallel()
 	if _, err := os.Stat(realOsascript); err != nil {
@@ -71,7 +83,11 @@ func TestTabsScriptsMocked(t *testing.T) {
 			if !sameJSON(t, got.Result, []byte(withIDs(test.want))) {
 				t.Errorf("printed %s, want %s", got.Result, withIDs(test.want))
 			}
-			if len(got.Log) != 0 {
+			if test.name == "windows" && strings.Join(got.Log, "\n") !=
+				strings.Join(snapshotReads, "\n") {
+				t.Errorf("sent %q, want %q", got.Log, snapshotReads)
+			}
+			if test.name == "not running" && len(got.Log) != 0 {
 				t.Errorf("sent %q to a Ghostty that does not run", got.Log)
 			}
 		})
@@ -92,6 +108,7 @@ func mockedSnapshots() []mockedSnapshot {
 	stopped := fakeGhostty()
 	stopped.Running = false
 	return []mockedSnapshot{
+		{"windows", windowsModel(), nil, windowsSnapshot},
 		{"not running", stopped, nil, `{"running": false, "apps": []}`},
 	}
 }
