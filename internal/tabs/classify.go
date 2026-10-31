@@ -31,8 +31,8 @@ func classify(t ghostty.Terminal, procs Table, g int) Seen {
 	}
 	tty := strings.TrimPrefix(t.TTY, "/dev/")
 	login := procs.Login(tty, g)
-	// UNVERIFIED until #177's check 9 (decision 59.12). pid is the foreground group's, ssh leading
-	// it where ssh runs, and the pane's login is Ghostty's child.
+	// pid is the foreground group's, ssh leading it where ssh runs, and the pane's login is
+	// Ghostty's child.
 	leader, ok := procs.ByPID(t.PID)
 	if !ok || leader.TTY != tty {
 		return Seen{Keep: true, Title: title, Login: login}
@@ -72,8 +72,8 @@ func front(leader Process, group []Process) Seen {
 }
 
 // wraps reports whether the leader named name runs ssh as its child: Ghostty's ssh wrapper,
-// ghostty +ssh, or ws's ws-join, a sh script. UNVERIFIED until #177's check 9 (decision 59.12):
-// the shapes both take in macOS's ps.
+// ghostty +ssh, or ws's ws-join, a sh script. The first has the shape macOS's ps shows; the
+// second's is UNVERIFIED until #177's check 9 (decision 59.12).
 func wraps(leader Process, name string) bool {
 	switch name {
 	case "ghostty":

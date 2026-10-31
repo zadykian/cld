@@ -24,8 +24,8 @@ const (
 )
 
 // Settings are what +show-config says of the settings restore tabs's notes name. It prints only
-// what differs from Ghostty's defaults, so a setting it leaves out has its default: UNVERIFIED
-// until #177's check 13 (decision 59.12).
+// what differs from Ghostty's defaults, so a setting it leaves out has its default (probed on
+// 1.4.0, see the findings).
 type Settings struct {
 	Read           bool   // false: no ghostty ran +show-config
 	SaveState      string // window-save-state: "default" where no line names it
