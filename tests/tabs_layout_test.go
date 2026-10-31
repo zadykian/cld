@@ -155,13 +155,43 @@ func runLayout(t *testing.T, cases []layoutCase) {
 	}
 }
 
-// A tab's splits come back as a row for now: the sizes of its panes are read, and merge.go does
-// not use them yet.
+// Ghostty's splits come back from the panes' sizes, with each split's share. Equal panes fit side
+// by side and stacked alike: the tab's shape nearest 1.4 times as wide as tall wins. Of two of one
+// size, the one split side by side first does: a grid of four comes back as columns, from either.
 func TestTabsLayout(t *testing.T) {
 	t.Parallel()
-	a, b, c := leaf("a"), leaf("b"), leaf("c")
+	a, b, c, d, e, f := leaf("a"), leaf("b"), leaf("c"), leaf("d"), leaf("e"), leaf("f")
 	runLayout(t, []layoutCase{
+		{"side by side", retina, cut("right", 0.5, a, b), "*right(a,b)/inferred", []float64{0.5}},
+		{"stacked", retina, cut("down", 0.5, a, b), "*down(a,b)/inferred", []float64{0.5}},
 		{"three in a row", retina, cut("right", 1.0/3, a, cut("right", 0.5, b, c)),
-			"*right(a,right(b,c))/flat", []float64{0, 0}},
+			"*right(a,right(b,c))/inferred", []float64{0.33, 0.5}},
+		{"beside two stacked", retina, cut("right", 0.5, a, cut("down", 0.5, b, c)),
+			"*right(a,down(b,c))/inferred", []float64{0.5, 0.5}},
+		{"an L", retina, cut("down", 0.5, cut("right", 0.5, a, b), c),
+			"*down(right(a,b),c)/inferred", []float64{0.5, 0.5}},
+		{"a grid by rows", retina, cut("down", 0.5, cut("right", 0.5, a, b),
+			cut("right", 0.5, c, d)), "*right(down(a,b),down(c,d))/inferred",
+			[]float64{0.5, 0.5, 0.5}},
+		{"a grid by columns", retina, cut("right", 0.5, cut("down", 0.5, a, b),
+			cut("down", 0.5, c, d)), "*right(down(a,b),down(c,d))/inferred",
+			[]float64{0.5, 0.5, 0.5}},
+		{"a grid whose rows do not line up", retina, cut("down", 0.5, cut("right", 0.5, a, b),
+			cut("right", 0.53, c, d)), "*down(right(a,b),right(c,d))/inferred",
+			[]float64{0.5, 0.5, 0.53}},
+		{"a column of four", retina, cut("down", 0.5, cut("down", 0.5, a, b),
+			cut("down", 0.5, c, d)), "*down(a,down(b,down(c,d)))/inferred",
+			[]float64{0.25, 0.33, 0.5}},
+		{"three over one", retina, cut("down", 0.5, cut("right", 0.5, cut("right", 0.5, a, b), c),
+			d), "*down(right(a,right(b,c)),d)/inferred", []float64{0.5, 0.25, 0.33}},
+		{"five panes", retina, cut("down", 0.5, cut("down", 0.5, cut("right", 0.5, a, b), c),
+			cut("down", 0.5, d, e)), "*down(right(a,b),down(c,down(d,e)))/inferred",
+			[]float64{0.25, 0.5, 0.33, 0.5}},
+		{"six panes", retina, cut("down", 0.5, a, cut("down", 0.5, b, cut("down", 0.5, c,
+			cut("right", 0.5, d, cut("down", 0.5, e, f))))),
+			"*down(a,down(b,down(c,right(d,down(e,f)))))/inferred",
+			[]float64{0.51, 0.51, 0.51, 0.5, 0.49}},
+		{"other ratios", retina, cut("right", 0.7, a, cut("down", 0.3, b, c)),
+			"*right(a,down(b,c))/inferred", []float64{0.7, 0.3}},
 	})
 }
