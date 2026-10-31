@@ -26,28 +26,13 @@ var watchEnv = map[string]string{"TZ": "UTC", "TERM_PROGRAM": "ghostty"}
 // watchPath is the watcher's file in s: locked for its life, its pid and Ghostty's within.
 func watchPath(s *sandbox.Sandbox) string { return filepath.Join(tabsDir(s), "watch") }
 
-// startWatch runs cld restore tabs --watching in s, as a Ghostty pane's environment has it, with
-// its stderr in watch.log. The watchers in s are killed as the test ends.
+// startWatch runs cld restore tabs --watch in s from a Ghostty pane, which exits 0 printing
+// nothing. The watchers in s are killed as the test ends.
 func startWatch(t *testing.T, s *sandbox.Sandbox) {
 	t.Helper()
 	t.Cleanup(func() { killWatchers(t, s) })
-	argv := s.CldArgv("restore", "tabs", "--watching")
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Args[0], cmd.Env, cmd.Dir = "cld", s.Environ(watchEnv), s.Work
-	if err := os.MkdirAll(tabsDir(s), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	log, err := os.OpenFile(filepath.Join(tabsDir(s), "watch.log"),
-		os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer log.Close() //nolint:errcheck // the watcher holds its own copy
-	cmd.Stderr = log
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	go func() { _ = cmd.Wait() }() //nolint:errcheck // the watcher's status is no test's
+	checkExit(t, "restore tabs --watch", s.RunCld(watchEnv, "restore", "tabs", "--watch"), 0, "",
+		"")
 }
 
 // killWatchers kills the watcher whose pid watch names, while one holds its lock, until none
