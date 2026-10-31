@@ -105,3 +105,46 @@ func checkOwnDryRun(t *testing.T, s *sandbox.Sandbox, p *sandbox.Pty, want strin
 			"alone, not %+v", result.Code, result.Stdout, want, s.SSHCalls())
 	}
 }
+
+// After Ghostty's relaunch, a restore runs from a pane that showed session app before the quit.
+// Its merge is the run's first: the pane gets app as its last, and cld joins it again there.
+func TestTabsOwnRelaunch(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	s.WriteProbeFile(mac.SSHCache, "me@ws\n")
+	m := ghosttyApp(t, s)
+	a := addPane(m, "✳ cld-app", ssh("ws"))
+	m.Windows = []mac.Window{windowOf(tabOf(a))}
+	tick(t, s, m)
+	quitGhostty(m)
+	n := relaunch(m, 4242, relaunched, a)
+	p := onPty(t, n, a)
+	saveModel(t, s, n)
+	checkExit(t, "restore tabs", s.RunCldWithInput(p.Terminal, ownEnv, "restore", "tabs"), 0,
+		"Joining session 'app' on ws here\n", noWatcher)
+	checkOwnSSH(t, s, "xterm-ghostty")
+	if l := readRecord(t, s).Panes[a].Last; l == nil || l.Session != "app" || l.Typed == nil {
+		t.Errorf("a's last %+v, want session app, typed", l)
+	}
+}
+
+// A pane whose last is plain ssh to a host joins it again by ssh HOST.
+func TestTabsOwnHost(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	s.WriteProbeFile(mac.SSHCache, "me@ws\n")
+	m := ghosttyApp(t, s)
+	a := addPane(m, "~")
+	p := onPty(t, m, a)
+	m.Windows = []mac.Window{windowOf(tabOf(a))}
+	saveModel(t, s, m)
+	now := time.Now().UTC().Truncate(time.Second)
+	writeRecord(t, s, recordOf(m, map[string]*tabs.Pane{a: {Kind: "local", Since: now,
+		Last: &tabs.Last{Host: "ws", Cut: "quit", Run: "1@x", At: now}}}))
+	checkExit(t, "restore tabs", s.RunCldWithInput(p.Terminal, ownEnv, "restore", "tabs"), 0,
+		"Joining ws here\n", noWatcher)
+	if calls := s.SSHCalls(); len(calls) == 0 ||
+		!slices.Equal(calls[len(calls)-1].Argv, []string{"ws"}) {
+		t.Errorf("ssh.jsonl holds %+v, want ssh ws last", calls)
+	}
+}
