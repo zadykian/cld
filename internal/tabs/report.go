@@ -39,6 +39,12 @@ func dryRun(ctx context.Context, seen *observed, report *Report) {
 	report.Lines = append(report.Lines, c.ghostty(seen))
 	if r := seen.record; r != nil {
 		report.section("Losses:", c.losses(r.Losses))
+		for _, l := range r.Losses {
+			if l.Cause == CauseQuit && len(l.Windows) == 0 {
+				report.Lines = append(report.Lines,
+					"Ghostty brought back every window as it quit at "+c.at(l.At))
+			}
+		}
 		report.section("Waiting for Ghostty's undo:", c.losses(r.Pending))
 	}
 	report.section("Notes:", settingsNotes(ctx, seen.app))
@@ -64,7 +70,7 @@ func (c clock) at(t time.Time) string {
 // start is the one NSRunningApplication gave, else the one of ps's row for the pid.
 func (c clock) ghostty(seen *observed) string {
 	if seen.o == nil {
-		return "Ghostty is not running"
+		return "Ghostty is not running: the record as if it brought nothing back"
 	}
 	line := "Ghostty"
 	if seen.o.Version != "" {

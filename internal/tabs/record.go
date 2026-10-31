@@ -33,12 +33,13 @@ const (
 // Record is tabs.json: the panes of Ghostty's current run, its windows, and what it lost. Times are
 // in UTC, to the second, so that a record written again has the same bytes (decision 59.4).
 type Record struct {
-	Format  int              `json:"format"`
-	Run     Run              `json:"run"`
-	Panes   map[string]*Pane `json:"panes"`   // by terminal id: the panes of Windows
-	Windows []Window         `json:"windows"` // front to back; hidden-only ones last
-	Pending []*Loss          `json:"pending"` // gone, their logins still alive
-	Losses  []*Loss          `json:"losses"`  // oldest first
+	Format   int              `json:"format"`
+	Run      Run              `json:"run"`
+	Previous string           `json:"previous,omitempty"` // the run before Run, by id
+	Panes    map[string]*Pane `json:"panes"`              // by terminal id: the panes of Windows
+	Windows  []Window         `json:"windows"`            // front to back; hidden-only ones last
+	Pending  []*Loss          `json:"pending"`            // gone, their logins still alive
+	Losses   []*Loss          `json:"losses"`             // oldest first
 }
 
 // Run is one run of Ghostty, from its launch to its quit.

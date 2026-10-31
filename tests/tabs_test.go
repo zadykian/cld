@@ -81,7 +81,8 @@ func TestTabsDryRunRuns(t *testing.T) {
 	}{
 		{"running", func(*mac.Model) {}, started},
 		{"no launch date", func(m *mac.Model) { m.Launched = 0 }, started},
-		{"not running", func(m *mac.Model) { m.Running = false }, "Ghostty is not running\n"},
+		{"not running", func(m *mac.Model) { m.Running = false },
+			"Ghostty is not running: the record as if it brought nothing back\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

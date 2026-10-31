@@ -9,14 +9,15 @@ import (
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
-// Merge folds o into r as a tick does (decision 59.4). A run it has not seen before takes the
-// place of the one before. Then the pending losses o shows are undone, the panes o shows update,
-// those it shows nowhere go pending, the windows follow o's, and pending losses whose logins are
-// gone count.
+// Merge folds o into r as a tick does (decision 59.4). A new run is a quit of the one before. Then
+// the pending losses o shows are undone, the panes o shows update, those it shows nowhere go
+// pending, the windows follow o's, and pending losses whose logins are gone count.
 func Merge(r *Record, o *Observation) {
 	switch {
-	case r.Run.ID != o.Run:
+	case r.Run.ID == "":
 		r.Run = Run{ID: o.Run, Version: o.Version}
+	case r.Run.ID != o.Run:
+		runChange(r, o)
 	case r.Run.Version == "":
 		r.Run.Version = o.Version
 	}

@@ -3,13 +3,13 @@ package tabs
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
 )
 
 // Restore reads Ghostty and merges what it shows into the record, as a tick does, then reports.
-// This release has the dry-run's report alone: what the record holds (decision 59.11). Where
-// Ghostty does not run, it merges nothing.
+// This release has the dry-run's report alone: what the record holds (decision 59.11).
 func Restore(ctx context.Context) (*Report, error) {
 	report := &Report{}
 	seen, err := observe(ctx, report)
@@ -28,14 +28,27 @@ type observed struct {
 	o      *Observation
 }
 
-// observe reads Ghostty and merges what it shows into the record, as a tick does.
+// observe reads Ghostty and merges what it shows into the record in cld's state directory, as a
+// tick does, and saves it. Where Ghostty does not run, the merge is that of a run that brings
+// nothing back, and writes nothing. A record cld cannot read is moved aside, with a warning in
+// report.
 func observe(ctx context.Context, report *Report) (*observed, error) {
 	snap, err := ghostty.Take(ctx)
 	if err != nil {
 		return nil, failure(err)
 	}
+	dir, err := Dir()
+	if err != nil {
+		return nil, err
+	}
+	r, old, warning, err := load(dir)
+	if err != nil {
+		return nil, err
+	}
+	report.warn(warning)
 	if !snap.Running {
-		return &observed{}, nil
+		Merge(r, &Observation{Time: time.Now().UTC().Truncate(time.Second)})
+		return &observed{record: r}, nil
 	}
 	app, err := snap.Ghostty()
 	if err != nil {
@@ -45,11 +58,8 @@ func observe(ctx context.Context, report *Report) (*observed, error) {
 	if err != nil {
 		return nil, failure(err)
 	}
-	r, err := merge(o, report)
-	if err != nil {
-		return nil, err
-	}
-	return &observed{record: r, app: app, o: o}, nil
+	Merge(r, o)
+	return &observed{record: r, app: app, o: o}, save(dir, r, old)
 }
 
 // ownTTY tells the tty of the pane cld runs in, which a restore never types into: nil where cld's
@@ -60,22 +70,6 @@ func ownTTY() func(tty string) bool {
 		return nil
 	}
 	return func(tty string) bool { return sameDevice(tty, dev) }
-}
-
-// merge folds o into the record in cld's state directory, saves it, and returns it. A record cld
-// cannot read is moved aside, with a warning in report.
-func merge(o *Observation, report *Report) (*Record, error) {
-	dir, err := Dir()
-	if err != nil {
-		return nil, err
-	}
-	r, old, warning, err := load(dir)
-	if err != nil {
-		return nil, err
-	}
-	report.warn(warning)
-	Merge(r, o)
-	return r, save(dir, r, old)
 }
 
 // failure is err as a restore ends with it: Ghostty's errors with cld's advice, status 1.
