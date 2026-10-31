@@ -2,6 +2,7 @@ package tests
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -231,4 +232,23 @@ func TestTabsNeedsNoTmux(t *testing.T) {
 	if r := readRecord(t, s); len(r.Panes) != 1 {
 		t.Errorf("recorded %d panes, want 1", len(r.Panes))
 	}
+}
+
+// drawLosses draws losses, a line each: the cause, where a tab or split goes back, and its
+// windows as drawWindows draws them. A tab goes back as "tab 2 beside a", the second in a's
+// window, and a split as "pane right of a".
+func drawLosses(losses []*tabs.Loss, names map[string]string) string {
+	var lines []string
+	for _, l := range losses {
+		line := l.Cause
+		switch a := l.Anchor; {
+		case a == nil:
+		case a.Split != "":
+			line += " " + a.Split + " of " + names[a.Pane]
+		default:
+			line += fmt.Sprintf(" %d beside %s", a.Index, names[a.Pane])
+		}
+		lines = append(lines, line+": "+drawWindows(l.Windows, names))
+	}
+	return strings.Join(lines, "\n")
 }

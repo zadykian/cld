@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -9,23 +10,29 @@ import (
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
 
-// The record's merges within one run of Ghostty: panes move between tabs and windows.
+// The record's merges within one run of Ghostty. Panes move, and windows, tabs and splits close,
+// wait for Ghostty's undo, and count as lost once their logins are gone.
 
-// checkRecord reports r, what a step left, unless its windows draw as want does, with names for
-// the panes.
-func checkRecord(t *testing.T, step string, r *tabs.Record, names map[string]string, want string) {
+// checkRecord reports r, what a step left, unless its windows, its pending losses and its losses
+// draw as want's lines do, with names for the panes.
+func checkRecord(
+	t *testing.T, step string, r *tabs.Record, names map[string]string, want ...string,
+) {
 	t.Helper()
-	if got := drawWindows(r.Windows, names); got != want {
-		t.Errorf("%s: the record holds\n%s\nwant\n%s", step, got, want)
+	got := []string{drawWindows(r.Windows, names), drawLosses(r.Pending, names),
+		drawLosses(r.Losses, names)}
+	if strings.Join(got, "\n--\n") != strings.Join(want, "\n--\n") {
+		t.Errorf("%s: the record holds\n%s\nwant\n%s", step, strings.Join(got, "\n--\n"),
+			strings.Join(want, "\n--\n"))
 	}
 }
 
-// A pane that moves to another tab or window keeps its since.
+// A pane that moves to another tab or window loses nothing, and keeps its since.
 func TestTabsMergeMoves(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	m := ghosttyAt(812, ghosttyStart)
-	a, b, c := addPane(m, "~"), addPane(m, "~"), addPane(m, "~")
+	m := ghosttyApp(t, s)
+	a, b, c := addPane(m, "✳ cld-x", ssh("ws")), addPane(m, "~"), addPane(m, "~")
 	names := named(a, b, c)
 	m.Windows = []mac.Window{windowOf(tabOf(a), tabOf(b)), windowOf(tabOf(c))}
 	first := tick(t, s, m)
@@ -43,7 +50,7 @@ func TestTabsMergeMoves(t *testing.T) {
 	} {
 		m.Windows = step.windows
 		r := tick(t, s, m)
-		checkRecord(t, step.name, r, names, step.want)
+		checkRecord(t, step.name, r, names, step.want, "", "")
 		for _, id := range []string{a, b, c} {
 			if p := r.Panes[id]; p == nil || !p.Since.Equal(first.Panes[id].Since) {
 				t.Errorf("%s: pane %s is %+v, want since %v", step.name, names[id], p,
@@ -59,24 +66,24 @@ func TestTabsMergeMoves(t *testing.T) {
 func TestTabsMergeHidden(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	m := ghosttyAt(812, ghosttyStart)
+	m := ghosttyApp(t, s)
 	a, b, quick := addPane(m, "~"), addPane(m, "~"), addPane(m, "~")
 	names := named(a, b)
 	m.Windows, m.Hidden = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b))}, []string{quick}
 	r := tick(t, s, m)
-	checkRecord(t, "shown", r, names, "*a/made | *b/made")
+	checkRecord(t, "shown", r, names, "*a/made | *b/made", "", "")
 	run := r.Run.ID
 	m.Windows, m.Hidden = []mac.Window{windowOf(tabOf(a))}, []string{quick, b}
 	sshCache := m.NewPID()
 	m.Processes = append(m.Processes, mac.Process{PID: sshCache, PPID: 1, PGID: sshCache,
 		Start: time.Now().UTC().Truncate(time.Second), Args: []string{ghosttyExecutable, "+ssh"}})
 	for range 2 {
-		checkRecord(t, "minimized", tick(t, s, m), names, "*a/made | *b/made")
+		checkRecord(t, "minimized", tick(t, s, m), names, "*a/made | *b/made", "", "")
 	}
 	m.Windows, m.Hidden = []mac.Window{windowOf(tabOf(a)), windowOf(tabOf(b))}, nil
 	m.Processes = m.Processes[:len(m.Processes)-1]
 	r = tick(t, s, m)
-	checkRecord(t, "back, the quick terminal closed", r, names, "*a/made | *b/made")
+	checkRecord(t, "back, the quick terminal closed", r, names, "*a/made | *b/made", "", "")
 	if r.Panes[quick] != nil || r.Run.ID != run {
 		t.Errorf("the record holds %+v and run %s, want no quick terminal and run %s",
 			r.Panes[quick], r.Run.ID, run)
