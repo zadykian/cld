@@ -13,7 +13,8 @@ import (
 
 // shown is what the record keeps of a pane that classification sets.
 type shown struct {
-	Kind, Host, Title string
+	Kind, Host, Session, Title string
+	Worktree                   bool
 }
 
 // classifyCases are TestTabsClassify's panes: a title, the jobs in front of the pane's shell,
@@ -29,6 +30,33 @@ var classifyCases = []struct {
 	{"-zsh", "~", nil, shown{Kind: "local"}},
 	{"a shell by its path", "~", [][]string{{"/bin/zsh"}}, shown{Kind: "local"}},
 	{"a stale title at a prompt", "✳ cld-app-3", nil, shown{Kind: "local"}},
+	{"cld", "✳ cld-app-3", [][]string{ssh("ws")}, shown{Kind: "cld", Host: "ws", Session: "app-3"}},
+	{"cld busy", "◐ cld-app-3", [][]string{ssh("ws")},
+		shown{Kind: "cld", Host: "ws", Session: "app-3", Title: "✳ cld-app-3"}},
+	{"cld busy, a second on", "◑ cld-app-3", [][]string{ssh("ws")},
+		shown{Kind: "cld", Host: "ws", Session: "app-3", Title: "✳ cld-app-3"}},
+	{"cld in a worktree", "✳ cld-app [w]", [][]string{ssh("ws")},
+		shown{Kind: "cld", Host: "ws", Session: "app", Worktree: true}},
+	{"cld busy in a worktree", "◐ cld-app [w]", [][]string{ssh("ws")},
+		shown{Kind: "cld", Host: "ws", Session: "app", Worktree: true, Title: "✳ cld-app [w]"}},
+	{"a marker to come", "◇ cld-app", [][]string{ssh("ws")},
+		shown{Kind: "cld", Host: "ws", Session: "app"}},
+	{"no marker", "cld-app", [][]string{ssh("ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"two words before", "a b cld-app", [][]string{ssh("ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"a NAME of 64", "✳ cld-" + strings.Repeat("a", 64), [][]string{ssh("ws")},
+		shown{Kind: "cld", Host: "ws", Session: strings.Repeat("a", 64)}},
+	{"a NAME too long", "✳ cld-" + strings.Repeat("a", 65), [][]string{ssh("ws")},
+		shown{Kind: "ssh", Host: "ws"}},
+	{"a NAME of a dot", "✳ cld-.", [][]string{ssh("ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"cld with options", "✳ cld-app", [][]string{ssh("-p", "22", "me@ws")},
+		shown{Kind: "cld", Host: "me@ws", Session: "app"}},
+	{"cld through ghostty +ssh", "✳ cld-x", [][]string{{ghosttyExecutable, "+ssh", "ws"},
+		ssh("ws")}, shown{Kind: "cld", Host: "ws", Session: "x"}},
+	{"cld through ws-join", "✳ cld-app-3", [][]string{{"/bin/sh", "/Users/me/bin/ws-join", "-n",
+		"app", "-s", "3"}, ssh("-t", "ws", "cld", "join", "-n", "app", "-s", "3")},
+		shown{Kind: "cld", Host: "ws", Session: "app-3"}},
+	{"a host like an option, titled", "✳ cld-app", [][]string{ssh("--", "-x")},
+		shown{Kind: "ssh"}},
 	{"ghostty +ssh", "~", [][]string{{ghosttyExecutable, "+ssh", "ws"}, ssh("ws")},
 		shown{Kind: "ssh", Host: "ws"}},
 	{"ghostty +ssh before its ssh", "~", [][]string{{ghosttyExecutable, "+ssh", "ws"}},
@@ -62,8 +90,8 @@ var classifyCases = []struct {
 }
 
 // Each pane is what the leader of its foreground group shows. ssh names its host, past its
-// options' values, directly or as the child of ghostty +ssh or ws-join. A shell is local,
-// whatever its title, and any other program other.
+// options' values, directly or as the child of ghostty +ssh or ws-join; cld's title on it names
+// the session. A shell is local, whatever its title, and any other program other.
 func TestTabsClassify(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
@@ -106,7 +134,8 @@ func checkPane(t *testing.T, what string, p *tabs.Pane, want shown, login int) {
 		t.Errorf("%s: no pane in the record", what)
 		return
 	}
-	got := shown{Kind: p.Kind, Host: p.Host, Title: p.Title}
+	got := shown{Kind: p.Kind, Host: p.Host, Session: p.Session, Title: p.Title,
+		Worktree: p.Worktree}
 	if got != want || p.Login != login {
 		t.Errorf("%s: recorded %+v, login %d, want %+v, login %d", what, got, p.Login, want, login)
 	}

@@ -54,8 +54,8 @@ func mergePanes(r *Record, o *Observation) {
 }
 
 // mergePane updates pane p from terminal t and seen. A field the tick could not read keeps its
-// value: a dead pane keeps its host, and a pane ps could not place keeps what it showed. Since
-// moves where the host changes.
+// value: a dead pane keeps its binding, and a pane ps could not place keeps what it showed. Since
+// moves where the host or the session changes.
 func mergePane(p *Pane, t ghostty.Terminal, seen Seen, now time.Time) {
 	if t.Cwd != "" {
 		p.Cwd = t.Cwd
@@ -71,10 +71,11 @@ func mergePane(p *Pane, t ghostty.Terminal, seen Seen, now time.Time) {
 	case seen.Kind == KindDead:
 		p.Kind = KindDead
 	default:
-		if seen.Host != p.Host {
+		if seen.Host != p.Host || seen.Session != p.Session {
 			p.Since = now
 		}
-		p.Kind, p.Host, p.Title = seen.Kind, seen.Host, seen.Title
+		p.Kind, p.Host, p.Session = seen.Kind, seen.Host, seen.Session
+		p.Worktree, p.Title = seen.Worktree, seen.Title
 	}
 }
 

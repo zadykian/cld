@@ -2,28 +2,32 @@ package tabs
 
 import (
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/zadykian/cld/internal/ghostty"
 	"github.com/zadykian/cld/internal/remote"
+	"github.com/zadykian/cld/internal/session"
 )
 
 // Seen is what a pane shows at an observation (decision 59.5).
 type Seen struct {
-	Kind  string
-	Host  string
-	Title string
-	Login int
-	Keep  bool // ps cannot tell: keep the earlier observation
+	Kind, Host, Session string
+	Worktree            bool
+	Title               string // busy markers as ✳
+	Login               int
+	Keep                bool // ps cannot tell: keep the earlier observation
 }
 
 // classify reads what terminal t shows from ps's rows, Ghostty's pid being g. The leader of the
 // pane's foreground group tells it: ssh, directly or under a wrapper, a shell at its prompt, or
-// another program.
+// another program. An ssh pane is cld's where its title is cld's. A title counts only while ssh
+// is in front, so that a shell keeps no stale title's session.
 func classify(t ghostty.Terminal, procs Table, g int) Seen {
+	title := normalTitle(t.Name)
 	if t.PID == 0 || t.TTY == "" {
-		return Seen{Kind: KindDead, Title: t.Name}
+		return Seen{Kind: KindDead, Title: title}
 	}
 	tty := strings.TrimPrefix(t.TTY, "/dev/")
 	login := procs.Login(tty, g)
@@ -31,10 +35,15 @@ func classify(t ghostty.Terminal, procs Table, g int) Seen {
 	// it where ssh runs, and the pane's login is Ghostty's child.
 	leader, ok := procs.ByPID(t.PID)
 	if !ok || leader.TTY != tty {
-		return Seen{Keep: true, Title: t.Name, Login: login}
+		return Seen{Keep: true, Title: title, Login: login}
 	}
 	seen := front(leader, procs.Group(t.PID, tty))
-	seen.Title, seen.Login = t.Name, login
+	seen.Title, seen.Login = title, login
+	if seen.Kind == KindSSH && seen.Host != "" {
+		if name, worktree, ok := titleSession(t.Name); ok {
+			seen.Kind, seen.Session, seen.Worktree = KindCld, name, worktree
+		}
+	}
 	return seen
 }
 
@@ -116,6 +125,32 @@ func valueNext(letters string) bool {
 		}
 	}
 	return false
+}
+
+// titleRE matches cld's title: a marker word, cld-NAME, then " [w]" in a worktree (decisions 25
+// and 26). Any single marker word matches, so that a new marker breaks nothing, and any word as
+// NAME, which session.ValidName then judges.
+var titleRE = regexp.MustCompile(`^\S+ cld-(\S+)( \[w\])?$`)
+
+// titleSession is the session cld's title names, and whether in a worktree. It reports false for
+// any other title, and for a NAME that session.ValidName refuses.
+func titleSession(title string) (name string, worktree, ok bool) {
+	match := titleRE.FindStringSubmatch(title)
+	if match == nil || !session.ValidName(match[1]) {
+		return "", false, false
+	}
+	return match[1], match[2] != "", true
+}
+
+// normalTitle is title with a busy marker at its start turned into ✳. The markers turn every
+// second, and would otherwise write the record again at every tick.
+func normalTitle(title string) string {
+	for _, marker := range []string{session.BusyEven, session.BusyOdd} {
+		if rest, ok := strings.CutPrefix(title, marker); ok {
+			return "✳" + rest
+		}
+	}
+	return title
 }
 
 // shells are the programs whose pane is at its prompt.
