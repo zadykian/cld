@@ -48,7 +48,7 @@ func restoreTabs(typed string) *cobra.Command {
 	return command
 }
 
-// run runs restore tabs: the watcher, its start, or the dry-run. A usage error ends it before any
+// run runs restore tabs: the watcher, its start, or the restore. A usage error ends it before any
 // tool runs. Then osascript, which only a Mac has, must be on the PATH.
 func (t *tabsCommand) run(*cobra.Command, []string) error {
 	if err := t.together(); err != nil {
@@ -69,7 +69,20 @@ func (t *tabsCommand) run(*cobra.Command, []string) error {
 	if err != nil {
 		return err
 	}
-	return printReport(report)
+	if err := printReport(report); err != nil {
+		return err
+	}
+	if own := report.Own; own != nil {
+		// A failed step's status is lost to the exec, its warnings out first (decision 59.9).
+		if err := output.Print(own.Joining() + "\n"); err != nil {
+			return err
+		}
+		return own.Exec()
+	}
+	if report.Failed {
+		return fail.Status(1)
+	}
+	return nil
 }
 
 // together refuses the options that exclude each other: --watching takes none, --watch only
@@ -99,8 +112,8 @@ func (t *tabsCommand) together() error {
 	return nil
 }
 
-// printReport prints report: its lines, then its warnings and notes. A failed step makes the
-// status 1, after them (decision 48.8).
+// printReport prints report: its lines, then its warnings and notes. Its error is only that of a
+// write that failed.
 func printReport(report *tabs.Report) error {
 	if len(report.Lines) > 0 {
 		if err := output.Print(strings.Join(report.Lines, "\n") + "\n"); err != nil {
@@ -112,9 +125,6 @@ func printReport(report *tabs.Report) error {
 	}
 	for _, note := range report.Notes {
 		output.Note(note)
-	}
-	if report.Failed {
-		return fail.Status(1)
 	}
 	return nil
 }

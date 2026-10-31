@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -139,20 +140,26 @@ func TestTabsDryRunNever(t *testing.T) {
 		"after Cmd+Q\n")
 }
 
-// restore tabs runs neither tmux nor claude: a PATH of the tools it runs is enough.
+// restore tabs runs neither tmux nor claude: a PATH of the tools it runs is enough. Here it opens
+// Ghostty, types into a pane it brought back, and reopens a window, for a host whose terminfo
+// Ghostty lacks. Its stdin is no pane's, so nothing execs.
 func TestTabsNeedsNoTmux(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
-	m := ghosttyApp(t, s)
-	m.Windows = []mac.Window{windowOf(tabOf(addPane(m, "✳ cld-x", []string{"ssh", "ws"})))}
-	saveModel(t, s, m)
-	tools := s.Tools("osascript", "ps", "ghostty")
-	result := s.RunCld(map[string]string{"TZ": "UTC", "PATH": tools}, "restore", "tabs", "--dry-run")
-	if result.Code != 0 || result.Stderr != "" {
-		t.Errorf("exit %d, stderr %q, want exit 0 and no stderr", result.Code, result.Stderr)
+	a, ended := stoppedMac(t, s)
+	tools := s.Tools("osascript", "ps", "ssh", "open", "ghostty")
+	result := s.RunCld(map[string]string{"TZ": "UTC", "PATH": tools}, "restore", "tabs")
+	checkExit(t, "restore tabs", result, 0, "Typed into the pane in /Users/me: session 'app' on "+
+		"ws\nReopened a window of 1 tab, lost as Ghostty quit at "+clockAt(ended)+"\n",
+		uncachedNote("ws")+noWatcher)
+	m := loadModel(t, s)
+	join := func(name string) string { return uncached + strings.Replace(wholeLine, "-s x", name, 1) }
+	if typed := m.Terminals[a].Typed; !slices.Equal(typed, []string{"^U", join("-s app"), "\r"}) {
+		t.Errorf("typed %q into a, want the line that joins app", typed)
 	}
-	if r := readRecord(t, s); len(r.Panes) != 1 {
-		t.Errorf("recorded %d panes, want 1", len(r.Panes))
+	if made := m.Terminals[m.Windows[0].Tabs[0].Focused]; made == nil ||
+		made.Input != join("-s x")+"\n" {
+		t.Errorf("the window reopened has %+v, want the line that joins x", made)
 	}
 }
 

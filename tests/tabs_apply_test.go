@@ -248,3 +248,17 @@ func TestTabsApplyTyped(t *testing.T) {
 		t.Errorf("last %+v, want it kept, typed at or after %v", last, start)
 	}
 }
+
+// A second restore, while one runs, is refused with status 1. The first types its line once.
+func TestTabsApplyRefusesSecond(t *testing.T) {
+	t.Parallel()
+	s := sandbox.New(t)
+	typedMac(t, s)
+	wait := heldRestore(t, s)
+	checkFailed(t, s.RunCld(tabsEnv, "restore", "tabs"), 1,
+		"cld: another cld restore tabs runs\n")
+	checkExit(t, "the first restore", wait(), 0,
+		"Typed into the pane in /Users/me: session 'app' on ws\n", noWatcher)
+	checkTyped(t, loadModel(t, s), map[int][]string{1: {"^U",
+		strings.Replace(wholeLine, "-s x", "-s app", 1), "\r"}})
+}

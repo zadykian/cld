@@ -23,8 +23,8 @@ type Options struct {
 }
 
 // Restore is cld restore tabs (decision 59.6). It merges what Ghostty shows into the record, as a
-// tick does, then types into the panes Ghostty kept, under both locks. A dry-run reports what it
-// would do instead.
+// tick does, opening Ghostty where it does not run. Then it types into the panes Ghostty kept,
+// under both locks. A dry-run reports what it would do instead.
 func Restore(ctx context.Context, opts Options) (*Report, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -35,7 +35,7 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 		return nil, err
 	}
 	report := &Report{}
-	seen, err := observe(ctx, dir, report)
+	seen, err := observe(ctx, dir, opts, report)
 	if err != nil {
 		unlock()
 		return nil, err
@@ -48,7 +48,7 @@ func Restore(ctx context.Context, opts Options) (*Report, error) {
 	}
 	res := apply(ctx, dir, seen, p, report)
 	unlock()
-	finish(dir, seen, p, res, report)
+	finish(dir, seen, p, res, left, report)
 	return report, nil
 }
 
@@ -79,21 +79,27 @@ func lock(dir string, opts Options) (unlock func(), err error) {
 	return func() { unlockRecord(); release() }, nil
 }
 
-// observed is what a restore saw: the record after its merge, and Ghostty, with o nil where
-// Ghostty does not run.
+// observed is what a restore saw: the record after its merge and its bytes as saved, and
+// Ghostty, with o nil where Ghostty does not run.
 type observed struct {
 	record *Record
+	saved  []byte
 	app    ghostty.App
 	o      *Observation
 }
 
 // observe reads Ghostty and merges what it shows into the record in dir, as a tick does, under the
-// record's lock. Where Ghostty does not run, the merge is that of a run that brings nothing back,
-// and writes nothing.
-func observe(ctx context.Context, dir string, report *Report) (*observed, error) {
+// record's lock. A restore opens Ghostty where it does not run. A dry-run does not: its merge is
+// that of a run that brings nothing back, and writes nothing.
+func observe(ctx context.Context, dir string, opts Options, report *Report) (*observed, error) {
 	snap, err := ghostty.Take(ctx)
 	if err != nil {
 		return nil, failure(err)
+	}
+	if !snap.Running && !opts.DryRun {
+		if snap, err = opened(ctx, report); err != nil {
+			return nil, err
+		}
 	}
 	r, old, warning, err := load(dir)
 	if err != nil {
@@ -113,7 +119,8 @@ func observe(ctx context.Context, dir string, report *Report) (*observed, error)
 		return nil, failure(err)
 	}
 	Merge(r, o, lastTick(dir))
-	return &observed{record: r, app: app, o: o}, save(dir, r, old)
+	saved, err := save(dir, r, old)
+	return &observed{record: r, saved: saved, app: app, o: o}, err
 }
 
 // ownTTY tells the tty of the pane cld runs in, which a restore never types into: nil where cld's

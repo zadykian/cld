@@ -205,16 +205,23 @@ func testPartial(t *testing.T) {
 }
 
 // The delay file holds the next snapshot back for its seconds, after it read the model and
-// removed the file: a model saved meanwhile shows only in the snapshot after. An apply leaves it.
+// removed the file: a model saved meanwhile shows only in the snapshot after. An apply leaves it,
+// and waits as the apply delay file says once it has built.
 func testDelay(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	saveModel(t, s, fakeGhostty(1))
 	s.WriteProbeFile(mac.DelayFile, "2\n")
+	s.WriteProbeFile(mac.ApplyDelayFile, "1\n")
+	start := time.Now()
 	checkPrinted(t, "an apply", osascript(t, s, nil, applyScript, `{`+pace+`, "typed": [],
 	  "builds": [{"kind": "window", "tabs": [{"tree": {"leaf": {"key": "a"}}}]}]}`).Stdout,
 		withIDs(`{"typed": [], "builds": [{"keys": {"a": "@4"}}]}`))
-	start := time.Now()
+	if time.Since(start) < time.Second || exists(filepath.Join(s.ProbeDir, mac.ApplyDelayFile)) {
+		t.Errorf("the apply answered after %v, want 1 s, and the apply delay file gone",
+			time.Since(start))
+	}
+	start = time.Now()
 	wait := startCommand(t, fakeCommand(t.Context(), s, nil, filepath.Join(sandbox.ProbeBin,
 		"osascript"), "-l", "JavaScript", "-e", snapshotScript, "{}"))
 	sandbox.WaitFor(t, 10*time.Second, "the snapshot to take the delay file", func() bool {

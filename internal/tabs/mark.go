@@ -8,13 +8,22 @@ import (
 )
 
 // mark records in r, at time now, what apply did of plan p, under the record's lock (decision
-// 59.6). res is apply's result, nil where it gave none. Each build's terminals enter the record
-// as panes at their prompt, in the windows it made.
+// 59.6). res is apply's result. A nil res changes only the dedupe's panes and cld's own: a merge
+// enters the panes made instead. cld's own pane is typed by its exec. Each build's terminals enter
+// the record as panes at their prompt, in the windows it made.
 func mark(r *Record, p *Planned, res *ghostty.Result, now time.Time) {
+	now = now.UTC().Truncate(time.Second)
+	for _, id := range p.deduped {
+		if pane := r.Panes[id]; pane != nil {
+			pane.Last = nil
+		}
+	}
+	if p.own != nil {
+		typedAt(r.Panes[p.own.pane], now)
+	}
 	if res == nil {
 		return
 	}
-	now = now.UTC().Truncate(time.Second)
 	for i := range min(len(res.Typed), len(p.typed)) {
 		if t := res.Typed[i]; t.Error == "" && !t.Busy {
 			typedAt(r.Panes[p.typed[i].pane], now)
@@ -37,8 +46,8 @@ func mark(r *Record, p *Planned, res *ghostty.Result, now time.Time) {
 	}
 }
 
-// typedAt notes on pane p that a restore typed its Last's line at time now. A tick leaves the Last
-// until the line has had its time to join (decision 59.4).
+// typedAt notes on pane p that a restore typed its Last's line at time now, or execs it. A tick
+// leaves the Last until the line has had its time to join (decision 59.4).
 func typedAt(p *Pane, now time.Time) {
 	if p != nil && p.Last != nil {
 		p.Last.Typed = new(now)

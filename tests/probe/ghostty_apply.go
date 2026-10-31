@@ -8,9 +8,9 @@ import (
 )
 
 // apply applies apply.js's plan to m, a Ghostty that runs, in Go and not by apply.js's commands.
-// It saves what it typed and built, and prints the result, unless mode fails it. With partial, it
-// fails as garbage does once it has typed and made the first build. With short, it prints what it
-// did by then, as an apply.js that stopped early would.
+// It saves what it typed and built, waits as the apply delay file says, and prints the result,
+// unless mode fails it. With partial, it fails as garbage does once it has typed and made the
+// first build. With short, it prints what it did by then, as an apply.js that stopped early would.
 func apply(dir string, m *mac.Model, p *plan, mode string) error {
 	switch failure, canned := applyFailures[mode]; {
 	case canned:
@@ -32,6 +32,9 @@ func apply(dir string, m *mac.Model, p *plan, mode string) error {
 		out.Builds = append(out.Builds, a.build(b))
 	}
 	if err := mac.Save(dir, m); err != nil {
+		return err
+	}
+	if err := hold(dir, mac.ApplyDelayFile); err != nil {
 		return err
 	}
 	switch {

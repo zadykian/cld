@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/zadykian/cld/internal/ghostty"
@@ -13,7 +14,7 @@ import (
 // apply runs plan p's script in Ghostty, then records what it made in the record seen, under the
 // locks Restore holds (decision 59.6). A plan with nothing to do runs nothing, and its result is
 // empty. The result is nil where the apply gave none. A record it cannot write is a warning, as
-// what the apply made is made: the report still says so.
+// what the apply made is made: the report still says so, and cld's own pane joins again.
 func apply(
 	ctx context.Context, dir string, seen *observed, p *Planned, report *Report,
 ) *ghostty.Result {
@@ -25,7 +26,7 @@ func apply(
 		}
 	}
 	mark(seen.record, p, res, time.Now())
-	if err := save(dir, seen.record, nil); err != nil {
+	if _, err := save(dir, seen.record, seen.saved); err != nil {
 		report.warn("cannot record what the restore made, so the next one may reopen it: " +
 			err.Error())
 	}
@@ -65,20 +66,31 @@ func appeared(o *Observation, snap *ghostty.Snapshot) int {
 	return n
 }
 
-// finish ends a restore that ran plan p against the record seen, apply giving res: its report and
-// notes, the losses waiting for Ghostty's undo among them.
-func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, report *Report) {
+// finish ends a restore that ran plan p against the record seen, apply giving res. It reports,
+// notes the losses waiting for Ghostty's undo, then starts the watcher where cld runs in a Ghostty
+// pane. Once the report is out, cmd joins cld's own pane again by exec (decision 59.9).
+func finish(dir string, seen *observed, p *Planned, res *ghostty.Result, left []*Loss,
+	report *Report,
+) {
 	c := newClock()
 	c.restored(seen.record, p, res, report)
 	for _, l := range seen.record.Pending {
 		report.note(noun(l) + " " + c.when(l) + " waits for Ghostty's undo: run cld restore tabs" +
 			" again once it has passed")
 	}
-	report.Notes = append(report.Notes, p.notes()...)
+	report.Notes = append(report.Notes, p.notes(c)...)
+	if len(left) > 0 {
+		report.note(leftNote(left))
+	}
 	if os.Getenv("TERM_PROGRAM") != "ghostty" {
 		if WatcherStatus(dir).PID == 0 {
 			report.note("no watcher runs here: the next ssh in a Ghostty pane starts one")
 		}
+	} else if _, err := Start(); err != nil {
+		report.warn(cannotStart + strings.TrimPrefix(err.Error(), cannotStart))
+	}
+	if p.own != nil {
+		report.Own = ownJoin(p.own)
 	}
 }
 
@@ -143,4 +155,36 @@ func tabsBeside(r *Record, anchor string) int {
 		}
 	}
 	return 0
+}
+
+// leftNote is the restore's note on the losses it left.
+func leftNote(losses []*Loss) string {
+	var windows, tabs, splits int
+	for _, l := range losses {
+		switch l.Cause {
+		case CauseTab:
+			tabs++
+		case CausePane:
+			splits++
+		default:
+			windows += len(l.Windows)
+		}
+	}
+	var what []string
+	for _, n := range []struct {
+		count int
+		thing string
+	}{{windows, "lost window"}, {tabs, "closed tab"}, {splits, "closed split"}} {
+		if n.count > 0 {
+			what = append(what, count(n.count, n.thing))
+		}
+	}
+	left := strings.Join(what, ", ")
+	if n := len(what); n > 1 {
+		left = strings.Join(what[:n-1], ", ") + " and " + what[n-1]
+	}
+	if windows+tabs+splits == 1 {
+		return left + " is left: cld restore tabs --dry-run lists it"
+	}
+	return left + " are left: cld restore tabs --dry-run lists them"
 }
