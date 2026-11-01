@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/zadykian/cld/internal/tabs"
 	"github.com/zadykian/cld/tests/internal/mac"
 	"github.com/zadykian/cld/tests/internal/sandbox"
 )
@@ -67,18 +68,19 @@ func TestTabsRefusesGhostty(t *testing.T) {
 	}
 }
 
-// A record of a newer format is refused and left for the cld that wrote it. One that does not
-// parse, or of format 0, is moved aside with a warning, and a new one starts.
+// A record of a newer schema is refused and left for the cld that wrote it. One that does not
+// parse, or names no schema of cld's, is moved aside with a warning, and a new one starts.
 func TestTabsRefusesRecord(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name, record, want string
 		aside              bool
 	}{
-		{"newer", `{"format": 2, "panes": []}`,
-			"cld: tabs.json has format 2, which this cld cannot read: run cld update\n", false},
-		{"corrupt", `{"format": 1, "panes": [`, "", true},
-		{"format 0", `{"format": 0, "panes": {}}`, "", true},
+		{"newer", `{"$schema": "` + schemaOf(2) + `", "panes": []}`,
+			"cld: tabs.json has schema v2, which this cld cannot read: run cld update\n", false},
+		{"corrupt", `{"$schema": "` + tabs.Schema + `", "panes": [`, "", true},
+		{"no schema", `{"panes": {}}`, "", true},
+		{"another schema", `{"$schema": "` + schemaOf(0) + `", "panes": {}}`, "", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -115,8 +117,8 @@ func checkMovedAside(t *testing.T, s *sandbox.Sandbox, result sandbox.Result, re
 			result.Code, result.Stderr, tabsDir(s))
 	}
 	checkContent(t, match[1], record)
-	if r := readRecord(t, s); r.Format != 1 || len(r.Panes) != 1 {
-		t.Errorf("the new record is %+v, want one of format 1 with a pane", r)
+	if r := readRecord(t, s); r.Schema != tabs.Schema || len(r.Panes) != 1 {
+		t.Errorf("the new record is %+v, want one of schema v1 with a pane", r)
 	}
 }
 

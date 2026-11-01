@@ -39,7 +39,7 @@
   Title…, or a `name override` set to `""`, hands the title back to the pane's programs.
 - **`restore tabs needs Ghostty 1.4 or newer`.** Update Ghostty: 1.3.1's AppleScript does not tell
   what runs in a pane ([Ghostty's tabs](ghostty-tabs.md)).
-- **`tabs.json has format N, which this cld cannot read`.** A newer cld wrote the record of
+- **`tabs.json has schema vN, which this cld cannot read`.** A newer cld wrote the record of
   Ghostty's tabs. Run `cld update`.
 - **`missing or unsuitable terminal: xterm-ghostty`** from tmux on a host, or another program
   there that does not know `xterm-ghostty`. The host lacks Ghostty's terminfo. Add `ssh-terminfo`
