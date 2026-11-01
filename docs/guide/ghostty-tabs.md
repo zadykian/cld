@@ -42,8 +42,10 @@ ends as Ghostty quits, so start it again at each launch: from ssh, or from your 
 - A restore run in a Ghostty pane starts one too.
 - Where one runs, `--watch` prints nothing and starts none. Outside a Ghostty pane it fails: macOS
   would charge the watcher's Apple Events to the app it runs in.
-- Its log is `tabs/watch.log` in `$XDG_STATE_HOME/cld`, by default `~/.local/state/cld`, emptied
-  past 1 MB. After `cld update`, the watcher runs the new cld at its next read.
+- Its record, `tabs/tabs.json`, and its log, `tabs/watch.log`, are in `$XDG_STATE_HOME/cld`, by
+  default `~/.local/state/cld`. A [JSON schema](../../internal/tabs/tabs.v1.schema.json) describes
+  the record, and the log is emptied past 1 MB. After `cld update`, the watcher runs the new cld at
+  its next read.
 
 ## The Automation grant
 
