@@ -48,7 +48,7 @@ func TestTabsLast(t *testing.T) {
 	var all []mac.Tab
 	for _, test := range lastCases {
 		id := addPane(m, test.title, test.jobs...)
-		last := &tabs.Last{Host: "ws", Session: "app", Cut: "quit", Run: "1@x", At: now}
+		last := &tabs.Last{Host: "ws", Session: "app", Cut: "quit", Run: earlierRun, At: now}
 		if test.typed != 0 {
 			typed := now.Add(-test.typed)
 			last.Typed = &typed
@@ -59,7 +59,7 @@ func TestTabsLast(t *testing.T) {
 	dead := addPane(m, "~")
 	m.Terminals[dead].PID = 0
 	panes[dead] = &tabs.Pane{Kind: "local", Since: now, Last: &tabs.Last{Host: "ws", Cut: "quit",
-		Run: "1@x", At: now}}
+		Run: earlierRun, At: now}}
 	m.Windows = []mac.Window{windowOf(append(all, tabOf(dead))...)}
 	writeRecord(t, s, recordOf(m, panes))
 	r := tick(t, s, m)

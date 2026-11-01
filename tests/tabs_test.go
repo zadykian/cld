@@ -42,6 +42,7 @@ func readRecord(t *testing.T, s *sandbox.Sandbox) *tabs.Record {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkSchema(t, data)
 	var r tabs.Record
 	if err := json.Unmarshal(data, &r); err != nil {
 		t.Fatalf("tabs.json: %v\n%s", err, data)
@@ -202,6 +203,9 @@ func recordOf(m *mac.Model, panes map[string]*tabs.Pane, windows ...tabs.Window)
 	return &tabs.Record{Schema: tabs.Schema, Run: tabs.Run{ID: runOf(m), Version: m.Version},
 		Panes: panes, Windows: windows, Pending: []*tabs.Loss{}, Losses: []*tabs.Loss{}}
 }
+
+// earlierRun is the id of a run of Ghostty before the tests' own.
+const earlierRun = "1@2025-01-01T00:00:00Z"
 
 // schemaOf is the URL of version's schema of tabs.json, as tabs.Schema is version 1's.
 func schemaOf(version int) string {
