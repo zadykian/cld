@@ -212,7 +212,7 @@ func typedMac(t *testing.T, s *sandbox.Sandbox) (*mac.Model, string) {
 	saveModel(t, s, m)
 	now := time.Now().UTC().Truncate(time.Second)
 	writeRecord(t, s, recordOf(m, map[string]*tabs.Pane{a: {Kind: "local", Since: now,
-		Last: &tabs.Last{Host: "ws", Session: "app", Cut: "quit", Run: "1@x", At: now}}},
+		Last: &tabs.Last{Host: "ws", Session: "app", Cut: "quit", Run: earlierRun, At: now}}},
 		tabs.Window{Tabs: []tabs.Tab{{Selected: true, Shape: "made", Tree: leaf(a)}}}))
 	return m, a
 }

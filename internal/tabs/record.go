@@ -2,8 +2,15 @@ package tabs
 
 import "time"
 
-// Format is tabs.json's format. A record of a newer one is refused, and one of 0 is corrupt.
-const Format = 1
+// Schema is the URL of tabs.json's JSON schema, of version 1, which a record names as its
+// $schema. A record of a newer version is refused, and one that names none is corrupt.
+const Schema = schemaPrefix + "1" + schemaSuffix
+
+// The URL of each version's schema: schemaPrefix, the version, then schemaSuffix.
+const (
+	schemaPrefix = "https://raw.githubusercontent.com/zadykian/cld/main/internal/tabs/tabs.v"
+	schemaSuffix = ".schema.json"
+)
 
 // What a pane shows, as classify reads it.
 const (
@@ -39,7 +46,7 @@ const (
 // Record is tabs.json: the panes of Ghostty's current run, its windows, and what it lost. Times are
 // in UTC, to the second, so that a record written again has the same bytes (decision 59.4).
 type Record struct {
-	Format   int              `json:"format"`
+	Schema   string           `json:"$schema"`
 	Run      Run              `json:"run"`
 	Previous string           `json:"previous,omitempty"` // the run before Run, by id
 	Panes    map[string]*Pane `json:"panes"`              // by terminal id: the panes of Windows

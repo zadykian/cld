@@ -1,5 +1,5 @@
 {
- "format": 1,
+ "$schema": "https://raw.githubusercontent.com/zadykian/cld/main/internal/tabs/tabs.v1.schema.json",
  "run": {
   "id": "812@2025-01-02T09:12:00Z",
   "version": "1.4.0"

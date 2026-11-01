@@ -87,7 +87,7 @@ func checkDedupe(t *testing.T, test dedupeCase) {
 	if test.kept {
 		kept = addPane(m, "~")
 		panes[kept] = &tabs.Pane{Kind: "local", Since: now, Last: &tabs.Last{Host: "ws",
-			Session: "app", Cut: "quit", Run: "1@x", At: now.Add(-30 * time.Minute)}}
+			Session: "app", Cut: "quit", Run: earlierRun, At: now.Add(-30 * time.Minute)}}
 		all = append(all, tabOf(kept))
 	}
 	m.Windows = []mac.Window{windowOf(append(all, tabOf(addPane(m, "~")))...)}
@@ -200,8 +200,8 @@ func reportMac(t *testing.T, s *sandbox.Sandbox) (*mac.Model, string) {
 	quit, typed := now.Add(-2*time.Hour), now.Add(-3*time.Minute)
 	r := recordOf(m, map[string]*tabs.Pane{
 		a: {Kind: "local", Since: now, Last: &tabs.Last{Host: "ws", Session: "app-3",
-			Cut: "quit", Run: "1@x", At: quit}},
-		b: {Kind: "local", Since: now, Last: &tabs.Last{Host: "ws2", Cut: "quit", Run: "1@x",
+			Cut: "quit", Run: earlierRun, At: quit}},
+		b: {Kind: "local", Since: now, Last: &tabs.Last{Host: "ws2", Cut: "quit", Run: earlierRun,
 			At: quit, Typed: &typed}}})
 	lost, older := shellLoss(r.Run.ID, "closed", now.Add(-5*time.Minute), "z"),
 		shellLoss(r.Run.ID, "closed", now.Add(-time.Hour), "old")

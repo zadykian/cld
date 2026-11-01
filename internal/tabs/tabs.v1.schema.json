@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/zadykian/cld/main/internal/tabs/tabs.v1.schema.json",
+  "title": "tabs.json",
+  "description": "cld's record of Ghostty's windows, tabs and panes, and of what a quit or a close lost (decision 59.4). Times are in UTC, to the second.",
+  "type": "object",
+  "required": ["$schema", "run", "panes", "windows", "pending", "losses"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"const": "https://raw.githubusercontent.com/zadykian/cld/main/internal/tabs/tabs.v1.schema.json"},
+    "run": {"$ref": "#/$defs/run"},
+    "previous": {"$ref": "#/$defs/runID", "description": "The run before run."},
+    "panes": {
+      "description": "The panes of windows, by terminal id.",
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/terminalID"},
+      "additionalProperties": {"$ref": "#/$defs/pane"}
+    },
+    "windows": {
+      "description": "Ghostty's windows, front to back; those of hidden terminals alone last.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/window"}
+    },
+    "pending": {
+      "description": "What Ghostty closed while its logins still live.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/loss"}
+    },
+    "losses": {
+      "description": "What a quit or a close lost, oldest first.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/loss"}
+    }
+  },
+  "$defs": {
+    "time": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "runID": {
+      "description": "Ghostty's pid, @, then its start in RFC 3339.",
+      "type": "string",
+      "pattern": "^[1-9][0-9]*@[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "terminalID": {"type": "string", "minLength": 1},
+    "run": {
+      "description": "One run of Ghostty, from its launch to its quit.",
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/runID"},
+        "version": {"type": "string"},
+        "ended": {"$ref": "#/$defs/time", "description": "When the watcher saw Ghostty's pid go."}
+      }
+    },
+    "pane": {
+      "description": "A terminal, kept by its id.",
+      "type": "object",
+      "required": ["kind", "since"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"enum": ["cld", "ssh", "local", "other", "dead"]},
+        "host": {"type": "string", "description": "ssh's destination as typed: cld and ssh only."},
+        "session": {"type": "string", "description": "The session's whole NAME: cld only."},
+        "worktree": {"const": true},
+        "title": {"type": "string", "description": "The pane's title, its busy markers as ✳."},
+        "cwd": {"type": "string"},
+        "tty": {"type": "string"},
+        "login": {"type": "integer", "minimum": 1, "description": "The pane's /usr/bin/login."},
+        "size": {"$ref": "#/$defs/size"},
+        "since": {"$ref": "#/$defs/time", "description": "When host or session last changed."},
+        "last": {"$ref": "#/$defs/last"}
+      }
+    },
+    "size": {
+      "description": "A pane's winsize. The pixels are its surface's, less its padding.",
+      "type": "object",
+      "required": ["cols", "rows", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "cols": {"type": "integer", "minimum": 0},
+        "rows": {"type": "integer", "minimum": 0},
+        "width": {"type": "integer", "minimum": 0},
+        "height": {"type": "integer", "minimum": 0}
+      }
+    },
+    "last": {
+      "description": "The binding a quit cut, or a restore typed into the pane.",
+      "type": "object",
+      "required": ["host", "cut", "run", "at", "typed"],
+      "additionalProperties": false,
+      "properties": {
+        "host": {"type": "string"},
+        "session": {"type": "string"},
+        "worktree": {"const": true},
+        "cut": {"enum": ["quit", "closed"]},
+        "run": {"$ref": "#/$defs/runID", "description": "The run whose end, or whose restore, set it."},
+        "at": {"$ref": "#/$defs/time"},
+        "typed": {
+          "description": "When a restore typed the line, or null.",
+          "oneOf": [{"$ref": "#/$defs/time"}, {"type": "null"}]
+        }
+      }
+    },
+    "window": {
+      "description": "A window's tabs, in tab-bar order.",
+      "type": "object",
+      "required": ["tabs"],
+      "additionalProperties": false,
+      "properties": {
+        "tabs": {"type": "array", "items": {"$ref": "#/$defs/tab"}}
+      }
+    },
+    "tab": {
+      "description": "A tab and its split tree.",
+      "type": "object",
+      "required": ["shape", "tree"],
+      "additionalProperties": false,
+      "properties": {
+        "selected": {"const": true},
+        "focused": {"$ref": "#/$defs/terminalID"},
+        "shape": {"enum": ["made", "inferred", "flat"], "description": "Who drew the tree: cld, or the panes' sizes, or none, a row."},
+        "tree": {"$ref": "#/$defs/node"}
+      }
+    },
+    "node": {
+      "description": "A split tree: a leaf, a pane by its terminal id, or a split in two halves, left or top first.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pane": {"$ref": "#/$defs/terminalID"},
+        "copy": {"$ref": "#/$defs/pane", "description": "In pending and losses: the pane as last seen."},
+        "split": {"enum": ["right", "down"]},
+        "ratio": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "description": "The first half's share."},
+        "first": {"$ref": "#/$defs/node"},
+        "second": {"$ref": "#/$defs/node"}
+      },
+      "oneOf": [
+        {"required": ["pane"], "properties": {"split": false, "ratio": false, "first": false, "second": false}},
+        {"required": ["split", "first", "second"], "properties": {"pane": false, "copy": false}}
+      ]
+    },
+    "loss": {
+      "description": "What a quit or a close took: whole windows, or a tab or split as a window of one tab, with its anchor.",
+      "type": "object",
+      "required": ["at", "run", "cause", "restored", "windows"],
+      "additionalProperties": false,
+      "properties": {
+        "at": {"$ref": "#/$defs/time"},
+        "run": {"$ref": "#/$defs/runID"},
+        "cause": {"enum": ["quit", "closed", "tab", "pane"]},
+        "restored": {"oneOf": [{"$ref": "#/$defs/time"}, {"type": "null"}]},
+        "anchor": {"$ref": "#/$defs/anchor"},
+        "windows": {"type": "array", "items": {"$ref": "#/$defs/window"}}
+      }
+    },
+    "anchor": {
+      "description": "A pane still open beside a lost tab, which goes back at index in its window, or beside a lost split, on the side split names.",
+      "type": "object",
+      "required": ["pane"],
+      "additionalProperties": false,
+      "properties": {
+        "pane": {"$ref": "#/$defs/terminalID"},
+        "index": {"type": "integer", "minimum": 1},
+        "split": {"enum": ["right", "down", "left", "up"]}
+      }
+    }
+  }
+}

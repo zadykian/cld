@@ -49,8 +49,8 @@ func TestTabsWatchStops(t *testing.T) {
 	}{
 		{"AppleScript off", "off", "", "stopped: Ghostty says: AppleScript is disabled by the " +
 			"macos-applescript configuration"},
-		{"a newer record", "", `{"format": 2}`,
-			"stopped: tabs.json has format 2, which this cld cannot read: run cld update"},
+		{"a newer record", "", `{"$schema": "` + schemaOf(2) + `"}`,
+			"stopped: tabs.json has schema v2, which this cld cannot read: run cld update"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

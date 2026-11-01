@@ -27,7 +27,7 @@ func reportRecord(t *testing.T, s *sandbox.Sandbox) (*tabs.Record, []time.Time) 
 	m.Windows = []mac.Window{windowOf(tabOf(a))}
 	r := tick(t, s, m)
 	now := time.Now().UTC().Truncate(time.Second)
-	r.Panes[a].Last = &tabs.Last{Cut: "quit", Run: "1@x", At: now}
+	r.Panes[a].Last = &tabs.Last{Cut: "quit", Run: earlierRun, At: now}
 	ago := func(minutes int) time.Time { return now.Add(-time.Duration(minutes) * time.Minute) }
 	gone, beside := tabLoss(r.Run.ID, ago(4), "t1", "gone", 2), tabLoss(r.Run.ID, ago(3), "t2", a, 0)
 	window := shellLoss(r.Run.ID, "closed", ago(2), "w")

@@ -122,7 +122,7 @@ restore waits for it up to 10 s, and the watcher not at all at a tick, but up to
 end of its run. `watch`'s time is the last tick, and `watch.log` is emptied past 1 MB. `restore`
 keeps two restores apart: a second fails at once with status 1 rather than wait, as it would type
 into the same panes. A dry-run takes no part in it. A record that does not parse is moved aside,
-with a warning. One of a newer format is refused, so the newer cld still finds it.
+with a warning. One of a newer schema is refused, so the newer cld still finds it.
 
 - **Identity.** A pane is its terminal's id, which Ghostty keeps for the surface's life, through
   its restoration and an undo. Window and tab ids are addresses, so the record never stores them.

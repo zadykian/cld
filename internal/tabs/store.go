@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -45,9 +47,9 @@ func Dir() (string, error) {
 }
 
 // load reads the record in dir, and old, its bytes for save. A missing record is a new one, with
-// no bytes. One that does not parse, or has format 0, is moved aside: a new one comes back, with
-// a warning for the caller to report. A newer format is refused before the parse, which it could
-// fail, so that the cld that wrote it finds it still.
+// no bytes. One that does not parse, or names no schema of cld's, is moved aside: a new one comes
+// back, with a warning for the caller to report. A newer schema is refused before the parse, which
+// it could fail, so that the cld that wrote it finds it still.
 func load(dir string) (r *Record, old []byte, warning string, err error) {
 	data, err := os.ReadFile(filepath.Join(dir, recordFile))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -57,14 +59,15 @@ func load(dir string) (r *Record, old []byte, warning string, err error) {
 		return nil, nil, "", reason(err)
 	}
 	var head struct {
-		Format int `json:"format"`
+		Schema string `json:"$schema"`
 	}
-	if json.Unmarshal(data, &head) == nil && head.Format > Format {
+	if json.Unmarshal(data, &head) == nil && schemaVersion(head.Schema) > schemaVersion(Schema) {
 		return nil, nil, "", formatError{fail.Runtime(fmt.Sprintf(
-			"tabs.json has format %d, which this cld cannot read: run cld update", head.Format))}
+			"tabs.json has schema v%d, which this cld cannot read: run cld update",
+			schemaVersion(head.Schema)))}
 	}
 	r = &Record{}
-	if json.Unmarshal(data, r) != nil || r.Format < 1 {
+	if json.Unmarshal(data, r) != nil || r.Schema != Schema {
 		aside, err := moveAside(dir)
 		if err != nil {
 			return nil, nil, "", err
@@ -73,6 +76,17 @@ func load(dir string) (r *Record, old []byte, warning string, err error) {
 	}
 	normalize(r)
 	return r, data, "", nil
+}
+
+// schemaVersion is the version of the schema at url, or 0 where url is no schema of cld's.
+func schemaVersion(url string) int {
+	version, prefixed := strings.CutPrefix(url, schemaPrefix)
+	version, suffixed := strings.CutSuffix(version, schemaSuffix)
+	n, err := strconv.Atoi(version)
+	if !prefixed || !suffixed || err != nil || n < 1 || strconv.Itoa(n) != version {
+		return 0
+	}
+	return n
 }
 
 // formatError is load's refusal of a record that a newer cld wrote, a *fail.Error within. The
@@ -85,7 +99,7 @@ func (e formatError) Unwrap() error { return e.err }
 
 // newRecord is the record before any observation.
 func newRecord() *Record {
-	r := &Record{Format: Format}
+	r := &Record{Schema: Schema}
 	normalize(r)
 	return r
 }

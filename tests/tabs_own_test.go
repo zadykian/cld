@@ -65,7 +65,7 @@ func TestTabsOwn(t *testing.T) {
 			saveModel(t, s, m)
 			now := time.Now().UTC().Truncate(time.Second)
 			last := func(session string) *tabs.Last {
-				return &tabs.Last{Host: "ws", Session: session, Cut: "quit", Run: "1@x", At: now}
+				return &tabs.Last{Host: "ws", Session: session, Cut: "quit", Run: earlierRun, At: now}
 			}
 			writeRecord(t, s, recordOf(m, map[string]*tabs.Pane{
 				a: {Kind: "local", Since: now, Last: last("app")},
@@ -133,7 +133,7 @@ func TestTabsOwnHost(t *testing.T) {
 	saveModel(t, s, m)
 	now := time.Now().UTC().Truncate(time.Second)
 	writeRecord(t, s, recordOf(m, map[string]*tabs.Pane{a: {Kind: "local", Since: now,
-		Last: &tabs.Last{Host: "ws", Cut: "quit", Run: "1@x", At: now}}}))
+		Last: &tabs.Last{Host: "ws", Cut: "quit", Run: earlierRun, At: now}}}))
 	checkExit(t, "restore tabs", s.RunCldWithInput(p.Terminal, ownEnv, "restore", "tabs"), 0,
 		"Joining ws here\n", noWatcher)
 	if calls := s.SSHCalls(); len(calls) == 0 ||
