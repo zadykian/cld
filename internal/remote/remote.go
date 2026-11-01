@@ -46,7 +46,7 @@ func argv(host string, words []string, terminal bool) []string {
 }
 
 // remoteCommand is the command ssh hands the host's shell. A login shell runs cld with words, for
-// the PATH (decision 62.5).
+// the PATH, as restore tabs's line does (decisions 59.7 and 62.5).
 func remoteCommand(words []string) string {
 	if slices.ContainsFunc(words, func(w string) bool { return !Plain(w) }) {
 		words = []string{Command, Encode(words)}

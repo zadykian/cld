@@ -95,6 +95,12 @@ var applyTests = []struct {
 	     "first": {"leaf": {"key": "b"}}, "second": {"leaf": {"key": "c"}}}}}]}`,
 		`{"keys": {"a": "@10", "b": "@13"}, "error": "Failed to create split. (-10000)"}`,
 		"*right(10,[13]) | *[1] [4] | *[7]", 3},
+	{"a split that fails in the first half", "", `{"kind": "window", "tabs": [{"tree": {
+	   "split": "right", "first": {"split": "down",
+	     "first": {"leaf": {"key": "a"}}, "second": {"leaf": {"key": "b"}}},
+	   "second": {"leaf": {"key": "c"}}}}]}`,
+		`{"keys": {"a": "@10", "c": "@13"}, "error": "Failed to create split. (-10000)"}`,
+		"*right(10,[13]) | *[1] [4] | *[7]", 3},
 }
 
 // The apply builds windows, tabs and panes where Ghostty puts them, and types into panes in place.
@@ -131,6 +137,35 @@ func TestFakeOsascriptApply(t *testing.T) {
 	t.Run("typed", testApplyTyped)
 	t.Run("plans apply.js throws on", testApplyThrows)
 	t.Run("no pace", testApplyNoPace)
+	t.Run("moves dropped", testApplyDropped)
+}
+
+// Ghostty drops the model's first dropMoves move_tab actions. A tab whose move it drops once lands
+// at its index all the same, as apply.js sends the move again; one dropped twice stays where new
+// tab put it.
+func testApplyDropped(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		drops         int
+		result, shape string
+	}{
+		{1, `{"keys": {"t": "@10"}, "index": 1}`, "*[10] [1] [4] | *[7]"},
+		{2, `{"keys": {"t": "@10"}, "index": 2}`, "[1] *[10] [4] | *[7]"},
+	} {
+		s := sandbox.New(t)
+		m := fakeGhostty(2, 1)
+		m.DropMoves = test.drops
+		saveModel(t, s, m)
+		result := osascript(t, s, nil, applyScript, withIDs(`{`+pace+`, "typed": [], "builds": [
+		  {"kind": "tab", "anchor": "@1", "index": 1,
+		    "tabs": [{"selected": true, "tree": {"leaf": {"key": "t"}}}]}]}`))
+		checkPrinted(t, "the result", result.Stdout,
+			withIDs(`{"typed": [], "builds": [`+test.result+`]}`))
+		if got := shape(loadModel(t, s)); got != test.shape {
+			t.Errorf("%d moves dropped: the model's shape is %s, want %s", test.drops, got,
+				test.shape)
+		}
+	}
 }
 
 // A terminal made has its leaf's directory, and its line and a newline as initial input. Its

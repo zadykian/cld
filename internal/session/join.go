@@ -170,7 +170,7 @@ func (j Joining) unmarked(suffix string, ended bool) error {
 	case !ended:
 		return noSession(suffix)
 	}
-	if dir, err := stateDir(); err == nil && marked(dir, suffix) {
+	if dir, err := StateDir(); err == nil && marked(dir, suffix) {
 		return nil
 	}
 	return hasEnded(suffix, ": cld join "+Options(suffix)+" resumes it")

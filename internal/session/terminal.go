@@ -53,9 +53,16 @@ func titles(suffix string) string {
 		"#{?@cld-worktree, [w],}"
 }
 
-// busyMarker is claude's marker while busy, ◐ and ◑ in turn by strftime's seconds. A job
-// refreshes the terminal a second later to turn it, as status off leaves tmux no timer (decision
-// 25.5). The job names tmux by @cld-tmux, quoted, as a path may hold "#", "%" or ")".
-const busyMarker = "#{?#{m:*[02468],%S},◐,◑}" +
+// BusyEven and BusyOdd are claude's markers while busy, in even and odd seconds. restore tabs reads
+// them as ✳, so that their turning writes nothing (decision 59.5).
+const (
+	BusyEven = "◐"
+	BusyOdd  = "◑"
+)
+
+// busyMarker is claude's marker while busy, BusyEven and BusyOdd in turn by strftime's seconds. A
+// job refreshes the terminal a second later to turn it, as status off leaves tmux no timer
+// (decision 25.5). The job names tmux by @cld-tmux, quoted, as a path may hold "#", "%" or ")".
+const busyMarker = "#{?#{m:*[02468],%S}," + BusyEven + "," + BusyOdd + "}" +
 	"#((sleep 1; #{q:@cld-tmux} -S #{q:socket_path} refresh-client -S -t #{q:client_name})" +
 	" >/dev/null 2>&1 &)"

@@ -35,7 +35,7 @@ var snapshotFailures = map[string]scriptError{
 
 // failureModes are the failure modes, "" answering as Ghostty would.
 var failureModes = []string{
-	"", "denied", "off", "old", "changed", "gone", "garbage", "partial", "timeout",
+	"", "denied", "off", "old", "changed", "gone", "garbage", "partial", "short", "timeout",
 }
 
 // fakeOsascript fakes osascript running cld's scripts against the model Ghostty (internal/mac).
@@ -95,8 +95,9 @@ func readCall(args []string) (script, input string, p *plan) {
 }
 
 // failMode is the first line of osascript-fail where that exists, else $CLD_FAKE_OSASCRIPT_FAIL:
-// denied, off, old, changed, gone, garbage, partial or timeout; "" answers. changed fails only a
-// snapshot, and partial only an apply. old refuses an apply, which cld never runs on Ghostty 1.3.1.
+// denied, off, old, changed, gone, garbage, partial, short or timeout; "" answers. changed fails
+// only a snapshot, and partial and short only an apply. old refuses an apply, which cld never runs
+// on Ghostty 1.3.1.
 func failMode(dir string) (string, error) {
 	mode := os.Getenv("CLD_FAKE_OSASCRIPT_FAIL")
 	data, err := os.ReadFile(filepath.Join(dir, mac.FailFile))
@@ -203,7 +204,7 @@ func snapshot(dir string, m *mac.Model, mode string) error {
 	if doc.Terminals == nil {
 		doc.Terminals = []string{}
 	}
-	if err := hold(dir); err != nil {
+	if err := hold(dir, mac.DelayFile); err != nil {
 		return err
 	}
 	return printJSON(doc)
@@ -222,10 +223,10 @@ func leaves(m *mac.Model, tree *mac.Node) ([]terminalDoc, error) {
 	return terminals, nil
 }
 
-// hold waits the seconds the delay file holds, where it exists, and removes it first: only the
-// snapshot that removes it waits.
-func hold(dir string) error {
-	path := filepath.Join(dir, mac.DelayFile)
+// hold waits the seconds that the delay file name holds, where it exists, and removes it first:
+// only the call that removes it waits.
+func hold(dir, name string) error {
+	path := filepath.Join(dir, name)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -235,7 +236,7 @@ func hold(dir string) error {
 	}
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64)
 	if err != nil {
-		return fmt.Errorf("%s: %w", mac.DelayFile, err)
+		return fmt.Errorf("%s: %w", name, err)
 	}
 	if err := os.Remove(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {

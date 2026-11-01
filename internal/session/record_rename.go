@@ -24,7 +24,7 @@ func (t *Tmux) Rename(ctx context.Context, suffix, to string) error {
 	if err != nil {
 		return err
 	}
-	dir, _ := stateDir() //nolint:errcheck // recorded found the entry there
+	dir, _ := StateDir() //nolint:errcheck // recorded found the entry there
 	if err := t.free(ctx, dir, to); err != nil {
 		return err
 	}

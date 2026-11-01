@@ -13,6 +13,8 @@ yet, troubleshooting and upgrading. How cld works, and why, is in [design.md](de
 - [Resuming a conversation](guide/resuming.md): the record, `join --existing`, names, copies,
   agent view's moves
 - [After a reboot](guide/after-a-reboot.md): `cld restore sessions` and `cld setup restore`
+- [Ghostty's tabs on a Mac](guide/ghostty-tabs.md): Ghostty's settings, the watcher of
+  `cld restore tabs --watch`, what a restore reopens and loses, its failures, and what it misses
 - [From another machine](guide/another-host.md): `--host`, what each machine needs, terminfo and
   ssh's connections
 - [claude's options and worktrees](guide/claude-options.md): the words after `--`, and `-w`

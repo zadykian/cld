@@ -1,6 +1,7 @@
 # 62. Commands on another host
 
-Status: Accepted (#186).
+Status: Accepted (#186). Amended by [59](0059-ghostty-tabs.md), under which `restore tabs` refuses
+`--host`.
 
 ## Context
 

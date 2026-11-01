@@ -17,9 +17,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// expiry is how long cld keeps an entry, and an index given: claude's default cleanupPeriodDays,
+// Expiry is how long cld keeps an entry, and an index given: claude's default cleanupPeriodDays,
 // after which claude removes a conversation not written since (decision 40.6).
-const expiry = 30 * 24 * time.Hour
+const Expiry = 30 * 24 * time.Hour
 
 // lockWait is how long join waits for the lock that another cld holds, and for a session that
 // another cld is starting (decisions 40.6 and 50.4).
@@ -73,10 +73,11 @@ const (
 // list's forget remove them, and its rename moves them (decisions 40.6 and 57).
 var companions = []string{environment, lastDir, runMark, busyMark, startMark}
 
-// stateDir is the directory of cld's record: cld in $XDG_STATE_HOME or, where that is unset or
+// StateDir is the directory of cld's records: cld in $XDG_STATE_HOME or, where that is unset or
 // relative, in ~/.local/state (decision 40.1). A relative path would name another directory in
-// claude's hooks, which run in claude's directory.
-func stateDir() (string, error) {
+// claude's hooks, which run in claude's directory. restore tabs keeps its own record in tabs/
+// (decision 59.4).
+func StateDir() (string, error) {
 	base := os.Getenv("XDG_STATE_HOME")
 	if !filepath.IsAbs(base) {
 		home, err := os.UserHomeDir()
@@ -126,7 +127,7 @@ func sessionFile(name string) (suffix, ext string, ok bool) {
 // 50.4). A lock held elsewhere is waited for up to lockWait. One cld cannot take is gone without,
 // silently, as the entry's write says what is wrong.
 func Lock() (unlock func()) {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return func() {}
 	}

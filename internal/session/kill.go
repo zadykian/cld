@@ -102,7 +102,7 @@ func (t *Tmux) Forget(ctx context.Context, suffix string) error {
 	if _, ok := recorded(suffix); !ok {
 		return noSession(suffix)
 	}
-	dir, _ := stateDir() //nolint:errcheck // recorded found the entry there
+	dir, _ := StateDir() //nolint:errcheck // recorded found the entry there
 	for _, file := range sessionFiles(dir, suffix) {
 		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fail.Runtime("cannot forget session '" + suffix + "': " + reason(err).Error())

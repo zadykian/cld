@@ -1,6 +1,6 @@
 # 60. A command for each restore
 
-Status: Accepted (#185).
+Status: Accepted (#185). Amended by [59](0059-ghostty-tabs.md), under which `restore` takes `tabs`.
 
 ## Context
 

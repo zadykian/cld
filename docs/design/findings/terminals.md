@@ -55,3 +55,232 @@ are in that source. The ghostty driver copies the app ([decision 54](../decision
   runner with AVX-512, died with SIGILL in `ghostty_terminal_new` on runners without it. Built
   here for `x86_64_v4`, it died the same way. With `-Dcpu=baseline`, as Ghostty's `PACKAGING.md`
   tells packagers, it held no `zmm` instruction, against 49, and the contract passed.
+
+## Ghostty's AppleScript on macOS
+
+What `cld restore tabs` (#176) rests on, read in Ghostty's source and not probed: v1.3.1 and
+v1.4.0 both. Main at b3dc3d7 was read on 2026-10-16. Then v1.4.0 was checked against it, on
+2026-10-30. Paths are in those sources, and Swift files go by name alone. Each name is unique under
+`macos/`. The scripting files match in both but for `Ghostty.sdef`, `ScriptTab.swift`,
+`ScriptTerminal.swift` and `ScriptKeyEventCommand.swift`. The spike's results on a Mac follow
+(#177).
+
+- **The model** (v1.3.1 and v1.4.0; `macos/Ghostty.sdef`, `AppDelegate+AppleScript.swift`,
+  `ScriptWindow.swift`, `ScriptTab.swift`). The application holds windows, a window its tabs, and
+  a tab its terminals. A window is one AppKit tab group, listed front to back from
+  `NSApp.orderedWindows`, and its tabs come in tab-bar order. A tab's terminals are its split
+  tree's leaves, left or top first (`SplitTree.swift`). No class has a split's direction or ratio,
+  and a window has no frame.
+- **A terminal's id** (v1.3.1 and v1.4.0; `ScriptTerminal.swift`, `SurfaceView_AppKit.swift`,
+  `TerminalController.swift`). The id is the surface's UUID, which the code calls stable "for the
+  life of a surface". Ghostty's restoration decodes the saved UUID into the new surface, and an
+  undo puts the same surfaces back under a new controller. `name` is the surface's title, and
+  `working directory` its pwd. On v1.4.0, `name override` reads a title set by hand, `""` where
+  there is none, and `""` clears it. A tab's `name override` titles its window alone, leaving its
+  terminals' `name`.
+- **Window and tab ids** (v1.3.1 and v1.4.0; `ScriptWindow.swift`, `ScriptTab.swift`). They are hex
+  addresses: `window-ADDR` while AppKit reports no tab group, `tab-group-ADDR` once it reports one,
+  `controller-ADDR` for a controller with no window, and `tab-ADDR` for a tab's controller. So a
+  window's id can change while it lives. An undone close makes a new controller, whose id usually
+  differs; an address can be reused, so a stale id may name another tab or window. A tab's
+  specifier goes through its window's id.
+- **Windows against the app-wide terminals** (v1.3.1 and v1.4.0; `AppDelegate+AppleScript.swift`,
+  `QuickTerminalController.swift`, `QuickTerminalWindow.swift`). `windows` come from
+  `NSApp.orderedWindows`, and the application's `terminals` from `NSApp.windows`, in what the code
+  calls undefined order. Neither list's filter drops the quick terminal's controller, and the
+  code's comment counts it among the app-wide terminals. Its window is an `NSPanel`, which AppKit
+  documents `orderedWindows` as leaving out; the spike checks whether `windows` shows it (check 7).
+- **`pid` and `tty`** (v1.4.0, from PR #11922; not in v1.3.1;
+  `ScriptTerminal.swift`, `Ghostty.Surface.swift`, `src/pty.zig`). `pid` is `tcgetpgrp` on the
+  pty's master: the foreground process group's id. `tty` is the device path `TIOCPTYGNAME` gives,
+  cached at its first read. `pid` reads 0 and `tty` `""` while the surface has no pty, or when the
+  call fails. By default a child's exit closes its pane, which then leaves `terminals`
+  (`src/Surface.zig`). A pane stays open under `wait-after-command`, or after an exit within
+  `abnormal-command-exit-runtime`, which macOS counts as abnormal whatever its code. There the pty
+  stays open until the surface is freed (`src/termio/Exec.zig`), so `tty` keeps its name, and the
+  spike found `pid` 0 then (check 9).
+- **No events** (v1.3.1 and v1.4.0; `macos/Ghostty.sdef`). The dictionary declares no event, and
+  Ghostty's only distributed notification tells its own Dock tile plugin of an icon change. So a
+  program outside learns of a change only by asking again. The scripting classes are
+  `@MainActor`, so each getter and command runs on Ghostty's main thread.
+- **`macos-applescript = false`** (v1.3.1 and v1.4.0; `src/config/Config.zig`,
+  `AppDelegate+AppleScript.swift`). The default is true, read from the live config at each call.
+  When false, the element and property getters return an empty list, `""`, 0, false or nil, with
+  no error. The application's own `name`, `version` and `frontmost` still answer. A lookup by id
+  returns nil, which the code says makes the specifier fail: an error, whose number is the spike's
+  (check 4). Commands fail with `errAEEventNotPermitted`, -1743, and the text "AppleScript is
+  disabled by the macos-applescript configuration." `new surface configuration` is such a command,
+  though it opens no terminal.
+- **A surface configuration** (v1.3.1 and v1.4.0; `ScriptSurfaceConfiguration.swift`,
+  `src/apprt/embedded.zig`, `src/termio/Exec.zig`, `TerminalController.swift`). `initial input`
+  goes to the pty as written, before any other input, so the pane's own shell reads it as typed.
+  Ghostty's App Intent passes its command that way, "to setup things like PATH"
+  (`NewTerminalIntent.swift`). A `command` runs as
+  `/usr/bin/login [-q] -flp USER /bin/bash --noprofile --norc -c 'exec -l CMD'`, with `-q` where
+  `~/.hushlogin` exists. It forces
+  `wait-after-command` on, and a window or tab made with one is never restorable. An
+  `initial working directory` that is no directory is ignored, and so is a cwd the pane cannot
+  access.
+- **New windows and tabs** (v1.4.0; `AppDelegate+AppleScript.swift`, `TerminalController.swift`).
+  `new window` returns the window, or wraps its controller while AppKit's window order lags.
+  `new tab in W` returns the tab. Under `window-new-tab-position = current`, the default, the tab
+  goes after W's selected tab, and under `end` after its last. v1.4.0 then selects it at once, where
+  v1.3.1 leaves that to a later turn of the run loop. A new window opens in native fullscreen when
+  its parent, the main window by preference, is in native fullscreen. With W in non-native
+  fullscreen, `new tab` shows an alert sheet on W and fails with "Failed to create tab." With
+  `macos-titlebar-style = hidden`, `new tab` makes a window.
+- **Splits** (v1.3.1 and v1.4.0; `ScriptTerminal.swift`, `BaseTerminalController.swift`,
+  `SplitTree.swift`). `split T direction right`, `left`, `down` or `up` returns the new terminal,
+  addressed app-wide by its UUID. It replaces T's leaf with a split at ratio 0.5, and focus moves
+  to the new terminal. For `right` and `down`, T keeps the left or top half. v1.3.1 finds T's
+  controller by T's window, and v1.4.0 by the tree that holds T (PR #13640).
+- **Typing** (v1.3.1 and v1.4.0, but where marked; `ScriptInputTextCommand.swift`,
+  `Ghostty.Surface.swift`, `src/Surface.zig`, `ScriptKeyEventCommand.swift`). `input text` takes
+  the paste path with paste protection skipped. So the text is encoded as the pastes in
+  [Ghostty](#ghostty) are, and bracketed when the program asked for bracketed pastes.
+  `send key NAME modifiers MODS` presses a key named as in `Ghostty.Input.Key`, such as `u` or
+  `enter`, with shift, control, option or command. v1.3.1 sends the key with no text, and v1.4.0
+  derives its text through the keyboard layout (PR #13205).
+- **`perform action`** (v1.3.1 and v1.4.0; `src/input/Binding.zig`, `TerminalController.swift`,
+  `Ghostty.App.swift`, `SplitTree.swift`). `move_tab:N` moves by N places. On macOS it moves the
+  window's selected tab, clamped at either end, where `Binding.zig` says it wraps. With titlebar
+  tabs on macOS 26, v1.4.0 moves the tabs passed instead, to the same order. It acts only when the
+  terminal is its tab's focused one, yet returns true for any tab with siblings. `equalize_splits`
+  gives each split its first child's share of the leaves along its direction, a crossing subtree
+  counting as one.
+- **`focus` and `select tab`** (v1.3.1 and v1.4.0; `ScriptTerminal.swift`,
+  `BaseTerminalController.swift`, `ScriptTab.swift`). `focus` moves focus on a later turn of the
+  main run loop, then orders the window front and activates Ghostty. `select tab` orders the tab's
+  own window front and makes it key.
+- **`window-save-state`** (v1.3.1 and v1.4.0; `src/config/Config.zig`, `AppDelegate.swift`,
+  `TerminalController.swift`, `SurfaceView_AppKit.swift`). Ghostty maps it onto AppKit's
+  `NSQuitAlwaysKeepsWindows`. Its docs say `default`, the default, saves state only after a forced
+  quit or where macOS's own setting asks. So under `default`, what a normal quit saves rests on
+  that setting, which the spike found unset under `default` (check 8); `always` saves at every
+  exit. A pane comes back with its pwd and UUID in a fresh shell, since no command is saved. v1.4.0
+  also marks no window restorable under `never`.
+- **`undo-timeout`** (v1.3.1 and v1.4.0; `src/config/Config.zig`, `TerminalController.swift`,
+  `BaseTerminalController.swift`, `ExpiringUndoManager.swift`, `src/termio/Exec.zig`). The default
+  is 5 s, and 0 turns undo off. Closing a window, tab or split registers an undo that holds its
+  live surfaces until the timeout ends. Until then their ptys and processes run on; the code calls
+  these "undo/redo operations that contain running ptys". A freed surface tries a SIGHUP to its
+  child's process group through `killpg`, and on Darwin ignores an EPERM, which the code calls
+  expected. On macOS that child is `/usr/bin/login [-q] -flp USER`.
+- **The ssh wrapper** (v1.3.1's `src/shell-integration/zsh/ghostty-integration`; v1.4.0's
+  `src/cli/ssh.zig`). `shell-integration-features` holds `ssh-env` and `ssh-terminfo`, both off by
+  default, and either makes the shell integration define an `ssh` function. On v1.3.1 that zsh
+  function runs `command ssh "$@"` itself. On v1.4.0 it runs `ghostty +ssh FLAGS -- "$@"`, which
+  spawns ssh as its child and waits. Both install the terminfo through an ssh of its own, before
+  the session's, given the user's words and then the install script. So a remote command among
+  those words gets the script appended.
+- **`ghostty +ssh-cache`** (v1.3.1's `src/cli/ssh_cache.zig` and
+  `src/shell-integration/zsh/ghostty-integration`; v1.4.0's `src/cli/ssh_cache.zig` and
+  `src/cli/ssh.zig`). The wrapper keys its cache by `ssh -G`'s `user@hostname`, not by the alias
+  typed, and v1.4.0 adds `:port` for a port other than 22. `+ssh-cache --host=KEY` exits 1 for a key
+  the cache lacks. v1.4.0 also takes `+ssh-cache KEY`, and still takes `--host=KEY` with a
+  deprecation warning on stderr, so that spelling works on both. On v1.4.0 a bare hostname matches
+  every user and port, and `+ssh` also wants the entry's terminfo version, which the query
+  ignores. v1.3.1 adds the entry once the install succeeds, and v1.4.0 only once the session's ssh
+  exits 0.
+- **Reading the settings** (v1.3.1 and v1.4.0; `src/cli/args.zig`, `src/cli/show_config.zig`,
+  `src/config/formatter_file.zig`). Ghostty parses each value of a packed struct, such as
+  `shell-integration-features`, from the struct's defaults. So a later line, in the same file or a
+  later one, replaces the whole list. `+show-config` prints, by default, only the options whose
+  value differs from the default. So an option set to its default prints no line. On v1.4.0 the
+  output goes to a pager only when stdout is a tty.
+- **What a pane's programs send** (v1.3.1 and v1.4.0; `src/termio/Exec.zig`,
+  `src/termio/stream_handler.zig`, `src/os/hostname.zig`, `src/Surface.zig`,
+  `SurfaceView_AppKit.swift`). Every pane's environment has `TERM_PROGRAM=ghostty`. OSC 7 counts
+  only when its host is `localhost` or the Mac's own `gethostname`; Ghostty logs and drops one from
+  any other host. OSC 0 and 2 set the title, unless a `title` in the config fixes it, and one of 256
+  bytes or more is ignored. A title set by hand, in Ghostty's Change Terminal Title dialog or
+  through v1.4.0's `name override`, holds later ones back until either clears it. `name` then reads
+  it, and a restored window brings it back still holding. Changes settle after 75 ms.
+- **Pane sizes** (v1.3.1 and v1.4.0; `src/pty.zig`, `src/termio/Exec.zig`, `src/termio/Termio.zig`,
+  `src/renderer/size.zig`, `src/Surface.zig`). `Pty.open` sets the winsize, rows, columns and
+  pixels, and each resize sets it again with `TIOCSWINSZ`. The size starts as the grid's: columns
+  and rows times the cell's size in pixels. A resize gives the surface's pixels less its padding:
+  `window-padding-x` and `-y`, 2 points a side by default, times the display's scale. With
+  `window-padding-balance` on, the padding also takes the space the grid leaves.
+- **A tab's tree** (v1.3.1 and v1.4.0; `SplitTree.swift`, `SplitView.swift`,
+  `TerminalSplitTreeView.swift`, `BaseTerminalController.swift`). A split's first half gets its
+  share of the points less half the 1-point divider, in whole points, and the second starts half a
+  point after it. A closed pane's sibling takes its split's place, and a zoom stays while a split
+  remains. A zoom shows the zoomed pane alone, and focuses it; the others leave the view and keep
+  their sizes. Going to another split from it unzooms, or with `split-preserve-zoom` zooms that
+  split. Move Split, a pane dropped on another, removes the pane, then splits the target with it. So
+  the tree can change while its leaves keep their order.
+- **One binary** (v1.3.1 and v1.4.0; `macos/Ghostty.xcodeproj/project.pbxproj`, `main.swift`,
+  `src/termio/Exec.zig`). The app's executable is `ghostty`, and `main.swift` runs a `+ACTION`
+  argument as a CLI action, exiting before AppKit starts. `GHOSTTY_BIN_DIR`, and the `PATH` entry
+  Ghostty appends, name the running binary's directory, where the shell integration finds
+  `ghostty`. So the app and `ghostty +ssh` both run `Contents/MacOS/ghostty`.
+
+## The Mac spike's results
+
+The run of #177 on a real Mac, on 2026-10-31, used Ghostty 1.4.0 (build 18457), macOS 27.0.1 and arm64.
+The display was built in, at scale 2, with a font of 16 and the default padding. The 20-minute plan
+ran checks 1, 2, 6, 8 (phase 2), 9, 10, 11, 12 and 13. Checks 3, 4, 5, 7, 14, 15 and 16, and the
+rest of 1, 6, 8, 9, 10 and 11, were not probed. [status.md](../testing/status.md) lists them.
+
+- **No Automation prompt inside Ghostty.** The first Apple Event from a Ghostty pane showed no
+  prompt and left no stored grant. macOS's TCC logged `Policy allows by virtue of matching team id`
+  for `kTCCServiceAppleEvents`. The accessing and the requesting process were both
+  `com.mitchellh.ghostty`, and the target's code signature names Ghostty's team. So Ghostty needs
+  no grant to control itself. The same line came once per check that sent events. Another app that is
+  responsible, such as Terminal.app, can still meet a denial. So can a Ghostty with no team id,
+  such as one signed ad hoc from source: that is inferred, not probed.
+- **The responsible process is Ghostty.** Every event's attribution named Ghostty's pid, osascript
+  started from a pane included. A loop that `setsid` or ssh's `LocalCommand` started kept sending
+  after its tab closed, with no -1743 and no prompt. The loop leads its session and group, has
+  parent 1 and no tty. `launchctl procinfo` gave no answer, so the allow stands on the team-id
+  match alone. A grant stored for another identity is not ruled out.
+- **`LocalCommand`.** It runs after `Authenticated`, before the session opens and before the remote
+  command is sent. `%d` is the home directory, and `TERM_PROGRAM=ghostty` is set. scp and sftp do
+  not run it. `git ls-remote` over ssh does, once. A loop it starts outlives `ssh ... true`
+  and its tab. Nothing probed `ControlMaster`.
+- **What a snapshot costs.** `snapshot.js` over 4 windows and 31 terminals took 0.2 s: min 0.192,
+  median 0.200 and max 0.207 s in 10 runs. The first read carries the connection and takes about
+  47 ms. The others take 5 to 10 ms. All 11 reads work on 1.4.0. A 5-s `sample` of back-to-back
+  snapshots put `AEProcessAppleEvent` in 4% of the main thread's samples. That is 6 to 9 ms a
+  snapshot, led by `NSApplication.scriptWindows`. Typing felt as usual. A JXA loop took a snapshot
+  every 5 s for 14.5 minutes. Its osascript held flat at about 38 MB and used 26 ms of CPU a tick.
+  Ghostty's own memory and CPU over those minutes are confounded by the windows that other checks
+  opened and closed, and give no conclusion.
+- **Pane sizes.** At the defaults, a parent's size is its two children's plus 9 px: 8 px of padding
+  and a 1-px divider. In a tab `right(a, down(b, c))`, a was 1502 px wide, b and c 1505, and the
+  tab 3016 x 1554. The left or top child came out 3 px (x) and 1 px (y) smaller. A cell is 42 px
+  tall and about 19 px wide. A zoomed pane takes the whole tab's size, and the hidden ones keep
+  theirs. A tab not shown keeps its panes' sizes. A 2x2 tab fits both nestings, and the tie-break
+  that prefers side by side matches this build. Other paddings, `window-padding-balance` and scale
+  1 were not probed. By the arithmetic, a pane beside a split along x is off by 4p+1 px, p being
+  `window-padding-x` in points at scale 2.
+- **apply.js.** 42 checks passed. 30 panes took 2.8 s. A split's result answers `id()`, and a tab
+  build leaves its new tab selected and returns its index. `withConfiguration` takes a JS object
+  with `initialWorkingDirectory`. Each initial-input line ran once. A typed line ran once after
+  Ctrl+U over half-typed input, with no paste-protection dialog. A slow `.zshrc`, Ctrl+U under
+  Dvorak and the wait for a new window beyond 3 s were not probed.
+- **A missing directory falls back.** An `initial working directory` that is no directory is
+  ignored, as read, and the pane opened in the previous tab's directory, which was also
+  osascript's. The source of the fallback is ambiguous. The fallback is not home.
+- **The selected-tab anomaly.** Right after the restore, the snapshot showed a rebuilt window's
+  first tab selected, where the second had been before the quit. A later snapshot showed the second.
+  The user saw the second throughout. So `selected` may lag for a rebuilt window.
+- **show-config and ssh-cache.** `+show-config` printed the user's `window-save-state` and none once
+  the option is `default`. A later `shell-integration-features` line reset the list, as read.
+  `--host=` prints the deprecation warning. An uncached host exits 1, a cached one 0, and the
+  positional key prints the entry. The alias alone exits 1, so the key comes from `ssh -G`.
+- **A pane's process.** Plain ssh: the pid is `ssh` and leads its group, and its login is Ghostty's
+  child. With `ssh-env`, the pid is `ghostty +ssh --terminfo=false -- HOST`, and its child is ssh,
+  in the same group. A prompt's pid is the shell's. A command window shows an empty name and cwd
+  with a live pid, and later a glyph name, so the name never marks a dead pane. "Process exited"
+  gives pid 0 and keeps the tty. At the default `undo-timeout`, a closed tab's login lived 4.6 s.
+  `ps` prints `lstart` in UTC under `TZ=UTC`. Over ssh the title is `USER@HOST: ~` while the cwd
+  stays local.
+- **Restored titles.** The titles were not seen stale. The user saw fresh ones, and two of three
+  panes changed from `~` to `USER@HOST:~` 28 s after the open, so the shell may have retitled them
+  first. A pane comes back with its pwd and UUID. Its title is unsettled.
+- **Cmd+Q under `always`.** `NSQuitAlwaysKeepsWindows` was 1 in Ghostty's domain, and absent under
+  `default`. The quit took 28 s. After `open -b`, the snapshot settled in 4.7 s. All four
+  restorable terminals came back, at their places, in fresh shells with their cwd. The `command`
+  window did not. The four ids were the same under a new Ghostty pid.

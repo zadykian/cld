@@ -1,9 +1,10 @@
 # 48. Sessions come back after a reboot
 
 Status: Accepted (#115). Amended by [50](0050-one-command-join.md),
-[52](0052-telemetry-outside-cld.md), [60](0060-a-command-for-each-restore.md), under which
-`cld restore sessions` is what `cld restore` was, and [62](0062-commands-on-another-host.md), under
-which `setup restore` runs off Linux with `--host`.
+[52](0052-telemetry-outside-cld.md), [59](0059-ghostty-tabs.md), under which `restore` takes the
+command `tabs`, [60](0060-a-command-for-each-restore.md), under which `cld restore sessions` is
+what `cld restore` was, and [62](0062-commands-on-another-host.md), under which `setup restore`
+runs off Linux with `--host`.
 
 ## Context
 

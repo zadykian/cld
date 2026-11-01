@@ -55,10 +55,10 @@ type (
 )
 
 // applyFailures are the failure modes an apply answers with an error document. apply.js reads the
-// terminals first, and its message gives the error's number in brackets.
+// terminals first, and its document keeps JXA's number apart from the text, as snapshot.js's does.
 var applyFailures = map[string]scriptError{
-	"denied": {"count", -1743, "Not authorized to send Apple events to Ghostty. (-1743)", ""},
-	"gone":   {"count", -600, "Application isn't running. (-600)", ""},
+	"denied": {"count", -1743, "Not authorized to send Apple events to Ghostty.", ""},
+	"gone":   {"count", -600, "Application isn't running.", ""},
 }
 
 // applyError is a typing's or a build's error, worded as apply.js's message words it: the text,

@@ -68,9 +68,29 @@ harness. Each helper's doc comment says how it works.
   `restore_setup_test.go`: `setup restore`.
 - `tabs_fakes_test.go`: the probe's osascript against the model Ghostty in `internal/mac`, its
   snapshot, and the helpers the `tabs_fakes_*` files share. `tabs_fakes_failures_test.go`: its
-  failure modes, its delay file and the arguments it refuses; `tabs_fakes_apply_test.go`: its
+  failure modes, its delay files and the arguments it refuses; `tabs_fakes_apply_test.go`: its
   apply. `tabs_fakes_ssh_test.go`: the probe's ssh, on real tmux; `tabs_fakes_tools_test.go`: its
   ps, the sh fakes of open and ghostty, a pty's size, and the pty as cld's input.
+- `tabs_test.go`: `restore tabs` against the fake Ghostty, its record and its dry-run, and the
+  helpers the other `tabs_*` files share; `tabs_mac_test.go` builds their model Mac.
+  `tabs_classify_test.go`: what each pane shows; `tabs_merge_test.go`, `tabs_last_test.go` and
+  `tabs_quit_test.go`: the record's merges and closes, each pane's `last`, and Ghostty's quits.
+- `tabs_watch_test.go`: the watcher's life; `tabs_watch_ticks_test.go`: its ticks, its failures,
+  the record's lock and its restart; `tabs_watch_runs_test.go`: the handover, a relaunch and the
+  last tick; `tabs_refusals_test.go`: what `restore tabs` refuses.
+- `tabs_plan_test.go`: what a restore reopens, as its options ask; `tabs_plan_report_test.go`:
+  the dedupe, and the dry-run's report of a plan. `tabs_apply_test.go`: the plan apply.js gets,
+  and the record after it. `tabs_apply_order_test.go`: the builds' order, and those a restore
+  leaves out; `tabs_apply_report_test.go`: the report's rarer lines, an apply that fails, and a
+  record the restore cannot write. `tabs_apply_runs_test.go`: an apply that stops, a Ghostty the
+  restore opens, the watcher it starts, the record's lock and a stale tick. `tabs_lines_test.go`:
+  each typed line, and its run through the fake ssh on real tmux; `tabs_own_test.go`: the exec in
+  cld's own pane. `tabs_layout_test.go`: split trees from the panes' sizes, on real ptys;
+  `tabs_layout_kept_test.go`: a tree kept or revised from tick to tick, and a restore's.
+- `tabs_scripts_test.go`: the scripts' terms against Ghostty's dictionary, their syntax on macOS,
+  and the real ps; `tabs_scripts_mocked_test.go`: the scripts against a mock Ghostty on macOS,
+  with apply.js's cases in `tabs_scripts_apply_test.go`.
+- `cli_restore_test.go`: the word after `restore`.
 - `cli_host_test.go`: `--host`'s ssh, its words, `__host` and completion, and the helpers the host
   tests share; `cli_host_refusals_test.go`: what `--host` refuses; `session_host_test.go`: sessions
   on the host through the fake ssh.

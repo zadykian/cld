@@ -25,7 +25,7 @@ const ContinuePrompt = "The machine restarted while you were working; continue w
 // file names. Those are the sessions that run, and those that ran when the machine stopped, which
 // restore brings back.
 func Marked() []string {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return nil
 	}
@@ -52,7 +52,7 @@ type Restored struct {
 // or that has lost its entry or mark. Where limit is not 0, it leaves ended a session whose run
 // mark is older than limit (decision 48.8). The caller holds the record's lock (decision 48.6).
 func (t *Tmux) Restore(suffix string, limit time.Duration) (*Restored, error) {
-	dir, err := stateDir()
+	dir, err := StateDir()
 	if err != nil {
 		return nil, err
 	}

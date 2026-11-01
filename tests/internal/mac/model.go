@@ -32,6 +32,9 @@ type Model struct {
 	// FailAt is the terminal, counted from 1 in each apply, that Ghostty fails to make: a new
 	// window's or tab's never appears, and a split fails. 0 makes every one.
 	FailAt int `json:"failAt,omitempty"`
+	// DropMoves is how many move_tab actions Ghostty drops before it moves a tab again, as it drops
+	// one sent to a terminal its tab does not focus.
+	DropMoves int `json:"dropMoves,omitempty"`
 }
 
 // Window is a window's tabs, in tab-bar order.

@@ -26,7 +26,7 @@ Available Commands:
   detach      detach the terminals attached to session NAME-SUFFIX
   kill        end session NAME-SUFFIX and its tmux server
   list        list cld's sessions; on a terminal, join, kill or rename one
-  restore     bring back the sessions that ran when the machine stopped
+  restore     bring back the sessions a reboot ended, or a Mac's Ghostty tabs
   setup       set up claude's settings, shell completion or restore
   update      update cld to the latest release
   completion  print the completion script for a shell

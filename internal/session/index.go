@@ -43,7 +43,7 @@ func recordedNext(prefix string) int {
 			next = max(next, index+1)
 		}
 	}
-	if state, err := stateDir(); err == nil {
+	if state, err := StateDir(); err == nil {
 		for start, g := range indexes(state) {
 			if strings.EqualFold(start, prefix) && g.Index < math.MaxInt {
 				next = max(next, g.Index+1)

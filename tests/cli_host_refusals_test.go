@@ -67,6 +67,7 @@ var hostRefusals = []struct {
 	{[]string{"completion", "bash", "--host", "ws"}, hostUnexpected("completion bash")},
 	{[]string{"setup", "completion", "bash", "--host", "ws"},
 		hostUnexpected("setup completion bash")},
+	{[]string{"restore", "tabs", "--host", "ws"}, hostUnexpected("restore tabs")},
 }
 
 // --host refuses an empty HOST, one ssh or a shell would read otherwise, the hidden options, and a

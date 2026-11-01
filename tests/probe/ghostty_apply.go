@@ -8,8 +8,9 @@ import (
 )
 
 // apply applies apply.js's plan to m, a Ghostty that runs, in Go and not by apply.js's commands.
-// It saves what it typed and built, and prints the result, unless mode fails it. With partial, it
-// fails as garbage does once it has typed and made the first build.
+// It saves what it typed and built, waits as the apply delay file says, and prints the result,
+// unless mode fails it. With partial, it fails as garbage does once it has typed and made the
+// first build. With short, it prints what it did by then, as an apply.js that stopped early would.
 func apply(dir string, m *mac.Model, p *plan, mode string) error {
 	switch failure, canned := applyFailures[mode]; {
 	case canned:
@@ -25,12 +26,15 @@ func apply(dir string, m *mac.Model, p *plan, mode string) error {
 		out.Typed = append(out.Typed, a.typeLine(t))
 	}
 	for i, b := range p.Builds {
-		if mode == "partial" && i == 1 {
+		if (mode == "partial" || mode == "short") && i == 1 {
 			break
 		}
 		out.Builds = append(out.Builds, a.build(b))
 	}
 	if err := mac.Save(dir, m); err != nil {
+		return err
+	}
+	if err := hold(dir, mac.ApplyDelayFile); err != nil {
 		return err
 	}
 	switch {
@@ -51,18 +55,19 @@ type applier struct {
 	made  int  // the terminals asked for, which m.FailAt counts
 }
 
-// typeLine types a line into a pane as apply.js does, Ctrl+U first and Enter last. It types
-// nothing where the pane is gone, or busy: another group than the plan's is in front.
+// typeLine types a line into a pane as apply.js does, Ctrl+U first and Enter last, once the pace
+// has passed. It types nothing where the pane is gone, or busy: another group than the plan's is
+// in front.
 func (a *applier) typeLine(t typing) typed {
+	if err := a.step(); err != nil {
+		return typed{Pane: t.Pane, Error: err.Error()}
+	}
 	terminal, ok := a.m.Terminals[t.Pane]
 	switch {
 	case !ok || a.off || !slices.Contains(a.m.IDs(), t.Pane):
 		return typed{Pane: t.Pane, Error: errNoObject.Error()}
 	case terminal.PID != t.PID:
 		return typed{Pane: t.Pane, Busy: true}
-	}
-	if err := a.step(); err != nil {
-		return typed{Pane: t.Pane, Error: err.Error()}
 	}
 	terminal.Typed = append(terminal.Typed, "^U", t.Line, "\r")
 	return typed{Pane: t.Pane}
