@@ -73,7 +73,7 @@
       "source": {
         "source": "github",
         "repo": "zadykian/toolkit",
-        "ref": "v7.1.1"
+        "ref": "v7.2.0"
       },
       "autoUpdate": true
     }
