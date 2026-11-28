@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/zadykian/cld/internal/claudetemp"
 )
 
 // marked reports whether session cld-SUFFIX has its run mark in the record's directory dir.
@@ -84,4 +86,36 @@ func leaving(suffix string) string {
 	}
 	value := `'#{s/'/'\\''/:pane_current_path}'`
 	return dirWriter(entryFile(dir, suffix), value, unexpanded) + `; ` + unmark(suffix)
+}
+
+// conversation is claude's ID of a conversation as a basic regular expression of sed: a UUID,
+// which no character of a path can stretch.
+const conversation = `[0-9a-fA-F]\{8\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-` +
+	`[0-9a-fA-F]\{12\}`
+
+// removeTemp is the sh command that removes claude's temp directory, in each project of the temp
+// root, as a session ends (decision 67.2). The directory is the conversation's that the entry in
+// file names. sh reads the ID at the end of the entry's line, where the hook writes it (see
+// entryWriter). It prints nothing and exits 0, as the session ends all the same.
+func removeTemp(file string) string {
+	return `{ id=$(sed -n 's/.*"conversation":"\(` + conversation + `\)"}$/\1/p' ` +
+		shellWord(file) + `) && [ -n "$id" ] && rm -rf ` + claudetemp.RootWord() +
+		`/*/"$id"; } 2>/dev/null || true`
+}
+
+// unmarkExited is the sh command of the pane-died hook for claude's exit with status 0. It removes
+// the run mark run, and then claude's temp directory of the conversation that the entry beside run
+// names (decisions 48.2 and 67.2).
+func unmarkExited(run string) string {
+	return `rm -f ` + shellWord(run) + `; ` + removeTemp(strings.TrimSuffix(run, runMark)+".json")
+}
+
+// tempGone is removeTemp for session cld-SUFFIX's entry, with every "#" doubled for run-shell's
+// format. Where cld has no record's directory, tempGone is "".
+func tempGone(suffix string) string {
+	dir, err := StateDir()
+	if err != nil {
+		return ""
+	}
+	return unexpanded(removeTemp(entryFile(dir, suffix)))
 }

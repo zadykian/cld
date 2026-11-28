@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -56,6 +57,17 @@ func unmarkCommand(s *sandbox.Sandbox, name string) string {
 	return strings.ReplaceAll("rm -f "+shellQuoted(run)+" 2>/dev/null || true", "#", "##")
 }
 
+// tempCommand is how the end of a session removes claude's temp directory, in each project, of
+// the conversation that the entry in file names (decision 67.2). It reads the ID from the entry,
+// takes the temp root from the environment, and prints nothing.
+func tempCommand(file string) string {
+	hex := func(count string) string { return `[0-9a-fA-F]\{` + count + `\}` }
+	id := hex("8") + "-" + hex("4") + "-" + hex("4") + "-" + hex("4") + "-" + hex("12")
+	return `{ id=$(sed -n 's/.*"conversation":"\(` + id + `\)"}$/\1/p' ` + shellQuoted(file) +
+		`) && [ -n "$id" ] && rm -rf "${CLAUDE_CODE_TMPDIR:-${TMPDIR:-${TMP:-${TEMP:-/tmp}}}}"` +
+		`/claude-` + strconv.Itoa(os.Getuid()) + `/*/"$id"; } 2>/dev/null || true`
+}
+
 // leavingCommand is how kill and the idle sweep write claude's directory beside session name's
 // entry in s, then remove its run mark (decision 56.3). run-shell takes it with -t %0, claude's
 // pane, and tmux quotes the directory for sh.
@@ -69,10 +81,11 @@ func leavingCommand(s *sandbox.Sandbox, name string) string {
 }
 
 // endHook is the pane-died hook join sets (decision 48.2). For status 0 it removes the run mark,
-// the file run, and closes the pane, as tmux would. Otherwise it keeps endText on the pane's border
-// and shows endHint to a terminal on claude's window. The path goes quoted for sh and for tmux.
+// the file run, and claude's temp directory (decision 67.2), and closes the pane, as tmux would.
+// Otherwise it keeps endText on the pane's border and shows endHint to a terminal on claude's
+// window. The path goes quoted for sh and for tmux.
 func endHook(options, run string) string {
-	sh := "rm -f " + shellQuoted(run)
+	sh := "rm -f " + shellQuoted(run) + "; " + tempCommand(strings.TrimSuffix(run, ".run")+".json")
 	tmux := "'" + strings.ReplaceAll(strings.ReplaceAll(sh, "#", "##"), "'", `'\''`) + "'"
 	return "if -F '#{==:#{pane_dead_status},0}' { run-shell " + tmux + " ; kill-pane } { " +
 		"set -w pane-border-status bottom ; " +

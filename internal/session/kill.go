@@ -62,23 +62,25 @@ func holdsAny(found, pids []string) bool {
 }
 
 // sessionKill is the tmux command that ends session cld-SUFFIX and then its server, so that a
-// terminal attached exits with status 0 (decision 13). It first writes claude's directory and
-// removes the run mark, while the session holds its name (decisions 48.1 and 56.3).
+// terminal attached exits with status 0 (decision 13). It first writes claude's directory, and
+// removes the run mark and claude's temp directory, while the session holds its name (decisions
+// 48.1, 56.3 and 67.2).
 func sessionKill(suffix string) []string {
 	kill := []string{"kill-session", "-t", "=cld-" + suffix, ";", "kill-server"}
 	if sh := leaving(suffix); sh != "" {
-		return append([]string{"run-shell", "-t", claudePane, sh, ";"}, kill...)
+		return append([]string{"run-shell", "-t", claudePane, sh + "; " + tempGone(suffix), ";"},
+			kill...)
 	}
 	return kill
 }
 
 // outlivedKill is the tmux command that ends a server that has outlived session cld-SUFFIX, under
 // lingering's check made again (see outlives). No pane of the session is left to check, nor its
-// home (decision 15.3).
+// home (decision 15.3). It removes the run mark and claude's temp directory first (decision 67.2).
 func outlivedKill(suffix string) []string {
 	kill := "kill-server"
 	if rm := unmark(suffix); rm != "" {
-		kill = "run-shell " + shellWord(rm) + " ; kill-server"
+		kill = "run-shell " + shellWord(rm+"; "+tempGone(suffix)) + " ; kill-server"
 	}
 	return []string{"if", "-F", outlives(suffix), kill}
 }
