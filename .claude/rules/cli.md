@@ -52,7 +52,9 @@ overrides cobra.
 - `--host` checks only HOST, the hidden options, what the host would take from its home and a pane
   of cld's servers. cld then execs ssh, and the host's cld makes every other check. `__host` and
   the plain words `--host` sends stay in every later release
-  ([decision 62](../../docs/design/decisions/0062-commands-on-another-host.md)).
+  ([decision 62](../../docs/design/decisions/0062-commands-on-another-host.md)). A `join` on a
+  terminal runs ssh as its child, and joins again after a drop with `--existing`
+  ([decision 68](../../docs/design/decisions/0068-joining-again-after-a-drop.md)).
 - The default NAME, from the repository or the directory, is the one name cld changes. Messages name
   a session back as `-n NAME -s SUFFIX`
   ([decision 24](../../docs/design/decisions/0024-names-from-the-repository.md)).

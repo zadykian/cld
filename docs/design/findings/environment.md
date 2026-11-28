@@ -226,3 +226,9 @@ tmux-resurrect and tmux-continuum, which decision 48 passes over, are in
 - **Options after the host** (OpenSSH 10.2p1, `ssh -G`). ssh read them too:
   `ssh -G HOST -p 2222` printed port 2222. After `--`, it read none past the host, and printed port
   22 ([decision 62](../decisions/0062-commands-on-another-host.md)).
+- **ssh's log in a file** (OpenSSH 10.2p1, `ssh -F /dev/null -t -o LogLevel=ERROR
+  -o ConnectTimeout=2 -E FILE`). A host that did not answer ended ssh in 2 s with status 255, and
+  `ssh: connect to host … port 22: Connection timed out` in FILE. A closed port gave
+  `Connection refused`, and an unknown host key under `StrictHostKeyChecking=yes`
+  `Host key verification failed.`, each with 255. ssh wrote nothing to stderr
+  ([decision 68](../decisions/0068-joining-again-after-a-drop.md)).

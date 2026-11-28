@@ -138,12 +138,13 @@ The `adr` skill in `.claude/skills` adds a record.
 - [58. Joining only a session that
   exists](design/decisions/0058-joining-only-a-session-that-exists.md): Accepted (#175).
 - [59. Ghostty's tabs on a Mac](design/decisions/0059-ghostty-tabs.md): Accepted (#176).
+  Amended by 68.
 - [60. A command for each restore](design/decisions/0060-a-command-for-each-restore.md): Accepted
   (#185). Amended by 59.
 - [61. Running in another directory](design/decisions/0061-running-in-another-directory.md):
   Accepted (#186).
 - [62. Commands on another host](design/decisions/0062-commands-on-another-host.md): Accepted
-  (#186). Amended by 59.
+  (#186). Amended by 59 and 68.
 - [63. This repository's plugins](design/decisions/0063-this-repositorys-plugins.md): Accepted.
   Amended by 64.
 - [64. The shared skills as they are](design/decisions/0064-the-shared-skills-as-they-are.md):
@@ -153,3 +154,5 @@ The `adr` skill in `.claude/skills` adds a record.
 - [66. Merges left to the ruleset](design/decisions/0066-merges-left-to-the-ruleset.md): Accepted.
 - [67. Claude's temp directories](design/decisions/0067-claudes-temp-directories.md): Accepted
   (#240).
+- [68. Joining again after a drop](design/decisions/0068-joining-again-after-a-drop.md): Accepted
+  (#241).

@@ -106,7 +106,8 @@ sessions claude makes on its server, then behave as plain tmux.
   through ps and cld's title, the merge and the watcher. Then the restore: what it reopens, the
   dedupe, the plan and its typed lines, the record after the apply, and the report.
 - `internal/remote`: `--host`, the ssh that runs a command through cld on another host, and the
-  words it carries there ([decision 62](decisions/0062-commands-on-another-host.md)).
+  words it carries there ([decision 62](decisions/0062-commands-on-another-host.md)), and a
+  join's tries after a drop ([decision 68](decisions/0068-joining-again-after-a-drop.md)).
 - `internal/tool`: finds the programs cld runs on the `PATH`, and ends cld as a shell would when
   one cannot run ([decision 11.5 and 11.9](decisions/0011-go-and-cobra.md)).
 - `internal/fail`: carries exit statuses up to `main`, the only place that exits.
@@ -173,8 +174,9 @@ of its own ([decision 59.4](decisions/0059-ghostty-tabs.md)).
 `join` is the one command for a session ([decision 50](decisions/0050-one-command-join.md)). It
 refuses bad combinations with status 2 before looking for any tool. In a pane of cld's servers it
 moves the terminal instead ([decision 51](decisions/0051-moving-between-sessions.md)). With
-`--host`, it becomes ssh, and the host's cld joins
-([decision 62](decisions/0062-commands-on-another-host.md)). Otherwise it takes the record's lock
+`--host`, it runs ssh, and the host's cld joins
+([decision 62](decisions/0062-commands-on-another-host.md)), again after a drop
+([decision 68](decisions/0068-joining-again-after-a-drop.md)). Otherwise it takes the record's lock
 and looks the session up on server `cld-NAME`, by its exact name. It runs `claude --version` only
 where claude starts ([decision 6](decisions/0006-versions.md)), and checks the terminal last ([decision 31](decisions/0031-a-terminal-to-attach-from.md)).
 
