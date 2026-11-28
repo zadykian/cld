@@ -22,10 +22,12 @@ const hostUsage = "run on `HOST` instead, an ssh destination: ssh\n" +
 
 // onHost is how a command takes --host HOST (decision 62). needs refuses what the host's cld would
 // take from its home (decision 62.2). terminal, for join and list, says whether ssh gives the
-// host's cld a terminal; nil for the others.
+// host's cld a terminal; nil for the others. child, for join, has ssh run with a terminal as cld's
+// child (decision 68).
 type onHost struct {
 	needs    func(*pflag.FlagSet) error
 	terminal func() bool
+	child    bool
 }
 
 // add gives command, typed as typed, --host HOST. Given, once check has passed, it runs command on
@@ -41,6 +43,9 @@ func (h onHost) add(command *cobra.Command, typed string) {
 		terminal := h.terminal != nil && h.terminal()
 		if err := h.check(c, typed, host, terminal); err != nil {
 			return err
+		}
+		if terminal && h.child {
+			return remote.Join(host, hostWords(c, args))
 		}
 		return remote.Exec(host, hostWords(c, args), terminal)
 	}

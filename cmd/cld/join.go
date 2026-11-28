@@ -129,7 +129,7 @@ func newJoin(typed string, words []string) *cobra.Command {
 	cmdline.CompleteWith(join, "name", naming.Names(true))
 	cmdline.CompleteWith(join, "suffix", naming.Suffixes(true))
 	onHost{needs: hostNeeds(typed, "-n NAME or -C DIR, the directory there", "name", "directory"),
-		terminal: terminals}.add(join, typed)
+		terminal: terminals, child: true}.add(join, typed)
 	return join
 }
 

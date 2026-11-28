@@ -1,6 +1,7 @@
 // Package remote runs one of cld's commands on another host for --host HOST (decision 62). cld
-// becomes ssh, which runs cld in the user's login shell on the host. There, the user's profile
-// sets the PATH to cld, tmux and claude, and that cld does the work: here, cld needs ssh alone.
+// becomes ssh, which runs cld in the user's login shell on the host, or runs it as its child for a
+// join with a terminal (see Join). There, the user's profile sets the PATH to cld, tmux and
+// claude, and that cld does the work: here, cld needs ssh alone.
 // Plain words go as they are, and else all go as __host VALUE (see Encode). A join in a pane
 // moves its words to a terminal by the same rules (decision 51.3).
 package remote
@@ -34,14 +35,15 @@ var plain = regexp.MustCompile(`^[A-Za-z0-9_@+:,./-][A-Za-z0-9_@+=:,./-]*$`)
 // (decisions 51.3 and 62.4).
 func Plain(word string) bool { return plain.MatchString(word) }
 
-// argv is the ssh that runs cld with words on host. With terminal, ssh gives the host's cld a
-// terminal, and leaves out its "Connection closed" line; otherwise none, nor this one's input.
-// ssh's own RemoteCommand would refuse a command given (decision 62.3).
-func argv(host string, words []string, terminal bool) []string {
+// argv is the ssh that runs cld with words on host, with options. With terminal, ssh gives the
+// host's cld a terminal, and leaves out its "Connection closed" line; otherwise none, nor this
+// one's input. ssh's own RemoteCommand would refuse a command given (decision 62.3).
+func argv(host string, words []string, terminal bool, options ...string) []string {
 	argv := []string{"ssh", "-T", "-n"}
 	if terminal {
 		argv = []string{"ssh", "-t", "-o", "LogLevel=ERROR"}
 	}
+	argv = append(argv, options...)
 	return append(argv, "-o", "RemoteCommand=none", "--", host, remoteCommand(words))
 }
 
