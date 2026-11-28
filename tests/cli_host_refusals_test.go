@@ -122,7 +122,7 @@ func TestHostInsideASession(t *testing.T) {
 	s = sandbox.New(t)
 	elsewhere := map[string]string{"TMUX": "/tmp/tmux-0/default,1,0", "CLD_FAKE_SSH_EXIT": "0"}
 	checkExit(t, "join", runOnTerminal(t, s, elsewhere, joinX.args...), 0, "", "")
-	checkSSH(t, s, hostSSH("ws", true, joinX.words...))
+	checkSSH(t, s, joinSSH("ws", joinX.words...))
 }
 
 // --help shows this cld's help, the same as without --host, and runs no ssh.

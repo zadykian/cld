@@ -160,8 +160,8 @@ joined all the same. The Mac cannot tell
 - The quick terminal is not recorded.
 - **A dropped connection.** A connection that drops in a pane that stays open, the Mac asleep say,
   leaves the pane at its prompt. No restore joins it again: cld cannot tell a drop from a detach
-  followed by `exit`. ws's `ws-join` covers drops
-  ([zadykian/ws#56](https://github.com/zadykian/ws/issues/56)).
+  followed by `exit`. A pane where you typed `cld join --host` with `-s` joins again itself
+  ([From another machine](another-host.md#sshs-connections)).
 
 ## Before a restore
 

@@ -53,10 +53,14 @@ Type `ssh HOST` once in a Ghostty pane with `ssh-terminfo` on, and leave with `e
 
 - A `LocalCommand` runs as each connection opens, for `--host` too. ws's playbook writes one that
   starts the watcher of `cld restore tabs`.
-- A dropped connection leaves the session running, as a detach does: run the same `join` again.
-  cld does not reconnect.
+- Where the connection drops, as the Mac sleeps, `join --host` with `-s` on a terminal joins again
+  5 s later, until Ctrl-C ([decision 68](../design/decisions/0068-joining-again-after-a-drop.md)).
+  Without `-s`, join the session that `cld list --host` shows with its `-s`.
+- cld prints ssh's errors after each try, and stops where the host refuses the login: each failed
+  login counts towards a fail2ban's ban ([Ghostty's tabs](ghostty-tabs.md#sshd-and-fail2ban)).
 - In a session of cld's terminal, `join` and `list` refuse `--host`: the host's tmux would run
   inside this one, both on `C-q`. Detach first. Without a terminal, as in claude's `!`, they run.
 - With its output piped, `cld list --host` prints the table, and `cld join --host` is refused for
   want of a terminal.
-- cld ends with the status of the host's cld, or 255 where ssh fails.
+- cld ends with the status of the host's cld, or 255 where ssh fails. A `join` that Ctrl-C or a
+  closed pane ends gets 128 plus the signal's number.

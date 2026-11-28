@@ -31,6 +31,26 @@ func hostSSH(host string, terminal bool, words ...string) []string {
 		"exec $SHELL -lc 'exec cld "+strings.Join(words, " ")+"'")
 }
 
+// joinSSH is hostSSH's for a join on a terminal, which runs ssh as its child. That ssh gives up
+// a connection after 10 s, and logs to a file, which sshCalls names LOG.
+func joinSSH(host string, words ...string) []string {
+	argv := hostSSH(host, true, words...)
+	return slices.Concat(argv[:3], []string{"-o", "ConnectTimeout=10", "-E", "LOG"}, argv[3:])
+}
+
+// sshCalls are s's calls of the fake ssh, each argv with the file after -E as LOG.
+func sshCalls(s *sandbox.Sandbox) [][]string {
+	var calls [][]string
+	for _, call := range s.SSHCalls() {
+		argv := slices.Clone(call.Argv)
+		if i := slices.Index(argv, "-E"); i >= 0 && i+1 < len(argv) {
+			argv[i+1] = "LOG"
+		}
+		calls = append(calls, argv)
+	}
+	return calls
+}
+
 // hostValue is how --host sends words that are not all plain: __host and their VALUE, the words
 // joined by NULs, in URL-safe base64 without padding.
 func hostValue(words ...string) []string {
@@ -42,12 +62,12 @@ func hostValue(words ...string) []string {
 // nil, unless there was none.
 func checkSSH(t *testing.T, s *sandbox.Sandbox, want []string) {
 	t.Helper()
-	calls := s.SSHCalls()
+	calls := sshCalls(s)
 	if want == nil && len(calls) != 0 {
-		t.Errorf("ssh ran: %+v", calls)
+		t.Errorf("ssh ran: %q", calls)
 	}
-	if want != nil && (len(calls) != 1 || !slices.Equal(calls[0].Argv, want)) {
-		t.Errorf("ssh ran %+v, want once, with %q", calls, want)
+	if want != nil && (len(calls) != 1 || !slices.Equal(calls[0], want)) {
+		t.Errorf("ssh ran %q, want once, with %q", calls, want)
 	}
 }
 
@@ -129,7 +149,7 @@ func runOnTerminal(
 
 // ssh gives the host's join and list a terminal where cld's input and output are both terminals:
 // join attaches there, and list draws its picker. With its input alone a terminal, ssh gives none,
-// and never to the other commands.
+// and never to the other commands. join's ssh is then cld's child (decision 68).
 func TestHostTerminal(t *testing.T) {
 	t.Parallel()
 	for _, test := range []hostCase{
@@ -145,8 +165,11 @@ func TestHostTerminal(t *testing.T) {
 		s = sandbox.New(t)
 		checkExit(t, test.args[0]+" on a terminal", runOnTerminal(t, s, logOnly, test.args...), 0,
 			"", "")
-		attaches := test.args[0] == "join" || test.args[0] == "list"
-		checkSSH(t, s, hostSSH(test.host, attaches, test.words...))
+		want := hostSSH(test.host, test.args[0] == "list", test.words...)
+		if test.args[0] == "join" {
+			want = joinSSH(test.host, test.words...)
+		}
+		checkSSH(t, s, want)
 	}
 }
 

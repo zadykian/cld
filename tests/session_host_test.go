@@ -39,7 +39,7 @@ func TestHostSession(t *testing.T) {
 	if !slices.Contains(claude.Argv, "two words") {
 		t.Errorf("claude's arguments %q, want \"two words\" among them", claude.Argv)
 	}
-	checkSSH(t, s, hostSSH("ws", true, hostValue("join", "--name=app", "--suffix=1", "--",
+	checkSSH(t, s, joinSSH("ws", hostValue("join", "--name=app", "--suffix=1", "--",
 		"two words")...))
 	checkExit(t, "list", s.RunCld(nil, "list", "--host", "ws"), 0, hostTable(s, "attached"), "")
 	checkExit(t, "detach", s.RunCld(nil, "detach", "--host", "ws", "-n", "app", "-s", "1"), 0,
@@ -71,6 +71,6 @@ func TestHostResume(t *testing.T) {
 	if clients := s.Clients(); !slices.Equal(clients, []string{"cld-0"}) {
 		t.Errorf("clients on %q, want one on cld-0", clients)
 	}
-	checkSSH(t, s, hostSSH("ws", true, hostValue("join", "--directory="+s.Work,
+	checkSSH(t, s, joinSSH("ws", hostValue("join", "--directory="+s.Work,
 		"--resume=it's a b")...))
 }

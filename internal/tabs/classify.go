@@ -1,7 +1,6 @@
 package tabs
 
 import (
-	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -47,15 +46,13 @@ func classify(t ghostty.Terminal, procs Table, g int) Seen {
 	return seen
 }
 
-// front is what the leader of a pane's foreground group shows, group being its members. cld in
-// front is a restore in its own pane, before its exec of ssh, or another of cld's commands: the
-// pane keeps what it showed. A wrapper's ssh is its child, and only that ssh counts: one deeper
-// in the group, such as a git push's, does not.
+// front is what the leader of a pane's foreground group shows, group being its members. A
+// wrapper's ssh is its child, and only that ssh counts: one deeper in the group, such as a git
+// push's, does not. Any other cld in front is a restore in its own pane, before its exec of ssh,
+// or another of cld's commands: the pane keeps what it showed.
 func front(leader Process, group []Process) Seen {
 	name := program(leader)
 	switch {
-	case name == "cld":
-		return Seen{Keep: true}
 	case name == "ssh":
 		return sshSeen(leader.Args[1:])
 	case wraps(leader, name):
@@ -65,23 +62,25 @@ func front(leader Process, group []Process) Seen {
 			}
 		}
 		return Seen{Keep: true}
+	case name == "cld":
+		return Seen{Keep: true}
 	case isShell(name):
 		return Seen{Kind: KindLocal}
 	}
 	return Seen{Kind: KindOther}
 }
 
-// wraps reports whether the leader named name runs ssh as its child: Ghostty's ssh wrapper,
-// ghostty +ssh, or ws's ws-join, a sh script. The first has the shape macOS's ps shows; the
-// second's is UNVERIFIED until #177's check 9 (decision 59.12).
+// wraps reports whether the leader named name runs ssh as its child. Those are Ghostty's ssh
+// wrapper, ghostty +ssh, with the shape macOS's ps shows, and cld join --host (decision 68.5).
+// Between the join's tries, no ssh runs, and the pane keeps what it showed.
 func wraps(leader Process, name string) bool {
 	switch name {
 	case "ghostty":
 		return len(leader.Args) > 1 && leader.Args[1] == "+ssh"
-	case "ws-join":
-		return true
+	case "cld":
+		return len(leader.Args) > 1 && leader.Args[1] == "join"
 	}
-	return isShell(name) && len(leader.Args) > 1 && path.Base(leader.Args[1]) == "ws-join"
+	return false
 }
 
 // sshSeen is an ssh pane, with ssh's words after its name. A host --host would refuse is no host:

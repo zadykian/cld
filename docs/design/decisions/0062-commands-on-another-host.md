@@ -1,7 +1,8 @@
 # 62. Commands on another host
 
 Status: Accepted (#186). Amended by [59](0059-ghostty-tabs.md), under which `restore tabs` refuses
-`--host`.
+`--host`, and by [68](0068-joining-again-after-a-drop.md), under which `join --host` joins again
+after a drop.
 
 ## Context
 
