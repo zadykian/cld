@@ -36,7 +36,8 @@ digits, "_" and "-", each starting with a letter or digit, and make 64
 characters at most. Without -n, a running session made in another repository or
 directory of the same name is refused. Without -s, join also ends the sessions
 idle for longer than $CLD_IDLE_DAYS days, as cld list does, once it has taken
-its INDEX.
+its INDEX, and removes claude's temp directories that no process holds, as
+cld list does.
 
 With --resume, claude resumes SESSION in a session join creates, in the current
 directory: whatever claude --resume takes, such as a session ID, a name, or a
@@ -221,6 +222,8 @@ func (j *joinCommand) create(tmux *session.Tmux, joining session.Joining, kept [
 	if err != nil {
 		return err
 	}
+	// The sweep of claude's temp directories needs no lock, as it reads no record (decision 67.3).
+	idle.SweepTemp()
 	unlock := session.Lock()
 	defer unlock()
 	suffix, _, err := j.names.Resolve(tmux)

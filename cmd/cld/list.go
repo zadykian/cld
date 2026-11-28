@@ -27,7 +27,10 @@ or idle, when it was last active (a terminal attaching, or a key typed in one)
 and the directory claude is in or ran in. cld keeps a session that has ended -
 by cld kill, claude's /exit, a reboot - for 30 days. A session idle for longer
 than $CLD_IDLE_DAYS days, 30 where unset or empty, is ended first, as cld kill
-ends it, with a line on stderr; cld join brings its conversation back.
+ends it, with a line on stderr; cld join brings its conversation back. list then
+removes claude's temp directories of the conversations that no process holds
+and that were last written over a day ago, with a warning for one it cannot
+remove.
 CLD_IDLE_DAYS=0 ends none.
 
 On a terminal, pick one to join, kill or rename: Up and Down select a session,
@@ -83,8 +86,9 @@ func switchOptions(c *cobra.Command, typed, client, to string) error {
 	return nil
 }
 
-// listSessions ends the idle sessions, then shows the sessions, those ended among them. It shows
-// them in the interactive list where it can, and else, or once the list is left, in the table.
+// listSessions ends the idle sessions, and removes claude's temp directories left behind, then
+// shows the sessions, those ended among them. It shows them in the interactive list where it
+// can, and else, or once the list is left, in the table.
 func listSessions() error {
 	limit, err := idle.Limit()
 	if err != nil {
@@ -99,6 +103,7 @@ func listSessions() error {
 		return err
 	}
 	sessions = idle.Sweep(tmux, sessions, limit, "")
+	idle.SweepTemp()
 	if len(sessions) > 0 && picker.Available() {
 		var done bool
 		if sessions, done, err = pick(tmux, sessions); done {

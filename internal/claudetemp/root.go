@@ -4,6 +4,7 @@ package claudetemp
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -14,6 +15,16 @@ import (
 // (decision 67.1).
 func RootWord() string {
 	return `"${CLAUDE_CODE_TMPDIR:-${TMPDIR:-${TMP:-${TEMP:-/tmp}}}}"/` + rootName()
+}
+
+// Root is claude's temp root for cld's own environment, as RootWord has it for sh.
+func Root() string {
+	for _, name := range []string{"CLAUDE_CODE_TMPDIR", "TMPDIR", "TMP", "TEMP"} {
+		if dir := os.Getenv(name); dir != "" {
+			return filepath.Join(dir, rootName())
+		}
+	}
+	return filepath.Join("/tmp", rootName())
 }
 
 // rootName is the name of the temp root in its directory: claude-UID.
