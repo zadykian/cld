@@ -1,5 +1,6 @@
-// Package idle is CLD_IDLE_DAYS, how long a session may stay idle, and the sweep that list and
-// join run, ending the sessions idle for longer (decision 46).
+// Package idle is CLD_IDLE_DAYS, how long a session may stay idle, and the sweeps that list and
+// join run. One ends the sessions idle for longer (decision 46). The other removes claude's temp
+// directories left behind (decision 67.3).
 package idle
 
 import (
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/zadykian/cld/internal/claudetemp"
 	"github.com/zadykian/cld/internal/fail"
 	"github.com/zadykian/cld/internal/output"
 	"github.com/zadykian/cld/internal/session"
@@ -59,6 +61,14 @@ func Sweep(tmux *session.Tmux, sessions []session.Session, limit time.Duration,
 		}
 	}
 	return kept
+}
+
+// SweepTemp removes claude's temp directories of the conversations that no process holds any
+// more, for list and join without -s. One it cannot remove is a warning (decision 67.3).
+func SweepTemp() {
+	for _, err := range claudetemp.Sweep() {
+		output.Warn(err.Error())
+	}
 }
 
 // end ends session s, idle for longer than limit, with a note on stderr, and reports whether it

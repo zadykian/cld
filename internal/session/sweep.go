@@ -13,12 +13,16 @@ import (
 // EndIdle ends session cld-SUFFIX with its server, and its run mark, where still idle for longer
 // than limit, for the sweep of list and join. tmux checks again around the run-shell before the
 // kill (see leaving), so that a terminal attaching meanwhile keeps the session (decision 46.4).
-// It reports whether it ended the session. Once ctx is done, its tmux is killed.
+// Only the kill removes claude's temp directory, once the session has ended, as a session kept
+// keeps its claude (decision 67.2). It reports whether it ended the session. Once ctx is done,
+// its tmux is killed.
 func (t *Tmux) EndIdle(ctx context.Context, suffix string, limit time.Duration) (bool, error) {
 	idle := idleFormat(time.Now().Add(-limit))
 	name := "=cld-" + suffix
 	kill := "kill-session -t " + name + " ; kill-server"
 	if sh := leaving(suffix); sh != "" {
+		kill = "kill-session -t " + name + " ; run-shell " + shellWord(tempGone(suffix)) +
+			" ; kill-server"
 		kill = "run-shell -t " + claudePane + " " + shellWord(sh) + " ; if -F -t " + name + ": " +
 			shellWord(idle) + " " + shellWord(kill) + " 'display-message -p kept'"
 	}

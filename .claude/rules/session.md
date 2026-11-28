@@ -58,6 +58,10 @@ works.
   before `kill-session`, while the session holds its name. A `run-shell` in their tmux command does
   both (decisions [48](../../docs/design/decisions/0048-restore-after-reboot.md) and
   [56](../../docs/design/decisions/0056-following-claudes-cd.md)).
+- Each end also removes claude's temp directory, in the same `run-shell` or the died hook. Its sh
+  reads the conversation's ID from the end of the entry's line, a UUID or nothing, and removes
+  nothing for an entry without one
+  ([decision 67.2](../../docs/design/decisions/0067-claudes-temp-directories.md)).
 - A path that tmux expands into a `run-shell`'s command goes in single quotes, by
   `#{s/'/'\\''/:...}`; `#{q:}` leaves a newline that ends sh's command
   ([decision 56](../../docs/design/decisions/0056-following-claudes-cd.md)).

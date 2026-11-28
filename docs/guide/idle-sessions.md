@@ -16,4 +16,8 @@ A claude holds some 0.2 to 0.5 GB of memory while its session runs, used or not:
 - Claude Code removes a transcript 30 days after its last write by default (`cleanupPeriodDays`).
   So a session idle for 30 days can lose its conversation soon after: raise `cleanupPeriodDays`,
   or lower `CLD_IDLE_DAYS`.
+- On Linux, `cld list` and `cld join` also remove claude's temp directories that no process holds,
+  once they and their transcript are a day old. A session ended before cld removed its own, or a
+  conversation before a `/clear`, leaves one. One cld cannot remove is a warning. On a Mac they
+  stay ([decision 67](../design/decisions/0067-claudes-temp-directories.md)).
 - `cld restore sessions` goes by the last start or prompt instead (see [after a reboot](after-a-reboot.md)).

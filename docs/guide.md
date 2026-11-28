@@ -9,7 +9,8 @@ yet, troubleshooting and upgrading. How cld works, and why, is in [design.md](de
   `C-q`, notifications
 - [Inside your own tmux](guide/inside-your-own-tmux.md): the keys it keeps, and how to free them
 - [The session list and moving between sessions](guide/session-list.md): `cld list`, `C-q s`
-- [Idle sessions](guide/idle-sessions.md): what counts as idle, and keeping a session
+- [Idle sessions](guide/idle-sessions.md): what counts as idle, keeping a session, and claude's
+  temp directories left behind
 - [Resuming a conversation](guide/resuming.md): the record, `join --existing`, names, copies,
   agent view's moves
 - [After a reboot](guide/after-a-reboot.md): `cld restore sessions` and `cld setup restore`

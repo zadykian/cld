@@ -40,13 +40,14 @@ func hint(suffix string) string {
 }
 
 // died is the pane-died hook of claude's pane in session cld-SUFFIX. For claude's exit with status
-// 0, it removes the run mark, run, and closes the pane, as no pane-exited hook would run (decision
-// 48.2). Otherwise it keeps ending on the pane's border line, and shows the hint (decision 5).
+// 0, it removes the run mark, run, and claude's temp directory (see unmarkExited). It then closes
+// the pane, as no pane-exited hook would run (decision 48.2). Otherwise it keeps ending on the
+// pane's border line, and shows the hint (decision 5).
 func died(suffix, run string) string {
 	exited := "kill-pane"
 	if run != "" {
-		// The path goes through tmux's parser, run-shell's format, where "##" is a "#", and sh.
-		exited = "run-shell " + shellWord(unexpanded("rm -f "+shellWord(run))) + " ; kill-pane"
+		// The command goes through tmux's parser, run-shell's format, where "##" is a "#", and sh.
+		exited = "run-shell " + shellWord(unexpanded(unmarkExited(run))) + " ; kill-pane"
 	}
 	return "if -F '#{==:#{pane_dead_status},0}' { " + exited + " } { " +
 		"set -w pane-border-status bottom ; set -p pane-border-format ' " + ending(suffix) + " ' ; " +

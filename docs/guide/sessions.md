@@ -53,6 +53,9 @@ says where.
   `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` sets the time. `cld kill` returns once tmux has ended
   the session, without waiting for those hooks, so `cld kill -s 1 && cld join -s 1` can briefly run
   the old claude beside the new one.
+- Ending a session removes claude's temp directory of its conversation, `claude-UID` in
+  `CLAUDE_CODE_TMPDIR` or `TMPDIR`, by default `/tmp`. A conversation resumed later starts with an
+  empty scratchpad ([decision 67](../design/decisions/0067-claudes-temp-directories.md)).
 - A failed claude's line takes the screen's last row, which can cost a line of claude's output.
   A narrow terminal drops how to detach from it, then how to end the session.
 - Only claude's own pane stays when it fails. A pane split off beside it closes when its program

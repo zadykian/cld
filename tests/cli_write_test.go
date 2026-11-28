@@ -134,7 +134,9 @@ func TestNothingToPrintWritesNothing(t *testing.T) {
 			}
 			want := test.argv
 			if want == nil {
-				want = []string{"-L", "cld-a", "run-shell", "-t", "%0", leavingCommand(s, "a"), ";",
+				leaving := leavingCommand(s, "a") + "; " +
+					strings.ReplaceAll(tempCommand(entryFile(s, "a")), "#", "##")
+				want = []string{"-L", "cld-a", "run-shell", "-t", "%0", leaving, ";",
 					"kill-session", "-t", "=cld-a", ";", "kill-server"}
 			}
 			if argv := s.FakeTmuxRecord().Argv; !slices.Equal(argv, want) {

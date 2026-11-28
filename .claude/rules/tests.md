@@ -14,8 +14,11 @@ harness. Each helper's doc comment says how it works.
 - Tests build cld and run it against real tmux. The probe, `tests/probe`, stands in for claude,
   and for systemctl and loginctl. It stands in for osascript, ps and ssh too, on a model Mac
   (`internal/mac`), and sh fakes in `tests/fakes` for open and ghostty.
-- No test reaches the user's systemd, Ghostty or own cld sessions, a real host or `open`. Each
-  runs in a sandbox of its own (`internal/sandbox`), in parallel, whose PATH holds the fakes first.
+- No test reaches the user's systemd, Ghostty or own cld sessions, a real host or `open`, nor
+  claude's temp root, `/tmp/claude-UID`. Each runs in a sandbox of its own (`internal/sandbox`), in
+  parallel, whose PATH holds the fakes first, and whose `CLAUDE_CODE_TMPDIR` and `TMPDIR` are its
+  own: cld removes from the temp root
+  ([decision 67](../../docs/design/decisions/0067-claudes-temp-directories.md)).
 - The sandbox's `TMUX_TMPDIR` stays short, as socket paths hit the `sun_path` limit of about 108
   bytes ([decision 13](../../docs/design/decisions/0013-a-server-per-session.md)).
 - The sandbox's work directory is `_`, of which nothing is left in a name: there `-s x` names the

@@ -17,7 +17,7 @@ link its record, instead of restating the reasons.
   zeros, and `slug` its title in lowercase words joined by hyphens.
 - `docs/design/findings/`: probed behaviour, with the versions checked, in the file of its subject:
   `tmux-servers.md`, `tmux-commands.md`, `tmux-sessions.md`, `tmux-terminal.md`, `claude.md`,
-  `terminals.md` or `environment.md`.
+  `claude-files.md`, `terminals.md` or `environment.md`.
 - `docs/design.md`: the index, a line per record with its title and its Status.
 
 ## The record

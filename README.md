@@ -82,8 +82,8 @@ detaches it (see [terminals that keep C-q](docs/guide/terminal.md#terminals-that
   `! cld join` in claude. The session left runs on. See
   [the session list](docs/guide/session-list.md#moving-between-sessions).
 - **Idle sessions.** A session with no terminal attached and no key typed for over 30 days ends at
-  the next `cld list`, or `cld join` without `-s`. `CLD_IDLE_DAYS` sets the days. See
-  [idle sessions](docs/guide/idle-sessions.md).
+  the next `cld list`, or `cld join` without `-s`. `CLD_IDLE_DAYS` sets the days. It also removes claude's
+  temp directories of old conversations. See [idle sessions](docs/guide/idle-sessions.md).
 - **Resuming.** cld keeps a record of each session for 30 days. `cld join` brings an ended session
   back, its conversation resumed in the directory it ran in. `--resume` takes another
   conversation, and `--fork` a copy. See [resuming a conversation](docs/guide/resuming.md).

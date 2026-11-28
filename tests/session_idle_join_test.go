@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"maps"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -56,6 +57,8 @@ func TestKeepsAnIdleSessionJoinedMeanwhile(t *testing.T) {
 	t.Parallel()
 	s := sandbox.New(t)
 	probe := detachedSessions(t, s, "a")["a"]
+	probe.Hook("SessionStart", `{"session_id":"`+firstID+`","source":"startup"}`)
+	temp := claudeTemp(t, s, "-a", firstID)
 	time.Sleep(10 * time.Second)
 	kill := holdTmux(t, s, "the kill of idle session a", "*' if -F -t =cld-a: '*")
 	kill.start(t)
@@ -84,6 +87,9 @@ func TestKeepsAnIdleSessionJoinedMeanwhile(t *testing.T) {
 	if !probe.Alive() || !term.Running() || !slices.Equal(s.Sessions(), []string{"cld-a"}) {
 		t.Errorf("claude alive: %v, terminal attached: %v, sessions %q; "+
 			"want session a as it was", probe.Alive(), term.Running(), s.Sessions())
+	}
+	if !exists(filepath.Join(temp, "tasks", "a.output")) {
+		t.Errorf("the session kept lost claude's temp directory %s (decision 67.2)", temp)
 	}
 }
 

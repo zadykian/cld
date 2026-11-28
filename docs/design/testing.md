@@ -26,7 +26,9 @@ The rest has a page per subject, in `testing/`:
    ([the terminal contract](testing/contract.md)).
 
 Isolation needs no seams in cld. `TMUX_TMPDIR` moves the sockets into a sandbox, `HOME` is a
-temporary directory, `TMUX` is unset, and the probe comes first on the `PATH`. `cld join`
+temporary directory, and `CLAUDE_CODE_TMPDIR` and `TMPDIR` point at one, so that cld never
+removes from the real `/tmp/claude-UID`
+([decision 67](decisions/0067-claudes-temp-directories.md)). `TMUX` is unset, and the probe comes first on the `PATH`. `cld join`
 attaches, so it needs a pty: a driver's, or the sandbox's own where a test hands over to the fake
 tmux ([decision 31.6](decisions/0031-a-terminal-to-attach-from.md)).
 

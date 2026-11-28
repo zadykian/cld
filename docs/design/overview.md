@@ -78,10 +78,14 @@ sessions claude makes on its server, then behave as plain tmux.
     run on Linux alone.
   - `naming`: `-n` and `-s`, the session's name they make, and their completion.
   - `idle`: `CLD_IDLE_DAYS` and the sweep that ends idle sessions
-    ([decision 46](decisions/0046-idle-sessions.md)).
+    ([decision 46](decisions/0046-idle-sessions.md)), and the one of claude's temp directories
+    ([decision 67](decisions/0067-claudes-temp-directories.md)).
 - `internal/session`: the tmux side, and cld's record of its sessions. `switch.go` and
   `switch_*.go` move a terminal between servers, `record.go` and `record_*.go` keep the record and
   `restore.go` is `cld restore sessions`.
+- `internal/claudetemp`: claude's temp root, where claude keeps a directory for each conversation,
+  and the removal of the ones no claude needs
+  ([decision 67](decisions/0067-claudes-temp-directories.md)).
 - `internal/picker`: `cld list` on a terminal. `cmd/cld` decides when it runs, and hands it
   join's checks, kill's steps, and the forget and the rename.
 - `internal/project`: `cld setup config project`, a project's claude settings, `.mcp.json` and
@@ -216,8 +220,13 @@ directory, then asks the servers that answer, eight at a time
   ([decision 32](decisions/0032-what-a-kill-does.md)).
 - A server that outlives its session is refused, or ended by `kill`
   ([decision 13](decisions/0013-a-server-per-session.md)).
+- Each of these ends removes claude's temp directory of the session's conversation, in each
+  project of claude's temp root
+  ([decision 67.2](decisions/0067-claudes-temp-directories.md)).
 - `list`, and `join` without `-s`, end sessions idle past `CLD_IDLE_DAYS`
-  ([decision 46](decisions/0046-idle-sessions.md)).
+  ([decision 46](decisions/0046-idle-sessions.md)). They also remove the temp directories of the
+  conversations that no process holds and that were last written over a day ago, which no end
+  removed ([decision 67.3](decisions/0067-claudes-temp-directories.md)).
 
 The entry stays after each of these. `list` shows the session as `ended`, and `join` brings it
 back, until its entry expires or the list forgets it
