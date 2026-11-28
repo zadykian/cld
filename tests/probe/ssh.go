@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/zadykian/cld/tests/internal/mac"
 )
@@ -23,9 +27,16 @@ var errConfig = errors.New("-G takes a destination and nothing else, as cld runs
 // fakeSSH fakes ssh to a host that is the sandbox itself, logging each call to ssh.jsonl. ssh -G
 // DEST prints DEST's configuration. Else it runs the remote command with bash in $HOME, SHELL set
 // to that bash as sshd sets the login shell, or a login bash where there is none. Where it would
-// connect, $CLD_FAKE_SSH_EXIT=N exits with status N instead, 255 as a dropped connection does.
+// connect, $CLD_FAKE_SSH_EXIT exits instead (see exitAs). $CLD_FAKE_SSH_HOLD, $CLD_FAKE_SSH_KILL
+// and $CLD_FAKE_SSH_STDIN play ssh that stays until a signal, is killed, and reads the terminal
+// (see killSelf and logStdin).
 func fakeSSH() error {
 	args := os.Args[1:]
+	var signals chan os.Signal
+	if _, set := os.LookupEnv("CLD_FAKE_SSH_HOLD"); set {
+		signals = make(chan os.Signal, 1)
+		signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	}
 	call := mac.SSHCall{Argv: args, Term: os.Getenv("TERM")}
 	if err := appendJSON(filepath.Join(os.Getenv("CLD_PROBE_DIR"), mac.SSHLog), call); err != nil {
 		return err
@@ -37,14 +48,89 @@ func fakeSSH() error {
 	if err != nil {
 		unusable(err)
 	}
-	if code, set := os.LookupEnv("CLD_FAKE_SSH_EXIT"); set {
-		status, err := strconv.Atoi(code)
-		if err != nil {
-			return fmt.Errorf("CLD_FAKE_SSH_EXIT: %w", err)
+	if signals != nil {
+		<-signals
+		os.Exit(255)
+	}
+	if sig, set := os.LookupEnv("CLD_FAKE_SSH_KILL"); set {
+		return killSelf(sig)
+	}
+	if file, set := os.LookupEnv("CLD_FAKE_SSH_STDIN"); set {
+		if err := logStdin(file); err != nil {
+			return err
 		}
-		os.Exit(status)
+	}
+	if codes, set := os.LookupEnv("CLD_FAKE_SSH_EXIT"); set {
+		return exitAs(codes, args)
 	}
 	return remote(command)
+}
+
+// killSelf ends the process with the signal of that number, as the system's would, for ssh killed
+// from outside.
+func killSelf(number string) error {
+	n, err := strconv.Atoi(number)
+	if err != nil {
+		return fmt.Errorf("CLD_FAKE_SSH_KILL: %w", err)
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.Signal(n)); err != nil {
+		return err
+	}
+	select {}
+}
+
+// logStdin appends to file one line: what the terminal holds unread for 300 ms, as %q. ssh would
+// send that to the host.
+func logStdin(file string) error {
+	var set unix.FdSet
+	set.Set(0)
+	timeout := unix.NsecToTimeval(int64(300 * time.Millisecond))
+	var got []byte
+	if n, err := unix.Select(1, &set, nil, nil, &timeout); err == nil && n > 0 {
+		buf := make([]byte, 4096)
+		n, _ := os.Stdin.Read(buf) //nolint:errcheck // an unreadable terminal holds nothing
+		got = buf[:n]
+	}
+	return appendLine(file, []byte(strconv.Quote(string(got))))
+}
+
+// exitAs exits with this call's status in codes, a list such as "255,0". The Nth of the
+// sandbox's calls takes the Nth, and every call past the list the last. 255 plays a dropped
+// connection. $CLD_FAKE_SSH_LOG is a line of ssh's own first, such as a refusal, written to the
+// file of -E where args give one, else to stderr.
+func exitAs(codes string, args []string) error {
+	calls, err := os.ReadFile(filepath.Join(os.Getenv("CLD_PROBE_DIR"), mac.SSHLog))
+	if err != nil {
+		return err
+	}
+	list := strings.Split(codes, ",")
+	status, err := strconv.Atoi(list[min(strings.Count(string(calls), "\n"), len(list))-1])
+	if err != nil {
+		return fmt.Errorf("CLD_FAKE_SSH_EXIT: %w", err)
+	}
+	if line, set := os.LookupEnv("CLD_FAKE_SSH_LOG"); set {
+		err = writeLog(args, line)
+	}
+	if err != nil {
+		return err
+	}
+	os.Exit(status)
+	return nil
+}
+
+// writeLog writes line as ssh logs it: to the file that -E names in args, before "--", or else
+// to stderr.
+func writeLog(args []string, line string) error {
+	for i, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if arg == "-E" && i+1 < len(args) {
+			return appendLine(args[i+1], []byte(line))
+		}
+	}
+	_, err := fmt.Fprintln(os.Stderr, line)
+	return err
 }
 
 // unusable fails as ssh does on words it cannot use, or a connection it cannot make: status 255.

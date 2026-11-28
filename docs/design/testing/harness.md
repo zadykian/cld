@@ -60,6 +60,11 @@ processes, in a file of the probe directory.
 - `CLD_FAKE_SSH_EXIT` plays a dropped connection only where ssh would connect. `ssh -G` never
   connects, and cld's check of Ghostty's terminfo cache reads it whatever the connection does. A
   file of the probe directory gives a host the hostname and port that `ssh -G` prints.
+- `CLD_FAKE_SSH_EXIT` takes a status per call, such as `255,0`, a drop then a detach.
+  `CLD_FAKE_SSH_LOG` is a line of ssh's own, such as a refusal, which goes to the file of `-E`.
+- `CLD_FAKE_SSH_HOLD` keeps ssh running until a signal, then ends it with 255. `CLD_FAKE_SSH_KILL`
+  kills it with a signal's number. `CLD_FAKE_SSH_STDIN` is a file that gets a line per call: what
+  the terminal held unread, which a flush of the input empties.
 - The sandbox's `~/.profile` puts the tools under test first on a login shell's PATH. The login
   shell reads `/etc/profile` before it, where macOS's `path_helper` reorders the PATH. The fake ssh
   refuses a remote shell without it, which would run the developer's cld, or the real ssh.
