@@ -62,7 +62,7 @@ func New(tb testing.TB) *Sandbox {
 		Work:     filepath.Join(root, "_"),
 		ProbeDir: filepath.Join(root, "probe"),
 	}
-	for _, dir := range []string{s.Home, s.Work, s.ProbeDir} {
+	for _, dir := range []string{s.Home, s.Work, s.ProbeDir, s.ClaudeTemp()} {
 		if err := os.Mkdir(dir, 0o755); err != nil {
 			tb.Fatal(err)
 		}
@@ -75,14 +75,24 @@ func New(tb testing.TB) *Sandbox {
 		"HOME":          s.Home,
 		"TMUX_TMPDIR":   root,
 		"CLD_PROBE_DIR": s.ProbeDir,
-		"TERM":          "xterm-256color",
-		"LANG":          locale(),
+		// claude's temp root, which cld removes from, is the sandbox's: never the user's, where
+		// running claudes keep their files. TMPDIR backs it up, where a test unsets it.
+		"CLAUDE_CODE_TMPDIR": s.ClaudeTemp(),
+		"TMPDIR":             s.ClaudeTemp(),
+		"TERM":               "xterm-256color",
+		"LANG":               locale(),
 	}
 	tb.Cleanup(func() {
 		s.killServers()
 		_ = os.RemoveAll(root) //nolint:errcheck // best effort: a straggler may still write there
 	})
 	return s
+}
+
+// ClaudeTemp is the directory claude and cld take for the system's temporary directory in s: the
+// sandbox's CLAUDE_CODE_TMPDIR and TMPDIR. claude keeps its temp root, claude-UID, in it.
+func (s *Sandbox) ClaudeTemp() string {
+	return filepath.Join(s.Root, "tmp")
 }
 
 // locale is a UTF-8 locale the platform has.
