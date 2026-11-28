@@ -11,6 +11,8 @@ installs. The rest of the repository is its test harness, the lint gates' tools,
 - `cmd/cld/internal`: what the commands share. `cmdline` holds the checks of arguments and
   options and their errors, `naming` the `-n` and `-s`, and `idle` `CLD_IDLE_DAYS` and the sweep.
 - `internal/session`: the tmux side, cld's record of its sessions, and `cld restore sessions`.
+- `internal/claudetemp`: claude's temp root, and the removal of the directories in it that no
+  claude needs.
 - `internal/picker`: the interactive `cld list` on a terminal.
 - `internal/project`: `cld setup config project` and `user`: a project's `.claude` settings,
   `.mcp.json` and `.gitignore`, and claude's user settings.
