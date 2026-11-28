@@ -1,6 +1,6 @@
 # 59. Ghostty's tabs on a Mac
 
-Status: Accepted (#176).
+Status: Accepted (#176). Amended by [68](0068-joining-again-after-a-drop.md).
 
 ## Context
 
