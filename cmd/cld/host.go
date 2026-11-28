@@ -22,12 +22,12 @@ const hostUsage = "run on `HOST` instead, an ssh destination: ssh\n" +
 
 // onHost is how a command takes --host HOST (decision 62). needs refuses what the host's cld would
 // take from its home (decision 62.2). terminal, for join and list, says whether ssh gives the
-// host's cld a terminal; nil for the others. child, for join, has ssh run with a terminal as cld's
-// child (decision 68).
+// host's cld a terminal; nil for the others. again, for join, has ssh run with a terminal as cld's
+// child, and gives the words of a try after a drop (decision 68).
 type onHost struct {
 	needs    func(*pflag.FlagSet) error
 	terminal func() bool
-	child    bool
+	again    func(*cobra.Command) []string
 }
 
 // add gives command, typed as typed, --host HOST. Given, once check has passed, it runs command on
@@ -44,8 +44,8 @@ func (h onHost) add(command *cobra.Command, typed string) {
 		if err := h.check(c, typed, host, terminal); err != nil {
 			return err
 		}
-		if terminal && h.child {
-			return remote.Join(host, hostWords(c, args))
+		if terminal && h.again != nil {
+			return remote.Join(host, hostWords(c, args), h.again(c))
 		}
 		return remote.Exec(host, hostWords(c, args), terminal)
 	}
@@ -108,6 +108,25 @@ func hostWords(c *cobra.Command, args []string) []string {
 	if c.ArgsLenAtDash() >= 0 {
 		words = append(append(words, "--"), args...)
 	}
+	return words
+}
+
+// joinAgain is the join that a try after a drop runs on the host: --existing, with -C, -n and -s
+// as given (decision 68.2). Without -s, which --existing needs, it gives none: the host's cld chose
+// the SUFFIX, which cld here never learns.
+func joinAgain(c *cobra.Command) []string {
+	if !c.Flags().Changed("suffix") {
+		return nil
+	}
+	words := strings.Fields(c.CommandPath())[1:]
+	c.Flags().VisitAll(func(f *pflag.Flag) {
+		switch {
+		case f.Name == "existing":
+			words = append(words, "--existing=true")
+		case f.Changed && slices.Contains([]string{"directory", "name", "suffix"}, f.Name):
+			words = append(words, "--"+f.Name+"="+f.Value.String())
+		}
+	})
 	return words
 }
 

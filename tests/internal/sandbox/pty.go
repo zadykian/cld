@@ -88,6 +88,15 @@ func (p *Pty) SetSize(rows, cols, width, height int) {
 	}
 }
 
+// Write types text on the terminal, as a user does. The program reading it gets it, and
+// Output holds its echo.
+func (p *Pty) Write(text string) {
+	p.t.Helper()
+	if _, err := p.controller.WriteString(text); err != nil {
+		p.t.Fatalf("type on %s: %v", p.Path, err)
+	}
+}
+
 // Output is what was written to the terminal, once every program that had it open has closed it:
 // it closes the test's own Terminal first.
 func (p *Pty) Output() string {

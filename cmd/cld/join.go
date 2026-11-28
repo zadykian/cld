@@ -61,6 +61,11 @@ only where a reboot, a crash or tmux kill-server ended it, whatever its idle
 time: it refuses any other. --existing needs -s, and excludes -w, --new,
 --resume, --fork and ARGS.
 
+With --host HOST on a terminal, join joins again where ssh's connection drops:
+5 s later, it runs join --existing with the same -C, -n and -s on HOST, and so
+on until Ctrl-C. It needs -s for that, and stops where HOST refuses the login.
+Where ssh never connected, it runs the first words again.
+
 In a session - ! cld join in claude, or a shell on the session's tmux server -
 join moves the terminal attached to that session, or of several the one used
 last, as cld detach finds it: the terminal leaves the session, which runs on,
@@ -129,7 +134,7 @@ func newJoin(typed string, words []string) *cobra.Command {
 	cmdline.CompleteWith(join, "name", naming.Names(true))
 	cmdline.CompleteWith(join, "suffix", naming.Suffixes(true))
 	onHost{needs: hostNeeds(typed, "-n NAME or -C DIR, the directory there", "name", "directory"),
-		terminal: terminals, child: true}.add(join, typed)
+		terminal: terminals, again: joinAgain}.add(join, typed)
 	return join
 }
 
