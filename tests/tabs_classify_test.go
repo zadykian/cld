@@ -52,11 +52,15 @@ var classifyCases = []struct {
 		shown{Kind: "cld", Host: "ws", Session: "x"}},
 	{"ghostty +ssh before its ssh", "~", [][]string{{ghosttyExecutable, "+ssh", "ws"}},
 		shown{Kind: "other"}},
-	{"ws-join", "✳ cld-app-3", [][]string{{"/bin/sh", "/Users/me/bin/ws-join", "-n", "app",
-		"-s", "3"}, ssh("-t", "ws", "cld", "join", "-n", "app", "-s", "3")},
+	{"cld join --host", "✳ cld-app-3", [][]string{{"cld", "join", "--host", "ws", "-n", "app",
+		"-s", "3"}, ssh("-t", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10", "-E",
+		"/tmp/cld-ssh-1.log", "-o", "RemoteCommand=none", "--", "ws",
+		"exec $SHELL -lc 'exec cld join --name=app --suffix=3'")},
 		shown{Kind: "cld", Host: "ws", Session: "app-3"}},
-	{"ws-join by its name", "~", [][]string{{"ws-join", "-n", "app"}, ssh("ws")},
-		shown{Kind: "ssh", Host: "ws"}},
+	{"cld join by its path", "~", [][]string{{"/usr/local/bin/cld", "join", "--host", "ws"},
+		ssh("ws")}, shown{Kind: "ssh", Host: "ws"}},
+	{"another cld's ssh", "~", [][]string{{"cld", "restore", "tabs"}, ssh("-G", "ws")},
+		shown{Kind: "other"}},
 	{"git push", "✳ cld-app", [][]string{{"git", "push"},
 		ssh("git@github.com", "git-receive-pack", "me/app.git")}, shown{Kind: "other"}},
 	{"-zsh", "~", nil, shown{Kind: "local"}},
@@ -85,7 +89,7 @@ var classifyCases = []struct {
 }
 
 // Each pane is what the leader of its foreground group shows. ssh names its host, past its
-// options' values, directly or as the child of ghostty +ssh or ws-join; cld's title on it names
+// options' values, directly or as the child of ghostty +ssh or cld join; cld's title on it names
 // the session. A shell is local, whatever its title, and any other program other.
 func TestTabsClassify(t *testing.T) {
 	t.Parallel()
